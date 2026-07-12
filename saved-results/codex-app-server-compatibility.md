@@ -161,6 +161,14 @@ fresh nonexistent request ID and `decision: decline`. The desktop owner returned
 `{"ok":true}`. The inspected handler ignores an unknown request ID, so no real
 pending request was answered.
 
+The checked-in Go adapter later repeated the same harmless live check. It
+verified the pinned Desktop build, the Unix socket beneath the current user's
+private temporary directory, and that the current `ChatGPT` process held that
+socket. It loaded a full snapshot at revision 8297 and received `{"ok":true}`
+for the nonexistent approval route. `go test ./... -race` passed, the adapter
+package reached 80.8% statement coverage, and Windows/Linux amd64 test binaries
+compiled. Windows named-pipe behavior and valid live writes remain unverified.
+
 The bundle also maps the IPC address to `\\\\.\\pipe\\codex-ipc` on Windows.
 Linux has no ChatGPT desktop host to attach to; Linux support must use the
 public app-server path for CLI-owned tasks.
@@ -186,10 +194,9 @@ fall back to a separate companion-owned task when desktop compatibility fails.
 
 ## Reproduce
 
-The checked-in Go probe below reproduces the separate app-server result. The
-follower-bridge checks were run as temporary read-only/harmless Node probes
-against the live desktop socket. Before implementation, Task 3 must turn those
-checks into repeatable Go contract tests with captured safe fixtures.
+The app-server command below reproduces the separate runtime result. The second
+command runs the checked-in harmless follower-bridge test against an active
+desktop-owned task.
 
 ```bash
 go test ./companion/internal/codex/probe -race
@@ -198,4 +205,8 @@ CODEX_PROBE_BINARY=/Applications/ChatGPT.app/Contents/Resources/codex \
 CODEX_PROBE_THREAD_ID=019f52fa-4039-72c3-867d-9ace7f9b08ab \
 go test ./companion/internal/codex/probe \
   -run TestRealReadOnlyObservation -v -count=1
+
+CODEX_DESKTOP_THREAD_ID=019f52fa-4039-72c3-867d-9ace7f9b08ab \
+go test ./companion/internal/codex/desktopipc \
+  -run TestRealDesktopCompatibility -v -count=1
 ```

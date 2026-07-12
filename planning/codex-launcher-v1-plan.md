@@ -1,7 +1,7 @@
 # Codex Launcher V1 Implementation Plan
 
-> **Status:** In progress. Tasks 0-2 are complete; the desktop follower bridge
-> decision was approved on 2026-07-13 and is the next implementation gate.
+> **Status:** In progress. Tasks 0-2 and 2A are complete; the private Desktop
+> adapter passed independent review and Task 3 is next.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
@@ -289,8 +289,8 @@ Desktop update.
 - Update: `saved-results/codex-app-server-compatibility.md`
 
 **Observable guarantees:** A same-user local client discovers the desktop
-endpoint, completes `initialize`, accepts only pinned message versions, rebuilds
-a desktop-owned task from a snapshot, applies ordered deltas, and routes only
+endpoint, completes `initialize`, accepts only pinned message versions, retains
+a desktop-owned task's full snapshot plus ordered deltas, and routes only
 an allow-listed action to the window that owns that task. An unknown desktop
 build, unknown message version, missing owner, malformed/oversized frame,
 disconnect, or uncertain write produces a typed error and no automatic retry.
@@ -309,8 +309,12 @@ framing. Discover the macOS endpoint beneath `os.TempDir()` rather than storing
 its temporary path. Verify the socket and ChatGPT process belong to the current
 OS user. Pin ChatGPT Desktop package 26.707.51957's observed versions:
 `thread-stream-state-changed` 11; start/load/compact/steer/settings/approval/
-input actions 1; interrupt and edit-last-turn 2. Parse unknown fields but reject
-unknown methods or incompatible versions. Use structured `slog` records tagged
+input actions 1; interrupt and edit-last-turn 2. Task 2A's executable action
+allowlist is start, steer, interrupt, and command approval; each has an exported
+call path and a pinned success shape. Task 4 adds compact, settings, file and
+permission approvals, requested input, MCP elicitation, and edit-last-turn with
+their own typed request and response contracts before exposing them to Android.
+Parse unknown fields but reject unknown methods or incompatible versions. Use structured `slog` records tagged
 `[desktop-ipc]` with message kind, version, task ID, revision, and branch reason;
 never log task content, prompts, commands, paths, approval text, or credentials.
 
