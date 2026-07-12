@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Codex Launcher — Approved Light and Dark System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Instrument Sans", sans-serif;
+      --board-bg: #e5e3dc;
+      --board-ink: #171815;
+      --board-muted: #676a63;
+      --board-line: rgba(23, 24, 21, .15);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--board-ink);
+      background:
+        linear-gradient(rgba(23, 24, 21, .035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(23, 24, 21, .035) 1px, transparent 1px),
+        var(--board-bg);
+      background-size: 24px 24px;
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+
+    .board-header {
+      max-width: 1540px;
+      margin: 0 auto;
+      padding: 56px 36px 34px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, .6fr);
+      gap: 48px;
+      border-bottom: 1px solid var(--board-line);
+    }
+
+    .eyebrow,
+    .direction-index,
+    .screen-label,
+    .meta-label {
+      font-family: "JetBrains Mono", monospace;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-size: 11px;
+    }
+
+    h1 {
+      max-width: 900px;
+      margin: 16px 0 18px;
+      font-size: clamp(44px, 6vw, 92px);
+      line-height: .94;
+      letter-spacing: -.065em;
+      font-weight: 570;
+    }
+
+    .lede {
+      max-width: 760px;
+      margin: 0;
+      color: var(--board-muted);
+      font-size: 18px;
+      line-height: 1.5;
+    }
+
+    .principle {
+      align-self: end;
+      padding: 20px 0 4px 22px;
+      border-left: 2px solid #e86136;
+      font-size: 22px;
+      line-height: 1.32;
+      letter-spacing: -.025em;
+    }
+
+    .research-strip {
+      max-width: 1540px;
+      margin: 0 auto;
+      padding: 18px 36px;
+      display: flex;
+      gap: 10px 26px;
+      flex-wrap: wrap;
+      color: var(--board-muted);
+      font-size: 13px;
+      border-bottom: 1px solid var(--board-line);
+    }
+
+    .research-strip span::before {
+      content: "";
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      margin: 0 9px 2px 0;
+      border-radius: 50%;
+      background: #e86136;
+    }
+
+    .direction {
+      max-width: 1540px;
+      margin: 0 auto;
+      padding: 58px 36px 72px;
+      border-bottom: 1px solid var(--board-line);
+    }
+
+    .direction.preferred {
+      box-shadow: inset 4px 0 0 #e86136;
+    }
+
+    .mode-badge {
+      display: inline-flex;
+      min-height: 28px;
+      margin-top: 14px;
+      padding: 0 10px;
+      align-items: center;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      color: var(--board-muted);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .direction-heading {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr) minmax(280px, .5fr);
+      gap: 24px;
+      align-items: start;
+      margin-bottom: 32px;
+    }
+
+    .direction-index { padding-top: 9px; color: var(--board-muted); }
+
+    .direction h2 {
+      margin: 0;
+      font-size: clamp(30px, 4vw, 54px);
+      line-height: 1;
+      letter-spacing: -.045em;
+      font-weight: 560;
+    }
+
+    .direction-summary {
+      color: var(--board-muted);
+      line-height: 1.45;
+    }
+
+    .screens {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(250px, 1fr));
+      gap: 20px;
+      align-items: start;
+    }
+
+    .screen-wrap { min-width: 0; }
+
+    .screen-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 9px;
+      color: var(--board-muted);
+    }
+
+    .phone {
+      --bg: #f4f2ed;
+      --surface: #ebe9e2;
+      --ink: #191a18;
+      --muted: #656861;
+      --line: #d8d7d1;
+      --accent: #e86136;
+      --good: #4d8061;
+      --warning: #b87816;
+      --danger: #a33d32;
+      position: relative;
+      width: 100%;
+      aspect-ratio: 412 / 892;
+      overflow: hidden;
+      color: var(--ink);
+      background: var(--bg);
+      border: 1px solid rgba(20, 20, 18, .38);
+      border-radius: 32px;
+      box-shadow: 0 24px 60px rgba(24, 24, 20, .18), inset 0 0 0 5px rgba(255, 255, 255, .2);
+    }
+
+    .phone.dark {
+      --bg: #111210;
+      --surface: #1a1b18;
+      --ink: #f0eee8;
+      --muted: #969990;
+      --line: #30312d;
+      --accent: #f06b3f;
+      --good: #75a987;
+      --warning: #d49a3b;
+      --danger: #e46f61;
+      box-shadow: 0 28px 76px rgba(10, 10, 8, .42), inset 0 0 0 5px rgba(255, 255, 255, .045);
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      z-index: 10;
+      top: 8px;
+      left: 50%;
+      width: 11px;
+      height: 11px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: #080908;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, .12);
+    }
+
+    .device {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 31px 21px 18px;
+    }
+
+    .statusbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 22px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .system-icons { color: var(--muted); letter-spacing: .08em; }
+
+    .home-date {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      padding-bottom: 17px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .clock {
+      font-size: clamp(23px, 2.7vw, 31px);
+      line-height: .95;
+      letter-spacing: -.055em;
+      font-weight: 500;
+    }
+
+    .date { margin-top: 5px; color: var(--muted); font-size: 13px; }
+
+    .connection {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-bottom: 2px;
+      font-family: "JetBrains Mono", monospace;
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
+    .connection::before,
+    .task-dot {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--good);
+    }
+
+    .connection.offline::before { background: var(--danger); }
+
+    .section-title {
+      margin: 20px 0 7px;
+      font-family: "JetBrains Mono", monospace;
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+    }
+
+    .task-row {
+      display: grid;
+      grid-template-columns: 10px minmax(0, 1fr) auto;
+      gap: 8px;
+      padding: 11px 0 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .task-dot { margin-top: 5px; background: var(--accent); }
+    .task-dot.wait {
+      border: 1px solid var(--warning);
+      border-radius: 1px;
+      background: transparent;
+      transform: rotate(45deg);
+    }
+    .task-dot.done {
+      position: relative;
+      border: 1px solid var(--muted);
+      background: transparent;
+      opacity: .7;
+    }
+    .task-dot.done::after {
+      content: "";
+      position: absolute;
+      top: 1px;
+      left: 2px;
+      width: 3px;
+      height: 1px;
+      transform: rotate(-45deg);
+      border-bottom: 1px solid var(--muted);
+      border-left: 1px solid var(--muted);
+    }
+
+    .task-dot.failed {
+      position: relative;
+      border: 1px solid var(--danger);
+      border-radius: 1px;
+      background: transparent;
+    }
+
+    .task-dot.failed::before,
+    .task-dot.failed::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 1px;
+      width: 4px;
+      height: 1px;
+      background: var(--danger);
+    }
+
+    .task-dot.failed::before { transform: rotate(45deg); }
+    .task-dot.failed::after { transform: rotate(-45deg); }
+
+    .task-row.attention {
+      margin-left: -9px;
+      padding-left: 7px;
+      border-left: 2px solid var(--warning);
+      background: color-mix(in srgb, var(--warning) 6%, transparent);
+    }
+
+    .task-row.attention .task-title {
+      color: var(--ink);
+      font-size: 17px;
+      font-weight: 650;
+    }
+
+    .task-row.attention .task-sub { color: var(--warning); font-size: 13px; }
+
+    .task-title { font-size: 15px; line-height: 1.23; letter-spacing: -.012em; }
+    .task-sub { margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.3; }
+    .task-time { padding-top: 2px; color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 10px; }
+
+    .working-mark {
+      display: inline-flex;
+      gap: 2px;
+      margin-right: 4px;
+      vertical-align: 1px;
+    }
+
+    .working-mark i {
+      width: 2px;
+      height: 6px;
+      background: var(--accent);
+      animation: work 1.1s ease-in-out infinite;
+    }
+
+    .working-mark i:nth-child(2) { animation-delay: .12s; }
+    .working-mark i:nth-child(3) { animation-delay: .24s; }
+
+    @keyframes work {
+      0%, 100% { transform: scaleY(.45); opacity: .45; }
+      50% { transform: scaleY(1); opacity: 1; }
+    }
+
+    .composer {
+      margin-top: auto;
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 56px;
+      padding: 9px 9px 9px 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--bg) 84%, var(--surface));
+      box-shadow: 0 9px 28px rgba(20, 20, 18, .08);
+    }
+
+    .composer-text { color: var(--muted); font-size: 13px; }
+    .composer-action {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .send {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border-radius: 5px;
+      color: var(--bg);
+      background: var(--ink);
+      font-size: 16px;
+    }
+
+    .gesture {
+      width: 92px;
+      height: 3px;
+      margin: 10px auto 0;
+      border-radius: 3px;
+      background: var(--ink);
+      opacity: .7;
+    }
+
+    .task-header {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 11px;
+      align-items: center;
+      padding: 2px 0 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .back, .more {
+      display: grid;
+      min-width: 44px;
+      min-height: 44px;
+      place-items: center;
+      color: var(--muted);
+    }
+    .back { margin-left: -12px; font-size: 22px; }
+    .task-head-title { font-size: 14px; font-weight: 600; }
+    .task-head-meta { margin-top: 3px; color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 9px; }
+    .more { margin-right: -12px; letter-spacing: .12em; }
+
+    .transcript {
+      min-height: 0;
+      overflow: hidden;
+      padding-top: 15px;
+    }
+
+    .message { margin-bottom: 17px; }
+    .speaker { margin-bottom: 6px; color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+    .message p { margin: 0; font-size: 13px; line-height: 1.48; }
+
+    .user-message {
+      margin-left: 0;
+      padding: 8px 0 8px 12px;
+      border-left: 2px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .tool-stack {
+      margin: 10px 0 15px;
+      border-top: 1px solid var(--line);
+    }
+
+    .tool-row {
+      display: grid;
+      grid-template-columns: 9px 1fr auto;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+    }
+
+    .tool-state { color: var(--good); }
+    .tool-state.live { color: var(--accent); }
+    .tool-row.sensitive { color: var(--ink); }
+
+    .diff {
+      overflow: hidden;
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--surface);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .diff-head { padding: 7px 9px; border-bottom: 1px solid var(--line); color: var(--muted); }
+    .diff-line { padding: 2px 9px; }
+    .diff-line.plus { color: var(--good); background: color-mix(in srgb, var(--good) 9%, transparent); }
+    .diff-line.minus { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+
+    .run-controls {
+      display: grid;
+      grid-template-columns: 1fr 68px;
+      gap: 8px;
+      margin-top: auto;
+    }
+
+    .steer {
+      min-height: 48px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--muted);
+      background: var(--bg);
+      font-size: 13px;
+    }
+
+    .stop {
+      min-height: 48px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--danger);
+      background: transparent;
+    }
+
+    .approval-backdrop {
+      position: absolute;
+      inset: 0;
+      background: color-mix(in srgb, var(--bg) 46%, transparent);
+      backdrop-filter: blur(3px);
+    }
+
+    .approval-sheet {
+      position: absolute;
+      z-index: 4;
+      right: 8px;
+      bottom: 8px;
+      left: 8px;
+      padding: 18px 15px 13px;
+      border: 1px solid var(--line);
+      border-radius: 13px 13px 24px 24px;
+      background: var(--bg);
+      box-shadow: 0 -18px 55px rgba(10, 10, 8, .2);
+    }
+
+    .approval-kicker { color: var(--danger); font-family: "JetBrains Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+    .approval-sheet h3 { margin: 8px 0 5px; font-size: 20px; letter-spacing: -.04em; }
+    .approval-sheet > p { margin: 0 0 13px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+
+    .approval-meta {
+      display: grid;
+      grid-template-columns: 62px 1fr;
+      gap: 5px 8px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .approval-meta strong { color: var(--ink); font-weight: 500; }
+
+    .command {
+      margin: 0 0 12px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--surface);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      white-space: normal;
+    }
+
+    .scope {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 13px;
+    }
+
+    .scope span {
+      display: grid;
+      min-height: 48px;
+      padding: 6px 10px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .scope .selected { color: var(--ink); border-color: var(--ink); }
+
+    .approval-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 7px; }
+
+    .btn {
+      min-height: 48px;
+      padding: 10px 8px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--ink);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .btn.primary { color: var(--bg); border-color: var(--ink); background: var(--ink); }
+
+    .offline-body {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      justify-content: center;
+      padding: 20px 2px 40px;
+    }
+
+    .offline-mark {
+      width: 34px;
+      height: 34px;
+      margin-bottom: 25px;
+      border: 1px solid var(--danger);
+      border-radius: 50%;
+      position: relative;
+    }
+
+    .offline-mark::after {
+      content: "";
+      position: absolute;
+      top: 16px;
+      left: 6px;
+      width: 22px;
+      height: 1px;
+      transform: rotate(-42deg);
+      background: var(--danger);
+    }
+
+    .offline-body h3 { margin: 0 0 9px; font-size: 29px; line-height: 1; letter-spacing: -.055em; font-weight: 520; }
+    .offline-body p { max-width: 270px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .last-seen { margin-top: 18px; font-family: "JetBrains Mono", monospace; color: var(--muted); font-size: 10px; }
+
+    .offline-actions { display: flex; gap: 7px; margin-top: 18px; }
+    .offline-actions .btn { padding-inline: 13px; }
+
+    .escape-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      min-height: 48px;
+      padding-top: 13px;
+      border-top: 1px solid var(--line);
+    }
+
+    .escape {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .home-escape {
+      display: flex;
+      min-height: 44px;
+      margin-top: auto;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .home-escape strong {
+      color: var(--ink);
+      font-weight: 500;
+    }
+
+    .round-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      margin: 54px 0 18px;
+      padding-top: 20px;
+      border-top: 1px solid var(--board-line);
+    }
+
+    .round-heading h3 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -.035em;
+    }
+
+    .round-heading p {
+      max-width: 480px;
+      margin: 0;
+      color: var(--board-muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .screens-three { grid-template-columns: repeat(3, minmax(260px, 1fr)); }
+
+    .page-header {
+      display: grid;
+      grid-template-columns: 44px 1fr 44px;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .page-header .back { margin: 0; }
+    .page-title { text-align: center; font-size: 16px; font-weight: 650; }
+    .page-action { display: grid; min-width: 44px; min-height: 44px; place-items: center; color: var(--muted); font-size: 13px; }
+
+    .back, .more, .page-action {
+      border: 0;
+      background: transparent;
+    }
+
+    .question-sheet {
+      position: absolute;
+      z-index: 4;
+      right: 8px;
+      bottom: 8px;
+      left: 8px;
+      padding: 18px 15px 13px;
+      border: 1px solid var(--line);
+      border-radius: 13px 13px 24px 24px;
+      background: var(--bg);
+      box-shadow: 0 -18px 55px rgba(10, 10, 8, .2);
+    }
+
+    .question-sheet h3 { margin: 8px 0 7px; font-size: 20px; line-height: 1.12; letter-spacing: -.035em; }
+    .question-sheet > p { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+
+    .choice-list { display: grid; gap: 7px; }
+
+    .choice {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 9px;
+      min-height: 52px;
+      padding: 10px 11px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--ink);
+      background: transparent;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    .choice-mark { width: 14px; height: 14px; border: 1px solid var(--muted); border-radius: 50%; }
+    .choice.selected { border-color: var(--ink); }
+    .choice.selected .choice-mark { border: 4px solid var(--ink); }
+    .choice small { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; }
+
+    .other-answer {
+      width: 100%;
+      min-height: 48px;
+      margin-top: 8px;
+      padding: 13px 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .other-answer::placeholder { color: var(--muted); opacity: 1; }
+
+    .question-actions { display: grid; grid-template-columns: 1fr 1.2fr; gap: 7px; margin-top: 12px; }
+
+    .search-box {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      min-height: 52px;
+      margin: 14px 0 8px;
+      padding: 0 13px;
+      align-items: center;
+      border-bottom: 1px solid var(--ink);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .search-box input {
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      color: var(--ink);
+      background: transparent;
+    }
+
+    .search-box input::placeholder { color: var(--muted); opacity: 1; }
+    .search-box:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 2px 0 var(--accent);
+    }
+
+    .app-list { min-height: 0; overflow: hidden; }
+    .letter { margin: 13px 0 4px; color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 10px; }
+
+    .app-row {
+      display: flex;
+      width: 100%;
+      min-height: 48px;
+      padding: 0;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+      border-top: 0;
+      border-right: 0;
+      border-left: 0;
+      color: var(--ink);
+      background: transparent;
+      font-size: 15px;
+      text-align: left;
+    }
+
+    .app-row span:last-child { color: var(--muted); font-size: 12px; }
+    .drawer-footer { margin-top: auto; border-top: 1px solid var(--line); }
+
+    .settings-group { margin-top: 20px; }
+    .settings-title { margin-bottom: 8px; color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      min-height: 48px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface);
+    }
+
+    .segment { display: grid; border: 0; place-items: center; border-radius: 4px; color: var(--muted); background: transparent; font-size: 13px; }
+    .segment.selected { color: var(--bg); background: var(--ink); font-weight: 650; }
+
+    .settings-note {
+      margin: 16px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .mode-preview {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .preview-tile { height: 78px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+    .preview-tile.dark-tile { color: #f0eee8; border-color: #30312d; background: #111210; }
+    .preview-line { width: 70%; height: 5px; margin-bottom: 7px; background: currentColor; opacity: .8; }
+    .preview-line.short { width: 42%; opacity: .4; }
+    .preview-signal { width: 6px; height: 6px; margin-top: 17px; border-radius: 50%; background: #e86136; }
+
+    .notes {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      max-width: 1540px;
+      margin: 0 auto;
+      padding: 45px 36px 70px;
+    }
+
+    .note { padding-top: 14px; border-top: 2px solid var(--board-ink); }
+    .note h3 { margin: 10px 0 6px; font-size: 19px; letter-spacing: -.025em; }
+    .note p { margin: 0; color: var(--board-muted); font-size: 13px; line-height: 1.45; }
+
+    @media (max-width: 1180px) {
+      .screens { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+      .screens-three { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+      .direction-heading { grid-template-columns: 60px 1fr; }
+      .direction-summary { grid-column: 2; }
+    }
+
+    @media (max-width: 700px) {
+      .board-header { grid-template-columns: 1fr; padding: 34px 18px 24px; }
+      .principle { padding-left: 15px; }
+      .research-strip, .direction, .notes { padding-inline: 18px; }
+      .direction { padding-top: 38px; }
+      .direction-heading { display: block; }
+      .direction-index { margin-bottom: 8px; }
+      .direction-summary { margin-top: 14px; }
+      .screens { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 14vw 25px 0; }
+      .screen-wrap { flex: 0 0 82vw; scroll-snap-align: start; }
+      .notes { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { scroll-behavior: auto !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="board-header">
+    <div>
+      <div class="eyebrow">Codex Launcher / approved visual system / 2026.07.12</div>
+      <h1>One quiet instrument. Two modes.</h1>
+      <p class="lede">Deep Charcoal and Warm Paper are now one interface, not competing directions. The launcher follows Android's light or dark setting by default, with persistent manual overrides. Each phone uses a 412 × 892 visual canvas with explicit top and bottom system insets; implementation must bind to the device's reported safe areas.</p>
+    </div>
+    <div class="principle">“My phone is a quiet interface to my work, not a grid of apps.”</div>
+  </header>
+
+  <div class="research-strip">
+    <span>Hermes: flat task surface and live tool state</span>
+    <span>Niagara: one-handed vertical scanning</span>
+    <span>Olauncher: words before icons</span>
+    <span>Codex Remote: host, task, approval, result</span>
+  </div>
+
+  <main id="directions"></main>
+
+  <section class="notes">
+    <article class="note">
+      <div class="meta-label">Invariant 01</div>
+      <h3>Tasks replace favorites</h3>
+      <p>The launcher opens on active work. Ordinary apps remain one upward gesture away through a searchable text list.</p>
+    </article>
+    <article class="note">
+      <div class="meta-label">Invariant 02</div>
+      <h3>State is written, not implied</h3>
+      <p>Online, working, waiting, approval, and offline states use words and shape as well as color.</p>
+    </article>
+    <article class="note">
+      <div class="meta-label">Invariant 03</div>
+      <h3>The escape route always works</h3>
+      <p>Apps and Android Settings remain reachable even when the computer connection is unavailable.</p>
+    </article>
+  </section>
+
+  <script>
+    const directions = [
+      {
+        index: "01 / 02",
+        key: "dark",
+        name: "Deep Charcoal",
+        summary: "The preferred everyday appearance. It disappears around content, saves glare at night, and gives command output and tool activity authority without turning into terminal cosplay.",
+        className: "dark",
+        badge: "Preferred appearance"
+      },
+      {
+        index: "02 / 02",
+        key: "warm",
+        name: "Warm Paper",
+        summary: "The daylight half of the same system. Soft paper neutrals make longer reading comfortable while keeping signal orange's meaning identical to Dark mode.",
+        className: "",
+        badge: "Light appearance"
+      }
+    ];
+
+    const working = `<span class="working-mark" aria-label="working"><i></i><i></i><i></i></span>`;
+
+    function shell(content, className, extra = "") {
+      return `<div class="phone ${className} ${extra}"><div class="device">${content}<div class="gesture"></div></div></div>`;
+    }
+
+    function statusbar() {
+      return `<div class="statusbar"><span>12:42</span><span class="system-icons">● 5G 87%</span></div>`;
+    }
+
+    function home(className) {
+      return shell(`
+        ${statusbar()}
+        <div class="home-date">
+          <div><div class="clock">12:42</div><div class="date">Sunday, 12 July</div></div>
+          <div class="connection">studio-mac online</div>
+        </div>
+        <div class="section-title">Active</div>
+        <div class="task-row attention">
+          <span class="task-dot wait"></span>
+          <div><div class="task-title">Design Codex launcher</div><div class="task-sub">Needs your answer</div></div>
+          <span class="task-time">now</span>
+        </div>
+        <div class="task-row">
+          <span class="task-dot"></span>
+          <div><div class="task-title">Fix authentication redirect</div><div class="task-sub">${working} Running integration tests</div></div>
+          <span class="task-time">3m</span>
+        </div>
+        <div class="section-title">Recent</div>
+        <div class="task-row">
+          <span class="task-dot done"></span>
+          <div><div class="task-title">Hermes architecture review</div><div class="task-sub">Completed · 12 files inspected</div></div>
+          <span class="task-time">1d</span>
+        </div>
+        <div class="task-row">
+          <span class="task-dot done"></span>
+          <div><div class="task-title">Aster benchmark diagnosis</div><div class="task-sub">Completed · saved report</div></div>
+          <span class="task-time">Fri</span>
+        </div>
+        <div class="home-escape"><strong>↑ All apps</strong><span>Android Settings ›</span></div>
+        <div class="composer"><span class="composer-text">What do you want done?</span><span class="composer-action" role="button" aria-label="Attach">＋</span><span class="composer-action" role="button" aria-label="Voice input">⌁</span><span class="send" role="button" aria-label="Send prompt">↑</span></div>
+      `, className);
+    }
+
+    function task(className) {
+      return shell(`
+        ${statusbar()}
+        <div class="task-header">
+          <span class="back">‹</span>
+          <div><div class="task-head-title">Fix authentication redirect</div><div class="task-head-meta">studio-mac · working · 3m</div></div>
+          <span class="more">···</span>
+        </div>
+        <div class="transcript">
+          <div class="message user-message"><p>Find why expired sessions open a blank screen. Fix it and verify the complete sign-in flow.</p></div>
+          <div class="message">
+            <div class="speaker">Codex</div>
+            <p>The session loader returns no user after refresh, but the route still renders the protected shell. I reproduced it and added the failing browser test first.</p>
+          </div>
+          <div class="tool-stack">
+            <div class="tool-row sensitive"><span class="tool-state">✓</span><span>Read auth/session-loader.ts</span><span>0.2s</span></div>
+            <div class="tool-row"><span class="tool-state">✓</span><span>Browser test failed as expected</span><span>4.8s</span></div>
+            <div class="tool-row"><span class="tool-state live">●</span><span>Running integration tests</span><span>12s</span></div>
+          </div>
+          <div class="diff">
+            <div class="diff-head">auth/session-loader.ts · +3 −1</div>
+            <div class="diff-line minus">− return renderShell(user)</div>
+            <div class="diff-line plus">+ if (!user) return redirect("/login")</div>
+            <div class="diff-line plus">+ return renderShell(user)</div>
+          </div>
+        </div>
+        <div class="run-controls"><div class="steer">Add a follow-up or redirect…</div><button class="stop" aria-label="Stop task">Stop</button></div>
+      `, className);
+    }
+
+    function approval(className) {
+      return shell(`
+        ${statusbar()}
+        <div class="task-header">
+          <span class="back">‹</span>
+          <div><div class="task-head-title">Deploy preview build</div><div class="task-head-meta">studio-mac · waiting</div></div>
+          <span class="more">···</span>
+        </div>
+        <div class="transcript">
+          <div class="message"><div class="speaker">Codex</div><p>The preview is ready. Publishing it requires network access and will run the deployment command below.</p></div>
+          <div class="tool-stack"><div class="tool-row"><span class="tool-state">✓</span><span>Build preview</span><span>31s</span></div><div class="tool-row"><span class="tool-state live">!</span><span>Waiting for approval</span><span>now</span></div></div>
+        </div>
+        <div class="approval-backdrop"></div>
+        <section class="approval-sheet">
+          <div class="approval-kicker">Approval needed</div>
+          <h3>Allow this command?</h3>
+          <p>Review where it runs and how long the permission lasts.</p>
+          <div class="approval-meta"><span>Computer</span><strong>studio-mac</strong><span>Project</span><strong>codex-launcher</strong><span>Access</span><strong>Network + workspace</strong><span>Files</span><strong>None</strong></div>
+          <div class="command">npm run deploy:preview -- --branch ui-study</div>
+          <div class="scope" aria-label="Permission duration choices offered by host"><span class="selected">Once</span><span>This task</span></div>
+          <div class="approval-actions"><button class="btn">Deny</button><button class="btn primary">Allow once</button></div>
+        </section>
+      `, className);
+    }
+
+    function offline(className) {
+      return shell(`
+        ${statusbar()}
+        <div class="home-date">
+          <div><div class="clock">12:42</div><div class="date">Sunday, 12 July</div></div>
+          <div class="connection offline">studio-mac offline</div>
+        </div>
+        <div class="offline-body">
+          <div class="offline-mark"></div>
+          <h3>Computer offline</h3>
+          <p>Your tasks remain on studio-mac, but their latest state cannot be checked until it reconnects.</p>
+          <div class="last-seen">LAST CONNECTED 12:37 · 5 MIN AGO</div>
+          <div class="offline-actions"><button class="btn primary">Try again</button><button class="btn">Connection help</button></div>
+        </div>
+        <div class="escape-row"><div class="escape"><span>All apps</span><span>↑</span></div><div class="escape"><span>Android Settings</span><span>›</span></div></div>
+      `, className);
+    }
+
+    function question(className) {
+      return shell(`
+        ${statusbar()}
+        <div class="task-header">
+          <button class="back" aria-label="Back">‹</button>
+          <div><div class="task-head-title">Fix authentication redirect</div><div class="task-head-meta">studio-mac · waiting for answer</div></div>
+          <button class="more" aria-label="More task actions">···</button>
+        </div>
+        <div class="transcript">
+          <div class="message"><div class="speaker">Codex</div><p>I found two valid recovery routes. I need to know which behavior the product expects before changing navigation.</p></div>
+          <div class="tool-stack"><div class="tool-row sensitive"><span class="tool-state">✓</span><span>Saved visual comparison</span><span>now</span></div><div class="tool-row"><span class="tool-state live">◆</span><span>Waiting for your answer</span><span>now</span></div></div>
+        </div>
+        <div class="approval-backdrop"></div>
+        <section class="question-sheet">
+          <div class="approval-kicker">Question from Codex</div>
+          <h3>Where should expired sessions return?</h3>
+          <p>This answer determines the route Codex changes and the browser flow it verifies.</p>
+          <div class="choice-list" role="radiogroup" aria-label="Expired session destination">
+            <button class="choice selected" role="radio" aria-checked="true"><span class="choice-mark"></span><span>Return to sign-in<small>Use the existing /login route and preserve the destination</small></span></button>
+            <button class="choice" role="radio" aria-checked="false"><span class="choice-mark"></span><span>Open a recovery screen<small>Add a dedicated /reauthenticate route first</small></span></button>
+          </div>
+          <input class="other-answer" aria-label="Other answer" placeholder="Other answer…" />
+          <div class="question-actions"><button class="btn">Not now</button><button class="btn primary">Send answer</button></div>
+        </section>
+      `, className);
+    }
+
+    function apps(className) {
+      return shell(`
+        ${statusbar()}
+        <div class="page-header"><button class="back" aria-label="Back">‹</button><div class="page-title">All apps</div><button class="page-action" aria-label="App drawer options">⋮</button></div>
+        <label class="search-box"><input type="search" aria-label="Search apps" placeholder="Search apps" /><span>⌕</span></label>
+        <div class="app-list">
+          <div class="letter">A</div>
+          <button class="app-row"><span>Authenticator</span><span>›</span></button>
+          <div class="letter">C</div>
+          <button class="app-row"><span>Calendar</span><span>›</span></button>
+          <button class="app-row"><span>Camera</span><span>›</span></button>
+          <button class="app-row"><span>Chrome</span><span>›</span></button>
+          <div class="letter">M</div>
+          <button class="app-row"><span>Maps</span><span>›</span></button>
+          <button class="app-row"><span>Messages</span><span>›</span></button>
+          <div class="letter">S</div>
+          <button class="app-row"><span>Android Settings</span><span>›</span></button>
+        </div>
+        <div class="drawer-footer"><button class="app-row"><span>Launcher settings</span><span>›</span></button></div>
+      `, className);
+    }
+
+    function appearance(className) {
+      return shell(`
+        ${statusbar()}
+        <div class="page-header"><button class="back" aria-label="Back">‹</button><div class="page-title">Appearance</div><span class="page-action"></span></div>
+        <div class="settings-group">
+          <div class="settings-title">Theme</div>
+          <div class="segmented" role="radiogroup" aria-label="Appearance"><button class="segment selected" role="radio" aria-checked="true">Follow system</button><button class="segment" role="radio" aria-checked="false">Light</button><button class="segment" role="radio" aria-checked="false">Dark</button></div>
+          <div class="mode-preview"><div class="preview-tile"><div class="preview-line"></div><div class="preview-line short"></div><div class="preview-signal"></div></div><div class="preview-tile dark-tile"><div class="preview-line"></div><div class="preview-line short"></div><div class="preview-signal"></div></div></div>
+          <p class="settings-note">Text size, contrast, and motion follow Android settings.</p>
+        </div>
+      `, className);
+    }
+
+    function screen(label, number, phone) {
+      return `<div class="screen-wrap"><div class="screen-label"><span>${number}</span><span>${label}</span></div>${phone}</div>`;
+    }
+
+    document.querySelector("#directions").innerHTML = directions.map(direction => `
+      <section class="direction ${direction.key === "dark" ? "preferred" : ""}" id="${direction.key}">
+        <header class="direction-heading">
+          <div class="direction-index">${direction.index}</div>
+          <h2>${direction.name}</h2>
+          <div class="direction-summary">${direction.summary}<br><span class="mode-badge">${direction.badge}</span></div>
+        </header>
+        <div class="screens">
+          ${screen("Home", "01", home(direction.className))}
+          ${screen("Active task", "02", task(direction.className))}
+          ${screen("Approval", "03", approval(direction.className))}
+          ${screen("Offline", "04", offline(direction.className))}
+        </div>
+        <div class="round-heading"><h3>Round 2 · supporting surfaces</h3><p>Codex questions stay native to the task flow. Apps remain searchable and secondary. Ordinary notification contents stay in Android's shade.</p></div>
+        <div class="screens screens-three">
+          ${screen("Question", "05", question(direction.className))}
+          ${screen("All apps", "06", apps(direction.className))}
+          ${screen("Appearance", "07", appearance(direction.className))}
+        </div>
+      </section>
+    `).join("");
+  </script>
+</body>
+</html>
