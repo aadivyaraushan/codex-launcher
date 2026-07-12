@@ -1,0 +1,6 @@
+{"version":{"major":1,"minor":0},"messageId":"a-001","sender":"companion","type":"snapshot","seq":10,"body":{"baseSeq":10,"tasks":[{"taskId":"task-1","title":"Build launcher","projectLabel":"uf-u","state":"waiting_for_approval","pendingRequest":{"requestId":"request-1","kind":"command","summary":"Command approval required"},"lastActivityAt":"2026-07-13T10:01:00Z"}]}}
+{"version":{"major":1,"minor":0},"messageId":"a-002","sender":"phone","type":"action","body":{"actionId":"action-approval-1","kind":"approval","taskId":"task-1","requestId":"request-1","requestKind":"command","decision":"decline"}}
+{"version":{"major":1,"minor":0},"messageId":"a-003","sender":"companion","type":"action_result","seq":11,"body":{"actionId":"action-approval-1","state":"queued"}}
+{"version":{"major":1,"minor":0},"messageId":"a-004","sender":"companion","type":"action_result","seq":12,"body":{"actionId":"action-approval-1","state":"sent"}}
+{"version":{"major":1,"minor":0},"messageId":"a-005","sender":"companion","type":"action_result","seq":13,"body":{"actionId":"action-approval-1","state":"confirmed"}}
+{"version":{"major":1,"minor":0},"messageId":"a-006","sender":"phone","type":"ack","body":{"throughSeq":13}}
