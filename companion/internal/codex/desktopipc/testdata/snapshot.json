@@ -1,0 +1,20 @@
+{
+  "type": "broadcast",
+  "method": "thread-stream-state-changed",
+  "version": 11,
+  "params": {
+    "conversationId": "thread-1",
+    "hostId": "local",
+    "change": {
+      "type": "snapshot",
+      "revision": 41,
+      "conversationState": {
+        "id": "thread-1",
+        "turns": [{"role": "user", "text": "private prompt"}],
+        "requests": [{"method": "command", "text": "run dangerous command"}],
+        "threadRuntimeStatus": {"type": "idle"},
+        "cwd": "/redacted/project"
+      }
+    }
+  }
+}

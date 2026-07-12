@@ -1,0 +1,3 @@
+{"name":"zero-length","length":0,"payload":""}
+{"name":"malformed-json","length":4,"payload":"nope"}
+{"name":"unknown-stream-version","method":"thread-stream-state-changed","version":12}
