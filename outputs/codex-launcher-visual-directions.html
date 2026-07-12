@@ -380,7 +380,7 @@
     }
 
     .composer {
-      margin-top: auto;
+      margin-top: 8px;
       display: grid;
       grid-template-columns: 1fr auto auto auto;
       gap: 8px;
@@ -394,6 +394,51 @@
     }
 
     .composer-text { color: var(--muted); font-size: 13px; }
+
+    .prompt-context {
+      margin-top: auto;
+      display: grid;
+      gap: 7px;
+      padding-top: 12px;
+    }
+
+    .project-selector {
+      display: flex;
+      min-height: 44px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0;
+      border: 0;
+      color: var(--ink);
+      background: transparent;
+      text-align: left;
+    }
+
+    .project-selector small {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 9px;
+    }
+
+    .prompt-options {
+      display: flex;
+      gap: 6px;
+      overflow: hidden;
+    }
+
+    .prompt-option {
+      min-height: 32px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--muted);
+      background: transparent;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 9px;
+      white-space: nowrap;
+    }
     .composer-action {
       display: grid;
       width: 44px;
@@ -412,6 +457,13 @@
       color: var(--bg);
       background: var(--ink);
       font-size: 16px;
+    }
+
+    .send.disabled {
+      color: var(--board-muted);
+      background: transparent;
+      border: 1px solid var(--board-line);
+      opacity: .55;
     }
 
     .gesture {
@@ -443,6 +495,22 @@
     .task-head-title { font-size: 14px; font-weight: 600; }
     .task-head-meta { margin-top: 3px; color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 9px; }
     .more { margin-right: -12px; letter-spacing: .12em; }
+
+    .task-menu {
+      display: flex;
+      gap: 6px;
+      margin: 9px 0 0;
+    }
+
+    .task-menu button {
+      min-height: 32px;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--muted);
+      background: var(--surface);
+      font-size: 9px;
+    }
 
     .transcript {
       min-height: 0;
@@ -821,7 +889,7 @@
 
     .segmented {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       min-height: 48px;
       padding: 3px;
       border: 1px solid var(--line);
@@ -925,6 +993,11 @@
       <h3>The escape route always works</h3>
       <p>Apps and Android Settings remain reachable even when the computer connection is unavailable.</p>
     </article>
+    <article class="note">
+      <div class="meta-label">First prompt</div>
+      <h3>Choose a project first</h3>
+      <p>Before a project/folder is selected, the send control is visibly unavailable. <span class="send disabled" aria-disabled="true" aria-label="Send unavailable until a project is selected">↑</span></p>
+    </article>
   </section>
 
   <script>
@@ -978,16 +1051,20 @@
         <div class="section-title">Recent</div>
         <div class="task-row">
           <span class="task-dot done"></span>
-          <div><div class="task-title">Hermes architecture review</div><div class="task-sub">Completed · 12 files inspected</div></div>
+          <div><div class="task-title">Hermes architecture review</div><div class="task-sub">Replied · 12 files inspected</div></div>
           <span class="task-time">1d</span>
         </div>
         <div class="task-row">
           <span class="task-dot done"></span>
-          <div><div class="task-title">Aster benchmark diagnosis</div><div class="task-sub">Completed · saved report</div></div>
+          <div><div class="task-title">Aster benchmark diagnosis</div><div class="task-sub">Replied · saved report</div></div>
           <span class="task-time">Fri</span>
         </div>
         <div class="home-escape"><strong>↑ All apps</strong><span>Android Settings ›</span></div>
-        <div class="composer"><span class="composer-text">What do you want done?</span><span class="composer-action" role="button" aria-label="Attach">＋</span><span class="composer-action" role="button" aria-label="Voice input">⌁</span><span class="send" role="button" aria-label="Send prompt">↑</span></div>
+        <div class="prompt-context">
+          <button class="project-selector" aria-label="Change project folder">Codex Launcher<small>studio-mac · ~/Documents/Codex/launcher</small><span>⌄</span></button>
+          <div class="prompt-options" aria-label="New task options"><button class="prompt-option">Model</button><button class="prompt-option">Reasoning</button><button class="prompt-option">Permission mode</button></div>
+        </div>
+        <div class="composer"><span class="composer-text">What do you want done?</span><span class="composer-action" role="button" aria-label="Attach">＋</span><span class="composer-action" role="button" aria-label="Dictate prompt">⌁</span><span class="send" role="button" aria-label="Send prompt">↑</span></div>
       `, className);
     }
 
@@ -999,6 +1076,7 @@
           <div><div class="task-head-title">Fix authentication redirect</div><div class="task-head-meta">studio-mac · working · 3m</div></div>
           <span class="more">···</span>
         </div>
+        <div class="task-menu" aria-label="Task actions"><button>Rename task</button><button>Archive task</button><button>Fork task</button></div>
         <div class="transcript">
           <div class="message user-message"><p>Find why expired sessions open a blank screen. Fix it and verify the complete sign-in flow.</p></div>
           <div class="message">

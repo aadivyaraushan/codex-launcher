@@ -66,6 +66,8 @@ The useful product behaviors are:
 | Attachments and voice | Send a photo, document, or dictated prompt from the phone to the computer task. |
 | Security controls | Pair, list paired devices, revoke a device, protect credentials, and never copy the computer's service credentials onto the phone. |
 
+After Codex replied and the task is idle, the launcher labels the row `Replied`. This describes an observed response without implying that the broader task is permanently complete.
+
 Evidence for these behaviors:
 
 - The WhatsApp login survives restart and temporary transport disconnects reconnect automatically. [WhatsApp credential-session persistence and reconnect](https://github.com/NousResearch/hermes-agent/blob/4281151ae859241351ba14d8c7682dc67ff4c126/website/docs/user-guide/messaging/whatsapp.md#L145-L166)

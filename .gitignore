@@ -1,0 +1,45 @@
+# Local agent and scratch state
+.gstack/
+work/
+
+# Android and Gradle output
+.gradle/
+**/build/
+android/local.properties
+local.properties
+.idea/
+*.iml
+.kotlin/
+
+# Go output and test artifacts
+bin/
+*.test
+coverage.out
+
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+*.local.json
+*.log
+
+# Secrets, signing material, and certificates
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+*.pem
+*.crt
+*.cer
+*.token
+
+# Virtual machines and emulator state
+*.qcow2
+*.vdi
+*.vmdk
+*.avd/
+
+# Operating-system files
+.DS_Store
+Thumbs.db

@@ -86,6 +86,8 @@ The product has one visual identity with two modes.
 - One left-aligned vertical column.
 - Active tasks appear above recent tasks.
 - The new-prompt composer stays at the bottom within thumb reach.
+- The computer is fixed in V1. The selected project/folder is changeable and appears directly above the Home composer.
+- Sending is disabled until a project/folder is selected.
 - All apps and Android Settings remain visibly reachable on Home and Offline.
 - Swipe up opens the searchable text-first app list.
 - Task transcripts are continuous work logs rather than alternating chat bubbles.
@@ -99,7 +101,7 @@ State shapes are fixed across Home, task lists, notifications, and detail screen
 
 - **Working:** solid signal-orange circle, paired with the written state; a three-stroke activity mark may animate beside live progress text.
 - **Waiting for user:** outlined warning-color diamond plus a warning hairline on the task row; always paired with `Needs your answer` or `Approval needed`.
-- **Completed:** outlined muted circle containing a check; always paired with `Completed`.
+- **Replied:** outlined muted circle containing a check; paired with `Replied` after Codex sends a response and is no longer working.
 - **Failed:** outlined error-color square containing an X; always paired with `Failed` and a recovery action.
 
 Do not invent new state marks in later screens. Paused, queued, and interrupted states need explicit additions to this mapping before implementation.
@@ -107,9 +109,12 @@ Do not invent new state marks in later screens. Paused, queued, and interrupted 
 ### Home
 
 - Computer connection is written explicitly: online or offline.
-- Working, waiting, completed, and failed tasks use words plus shape.
+- Working, waiting, replied, and failed tasks use words plus shape.
 - A waiting-for-user task receives stronger hierarchy than the clock.
 - Ordinary app access is visible but secondary.
+- The project/folder selector shows the fixed computer and current folder above the composer.
+- New tasks expose Model, Reasoning, and Permission mode without crowding the prompt field.
+- Dictation has a written accessibility label even when represented by a compact icon.
 
 ### Active task
 
@@ -117,6 +122,7 @@ Do not invent new state marks in later screens. Paused, queued, and interrupted 
 - The main action is a follow-up/redirect field.
 - Stop is a written, 48dp action, not an unexplained square glyph.
 - Queue, redirect, and stop must be distinguishable before implementation is approved.
+- The task overflow menu offers Rename task, Archive task, and Fork task.
 
 ### Approval
 

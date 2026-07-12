@@ -1,0 +1,13 @@
+Codex Launcher
+Copyright 2026 Codex Launcher contributors
+
+This product is licensed under the Apache License, Version 2.0.
+
+The approved visual system uses these font families:
+
+- Instrument Sans, Copyright 2022 The Instrument Sans Project Authors.
+- JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors.
+
+Both font families are available under the SIL Open Font License 1.1. Their
+license texts and exact font files will be included with the Android app when
+the fonts are bundled. Font names remain trademarks of their respective owners.
