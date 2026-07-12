@@ -35,4 +35,4 @@ assert.match(readme, /Tailscale/i);
 assert.match(readme, /Computer offline/);
 assert.match(readme, /does not copy.*ChatGPT.*credential/is);
 
-console.log("repository baseline: 22 assertions passed");
+console.log("repository baseline: 21 assertions passed");
