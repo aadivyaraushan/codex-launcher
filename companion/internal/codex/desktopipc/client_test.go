@@ -19,6 +19,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 )
 
 func TestFrameRoundTripSurvivesPartialReads(t *testing.T) {
@@ -202,11 +204,13 @@ func TestResponseDiagnosticsReportBranchesWithoutTaskContent(t *testing.T) {
 
 func TestStreamStateRequiresSnapshotAndStrictlyIncreasingRevision(t *testing.T) {
 	state := newStreamState("thread-1")
-	delta := streamEvent{ConversationID: "thread-1", ChangeType: "delta", Revision: 42}
+	patchRaw := json.RawMessage(`{"type":"patches","baseRevision":41,"revision":42,"patches":[{"op":"add","path":["updatedAt"],"value":1}]}`)
+	delta := streamEvent{ConversationID: "thread-1", ChangeType: "patches", BaseRevision: 41, Revision: 42, RawChange: patchRaw}
 	if err := state.apply(delta); !errors.Is(err, ErrSnapshotRequired) {
 		t.Fatalf("first delta error = %v", err)
 	}
-	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "snapshot", Revision: 41}); err != nil {
+	snapshotRaw := json.RawMessage(`{"type":"snapshot","revision":41,"conversationState":{"id":"thread-1","requests":[]}}`)
+	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "snapshot", Revision: 41, RawChange: snapshotRaw}); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.apply(delta); err != nil {
@@ -215,10 +219,10 @@ func TestStreamStateRequiresSnapshotAndStrictlyIncreasingRevision(t *testing.T) 
 	if err := state.apply(delta); !errors.Is(err, ErrRevisionOrder) {
 		t.Fatalf("duplicate delta error = %v", err)
 	}
-	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "snapshot", Revision: 40}); !errors.Is(err, ErrRevisionOrder) {
+	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "snapshot", Revision: 40, RawChange: snapshotRaw}); !errors.Is(err, ErrRevisionOrder) {
 		t.Fatalf("stale snapshot error = %v", err)
 	}
-	if err := state.apply(streamEvent{ConversationID: "thread-2", ChangeType: "delta", Revision: 43}); !errors.Is(err, ErrWrongConversation) {
+	if err := state.apply(streamEvent{ConversationID: "thread-2", ChangeType: "patches", BaseRevision: 42, Revision: 43, RawChange: patchRaw}); !errors.Is(err, ErrWrongConversation) {
 		t.Fatalf("wrong task error = %v", err)
 	}
 	if !state.HasSnapshot() || state.Revision() != 42 {
@@ -243,8 +247,8 @@ func TestStreamStateRetainsFullSnapshotAndOrderedChanges(t *testing.T) {
 	if err := state.apply(snapshot); err != nil {
 		t.Fatal(err)
 	}
-	deltaRaw := json.RawMessage(`{"type":"delta","revision":42,"append":{"kind":"agentMessage"}}`)
-	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "delta", Revision: 42, RawChange: deltaRaw}); err != nil {
+	deltaRaw := json.RawMessage(`{"type":"patches","baseRevision":41,"revision":42,"patches":[{"op":"add","path":["latestModel"],"value":"model-1"}]}`)
+	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "patches", BaseRevision: 41, Revision: 42, RawChange: deltaRaw}); err != nil {
 		t.Fatal(err)
 	}
 	retained := state.State()
@@ -312,7 +316,7 @@ func TestClientInitializesLoadsOwnerHistoryAndRoutesHarmlessApproval(t *testing.
 	if revision != 41 || client.Stream("thread-1").Revision() != 41 {
 		t.Fatalf("history revision=%d stream=%d", revision, client.Stream("thread-1").Revision())
 	}
-	if err := client.RouteApprovalDecision(ctx, "thread-1", "missing-request", "decline"); err != nil {
+	if _, err := client.executeFollowerAction(ctx, FollowerAction{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "missing-request", Decision: "decline"}); err != nil {
 		t.Fatal(err)
 	}
 	result := <-serverResult
@@ -329,7 +333,7 @@ func TestActionReportsWhetherAWriteCouldHaveReachedDesktop(t *testing.T) {
 	t.Run("not sent", func(t *testing.T) {
 		client := newClient(&failingConnection{writeErr: io.ErrClosedPipe}, PinnedDesktopBuild, nil)
 		client.clientID = "client-1"
-		err := client.RouteApprovalDecision(context.Background(), "thread-1", "approval-1", "decline")
+		_, err := client.executeFollowerAction(context.Background(), FollowerAction{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "decline"})
 		if !errors.Is(err, ErrWriteNotSent) || errors.Is(err, ErrWriteOutcomeUnknown) {
 			t.Fatalf("RouteApprovalDecision() error = %v", err)
 		}
@@ -369,7 +373,7 @@ func TestActionReportsWhetherAWriteCouldHaveReachedDesktop(t *testing.T) {
 			client.startReader()
 			ctx, cancel := test.newContext()
 			defer cancel()
-			err := client.RouteApprovalDecision(ctx, "thread-1", "approval-1", "decline")
+			_, err := client.executeFollowerAction(ctx, FollowerAction{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "decline"})
 			<-received
 			if !errors.Is(err, ErrWriteOutcomeUnknown) || errors.Is(err, ErrWriteNotSent) {
 				t.Fatalf("RouteApprovalDecision() error = %v", err)
@@ -391,6 +395,13 @@ func TestExecuteFollowerActionRoutesEveryAllowedControl(t *testing.T) {
 		{Kind: ActionSteerTurn, ConversationID: "thread-1", Text: "steer"},
 		{Kind: ActionInterruptTurn, ConversationID: "thread-1"},
 		{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "decline"},
+		{Kind: ActionCompact, ConversationID: "thread-1"},
+		{Kind: ActionUpdateSettings, ConversationID: "thread-1", Settings: &ThreadSettings{Model: "model-1", Effort: "none", Permissions: "profile-1"}},
+		{Kind: ActionFileApproval, ConversationID: "thread-1", RequestID: "file-1", Decision: "accept"},
+		{Kind: ActionPermissionApproval, ConversationID: "thread-1", RequestID: "permissions-1", PermissionResponse: &PermissionResponse{Permissions: json.RawMessage(`{"network":{"enabled":true}}`), Scope: "turn"}},
+		{Kind: ActionSubmitUserInput, ConversationID: "thread-1", RequestID: "question-1", UserInputResponse: &UserInputResponse{Answers: map[string]UserInputAnswer{"choice": UserInputAnswer{Answers: []string{"A"}}}}},
+		{Kind: ActionSubmitMCP, ConversationID: "thread-1", RequestID: "mcp-1", MCPResponse: &MCPResponse{Action: "decline"}},
+		{Kind: ActionEditLastTurn, ConversationID: "thread-1", TurnID: "turn-1", Text: "corrected", AgentMode: "granular", ShouldSendPermissionOverrides: true, ServiceTier: "default"},
 	}
 	go func() {
 		for _, action := range actions {
@@ -414,12 +425,214 @@ func TestExecuteFollowerActionRoutesEveryAllowedControl(t *testing.T) {
 	client := newClient(clientConn, PinnedDesktopBuild, nil)
 	client.clientID = "client-1"
 	client.startReader()
+	if err := client.registerPendingRequests("thread-1", json.RawMessage(`{"type":"snapshot","revision":1,"conversationState":{"requests":[{"id":"file-1","method":"item/fileChange/requestApproval","params":{"threadId":"thread-1"}},{"id":"permission-1","method":"item/permissions/requestApproval","params":{"threadId":"thread-1","permissions":{"network":{}}}},{"id":"question-1","method":"item/tool/requestUserInput","params":{"threadId":"thread-1","questions":[{"id":"choice"}]}},{"id":"mcp-1","method":"mcpServer/elicitation/request","params":{"threadId":"thread-1"}}]}}`)); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	for _, action := range actions {
-		if _, err := client.ExecuteFollowerAction(ctx, action); err != nil {
+		if _, err := client.executeFollowerAction(ctx, action); err != nil {
 			t.Fatalf("ExecuteFollowerAction(%s): %v", action.Kind, err)
 		}
+	}
+}
+
+func TestStartTurnWithSettingsUpdatesBeforeStarting(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() { _ = clientConn.Close(); _ = serverConn.Close() })
+	methods := make(chan string, 2)
+	go func() {
+		for index := 0; index < 2; index++ {
+			request, _ := readTestFrame(serverConn)
+			methods <- request.Method
+			result := map[string]any{"ok": true}
+			if request.Method == "thread-follower-start-turn" {
+				result = map[string]any{"result": map[string]any{
+					"turn": map[string]any{"id": "turn-1", "items": []any{}, "status": "inProgress"},
+				}}
+			}
+			_ = writeTestFrame(serverConn, map[string]any{
+				"type": "response", "requestId": request.RequestID, "resultType": "success",
+				"method": request.Method, "result": result,
+			})
+		}
+	}()
+	client := newClient(clientConn, PinnedDesktopBuild, nil)
+	client.clientID = "client-1"
+	client.startReader()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	settings := ThreadSettings{Model: "model-1", Effort: "high", Permissions: "profile-1"}
+	if _, err := client.StartTurnWithSettings(ctx, "thread-1", "start safely", settings); err != nil {
+		t.Fatal(err)
+	}
+	if first, second := <-methods, <-methods; first != "thread-follower-update-thread-settings" || second != "thread-follower-start-turn" {
+		t.Fatalf("method order = %q then %q", first, second)
+	}
+}
+
+func TestTypedDesktopActionMethodsExposeEveryTaskFourControl(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() { _ = clientConn.Close(); _ = serverConn.Close() })
+	wantMethods := []string{
+		"thread-follower-compact-thread", "thread-follower-update-thread-settings", "thread-follower-file-approval-decision",
+		"thread-follower-permissions-request-approval-response", "thread-follower-submit-user-input",
+		"thread-follower-submit-mcp-server-elicitation-response", "thread-follower-edit-last-user-turn",
+	}
+	go func() {
+		for _, method := range wantMethods {
+			request, _ := readTestFrame(serverConn)
+			if request.Method != method {
+				return
+			}
+			_ = writeTestFrame(serverConn, map[string]any{"type": "response", "requestId": request.RequestID, "resultType": "success", "method": request.Method, "result": map[string]any{"ok": true}})
+		}
+	}()
+	client := newClient(clientConn, PinnedDesktopBuild, nil)
+	client.clientID = "client-1"
+	client.startReader()
+	if err := client.registerPendingRequests("thread-1", json.RawMessage(`{"type":"snapshot","revision":1,"conversationState":{"requests":[{"id":"file-1","method":"item/fileChange/requestApproval","params":{"threadId":"thread-1"}},{"id":"permission-1","method":"item/permissions/requestApproval","params":{"threadId":"thread-1","permissions":{"network":{}}}},{"id":"question-1","method":"item/tool/requestUserInput","params":{"threadId":"thread-1","questions":[{"id":"choice"}]}},{"id":"mcp-1","method":"mcpServer/elicitation/request","params":{"threadId":"thread-1"}}]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	answers := UserInputResponse{Answers: map[string]UserInputAnswer{"choice": {Answers: []string{"A"}}}}
+	for index, call := range []func() error{
+		func() error { return client.Compact(ctx, "thread-1") },
+		func() error { return client.UpdateSettings(ctx, "thread-1", ThreadSettings{Model: "model-1"}) },
+		func() error { return client.RouteFileApprovalDecision(ctx, "thread-1", "file-1", "decline") },
+		func() error {
+			return client.RespondPermissionRequest(ctx, "thread-1", "permission-1", PermissionResponse{Permissions: json.RawMessage(`{"network":{}}`), Scope: "turn"})
+		},
+		func() error { return client.SubmitUserInput(ctx, "thread-1", "question-1", answers) },
+		func() error { return client.SubmitMCP(ctx, "thread-1", "mcp-1", MCPResponse{Action: "decline"}) },
+		func() error {
+			return client.EditLastTurn(ctx, "thread-1", "turn-1", "corrected", "auto", true, "default")
+		},
+	} {
+		if err := call(); err != nil {
+			t.Fatalf("call %d: %v", index, err)
+		}
+	}
+}
+
+func TestDesktopPendingRegistryBindsTaskKindAndPermissionSubset(t *testing.T) {
+	client := newClient(&memoryConnection{}, PinnedDesktopBuild, nil)
+	change := json.RawMessage(`{"type":"snapshot","revision":1,"conversationState":{"requests":[
+		{"id":"command-1","method":"item/commandExecution/requestApproval","params":{"threadId":"thread-1"}},
+		{"id":"file-1","method":"item/fileChange/requestApproval","params":{"threadId":"thread-1"}},
+		{"id":"permission-1","method":"item/permissions/requestApproval","params":{"threadId":"thread-1","permissions":{"network":{"enabled":true}}}},
+		{"id":"question-1","method":"item/tool/requestUserInput","params":{"threadId":"thread-1","questions":[{"id":"choice"}]}},
+		{"id":"mcp-1","method":"mcpServer/elicitation/request","params":{"threadId":"thread-1"}}
+	]}}`)
+	if err := client.registerPendingRequests("thread-1", change); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.authorizePendingAction(FollowerAction{Kind: ActionFileApproval, ConversationID: "thread-1", RequestID: "command-1", Decision: "decline"}); !errors.Is(err, ErrPendingRequestMismatch) {
+		t.Fatalf("cross-kind error = %v", err)
+	}
+	if err := client.authorizePendingAction(FollowerAction{Kind: ActionCommandApproval, ConversationID: "thread-2", RequestID: "command-1", Decision: "decline"}); !errors.Is(err, ErrPendingRequestMismatch) {
+		t.Fatalf("cross-task error = %v", err)
+	}
+	overgrant := PermissionResponse{Permissions: json.RawMessage(`{"fileSystem":{"write":["/private"]}}`), Scope: "session"}
+	if err := client.authorizePendingAction(FollowerAction{Kind: ActionPermissionApproval, ConversationID: "thread-1", RequestID: "permission-1", PermissionResponse: &overgrant}); !errors.Is(err, ErrPermissionEscalation) {
+		t.Fatalf("permission escalation error = %v", err)
+	}
+	granted := PermissionResponse{Permissions: json.RawMessage(`{"network":{"enabled":true}}`), Scope: "session"}
+	if err := client.authorizePendingAction(FollowerAction{Kind: ActionPermissionApproval, ConversationID: "thread-1", RequestID: "permission-1", PermissionResponse: &granted}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.authorizePendingAction(FollowerAction{Kind: ActionPermissionApproval, ConversationID: "thread-1", RequestID: "permission-1", PermissionResponse: &granted}); !errors.Is(err, ErrPendingRequestMismatch) {
+		t.Fatalf("duplicate response error = %v", err)
+	}
+}
+
+func TestDefinitelyUnsentDesktopResponseRestoresPendingReservation(t *testing.T) {
+	client := newClient(&failingConnection{writeErr: io.ErrClosedPipe}, PinnedDesktopBuild, nil)
+	client.clientID = "client-1"
+	change := json.RawMessage(`{"type":"snapshot","revision":1,"conversationState":{"requests":[{"id":"command-1","method":"item/commandExecution/requestApproval","params":{"threadId":"thread-1"}}]}}`)
+	if err := client.registerPendingRequests("thread-1", change); err != nil {
+		t.Fatal(err)
+	}
+	err := client.RouteApprovalDecision(context.Background(), "thread-1", "command-1", "decline")
+	if !errors.Is(err, ErrWriteNotSent) {
+		t.Fatalf("zero-byte write error = %v", err)
+	}
+	if err := client.authorizePendingAction(FollowerAction{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "command-1", Decision: "decline"}); err != nil {
+		t.Fatalf("pending request was not restored: %v", err)
+	}
+}
+
+func TestPendingReservationSurvivesUnrelatedPatchRebuild(t *testing.T) {
+	client := newClient(&memoryConnection{}, PinnedDesktopBuild, nil)
+	state := json.RawMessage(`{"requests":[{"id":"command-1","method":"item/commandExecution/requestApproval","params":{"threadId":"thread-1"}}],"updatedAt":1}`)
+	if err := client.registerPendingState("thread-1", state); err != nil {
+		t.Fatal(err)
+	}
+	action := FollowerAction{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "command-1", Decision: "decline"}
+	if err := client.authorizePendingAction(action); err != nil {
+		t.Fatal(err)
+	}
+	state = json.RawMessage(`{"requests":[{"id":"command-1","method":"item/commandExecution/requestApproval","params":{"threadId":"thread-1"}}],"updatedAt":2}`)
+	if err := client.registerPendingState("thread-1", state); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.authorizePendingAction(action); !errors.Is(err, ErrPendingRequestMismatch) {
+		t.Fatalf("duplicate after rebuild error = %v", err)
+	}
+}
+
+func TestPinnedPatchStreamMaterializesLiveStateAndPendingRequests(t *testing.T) {
+	state := newStreamState("thread-1")
+	snapshot := json.RawMessage(`{"type":"snapshot","revision":41,"conversationState":{"id":"thread-1","cwd":"/work","threadRuntimeStatus":{"type":"idle"},"turns":[],"requests":[]}}`)
+	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "snapshot", Revision: 41, RawChange: snapshot}); err != nil {
+		t.Fatal(err)
+	}
+	patches := json.RawMessage(`{"type":"patches","baseRevision":41,"revision":42,"patches":[
+		{"op":"replace","path":["threadRuntimeStatus"],"value":{"type":"active","activeFlags":["waitingOnUserInput"]}},
+		{"op":"add","path":["requests",0],"value":{"id":"question-1","method":"item/tool/requestUserInput","params":{"threadId":"thread-1","questions":[{"id":"choice"}]}}}
+	]}`)
+	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "patches", BaseRevision: 41, Revision: 42, RawChange: patches}); err != nil {
+		t.Fatal(err)
+	}
+	materialized := state.State().Materialized
+	if !strings.Contains(string(materialized), `"question-1"`) || !strings.Contains(string(materialized), `"waitingOnUserInput"`) {
+		t.Fatalf("materialized state = %s", materialized)
+	}
+	mapped, err := taskstate.MapDesktopConversationState(materialized)
+	if err != nil || mapped.State != taskstate.WaitingForAnswer {
+		t.Fatalf("mapped live state = %#v, %v", mapped, err)
+	}
+	client := newClient(&memoryConnection{}, PinnedDesktopBuild, nil)
+	if err := client.registerPendingState("thread-1", materialized); err != nil {
+		t.Fatal(err)
+	}
+	response := UserInputResponse{Answers: map[string]UserInputAnswer{"choice": {Answers: []string{"A"}}}}
+	if err := client.authorizePendingAction(FollowerAction{Kind: ActionSubmitUserInput, ConversationID: "thread-1", RequestID: "question-1", UserInputResponse: &response}); err != nil {
+		t.Fatal(err)
+	}
+	remove := json.RawMessage(`{"type":"patches","baseRevision":42,"revision":43,"patches":[{"op":"remove","path":["requests",0]}]}`)
+	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "patches", BaseRevision: 42, Revision: 43, RawChange: remove}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(state.State().Materialized), `"question-1"`) {
+		t.Fatalf("remove patch did not update materialized state: %s", state.State().Materialized)
+	}
+}
+
+func TestPinnedPatchStreamRejectsUnsafePathAndWrongBase(t *testing.T) {
+	state := newStreamState("thread-1")
+	snapshot := json.RawMessage(`{"type":"snapshot","revision":1,"conversationState":{"id":"thread-1","cwd":"/work","threadRuntimeStatus":{"type":"idle"},"turns":[],"requests":[],"__proto__":{}}}`)
+	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "snapshot", Revision: 1, RawChange: snapshot}); err != nil {
+		t.Fatal(err)
+	}
+	unsafe := json.RawMessage(`{"type":"patches","baseRevision":1,"revision":2,"patches":[{"op":"add","path":["__proto__","danger"],"value":true}]}`)
+	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "patches", BaseRevision: 1, Revision: 2, RawChange: unsafe}); err == nil {
+		t.Fatal("accepted prototype-like patch path")
+	}
+	wrongBase := json.RawMessage(`{"type":"patches","baseRevision":0,"revision":2,"patches":[{"op":"remove","path":["requests",0]}]}`)
+	if err := state.apply(streamEvent{ConversationID: "thread-1", ChangeType: "patches", BaseRevision: 0, Revision: 2, RawChange: wrongBase}); !errors.Is(err, ErrRevisionOrder) {
+		t.Fatalf("wrong base error = %v", err)
 	}
 }
 
@@ -439,7 +652,7 @@ func TestMalformedSuccessAfterActionHasUnknownOutcome(t *testing.T) {
 	client.startReader()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	_, err := client.ExecuteFollowerAction(ctx, FollowerAction{
+	_, err := client.executeFollowerAction(ctx, FollowerAction{
 		Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "decline",
 	})
 	if !errors.Is(err, ErrWriteOutcomeUnknown) || !errors.Is(err, ErrInvalidFrame) {
@@ -457,6 +670,23 @@ func TestMalformedSuccessAfterActionHasUnknownOutcome(t *testing.T) {
 	}
 }
 
+func TestBlockedDesktopWriteStopsAtContextDeadlineAsUnknown(t *testing.T) {
+	connection := &blockingDesktopConnection{closed: make(chan struct{})}
+	client := newClient(connection, PinnedDesktopBuild, nil)
+	client.clientID = "client-1"
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := client.StartTurn(ctx, "thread-1", "hello")
+	if !errors.Is(err, ErrWriteOutcomeUnknown) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("blocked write error = %v", err)
+	}
+	select {
+	case <-connection.closed:
+	case <-time.After(time.Second):
+		t.Fatal("blocked Desktop connection was not closed")
+	}
+}
+
 func TestMismatchedActionEnvelopeStopsSession(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	t.Cleanup(func() { _ = clientConn.Close(); _ = serverConn.Close() })
@@ -470,9 +700,12 @@ func TestMismatchedActionEnvelopeStopsSession(t *testing.T) {
 	client := newClient(clientConn, PinnedDesktopBuild, nil)
 	client.clientID = "client-1"
 	client.startReader()
+	if err := client.registerPendingRequests("thread-1", json.RawMessage(`{"type":"snapshot","revision":1,"conversationState":{"requests":[{"id":"file-1","method":"item/fileChange/requestApproval","params":{"threadId":"thread-1"}},{"id":"permission-1","method":"item/permissions/requestApproval","params":{"threadId":"thread-1","permissions":{"network":{}}}},{"id":"question-1","method":"item/tool/requestUserInput","params":{"threadId":"thread-1","questions":[{"id":"choice"}]}},{"id":"mcp-1","method":"mcpServer/elicitation/request","params":{"threadId":"thread-1"}}]}}`)); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	_, err := client.ExecuteFollowerAction(ctx, FollowerAction{
+	_, err := client.executeFollowerAction(ctx, FollowerAction{
 		Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "decline",
 	})
 	if !errors.Is(err, ErrWriteOutcomeUnknown) || !errors.Is(err, ErrInvalidFrame) {
@@ -500,7 +733,7 @@ func TestRemoteActionErrorStopsSessionAsUnknown(t *testing.T) {
 	client.startReader()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	_, err := client.ExecuteFollowerAction(ctx, FollowerAction{
+	_, err := client.executeFollowerAction(ctx, FollowerAction{
 		Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "decline",
 	})
 	if !errors.Is(err, ErrWriteOutcomeUnknown) || !errors.Is(err, ErrRemote) {
@@ -545,7 +778,7 @@ func TestStartAndSteerRejectInventedSuccessBodies(t *testing.T) {
 			client.startReader()
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
-			_, err := client.ExecuteFollowerAction(ctx, test.action)
+			_, err := client.executeFollowerAction(ctx, test.action)
 			if !errors.Is(err, ErrWriteOutcomeUnknown) || !errors.Is(err, ErrInvalidFrame) {
 				t.Fatalf("ExecuteFollowerAction() error = %v", err)
 			}
@@ -585,6 +818,7 @@ func TestSessionConnectorReconnectsWithFreshTaskState(t *testing.T) {
 	}
 	if err := first.Stream("thread-1").apply(streamEvent{
 		ConversationID: "thread-1", ChangeType: "snapshot", Revision: 41,
+		RawChange: json.RawMessage(`{"type":"snapshot","revision":41,"conversationState":{"id":"thread-1","requests":[]}}`),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -752,11 +986,11 @@ func TestClientReceivesTrackedTaskUpdatesWhileIdle(t *testing.T) {
 		_ = writeTestFrame(serverConn, map[string]any{"type": "response", "requestId": initialize.RequestID, "resultType": "success", "method": "initialize", "result": map[string]any{"clientId": "client-1"}})
 		_ = writeTestFrame(serverConn, map[string]any{
 			"type": "broadcast", "method": "thread-stream-state-changed", "version": 11,
-			"params": map[string]any{"conversationId": "thread-1", "change": map[string]any{"type": "snapshot", "revision": 41}},
+			"params": map[string]any{"conversationId": "thread-1", "change": map[string]any{"type": "snapshot", "revision": 41, "conversationState": map[string]any{"id": "thread-1", "requests": []any{}}}},
 		})
 		_ = writeTestFrame(serverConn, map[string]any{
 			"type": "broadcast", "method": "thread-stream-state-changed", "version": 11,
-			"params": map[string]any{"conversationId": "thread-1", "change": map[string]any{"type": "delta", "revision": 42}},
+			"params": map[string]any{"conversationId": "thread-1", "change": map[string]any{"type": "patches", "baseRevision": 41, "revision": 42, "patches": []map[string]any{{"op": "add", "path": []any{"requests", 0}, "value": map[string]any{"id": "question-1", "method": "item/tool/requestUserInput", "params": map[string]any{"threadId": "thread-1", "questions": []map[string]any{{"id": "choice"}}}}}}}},
 		})
 	}()
 
@@ -772,6 +1006,10 @@ func TestClientReceivesTrackedTaskUpdatesWhileIdle(t *testing.T) {
 	}
 	if got := client.Stream("thread-1").Revision(); got != 42 {
 		t.Fatalf("idle stream revision = %d", got)
+	}
+	response := UserInputResponse{Answers: map[string]UserInputAnswer{"choice": {Answers: []string{"A"}}}}
+	if err := client.authorizePendingAction(FollowerAction{Kind: ActionSubmitUserInput, ConversationID: "thread-1", RequestID: "question-1", UserInputResponse: &response}); err != nil {
+		t.Fatalf("live patch did not rebuild pending registry: %v", err)
 	}
 }
 
@@ -868,7 +1106,7 @@ func TestRealDesktopCompatibility(t *testing.T) {
 	if revision == 0 || !client.Stream(threadID).HasSnapshot() {
 		t.Fatalf("live task has revision=%d snapshot=%v", revision, client.Stream(threadID).HasSnapshot())
 	}
-	if err := client.RouteApprovalDecision(ctx, threadID, "codex-launcher-nonexistent-approval", "decline"); err != nil {
+	if _, err := client.executeFollowerAction(ctx, FollowerAction{Kind: ActionCommandApproval, ConversationID: threadID, RequestID: "codex-launcher-nonexistent-approval", Decision: "decline"}); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("live desktop follower bridge revision=%d route=ok", revision)
@@ -1007,6 +1245,13 @@ func TestBuildFollowerActionAllowsOnlyPinnedShapes(t *testing.T) {
 		{action: FollowerAction{Kind: ActionSteerTurn, ConversationID: "thread-1", Text: "steer safely"}, method: "thread-follower-steer-turn", keys: []string{"conversationId", "input"}, wantText: "steer safely"},
 		{action: FollowerAction{Kind: ActionInterruptTurn, ConversationID: "thread-1"}, method: "thread-follower-interrupt-turn", keys: []string{"conversationId"}},
 		{action: FollowerAction{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "decline"}, method: "thread-follower-command-approval-decision", keys: []string{"conversationId", "decision", "requestId"}},
+		{action: FollowerAction{Kind: ActionCompact, ConversationID: "thread-1"}, method: "thread-follower-compact-thread", keys: []string{"conversationId"}},
+		{action: FollowerAction{Kind: ActionUpdateSettings, ConversationID: "thread-1", Settings: &ThreadSettings{Model: "model-1", Effort: "none", Permissions: "profile-1"}}, method: "thread-follower-update-thread-settings", keys: []string{"conversationId", "threadSettings"}},
+		{action: FollowerAction{Kind: ActionFileApproval, ConversationID: "thread-1", RequestID: "file-1", Decision: "accept"}, method: "thread-follower-file-approval-decision", keys: []string{"conversationId", "decision", "requestId"}},
+		{action: FollowerAction{Kind: ActionPermissionApproval, ConversationID: "thread-1", RequestID: "permission-1", PermissionResponse: &PermissionResponse{Permissions: json.RawMessage(`{"network":{"enabled":true}}`), Scope: "turn"}}, method: "thread-follower-permissions-request-approval-response", keys: []string{"conversationId", "requestId", "response"}},
+		{action: FollowerAction{Kind: ActionSubmitUserInput, ConversationID: "thread-1", RequestID: "question-1", UserInputResponse: &UserInputResponse{Answers: map[string]UserInputAnswer{"choice": UserInputAnswer{Answers: []string{"A"}}}}}, method: "thread-follower-submit-user-input", keys: []string{"conversationId", "requestId", "response"}},
+		{action: FollowerAction{Kind: ActionSubmitMCP, ConversationID: "thread-1", RequestID: "mcp-1", MCPResponse: &MCPResponse{Action: "decline"}}, method: "thread-follower-submit-mcp-server-elicitation-response", keys: []string{"conversationId", "requestId", "response"}},
+		{action: FollowerAction{Kind: ActionEditLastTurn, ConversationID: "thread-1", TurnID: "turn-1", Text: "corrected", AgentMode: "granular", ShouldSendPermissionOverrides: true, ServiceTier: "default"}, method: "thread-follower-edit-last-user-turn", keys: []string{"agentMode", "conversationId", "message", "serviceTier", "shouldSendPermissionOverrides", "turnId"}},
 	}
 	for _, test := range tests {
 		message, err := buildFollowerAction(test.action)
@@ -1041,7 +1286,7 @@ func TestBuildFollowerActionAllowsOnlyPinnedShapes(t *testing.T) {
 		}
 	}
 
-	_, err := buildFollowerAction(FollowerAction{Kind: ActionKind("compact"), ConversationID: "thread-1"})
+	_, err := buildFollowerAction(FollowerAction{Kind: ActionKind("future"), ConversationID: "thread-1"})
 	if !errors.Is(err, ErrActionNotAllowed) {
 		t.Fatalf("unknown action error = %v", err)
 	}
@@ -1050,8 +1295,19 @@ func TestBuildFollowerActionAllowsOnlyPinnedShapes(t *testing.T) {
 		{Kind: ActionStartTurn, ConversationID: "thread-1"},
 		{Kind: ActionSteerTurn, ConversationID: "thread-1", Text: strings.Repeat("x", MaxActionTextBytes+1)},
 		{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "always"},
+		{Kind: ActionUpdateSettings, ConversationID: "thread-1", Settings: &ThreadSettings{}},
+		{Kind: ActionPermissionApproval, ConversationID: "thread-1", RequestID: "permission-1", PermissionResponse: &PermissionResponse{Scope: "forever"}},
+		{Kind: ActionSubmitUserInput, ConversationID: "thread-1", RequestID: "question-1", UserInputResponse: &UserInputResponse{}},
+		{Kind: ActionSubmitMCP, ConversationID: "thread-1", RequestID: "mcp-1", MCPResponse: &MCPResponse{Action: "approve"}},
+		{Kind: ActionEditLastTurn, ConversationID: "thread-1", TurnID: "turn-1"},
 		{Kind: ActionInterruptTurn, ConversationID: "thread-1", Text: "unused"},
 		{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "decline", Text: "unused"},
+		{Kind: ActionStartTurn, ConversationID: "thread-1", Text: "start", Settings: &ThreadSettings{Model: "model-1"}},
+		{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "decline", MCPResponse: &MCPResponse{Action: "cancel"}},
+		{Kind: ActionCompact, ConversationID: strings.Repeat("x", 257)},
+		{Kind: ActionFileApproval, ConversationID: "thread-1", RequestID: strings.Repeat("x", 257), Decision: "decline"},
+		{Kind: ActionEditLastTurn, ConversationID: "thread-1", TurnID: strings.Repeat("x", 257), Text: "edit", AgentMode: "auto", ServiceTier: "default"},
+		{Kind: ActionEditLastTurn, ConversationID: "thread-1", TurnID: "turn-1", Text: "edit", AgentMode: "auto", ServiceTier: strings.Repeat("x", 257)},
 	} {
 		if _, err := buildFollowerAction(action); !errors.Is(err, ErrInvalidAction) {
 			t.Fatalf("buildFollowerAction(%#v) error = %v", action, err)
@@ -1064,6 +1320,24 @@ type oneByteReader struct{ reader io.Reader }
 type memoryConnection struct{ bytes.Buffer }
 
 func (connection *memoryConnection) Close() error { return nil }
+
+type blockingDesktopConnection struct {
+	once   sync.Once
+	closed chan struct{}
+}
+
+func (connection *blockingDesktopConnection) Read([]byte) (int, error) {
+	<-connection.closed
+	return 0, io.EOF
+}
+func (connection *blockingDesktopConnection) Write([]byte) (int, error) {
+	<-connection.closed
+	return 0, io.ErrClosedPipe
+}
+func (connection *blockingDesktopConnection) Close() error {
+	connection.once.Do(func() { close(connection.closed) })
+	return nil
+}
 
 type failingConnection struct {
 	writeErr error

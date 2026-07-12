@@ -20,17 +20,21 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 )
 
 var (
-	ErrDisconnected        = errors.New("desktop IPC disconnected")
-	ErrIncompatibleBuild   = errors.New("ChatGPT Desktop build is incompatible")
-	ErrOwnerUnavailable    = errors.New("desktop task owner is unavailable")
-	ErrPlatformUnsupported = errors.New("desktop IPC platform is unsupported")
-	ErrRemote              = errors.New("desktop IPC request failed")
-	ErrUnsafeEndpoint      = errors.New("desktop IPC endpoint is unsafe")
-	ErrWriteNotSent        = errors.New("desktop action was not sent")
-	ErrWriteOutcomeUnknown = errors.New("desktop action outcome is unknown")
+	ErrDisconnected           = errors.New("desktop IPC disconnected")
+	ErrIncompatibleBuild      = errors.New("ChatGPT Desktop build is incompatible")
+	ErrOwnerUnavailable       = errors.New("desktop task owner is unavailable")
+	ErrPlatformUnsupported    = errors.New("desktop IPC platform is unsupported")
+	ErrRemote                 = errors.New("desktop IPC request failed")
+	ErrPendingRequestMismatch = errors.New("desktop pending request does not match the action")
+	ErrPermissionEscalation   = errors.New("desktop permission response exceeds the request")
+	ErrUnsafeEndpoint         = errors.New("desktop IPC endpoint is unsafe")
+	ErrWriteNotSent           = errors.New("desktop action was not sent")
+	ErrWriteOutcomeUnknown    = errors.New("desktop action outcome is unknown")
 )
 
 const PinnedDesktopBuild = "26.707.51957"
@@ -203,19 +207,33 @@ type Client struct {
 	connection io.ReadWriteCloser
 	logger     *slog.Logger
 
-	requestMu   sync.Mutex
-	writeMu     sync.Mutex
-	stateMu     sync.RWMutex
-	pendingMu   sync.Mutex
-	readerOnce  sync.Once
-	doneOnce    sync.Once
-	clientID    string
-	streams     map[string]*StreamState
-	pending     map[string]chan wireMessage
-	done        chan struct{}
-	terminalErr error
-	buildErr    error
+	requestMu       sync.Mutex
+	writeMu         sync.Mutex
+	stateMu         sync.RWMutex
+	pendingMu       sync.Mutex
+	readerOnce      sync.Once
+	doneOnce        sync.Once
+	clientID        string
+	streams         map[string]*StreamState
+	pending         map[string]chan wireMessage
+	done            chan struct{}
+	terminalErr     error
+	buildErr        error
+	pendingActions  map[string]map[string]desktopPendingAction
+	consumedActions map[string]map[string]ActionKind
 }
+
+type desktopPendingAction struct {
+	kind        ActionKind
+	permissions json.RawMessage
+	questionIDs map[string]bool
+	decisions   map[string]bool
+	inFlight    bool
+}
+
+var _ taskstate.TaskAdapter = (*Client)(nil)
+
+func (*Client) TaskSource() taskstate.Source { return taskstate.SourceDesktop }
 
 type sessionDialer func(context.Context) (io.ReadWriteCloser, string, error)
 
@@ -304,12 +322,14 @@ func newClient(connection io.ReadWriteCloser, desktopBuild string, logger *slog.
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Client{
-		connection: connection,
-		logger:     logger,
-		streams:    make(map[string]*StreamState),
-		pending:    make(map[string]chan wireMessage),
-		done:       make(chan struct{}),
-		buildErr:   verifyDesktopBuild(desktopBuild),
+		connection:      connection,
+		logger:          logger,
+		streams:         make(map[string]*StreamState),
+		pending:         make(map[string]chan wireMessage),
+		pendingActions:  make(map[string]map[string]desktopPendingAction),
+		consumedActions: make(map[string]map[string]ActionKind),
+		done:            make(chan struct{}),
+		buildErr:        verifyDesktopBuild(desktopBuild),
 	}
 }
 
@@ -476,7 +496,7 @@ func (client *Client) waitForFreshSnapshot(ctx context.Context, stream *StreamSt
 }
 
 func (client *Client) RouteApprovalDecision(ctx context.Context, conversationID, requestID, decision string) error {
-	_, err := client.ExecuteFollowerAction(ctx, FollowerAction{
+	err := client.executeConfirmedAction(ctx, FollowerAction{
 		Kind: ActionCommandApproval, ConversationID: conversationID,
 		RequestID: requestID, Decision: decision,
 	})
@@ -486,7 +506,81 @@ func (client *Client) RouteApprovalDecision(ctx context.Context, conversationID,
 	return nil
 }
 
-func (client *Client) ExecuteFollowerAction(ctx context.Context, action FollowerAction) (json.RawMessage, error) {
+func (client *Client) StartTurn(ctx context.Context, conversationID, text string) (json.RawMessage, error) {
+	return client.executeFollowerAction(ctx, FollowerAction{Kind: ActionStartTurn, ConversationID: conversationID, Text: text})
+}
+
+func (client *Client) StartTurnWithSettings(ctx context.Context, conversationID, text string, settings ThreadSettings) (json.RawMessage, error) {
+	if err := client.UpdateSettings(ctx, conversationID, settings); err != nil {
+		return nil, fmt.Errorf("update desktop settings before turn: %w", err)
+	}
+	return client.StartTurn(ctx, conversationID, text)
+}
+
+func (client *Client) SteerTurn(ctx context.Context, conversationID, text string) (json.RawMessage, error) {
+	return client.executeFollowerAction(ctx, FollowerAction{Kind: ActionSteerTurn, ConversationID: conversationID, Text: text})
+}
+
+func (client *Client) InterruptTurn(ctx context.Context, conversationID string) (json.RawMessage, error) {
+	return client.executeFollowerAction(ctx, FollowerAction{Kind: ActionInterruptTurn, ConversationID: conversationID})
+}
+
+func (client *Client) Compact(ctx context.Context, conversationID string) error {
+	return client.executeConfirmedAction(ctx, FollowerAction{Kind: ActionCompact, ConversationID: conversationID})
+}
+
+func (client *Client) UpdateSettings(ctx context.Context, conversationID string, settings ThreadSettings) error {
+	return client.executeConfirmedAction(ctx, FollowerAction{Kind: ActionUpdateSettings, ConversationID: conversationID, Settings: &settings})
+}
+
+func (client *Client) RouteFileApprovalDecision(ctx context.Context, conversationID, requestID, decision string) error {
+	return client.executeConfirmedAction(ctx, FollowerAction{Kind: ActionFileApproval, ConversationID: conversationID, RequestID: requestID, Decision: decision})
+}
+
+func (client *Client) RespondPermissionRequest(ctx context.Context, conversationID, requestID string, response PermissionResponse) error {
+	return client.executeConfirmedAction(ctx, FollowerAction{Kind: ActionPermissionApproval, ConversationID: conversationID, RequestID: requestID, PermissionResponse: &response})
+}
+
+func (client *Client) SubmitUserInput(ctx context.Context, conversationID, requestID string, response UserInputResponse) error {
+	return client.executeConfirmedAction(ctx, FollowerAction{Kind: ActionSubmitUserInput, ConversationID: conversationID, RequestID: requestID, UserInputResponse: &response})
+}
+
+func (client *Client) SubmitMCP(ctx context.Context, conversationID, requestID string, response MCPResponse) error {
+	return client.executeConfirmedAction(ctx, FollowerAction{Kind: ActionSubmitMCP, ConversationID: conversationID, RequestID: requestID, MCPResponse: &response})
+}
+
+func (client *Client) EditLastTurn(ctx context.Context, conversationID, turnID, text, agentMode string, shouldSendPermissionOverrides bool, serviceTier string) error {
+	return client.executeConfirmedAction(ctx, FollowerAction{
+		Kind: ActionEditLastTurn, ConversationID: conversationID, TurnID: turnID, Text: text, AgentMode: agentMode,
+		ShouldSendPermissionOverrides: shouldSendPermissionOverrides, ServiceTier: serviceTier,
+	})
+}
+
+func (client *Client) executeConfirmedAction(ctx context.Context, action FollowerAction) error {
+	if _, err := buildFollowerAction(action); err != nil {
+		return err
+	}
+	if requiresPendingDesktopAction(action.Kind) {
+		if client.ClientID() == "" {
+			return &ActionRequestError{Outcome: WriteNotSent, Cause: ErrDisconnected}
+		}
+		if err := client.authorizePendingAction(action); err != nil {
+			return err
+		}
+	}
+	if _, err := client.executeFollowerAction(ctx, action); err != nil {
+		if requiresPendingDesktopAction(action.Kind) {
+			client.finishPendingAction(action, !errors.Is(err, ErrWriteNotSent))
+		}
+		return fmt.Errorf("route desktop %s: %w", action.Kind, err)
+	}
+	if requiresPendingDesktopAction(action.Kind) {
+		client.finishPendingAction(action, true)
+	}
+	return nil
+}
+
+func (client *Client) executeFollowerAction(ctx context.Context, action FollowerAction) (json.RawMessage, error) {
 	message, err := buildFollowerAction(action)
 	if err != nil {
 		return nil, err
@@ -526,7 +620,7 @@ func validateFollowerActionResult(kind ActionKind, result json.RawMessage) error
 			json.Unmarshal(turnID, &parsedTurnID) != nil || parsedTurnID == "" {
 			return fmt.Errorf("%w: interrupt was not confirmed", ErrInvalidFrame)
 		}
-	case ActionCommandApproval:
+	case ActionCommandApproval, ActionCompact, ActionUpdateSettings, ActionFileApproval, ActionPermissionApproval, ActionSubmitUserInput, ActionSubmitMCP, ActionEditLastTurn:
 		value, ok := object["ok"]
 		if len(object) != 1 || !ok || string(value) != "true" {
 			return fmt.Errorf("%w: action was not confirmed", ErrInvalidFrame)
@@ -611,9 +705,29 @@ func (client *Client) request(ctx context.Context, message wireMessage, sideEffe
 		"input_shape", "typed params",
 	)
 	tracker := &writeTracker{writer: client.connection}
-	client.writeMu.Lock()
-	err = writeFrame(tracker, message)
-	client.writeMu.Unlock()
+	writeResult := make(chan error, 1)
+	go func() {
+		client.writeMu.Lock()
+		writeErr := writeFrame(tracker, message)
+		client.writeMu.Unlock()
+		writeResult <- writeErr
+	}()
+	select {
+	case err = <-writeResult:
+	case <-ctx.Done():
+		if sideEffect {
+			deliveryErr := client.actionDeliveryError(message.Method, 1, ctx.Err())
+			client.fail(ctx.Err())
+			return nil, deliveryErr
+		}
+		client.fail(ctx.Err())
+		return nil, ctx.Err()
+	case <-client.done:
+		if sideEffect {
+			return nil, client.actionDeliveryError(message.Method, 1, client.terminalError())
+		}
+		return nil, client.terminalError()
+	}
 	if err != nil {
 		if sideEffect {
 			deliveryErr := client.actionDeliveryError(message.Method, tracker.written, err)
@@ -829,8 +943,192 @@ func (client *Client) handleInbound(message wireMessage) error {
 	if err := stream.apply(event); err != nil {
 		return fmt.Errorf("apply desktop stream event: %w", err)
 	}
+	if err := client.registerPendingState(event.ConversationID, stream.State().Materialized); err != nil {
+		return err
+	}
+	stream.signalUpdate()
 	logStreamEvent(client.logger, event)
 	return nil
+}
+
+func requiresPendingDesktopAction(kind ActionKind) bool {
+	switch kind {
+	case ActionCommandApproval, ActionFileApproval, ActionPermissionApproval, ActionSubmitUserInput, ActionSubmitMCP:
+		return true
+	default:
+		return false
+	}
+}
+
+func (client *Client) registerPendingRequests(conversationID string, raw json.RawMessage) error {
+	var change struct {
+		Type              string          `json:"type"`
+		ConversationState json.RawMessage `json:"conversationState"`
+	}
+	if json.Unmarshal(raw, &change) != nil || change.Type != "snapshot" || len(change.ConversationState) == 0 {
+		return ErrInvalidFrame
+	}
+	return client.registerPendingState(conversationID, change.ConversationState)
+}
+
+func (client *Client) registerPendingState(conversationID string, raw json.RawMessage) error {
+	var state struct {
+		Requests []struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		} `json:"requests"`
+	}
+	if json.Unmarshal(raw, &state) != nil {
+		return ErrInvalidFrame
+	}
+	registered := make(map[string]desktopPendingAction)
+	seenKinds := make(map[string]ActionKind)
+	for _, request := range state.Requests {
+		requestID, ok := desktopRequestID(request.ID)
+		if !ok {
+			continue
+		}
+		kind := desktopActionKind(request.Method)
+		if kind == "" {
+			continue
+		}
+		seenKinds[requestID] = kind
+		var params struct {
+			ThreadID           string          `json:"threadId"`
+			Permissions        json.RawMessage `json:"permissions"`
+			AvailableDecisions []string        `json:"availableDecisions"`
+			Questions          []struct {
+				ID string `json:"id"`
+			} `json:"questions"`
+		}
+		if json.Unmarshal(request.Params, &params) != nil || params.ThreadID != conversationID {
+			return ErrInvalidFrame
+		}
+		pending := desktopPendingAction{kind: kind, permissions: append(json.RawMessage(nil), params.Permissions...), questionIDs: map[string]bool{}, decisions: map[string]bool{}}
+		for _, decision := range params.AvailableDecisions {
+			if !allowedApprovalDecision(decision) {
+				return ErrInvalidFrame
+			}
+			pending.decisions[decision] = true
+		}
+		if (kind == ActionCommandApproval || kind == ActionFileApproval) && len(pending.decisions) == 0 {
+			for _, decision := range []string{"accept", "acceptForSession", "decline", "cancel"} {
+				pending.decisions[decision] = true
+			}
+		}
+		for _, question := range params.Questions {
+			if !validDesktopID(question.ID) || pending.questionIDs[question.ID] {
+				return ErrInvalidFrame
+			}
+			pending.questionIDs[question.ID] = true
+		}
+		registered[requestID] = pending
+	}
+	client.stateMu.Lock()
+	old := client.pendingActions[conversationID]
+	tombstones := client.consumedActions[conversationID]
+	if tombstones == nil {
+		tombstones = make(map[string]ActionKind)
+		client.consumedActions[conversationID] = tombstones
+	}
+	for requestID, pending := range registered {
+		if tombstones[requestID] == pending.kind {
+			delete(registered, requestID)
+			continue
+		}
+		if prior, exists := old[requestID]; exists && prior.kind == pending.kind && prior.inFlight {
+			pending.inFlight = true
+			registered[requestID] = pending
+		}
+	}
+	for requestID, kind := range tombstones {
+		if seenKinds[requestID] != kind {
+			delete(tombstones, requestID)
+		}
+	}
+	client.pendingActions[conversationID] = registered
+	client.stateMu.Unlock()
+	return nil
+}
+
+func (client *Client) authorizePendingAction(action FollowerAction) error {
+	client.stateMu.Lock()
+	defer client.stateMu.Unlock()
+	requests := client.pendingActions[action.ConversationID]
+	pending, ok := requests[action.RequestID]
+	if !ok || pending.kind != action.Kind || pending.inFlight {
+		return ErrPendingRequestMismatch
+	}
+	switch action.Kind {
+	case ActionCommandApproval, ActionFileApproval:
+		if !pending.decisions[action.Decision] {
+			return ErrPendingRequestMismatch
+		}
+	case ActionPermissionApproval:
+		if action.PermissionResponse == nil || !taskstate.PermissionSubset(action.PermissionResponse.Permissions, pending.permissions) {
+			return ErrPermissionEscalation
+		}
+	case ActionSubmitUserInput:
+		if action.UserInputResponse == nil || len(action.UserInputResponse.Answers) != len(pending.questionIDs) {
+			return ErrPendingRequestMismatch
+		}
+		for questionID := range action.UserInputResponse.Answers {
+			if !pending.questionIDs[questionID] {
+				return ErrPendingRequestMismatch
+			}
+		}
+	}
+	pending.inFlight = true
+	requests[action.RequestID] = pending
+	return nil
+}
+
+func (client *Client) finishPendingAction(action FollowerAction, consume bool) {
+	client.stateMu.Lock()
+	defer client.stateMu.Unlock()
+	requests := client.pendingActions[action.ConversationID]
+	pending, ok := requests[action.RequestID]
+	if !ok {
+		return
+	}
+	if consume {
+		delete(requests, action.RequestID)
+		tombstones := client.consumedActions[action.ConversationID]
+		if tombstones == nil {
+			tombstones = make(map[string]ActionKind)
+			client.consumedActions[action.ConversationID] = tombstones
+		}
+		tombstones[action.RequestID] = action.Kind
+		return
+	}
+	pending.inFlight = false
+	requests[action.RequestID] = pending
+}
+
+func desktopRequestID(raw json.RawMessage) (string, bool) {
+	var value string
+	if json.Unmarshal(raw, &value) == nil && validDesktopID(value) {
+		return value, true
+	}
+	return "", false
+}
+
+func desktopActionKind(method string) ActionKind {
+	switch method {
+	case "item/commandExecution/requestApproval":
+		return ActionCommandApproval
+	case "item/fileChange/requestApproval":
+		return ActionFileApproval
+	case "item/permissions/requestApproval":
+		return ActionPermissionApproval
+	case "item/tool/requestUserInput":
+		return ActionSubmitUserInput
+	case "mcpServer/elicitation/request":
+		return ActionSubmitMCP
+	default:
+		return ""
+	}
 }
 
 func (client *Client) trackedStream(conversationID string) (*StreamState, bool) {

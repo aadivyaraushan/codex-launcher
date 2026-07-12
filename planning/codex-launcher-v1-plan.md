@@ -1,6 +1,6 @@
 # Codex Launcher V1 Implementation Plan
 
-> **Status:** In progress. Tasks 0-3 and 2A are complete; Task 4 is next.
+> **Status:** In progress. Tasks 0-4 and 2A are complete; Task 5 is next.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

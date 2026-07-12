@@ -4,13 +4,53 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
+	"os"
+	"os/exec"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+func TestRealReadOnlyAppServerCompatibility(t *testing.T) {
+	if os.Getenv("CODEX_APPSERVER_LIVE") != "1" {
+		t.Skip("set CODEX_APPSERVER_LIVE=1 to run the installed read-only check")
+	}
+	command := exec.Command("codex", "app-server", "--stdio")
+	stdin, err := command.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = stdin.Close(); _ = command.Process.Kill(); _, _ = command.Process.Wait() })
+	client := NewClient(stdout, stdin, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{ExperimentalQuestions: true})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.ListThreads(ctx, ListOptions{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var page struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	if json.Unmarshal(result, &page) != nil || page.Data == nil {
+		t.Fatalf("unexpected thread/list result: %s", result)
+	}
+}
 
 func TestClientInitializesThenUsesCurrentStableMethodsAndShapes(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
@@ -108,7 +148,7 @@ func TestReaderRoutesNotificationsServerRequestsAndResponsesWithoutContentLogs(t
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	if err := client.RespondApproval(request.ID, DecisionDecline); err != nil {
+	if err := client.RespondCommandApproval(ctx, "thread-secret", request.ID, DecisionDecline); err != nil {
 		t.Fatal(err)
 	}
 	if logs.Contains("do not log this command") {
@@ -126,7 +166,7 @@ func TestClientRejectsUnsafeInputsAndUnsupportedApprovalDecisions(t *testing.T) 
 		{name: "blank thread", run: func() error { _, err := client.ReadThread(ctx, "", true); return err }},
 		{name: "blank turn text", run: func() error { _, err := client.StartTurn(ctx, TurnOptions{ThreadID: "thread-1"}); return err }},
 		{name: "bad approval", run: func() error {
-			return client.RespondApproval(json.RawMessage(`"request-1"`), ApprovalDecision("always"))
+			return client.RespondCommandApproval(ctx, "thread-1", json.RawMessage(`"request-1"`), ApprovalDecision("always"))
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -134,6 +174,121 @@ func TestClientRejectsUnsafeInputsAndUnsupportedApprovalDecisions(t *testing.T) 
 				t.Fatal("unsafe input was accepted")
 			}
 		})
+	}
+}
+
+func TestMutatingTimeoutIsOutcomeUnknownAndClosesConnection(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() { _ = clientConn.Close(); _ = serverConn.Close() })
+	go func() {
+		reader := bufio.NewReader(serverConn)
+		encoder := json.NewEncoder(serverConn)
+		line, _ := reader.ReadBytes('\n')
+		var initialize capturedRequest
+		_ = json.Unmarshal(line, &initialize)
+		_ = encoder.Encode(map[string]any{"id": json.RawMessage(initialize.ID), "result": fakeInitializeResult()})
+		_, _ = reader.ReadBytes('\n')
+		_, _ = reader.ReadBytes('\n')
+		<-time.After(time.Second)
+	}()
+	client := NewClient(clientConn, clientConn, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := client.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	short, stop := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer stop()
+	_, err := client.StartTurn(short, TurnOptions{ThreadID: "thread-1", Text: "hello"})
+	var unknown *OutcomeUnknownError
+	if !errors.As(err, &unknown) || unknown.Method != "turn/start" {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if _, err := client.ListModels(context.Background()); !errors.Is(err, ErrClosed) {
+		t.Fatalf("post-timeout error = %v", err)
+	}
+}
+
+func TestUnknownServerRequestFailsClosed(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() { _ = clientConn.Close(); _ = serverConn.Close() })
+	sendUnknown := make(chan struct{})
+	go func() {
+		reader := bufio.NewReader(serverConn)
+		encoder := json.NewEncoder(serverConn)
+		line, _ := reader.ReadBytes('\n')
+		var initialize capturedRequest
+		_ = json.Unmarshal(line, &initialize)
+		_ = encoder.Encode(map[string]any{"id": json.RawMessage(initialize.ID), "result": fakeInitializeResult()})
+		_, _ = reader.ReadBytes('\n')
+		<-sendUnknown
+		_ = encoder.Encode(map[string]any{"id": "unknown-1", "method": "future/dangerous/request", "params": map[string]any{}})
+	}()
+	client := NewClient(clientConn, clientConn, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := client.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	close(sendUnknown)
+	select {
+	case <-client.done:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if _, err := client.ListModels(context.Background()); !errors.Is(err, ErrClosed) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestPermissionResponseContainsOnlyGrantedSubsetAndScope(t *testing.T) {
+	var output strings.Builder
+	client := NewClient(strings.NewReader(""), &output, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{})
+	client.mu.Lock()
+	client.ready = true
+	client.pendingRequests[`"permission-1"`] = pendingServerRequest{kind: requestKindPermission, threadID: "thread-1", permissions: json.RawMessage(`{"network":{"enabled":true}}`)}
+	client.mu.Unlock()
+	granted := json.RawMessage(`{"network":{"enabled":true}}`)
+	if err := client.RespondPermissions(context.Background(), "thread-1", json.RawMessage(`"permission-1"`), granted, "session"); err != nil {
+		t.Fatal(err)
+	}
+	var response struct {
+		Result map[string]json.RawMessage `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(output.String()), &response); err != nil {
+		t.Fatal(err)
+	}
+	if string(response.Result["permissions"]) != string(granted) || string(response.Result["scope"]) != `"session"` {
+		t.Fatalf("result = %s", output.String())
+	}
+}
+
+func TestBoundedReaderRejectsBeforeUnboundedLineAllocation(t *testing.T) {
+	reader := bufio.NewReaderSize(strings.NewReader(strings.Repeat("x", 40)+"\n"), 8)
+	if _, err := readBoundedLine(reader, 32); !errors.Is(err, ErrMessageTooLarge) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestWireDecoderRejectsTrailingAndAmbiguousMessages(t *testing.T) {
+	for _, frame := range [][]byte{
+		[]byte(`{"id":1,"result":{}} {}`),
+		[]byte(`{"id":1,"method":"turn/completed","result":{},"params":{}}`),
+		[]byte(`{"id":true,"result":{}}`),
+		[]byte(`{"id":1}`),
+	} {
+		if _, err := decodeWire(frame); err == nil {
+			t.Fatalf("accepted invalid frame: %s", frame)
+		}
+	}
+}
+
+func TestWritesFailAfterConnectionCloses(t *testing.T) {
+	var output strings.Builder
+	client := NewClient(strings.NewReader(""), &output, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{})
+	client.fail(io.EOF)
+	if err := client.RespondCommandApproval(context.Background(), "thread-1", json.RawMessage(`"approval-1"`), DecisionDecline); !errors.Is(err, ErrClosed) {
+		t.Fatalf("error = %v", err)
 	}
 }
 
@@ -159,7 +314,11 @@ func captureStableSequence(conn net.Conn, result chan<- []capturedRequest) {
 		}
 		requests = append(requests, request)
 		if len(request.ID) != 0 {
-			_ = encoder.Encode(map[string]any{"id": json.RawMessage(request.ID), "result": map[string]any{"ok": true}})
+			result := any(map[string]any{"ok": true})
+			if request.Method == "initialize" {
+				result = fakeInitializeResult()
+			}
+			_ = encoder.Encode(map[string]any{"id": json.RawMessage(request.ID), "result": result})
 		}
 	}
 	result <- requests
@@ -178,14 +337,19 @@ func serveInterleavedRead(conn net.Conn) {
 			return
 		}
 		if request.Method == "initialize" {
-			_ = encoder.Encode(map[string]any{"id": json.RawMessage(request.ID), "result": map[string]any{"userAgent": "fake"}})
+			_ = encoder.Encode(map[string]any{"id": json.RawMessage(request.ID), "result": fakeInitializeResult()})
 		}
 		if request.Method == "thread/read" {
 			_ = encoder.Encode(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": "thread-secret", "turn": map[string]any{"status": "completed"}}})
-			_ = encoder.Encode(map[string]any{"id": "approval-1", "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": "thread-secret", "command": "do not log this command"}})
+			_ = encoder.Encode(map[string]any{"id": "approval-1", "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": "thread-secret", "turnId": "turn-1", "itemId": "item-1", "startedAtMs": 1, "command": "do not log this command"}})
 			_ = encoder.Encode(map[string]any{"id": json.RawMessage(request.ID), "result": map[string]any{"thread": map[string]any{"id": "thread-secret"}}})
+			_, _ = reader.ReadBytes('\n')
 		}
 	}
+}
+
+func fakeInitializeResult() map[string]any {
+	return map[string]any{"codexHome": "/tmp/codex", "platformFamily": "unix", "platformOs": "macos", "userAgent": "fake"}
 }
 
 func assertJSONFields(t *testing.T, raw json.RawMessage, fields ...string) {
@@ -204,16 +368,27 @@ func assertJSONFields(t *testing.T, raw json.RawMessage, fields ...string) {
 	}
 }
 
-type captureLogHandler struct{ entries []string }
+type captureLogHandler struct {
+	mu      sync.Mutex
+	entries []string
+}
 
 func (handler *captureLogHandler) Enabled(context.Context, slog.Level) bool { return true }
 func (handler *captureLogHandler) Handle(_ context.Context, record slog.Record) error {
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
 	handler.entries = append(handler.entries, record.Message)
+	record.Attrs(func(attr slog.Attr) bool {
+		handler.entries = append(handler.entries, attr.Value.String())
+		return true
+	})
 	return nil
 }
 func (handler *captureLogHandler) WithAttrs([]slog.Attr) slog.Handler { return handler }
 func (handler *captureLogHandler) WithGroup(string) slog.Handler      { return handler }
 func (handler *captureLogHandler) Contains(value string) bool {
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
 	for _, entry := range handler.entries {
 		if entry == value {
 			return true
