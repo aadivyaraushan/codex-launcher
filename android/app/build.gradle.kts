@@ -30,7 +30,9 @@ kotlin {
 }
 
 dependencies {
+    implementation(libs.okhttp)
     testImplementation(libs.junit)
     androidTestImplementation(libs.android.test.junit)
     androidTestImplementation(libs.android.test.runner)
+    androidTestImplementation(libs.mockwebserver)
 }
