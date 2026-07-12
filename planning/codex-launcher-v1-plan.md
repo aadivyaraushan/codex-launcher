@@ -1,10 +1,11 @@
 # Codex Launcher V1 Implementation Plan
 
-> **Status:** Draft for independent engineering review. Planning only; no implementation has started.
+> **Status:** In progress. Tasks 0-2 are complete; the desktop follower bridge
+> decision was approved on 2026-07-13 and is the next implementation gate.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
-**Architecture:** A native Kotlin/Compose launcher talks over a pinned-TLS WebSocket to a small Go companion service on the user's computer. Tailscale supplies private device-to-device routing; the companion keeps Codex and ChatGPT authentication local, translates the changing Codex app-server protocol into a narrow versioned mobile contract, and never exposes app-server directly.
+**Architecture:** A native Kotlin/Compose launcher talks over a pinned-TLS WebSocket to a small Go companion service on the user's computer. Tailscale supplies private device-to-device routing. On macOS and Windows, the companion uses a version-checked adapter for ChatGPT Desktop's private local follower bridge so the phone can operate the same desktop-owned tasks. The public Codex app-server adapter remains available for CLI-owned and Linux tasks. ChatGPT/Codex authentication stays local, and neither raw desktop IPC nor app-server is exposed to the phone or tailnet.
 
 **Primary target:** Pixel 9 on Android 16. Other Android devices are supported where the platform behavior is standard, but the Pixel 9 is the release device.
 
@@ -26,13 +27,15 @@
                             ▼
 ┌────────────── User computer: Go companion service ──────────────┐
 │ Pair/revoke │ mobile API │ event journal │ durable prompt queue │
-│ Codex-version adapter │ redaction │ launch-at-login installer    │
+│ Desktop-version adapter │ redaction │ launch-at-login installer  │
 └───────────────────────────┬──────────────────────────────────────┘
-                            │ local stdio/control socket only
+                            │ same-user local IPC only
                             ▼
-┌──────────────────── Codex app-server ────────────────────────────┐
-│ Existing ChatGPT login, tasks, files, tools, approvals, models  │
+┌────────────── ChatGPT Desktop task-owning window ────────────────┐
+│ Existing tasks, live turns, approvals, questions, files, tools  │
 └──────────────────────────────────────────────────────────────────┘
+
+Linux / CLI-owned task: companion → public Codex app-server adapter
 ```
 
 ```text
@@ -56,6 +59,10 @@ Any state → INCOMPATIBLE_VERSION or REVOKED (no automatic retry)
 - The Home composer always shows the paired computer and selected project/folder. The computer is fixed in V1; the project/folder is visibly tappable and changeable. Sending is disabled until a project is selected.
 - The first prompt requires a project choice. Later prompts visibly reuse the last successful choice.
 - ChatGPT/Codex auth and every third-party credential remain on the computer.
+- The user approved ChatGPT Desktop's private local follower interface for V1.
+  The companion pins supported desktop protocol versions, verifies the owning
+  same-user ChatGPT process, and fails closed with
+  `Desktop integration needs an update` when compatibility is not proven.
 - Screens 8 and 9 stay removed. Attention is shown on Home; a finished Codex turn stays in the task transcript.
 - One phone pairs with exactly one computer in V1. Changing computers means explicitly revoking the old pairing and pairing again; ordinary Home interaction changes only the project/folder.
 - When the computer is unreachable, the launcher shows the approved `Computer offline` screen. It does not expose stale task lists or transcripts.
@@ -70,6 +77,7 @@ Any state → INCOMPATIBLE_VERSION or REVOKED (no automatic retry)
 | `DESIGN.md` | Tokens, state marks, accessibility, motion, and approval requirements. |
 | `outputs/hermes-codex-android-reference.md` | Hermes parity target and staged scope. |
 | Local Codex app-server schemas | Method names, notifications, approvals, and experimental question warning. Regenerate from the active CLI during implementation; do not trust the old snapshot blindly. |
+| ChatGPT Desktop follower bridge | Primary macOS/Windows path for the actual desktop-owned tasks. Use only through a local version adapter; never forward raw frames. |
 | Official Tailscale clients | Private routing, device identity, NAT traversal, MagicDNS. Do not embed or fork Tailscale. |
 | Android platform launcher APIs | Home role, installed launcher activities, system settings intents, insets, accessibility, and foreground services. |
 
@@ -80,7 +88,15 @@ Any state → INCOMPATIBLE_VERSION or REVOKED (no automatic retry)
 - The live CLI exposes `app-server daemon`, `proxy`, `generate-json-schema`, authenticated WebSocket modes, and stdio transport. V1 still uses a local companion boundary instead of publishing app-server on Tailscale.
 - The refreshed stable schema includes `thread/list`, `thread/read`, `thread/start`, `thread/resume`, `thread/fork`, archive operations, `turn/start`, `turn/steer`, `turn/interrupt`, structured approvals, status/events, and `turn/completed`.
 - `item/tool/requestUserInput` is still marked experimental. Native question cards require capability detection and a plain-message fallback.
-- This machine has QEMU but no detected Android SDK or Go toolchain. Toolchain installation is an implementation prerequisite, not part of this planning turn.
+- Go 1.26.5, Android SDK/API 36, Android Emulator 36.6.11, JDK 17.0.18,
+  and the Pixel 9 Android 16 AVD are installed and passed the Task 1 bootstrap.
+- ChatGPT Desktop package 26.707.51957 exposes a per-user local IPC router.
+  A separate client loaded this desktop-owned task at revision 5774 and received
+  version-11 live snapshots. An independent replay observed revisions 6050,
+  6052, and 6074.
+- The private bridge registers owner-routed start, steer, interrupt, approval,
+  and requested-input actions. A harmless unknown approval ID proved routing;
+  valid write behavior still requires the paid/account approval gate.
 
 ## Mobile contract
 
@@ -138,7 +154,9 @@ android/
 companion/
   cmd/codex-launcher/          CLI entry point
   internal/codex/probe/        version discovery and feasibility spike
-  internal/codex/runtime/      app-server client and version adapter
+  internal/codex/desktopipc/   private desktop follower adapter
+  internal/codex/appserver/    public CLI/Linux app-server adapter
+  internal/codex/taskstate/    stable task-state mapping
   internal/mobileapi/contract/ mobile contract validation
   internal/mobileapi/transport/ TLS WebSocket server/session
   internal/pairing/            one-time pairing and revocation
@@ -236,16 +254,76 @@ Every behavior task follows the fixed order: write the observable test, run it a
 
 1. Discover the Codex binary from explicit config first, then `PATH`; validate with `--version`.
 2. Generate schemas into a temporary directory and record the CLI version/capabilities.
-3. Compare two local strategies: `codex app-server proxy` to a managed daemon and a dedicated stdio child.
+3. Compare `codex app-server proxy`, a dedicated stdio child, and ChatGPT
+   Desktop's same-user local follower bridge.
 4. Verify list/read without starting a model turn.
 5. Before the first real model-backed turn, identify the active ChatGPT account/project and estimated call count, then obtain explicit user approval under the money rule.
-6. Test whether a desktop-started active turn is observable and controllable from the companion. Record the exact result, not an inference.
+6. Test whether a desktop-started active turn is observable and controllable
+   from the companion. Record read, routing, and valid-write evidence separately
+   so a harmless no-op is never presented as proof of a real write.
 7. Re-read the current official Android foreground-service documentation at implementation time and record the target-SDK requirements used.
 8. On Pixel 9, test default-launcher cold start, reboot/user unlock, screen off, Doze, Wi-Fi↔5G, Tailscale stop/restart/update, notification denial/channel removal, foreground-service start rejection, OS process kill, user service stop, and force-stop recovery.
 
-**Hard gates:** If desktop-started active turns cannot be followed, stop and present the real V1 choices. Do not silently redefine “all active Codex tasks” as “tasks started from the phone.” If Android 16 does not permit the connected-device foreground-service design for this use, stop and revisit notification/background architecture before building the launcher around it.
+**Hard gates:** Desktop reads and harmless owner routing passed through the
+private follower bridge. Valid start/steer/interrupt/approval behavior remains
+gated on a controlled live test after account/cost approval. Do not silently
+fall back to companion-owned tasks. If Android 16 does not permit the
+connected-device foreground-service design for this use, stop and revisit
+notification/background architecture before building the launcher around it.
 
 **Verify:** `go test ./companion/internal/codex/probe -race`; Pixel instrumentation evidence; both reports contain versions, commands, platform state, observed results, and explicit pass/fail gates.
+
+### Task 2A: Freeze the private desktop follower bridge before using it
+
+**Objective:** Turn the verified macOS follower path into a narrow,
+version-checked Go adapter that cannot send unknown actions after a ChatGPT
+Desktop update.
+
+**Files:**
+
+- Create: `companion/internal/codex/desktopipc/protocol.go`
+- Create: `companion/internal/codex/desktopipc/client.go`
+- Create: `companion/internal/codex/desktopipc/client_test.go`
+- Create: `companion/internal/codex/desktopipc/testdata/snapshot.json`
+- Create: `companion/internal/codex/desktopipc/testdata/invalid-frames.jsonl`
+- Update: `saved-results/codex-app-server-compatibility.md`
+
+**Observable guarantees:** A same-user local client discovers the desktop
+endpoint, completes `initialize`, accepts only pinned message versions, rebuilds
+a desktop-owned task from a snapshot, applies ordered deltas, and routes only
+an allow-listed action to the window that owns that task. An unknown desktop
+build, unknown message version, missing owner, malformed/oversized frame,
+disconnect, or uncertain write produces a typed error and no automatic retry.
+
+**Red tests:** Use a fake framed IPC router and captured redacted fixtures to
+cover partial length headers, partial bodies, zero/oversized lengths, malformed
+JSON, mismatched request IDs, router discovery, owner unavailable, version 0 or
+unknown versions, snapshot then ordered delta, duplicate/out-of-order revision,
+disconnect/reconnect, harmless approval-route probe, and every allow-listed
+write action's exact parameter shape. Confirm the new package is missing and
+the tests fail for that reason before production code is added. Commit this RED
+checkpoint separately.
+
+**Implementation:** Use the observed four-byte little-endian length plus JSON
+framing. Discover the macOS endpoint beneath `os.TempDir()` rather than storing
+its temporary path. Verify the socket and ChatGPT process belong to the current
+OS user. Pin ChatGPT Desktop package 26.707.51957's observed versions:
+`thread-stream-state-changed` 11; start/load/compact/steer/settings/approval/
+input actions 1; interrupt and edit-last-turn 2. Parse unknown fields but reject
+unknown methods or incompatible versions. Use structured `slog` records tagged
+`[desktop-ipc]` with message kind, version, task ID, revision, and branch reason;
+never log task content, prompts, commands, paths, approval text, or credentials.
+
+**Live compatibility check:** Without starting a model call, initialize against
+the live socket, load the current desktop-owned task, require a full snapshot,
+and route a fresh nonexistent approval ID that is guaranteed to be a no-op.
+This proves connection and routing only. A real start/steer/interrupt/approval
+test remains blocked until the money rule is cleared.
+
+**Verify:** `go test ./companion/internal/codex/desktopipc -race -cover` is green
+with at least 80% statement coverage; the live harmless compatibility test is
+green on macOS; `git diff --check` is clean; the saved report keeps the valid
+write gap explicit.
 
 ### Task 3: Freeze the narrow mobile protocol with shared fixtures
 
@@ -272,23 +350,31 @@ Every behavior task follows the fixed order: write the observable test, run it a
 
 **Verify:** The production Go contract types/validator and production Kotlin messages/codec parse every golden fixture and reject every invalid fixture; tests do not contain a second test-only parser. Schema validation runs in CI.
 
-### Task 4: Build the companion's Codex adapter and safe state mapping
+### Task 4: Build the companion's task adapters and safe state mapping
 
 **Objective:** Convert current app-server methods/events into stable launcher concepts without inventing task completion.
 
 **Files:**
 
-- Create: `companion/internal/codex/runtime/client.go`
-- Create: `companion/internal/codex/runtime/mapper.go`
-- Create: `companion/internal/codex/runtime/client_test.go`
+- Create: `companion/internal/codex/appserver/client.go`
+- Create: `companion/internal/codex/appserver/client_test.go`
+- Create: `companion/internal/codex/taskstate/mapper.go`
+- Create: `companion/internal/codex/taskstate/mapper_test.go`
 
 **Red tests:** Cover working, waiting for approval, waiting for answer, failed, interrupted, and idle-after-reply states; verify `turn/completed` never becomes semantic task completion.
 
-**Implementation:** Implement initialize, thread list/read/start/resume/fork/archive/name, model list, reasoning/permission inputs, turn start/steer/interrupt, diff/item streams, approvals, permissions, and capability-gated questions. Preserve unknown items as safe generic activity entries.
+**Implementation:** Use `desktopipc` as the primary macOS/Windows source for
+desktop-owned tasks and `appserver` for CLI/Linux tasks. Both adapters feed one
+stable task-state mapper. Implement initialize, task list/read/start/resume/
+fork/archive/name, model list, reasoning/permission inputs, turn start/steer/
+interrupt, diff/item streams, approvals, permissions, and capability-gated
+questions. Preserve unknown items as safe generic activity entries. Never
+silently move a desktop-owned task into a separate app-server runtime.
 
 **Logging:** Use Go's structured `slog` with `[codex-adapter]`, thread/turn/item IDs, branch decisions, output counts, and contextual errors. Never log prompts, command bodies, file contents, auth tokens, or pairing secrets.
 
-**Verify:** `go test ./companion/internal/codex/runtime -race`; replay captured redacted fixtures from both supported schema snapshots.
+**Verify:** `go test ./companion/internal/codex/... -race`; replay captured
+redacted fixtures from the pinned desktop bridge and public app-server schemas.
 
 ### Task 5: Add pairing, pinned TLS, revocation, and replay protection
 
@@ -631,22 +717,28 @@ After Task 2 clears the Codex and Android feasibility gates, lanes B and C can p
 - Windows/Linux graphical tray apps. The companion is a CLI plus background user service.
 - Full Hermes parity for goals, scheduled tasks, memory, profiles, rollback/undo semantics, subagent trees, interactive terminals, or plugin management.
 - Live voice conversation, video, location, or a second notification center.
-- Pretending to be the official ChatGPT Remote client, copying ChatGPT auth to Android, or binding raw Codex app-server to Tailscale.
+- Calling ChatGPT's cloud Remote protocol, copying ChatGPT auth to Android, or
+  binding raw desktop IPC/app-server to Tailscale. The approved same-user local
+  desktop follower adapter is explicitly in scope.
 - A semantic “task completed” screen. V1 reports turn replies and observable task state only.
 
 ## Implementation blockers to clear immediately before autonomous work
 
-1. Approve the exact files in the initial baseline commit and creation of the implementation worktree.
-2. Approve installation of Go, Android Studio/SDK, and the compatible JDK toolchain after versions and download sources are listed.
-3. For the first live Codex call, state the exact authenticated account/project, expected handful of calls, and obtain explicit approval.
-4. If Windows VM media or a paid VM product is needed, identify its license/account/cost and obtain approval before download or use.
-5. Before creating a remote repository or release, identify the GitHub account/organization and obtain approval to create, push, and publish.
+1. For the first valid live desktop write/model call, state the exact
+   authenticated ChatGPT account/workspace, expected handful of calls or credit
+   use, and obtain explicit approval.
+2. If Windows VM media or a paid VM product is needed, identify its
+   license/account/cost and obtain approval before download or use.
+3. Before creating a remote repository or release, identify the GitHub
+   account/organization and obtain approval to create, push, and publish.
 
 ## Definition of done
 
 - Pixel 9 can become the default launcher and always escape to All apps and Android Settings.
 - A new user can install official Tailscale and Codex, install the companion, pair one computer, select/change an approved project folder, and see both computer and project before sending.
-- The phone lists and resumes the computer's real Codex tasks within the limits proven in Task 2.
+- On macOS, the phone lists, reads, and safely controls the same desktop-owned
+  Codex tasks through the pinned follower adapter. An incompatible desktop
+  update fails closed instead of creating a separate task.
 - Text, tool activity, diffs, rename/archive/fork/resume, model/reasoning/permission choices, queue/redirect/stop, dictation, attachments, approvals, questions/fallback, offline state, and reply notifications work through disconnect/restart tests.
 - Offline always shows `Computer offline`; task contents are memory-only and absent after disconnect/process death, while the unfinished draft remains encrypted for recovery.
 - Pixel 9 pairing uses a non-exportable hardware-backed device signing key; reduced-protection devices warn or fail exactly as Task 5 specifies.
@@ -654,7 +746,10 @@ After Task 2 clears the Codex and Android feasibility gates, lanes B and C can p
 - Every cold start or content clear uses `no_local_state` and rebuilds from a full snapshot/thread read.
 - Attachment concurrency/temp-byte quotas and disk-full paths reject safely and remove partial files.
 - No ChatGPT/Codex or third-party service credential leaves the computer; the phone holds only its own pairing/signing material. No raw app-server listens on the tailnet, and unpaired devices learn nothing useful.
-- macOS, Windows, and Linux companion artifacts each pass a native real-Codex smoke plus their stated CI/VM checks before being labelled supported.
+- macOS desktop-owned control passes native live tests. Windows follower control
+  remains experimental until its named-pipe path passes the same VM tests.
+  Linux supports public app-server/CLI-owned tasks and clearly states that no
+  ChatGPT Desktop host exists there.
 - Android unit/UI/instrumentation, Go unit/integration/race, protocol fixtures, security cases, and release smoke tests are green in the same run.
 - Another technical user can install from the README without private instructions.
 - Task 15's fresh implementation judge returns `READY` with no open P1/P2 after any required correction pass.

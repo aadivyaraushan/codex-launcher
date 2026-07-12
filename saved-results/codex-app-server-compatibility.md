@@ -4,13 +4,19 @@
 **Purpose:** Determine whether the launcher companion can list, read, observe,
 and control tasks that are already active in the ChatGPT desktop Codex UI.
 
-## Gate result: FAIL for desktop-owned live control
+## Gate result: PASS through the desktop follower bridge
 
-The app-server surface is suitable for a custom Codex client, but a separately
-started app-server does not join the ChatGPT desktop app's in-memory runtime.
-The launcher can read stored thread history, but current evidence does not prove
-that it can follow, steer, interrupt, or answer approvals for a turn owned by the
-desktop app. The V1 plan forbids silently calling this full active-task support.
+A separately started app-server still does not join the ChatGPT desktop app's
+in-memory runtime. However, a follow-up inspection found a different path: the
+ChatGPT desktop app exposes a same-user IPC router for its own Remote/follower
+clients. A separate local process connected to that router, received live state
+for desktop-owned tasks, loaded this active task's complete history, and routed
+a harmless write-path request to the window that owns the task.
+
+This is a private ChatGPT desktop interface, not a supported public Codex API.
+V1 can use it behind a strict version adapter and fail closed when compatibility
+cannot be proven. The raw desktop socket must never be exposed to the phone or
+the tailnet.
 
 No model-backed turn was started during this probe.
 
@@ -97,24 +103,93 @@ found. `thread/resume` rejoins a thread only when that thread is running in the
 same app-server runtime; otherwise it loads stored state into the caller's
 runtime.
 
-## Product choices required by the hard gate
+That search was too narrow: it covered the public app-server protocol but not
+the desktop app's separate follower bridge. The extracted ChatGPT desktop
+bundle contains a local IPC router and the same follower operations used to
+control an owner window from another client.
 
-1. **Companion-owned V1 runtime:** The launcher fully controls tasks started or
-   resumed through its companion. ChatGPT desktop-owned active turns remain
-   read-only stored history until they finish. This is buildable now, but it is
-   a deliberate reduction from “all active desktop tasks.”
-2. **Managed daemon as the canonical host:** The launcher, CLI remote TUI, and
-   other supported clients use one daemon. ChatGPT desktop local tasks remain a
-   separate runtime unless OpenAI adds a supported attach path. The official
-   Remote host conflict must also be resolved during setup.
-3. **Wait for a supported shared-runtime API:** Preserve exact desktop parity
-   and pause implementation beyond the hard gate.
+## Strategy C: ChatGPT desktop follower bridge
 
-An unsupported bridge into ChatGPT's private stdio pipes or cloud Remote
-protocol is intentionally not offered; it would be brittle and would contradict
-the approved plan's security/maintenance boundary.
+Verified desktop build:
+
+```text
+ChatGPT desktop package: 26.707.51957
+macOS socket: $TMPDIR/codex-ipc/ipc-$UID.sock
+frame: 4-byte little-endian length + UTF-8 JSON
+```
+
+On this Mac, the socket and `codex-ipc` directory were owned by `aadivyar`; the
+per-user temporary parent directory was mode `drwx------`. The verified ChatGPT
+process owning the desktop runtime also ran as `aadivyar`.
+
+The router accepted an independent client initialized as
+`codex-launcher-probe`. A read-only request for this desktop-owned active task:
+
+```text
+method: thread-follower-load-complete-history
+conversationId: 019f52fa-4039-72c3-867d-9ace7f9b08ab
+version: 1
+```
+
+returned:
+
+```json
+{"resultType":"success","method":"thread-follower-load-complete-history","result":{"revision":5774}}
+```
+
+The same connection received `thread-stream-state-changed` version 11 events
+for several live desktop tasks. The current task produced a `snapshot` whose
+`conversationState` contained turns, pending requests, runtime status, current
+folder, permissions, thread settings, token usage, and goal state.
+
+The desktop bridge registers these owner-routed actions:
+
+```text
+thread-follower-start-turn
+thread-follower-steer-turn
+thread-follower-interrupt-turn
+thread-follower-command-approval-decision
+thread-follower-file-approval-decision
+thread-follower-permissions-request-approval-response
+thread-follower-submit-user-input
+thread-follower-submit-mcp-server-elicitation-response
+```
+
+Write routing was checked without starting a model turn or changing a real
+approval: the probe sent `thread-follower-command-approval-decision` with a
+fresh nonexistent request ID and `decision: decline`. The desktop owner returned
+`{"ok":true}`. The inspected handler ignores an unknown request ID, so no real
+pending request was answered.
+
+The bundle also maps the IPC address to `\\\\.\\pipe\\codex-ipc` on Windows.
+Linux has no ChatGPT desktop host to attach to; Linux support must use the
+public app-server path for CLI-owned tasks.
+
+### Required safety boundary
+
+- Discover the socket locally; never hardcode its temporary directory.
+- Connect only as the same OS user and verify the owning ChatGPT process.
+- Parse a pinned desktop protocol version and reject unknown message versions.
+- Put the private bridge behind the companion's existing pairing, pinned TLS,
+  and action journal. Never forward raw IPC frames to Android.
+- Run a read snapshot plus harmless write-route compatibility probe after each
+  ChatGPT update. Show `Desktop integration needs an update` if either fails.
+- Keep public app-server support as a separate adapter, not an automatic silent
+  replacement for desktop-owned tasks.
+
+## Product decision: accepted
+
+On 2026-07-13, the user accepted the maintenance tradeoff of the unsupported
+private interface for V1. The implementation plan now uses a versioned desktop
+follower adapter and an explicit compatibility-error state. It does not silently
+fall back to a separate companion-owned task when desktop compatibility fails.
 
 ## Reproduce
+
+The checked-in Go probe below reproduces the separate app-server result. The
+follower-bridge checks were run as temporary read-only/harmless Node probes
+against the live desktop socket. Before implementation, Task 3 must turn those
+checks into repeatable Go contract tests with captured safe fixtures.
 
 ```bash
 go test ./companion/internal/codex/probe -race
