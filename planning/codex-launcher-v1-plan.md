@@ -1,7 +1,6 @@
 # Codex Launcher V1 Implementation Plan
 
-> **Status:** In progress. Tasks 0-2 and 2A are complete; the private Desktop
-> adapter passed independent review and Task 3 is next.
+> **Status:** In progress. Tasks 0-3 and 2A are complete; Task 4 is next.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
@@ -352,7 +351,7 @@ write gap explicit.
 
 **Implementation:** Define version negotiation, snapshot/event/result/ack envelopes, cumulative acknowledgement and snapshot base-sequence rules, action-state reconciliation, capability flags, 256 KiB JSON-frame limit, and typed error codes. Define authenticated binary attachment frames with upload ID, ordered chunk number, declared total size, server-advertised size limit, SHA-256 digest, cancellation, resume policy, and completion acknowledgement. Server-advertised configurable defaults are 20 MiB per file, two concurrent uploads per device, four globally, 100 MiB total temporary storage, and 15-minute expiry; reject before allocation when any quota would be exceeded. Keep raw Codex payloads out of the public contract.
 
-**Verify:** The production Go contract types/validator and production Kotlin messages/codec parse every golden fixture and reject every invalid fixture; tests do not contain a second test-only parser. Schema validation runs in CI.
+**Verify:** The production Go contract types/validator and production Kotlin messages/codec parse every golden fixture and reject every invalid fixture; tests do not contain a second test-only parser. The schema check runs in the local release gate now; Task 14 wires that same gate into hosted CI after the public repository and its billing owner are chosen.
 
 ### Task 4: Build the companion's task adapters and safe state mapping
 

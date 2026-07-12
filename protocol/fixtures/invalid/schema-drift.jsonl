@@ -1,0 +1,25 @@
+{"version":{"major":1,"minor":0},"messageId":"i-001","sender":"phone","type":"hello","body":{"clientInstanceId":"phone-1","supportedMajors":[1],"resume":{"mode":"no_local_state"},"rawToken":"no"}}
+{"version":{"major":1,"minor":0},"messageId":"i-002","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":[],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900,"unknownLimit":1}}}
+{"version":{"major":1,"minor":0},"messageId":"i-003","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"tasks":[{"taskId":"task-1","title":"Task","projectLabel":"p","state":"working","lastActivityAt":"2026-07-13T10:00:00Z","rawCodexPayload":{}}]}}
+{"version":{"major":1,"minor":0},"messageId":"i-004","sender":"companion","type":"event","seq":2,"body":{"taskId":"task-1","event":"reply","state":"idle_after_reply","summary":"Codex replied","rawText":"private"}}
+{"version":{"major":1,"minor":0},"messageId":"i-005","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"action-1","state":"confirmed","extra":true}}
+{"version":{"major":1,"minor":0},"messageId":"i-006","sender":"companion","type":"attachment_ack","seq":2,"body":{"uploadId":"u","state":"complete","receivedBytes":4,"sha256":"3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7","nextChunk":1,"path":"/private"}}
+{"version":{"major":1,"minor":0},"messageId":"i-007","sender":"companion","type":"error","body":{"code":"made_up_error","retryable":true}}
+{"version":{"major":1,"minor":0},"messageId":"i-008","sender":"phone","type":"action","body":{"actionId":"a-8","kind":"set_project","projectPath":"/etc"}}
+{"version":{"major":1,"minor":0},"messageId":"bad id!","sender":"phone","type":"ack","body":{"throughSeq":1}}
+{"version":{"major":1,"minor":0},"messageId":"i-010","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":["same","same"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}}
+{"version":{"major":1,"minor":0},"messageId":"i-011","sender":"companion","type":"event","seq":1,"body":{"taskId":"task-1","event":"invented","state":"working","summary":"Working"}}
+{"version":{"major":1,"minor":0},"messageId":"i-012","sender":"phone","type":"hello","body":{"clientInstanceId":"phone-1","supportedMajors":[1],"resume":{"mode":"warm","lastAck":1,"uploads":[{"uploadId":"u-1","nextChunk":"two"}]}}}
+{"version":{"major":1,"minor":0},"messageId":"i-013","sender":"phone","type":"ack","seq":1,"body":{"throughSeq":1}}
+{"version":{"major":1,"minor":0},"messageId":"i-014","sender":"companion","type":"snapshot","seq":0,"body":{"baseSeq":0,"tasks":[]}}
+{"version":{"major":1,"minor":0},"messageId":"i-015","sender":"phone","type":"hello","body":{"clientInstanceId":"phone-1","supportedMajors":[1],"resume":{"mode":"warm"}}}
+{"version":{"major":1,"minor":0,"extra":1},"messageId":"i-016","sender":"phone","type":"ack","body":{"throughSeq":1}}
+{"version":{"major":1,"minor":0},"messageId":"i-017","sender":"phone","type":"action","body":{"actionId":"a-17","kind":"interrupt_turn","taskId":17}}
+{"version":{"major":1,"minor":0},"messageId":"i-018","sender":"phone","type":"action","seq":"hidden","body":{"actionId":"a-18","kind":"interrupt_turn","taskId":"task-1"}}
+{"version":{"major":1,"minor":0},"messageId":"i-019","sender":"phone","type":"hello","body":{"clientInstanceId":"phone-1","supportedMajors":[1,"x"],"resume":{"mode":"no_local_state"}}}
+{"version":{"major":1,"minor":0},"messageId":"i-020","sender":"companion","type":"error","body":{"code":"internal","retryable":"true"}}
+{"version":{"major":1,"minor":0},"messageId":"i-021","sender":"phone","type":"action","body":{"actionId":"a-21","kind":"start_turn","taskId":"task-1","text":"go","attachmentIds":[1]}}
+{"version":{"major":1,"minor":0},"messageId":"i-022","sender":"companion","type":"attachment_ack","seq":1,"body":{"uploadId":"u","state":"accepted","receivedBytes":0,"sha256":"3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7","nextChunk":2147483648}}
+{"version":{"major":1,"minor":0},"messageId":"i-023","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":[],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971521,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}}
+{"version":{"major":1,"minor":0},"messageId":"i-024","sender":"phone","type":"hello","body":{"clientInstanceId":"phone-1","supportedMajors":[1],"resume":{"mode":"no_local_state","uploads":{"upload-1":2}}}}
+{"version":{"major":1,"minor":0},"messageId":"bad\n","sender":"phone","type":"ack","body":{"throughSeq":1}}

@@ -9,6 +9,7 @@ run() {
 }
 
 cd "$repo_root"
+run python3 release/checks/protocol/schema_test.py
 run go test ./...
 run "$repo_root/android/gradlew" -p "$repo_root/android" :app:testDebugUnitTest
 run "$repo_root/android/gradlew" -p "$repo_root/android" :app:connectedDebugAndroidTest

@@ -4,3 +4,10 @@
 {"version":{"major":1,"minor":0},"messageId":"a-004","sender":"companion","type":"action_result","seq":12,"body":{"actionId":"action-approval-1","state":"sent"}}
 {"version":{"major":1,"minor":0},"messageId":"a-005","sender":"companion","type":"action_result","seq":13,"body":{"actionId":"action-approval-1","state":"confirmed"}}
 {"version":{"major":1,"minor":0},"messageId":"a-006","sender":"phone","type":"ack","body":{"throughSeq":13}}
+{"version":{"major":1,"minor":0},"messageId":"a-007","sender":"companion","type":"action_result","seq":14,"body":{"actionId":"action-unknown-1","state":"queued"}}
+{"version":{"major":1,"minor":0},"messageId":"a-008","sender":"companion","type":"action_result","seq":15,"body":{"actionId":"action-unknown-1","state":"outcome_unknown","error":{"code":"connection_lost","retryable":false}}}
+{"version":{"major":1,"minor":0},"messageId":"a-009","sender":"companion","type":"action_result","seq":16,"body":{"actionId":"action-failed-1","state":"queued"}}
+{"version":{"major":1,"minor":0},"messageId":"a-010","sender":"companion","type":"action_result","seq":17,"body":{"actionId":"action-failed-1","state":"failed","error":{"code":"owner_unavailable","retryable":true}}}
+{"version":{"major":1,"minor":0},"messageId":"a-011","sender":"companion","type":"action_result","seq":18,"body":{"actionId":"action-cancelled-1","state":"queued"}}
+{"version":{"major":1,"minor":0},"messageId":"a-012","sender":"companion","type":"action_result","seq":19,"body":{"actionId":"action-cancelled-1","state":"cancelled"}}
+{"version":{"major":1,"minor":0},"messageId":"a-013","sender":"phone","type":"ack","body":{"throughSeq":19}}

@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-launcher.local/schema/envelope.schema.json",
+  "title": "Codex Launcher mobile protocol envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "messageId", "sender", "type", "body"],
+  "properties": {
+    "version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["major", "minor"],
+      "properties": {
+        "major": { "const": 1 },
+        "minor": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
+      }
+    },
+    "messageId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9._:-]+$" },
+    "sender": { "enum": ["phone", "companion"] },
+    "type": { "enum": ["hello", "welcome", "snapshot", "event", "action", "action_result", "ack", "attachment_offer", "attachment_cancel", "attachment_complete", "attachment_ack", "error"] },
+    "seq": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 },
+    "body": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "enum": ["snapshot", "event", "action_result", "attachment_ack"] } }, "required": ["type"] },
+      "then": { "required": ["seq"] },
+      "else": { "not": { "required": ["seq"] } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "action" } }, "required": ["type"] },
+      "then": { "properties": { "sender": { "const": "phone" }, "body": { "$ref": "action.schema.json" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "snapshot" } }, "required": ["type"] },
+      "then": { "required": ["seq"], "properties": { "sender": { "const": "companion" }, "body": { "$ref": "event.schema.json#/$defs/snapshot" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "event" } }, "required": ["type"] },
+      "then": { "required": ["seq"], "properties": { "sender": { "const": "companion" }, "body": { "$ref": "event.schema.json#/$defs/event" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "action_result" } }, "required": ["type"] },
+      "then": { "required": ["seq"], "properties": { "sender": { "const": "companion" }, "body": { "$ref": "event.schema.json#/$defs/actionResult" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "hello" } }, "required": ["type"] },
+      "then": {
+        "properties": {
+          "sender": { "const": "phone" },
+          "body": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["clientInstanceId", "supportedMajors", "resume"],
+            "properties": {
+              "clientInstanceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "supportedMajors": { "type": "array", "minItems": 1, "uniqueItems": true, "contains": { "const": 1 }, "items": { "type": "integer", "minimum": 1, "maximum": 2147483647 } },
+              "resume": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["mode"],
+                "properties": {
+                  "mode": { "enum": ["warm", "no_local_state"] },
+                  "lastAck": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 },
+                  "uploads": {
+                    "type": "object",
+                    "maxProperties": 2,
+                    "propertyNames": { "$ref": "#/$defs/id" },
+                    "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
+                  }
+                },
+                "allOf": [
+                  { "if": { "properties": { "mode": { "const": "no_local_state" } } }, "then": { "not": { "anyOf": [{ "required": ["lastAck"] }, { "required": ["uploads"] }] } } },
+                  { "if": { "properties": { "mode": { "const": "warm" } } }, "then": { "required": ["lastAck"] } }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "welcome" } }, "required": ["type"] },
+      "then": {
+        "properties": {
+          "sender": { "const": "companion" },
+          "body": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sessionId", "capabilities", "limits"],
+            "properties": {
+              "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "capabilities": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+              "limits": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["maxJsonBytes", "maxAttachmentBytes", "maxDeviceUploads", "maxGlobalUploads", "maxTemporaryBytes", "uploadExpirySeconds"],
+                "properties": {
+                  "maxJsonBytes": { "type": "integer", "minimum": 1, "maximum": 262144 },
+                  "maxAttachmentBytes": { "type": "integer", "minimum": 1, "maximum": 20971520 },
+                  "maxDeviceUploads": { "type": "integer", "minimum": 1, "maximum": 2 },
+                  "maxGlobalUploads": { "type": "integer", "minimum": 1, "maximum": 4 },
+                  "maxTemporaryBytes": { "type": "integer", "minimum": 1, "maximum": 104857600 },
+                  "uploadExpirySeconds": { "type": "integer", "minimum": 1, "maximum": 900 }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "ack" } }, "required": ["type"] },
+      "then": { "properties": { "sender": { "const": "phone" }, "body": { "type": "object", "additionalProperties": false, "required": ["throughSeq"], "properties": { "throughSeq": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 } } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "error" } }, "required": ["type"] },
+      "then": { "properties": { "body": { "type": "object", "additionalProperties": false, "required": ["code", "retryable"], "properties": { "code": { "enum": ["computer_offline", "connection_lost", "desktop_incompatible", "owner_unavailable", "invalid_action", "outcome_unknown", "sequence_gap", "unauthorized", "quota_exceeded", "attachment_invalid", "internal"] }, "retryable": { "type": "boolean" } } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "attachment_offer" } }, "required": ["type"] },
+      "then": { "properties": { "sender": { "const": "phone" }, "body": { "type": "object", "additionalProperties": false, "required": ["uploadId", "declaredTotal", "sha256"], "properties": { "uploadId": { "$ref": "#/$defs/id" }, "declaredTotal": { "type": "integer", "minimum": 1, "maximum": 20971520 }, "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" } } } } }
+    },
+    {
+      "if": { "properties": { "type": { "enum": ["attachment_cancel", "attachment_complete"] } }, "required": ["type"] },
+      "then": { "properties": { "sender": { "const": "phone" }, "body": { "type": "object", "additionalProperties": false, "required": ["uploadId"], "properties": { "uploadId": { "$ref": "#/$defs/id" } } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "attachment_ack" } }, "required": ["type"] },
+      "then": { "required": ["seq"], "properties": { "sender": { "const": "companion" }, "body": { "type": "object", "additionalProperties": false, "required": ["uploadId", "state", "receivedBytes", "sha256", "nextChunk"], "properties": { "uploadId": { "$ref": "#/$defs/id" }, "state": { "enum": ["accepted", "complete", "cancelled"] }, "receivedBytes": { "type": "integer", "minimum": 0, "maximum": 20971520 }, "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }, "nextChunk": { "type": "integer", "minimum": 0, "maximum": 2147483647 } } } } }
+    }
+  ],
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9._:-]+$" }
+  }
+}

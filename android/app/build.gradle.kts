@@ -31,6 +31,7 @@ kotlin {
 
 dependencies {
     implementation(libs.okhttp)
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
     androidTestImplementation(libs.android.test.junit)
     androidTestImplementation(libs.android.test.runner)

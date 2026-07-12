@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-launcher.local/schema/action.schema.json",
+  "title": "Codex Launcher action body",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "taskId", "text"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["start_turn", "steer_turn"] },
+        "taskId": { "$ref": "#/$defs/id" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 131072, "pattern": "\\S" },
+        "attachmentIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "taskId"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "const": "interrupt_turn" },
+        "taskId": { "$ref": "#/$defs/id" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "taskId", "requestId", "requestKind", "decision"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "const": "approval" },
+        "taskId": { "$ref": "#/$defs/id" },
+        "requestId": { "$ref": "#/$defs/id" },
+        "requestKind": { "enum": ["command", "file", "permissions"] },
+        "decision": { "enum": ["accept", "accept_for_session", "decline", "cancel"] }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "projectId"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "const": "set_project" },
+        "projectId": { "$ref": "#/$defs/id" }
+      }
+    }
+  ],
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9._:-]+$" }
+  }
+}

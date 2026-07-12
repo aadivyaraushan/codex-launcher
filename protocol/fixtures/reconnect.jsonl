@@ -1,4 +1,4 @@
-{"version":{"major":1,"minor":0},"messageId":"r-001","sender":"phone","type":"hello","body":{"clientInstanceId":"phone-1","supportedMajors":[1],"resume":{"mode":"warm","lastAck":20}}}
+{"version":{"major":1,"minor":0},"messageId":"r-001","sender":"phone","type":"hello","body":{"clientInstanceId":"phone-1","supportedMajors":[1],"resume":{"mode":"warm","lastAck":20,"uploads":{"upload-resume":2}}}}
 {"version":{"major":1,"minor":0},"messageId":"r-002","sender":"companion","type":"welcome","body":{"sessionId":"session-2","capabilities":["desktop_tasks"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}}
 {"version":{"major":1,"minor":0},"messageId":"r-003","sender":"companion","type":"event","seq":21,"body":{"taskId":"task-1","event":"reply","state":"idle_after_reply","summary":"Codex replied"}}
 {"version":{"major":1,"minor":0},"messageId":"r-004","sender":"phone","type":"ack","body":{"throughSeq":21}}

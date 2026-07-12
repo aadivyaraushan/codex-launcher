@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-launcher.local/schema/event.schema.json",
+  "title": "Codex Launcher companion event body",
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9._:-]+$" },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "title", "projectLabel", "state", "lastActivityAt"],
+      "properties": {
+        "taskId": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "projectLabel": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "state": { "enum": ["working", "waiting_for_approval", "waiting_for_answer", "failed", "interrupted", "idle_after_reply"] },
+        "lastActivityAt": { "type": "string", "format": "date-time" },
+        "pendingRequest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requestId", "kind", "summary"],
+          "properties": {
+            "requestId": { "$ref": "#/$defs/id" },
+            "kind": { "enum": ["command", "file", "permissions", "question", "mcp_elicitation"] },
+            "summary": { "type": "string", "minLength": 1, "maxLength": 512 }
+          }
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "retryable"],
+      "properties": {
+        "code": { "enum": ["computer_offline", "connection_lost", "desktop_incompatible", "owner_unavailable", "invalid_action", "outcome_unknown", "sequence_gap", "unauthorized", "quota_exceeded", "attachment_invalid", "internal"] },
+        "retryable": { "type": "boolean" }
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseSeq", "tasks"],
+      "properties": {
+        "baseSeq": { "type": "integer", "minimum": 1 },
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "event", "state", "summary"],
+      "properties": {
+        "taskId": { "$ref": "#/$defs/id" },
+        "event": { "enum": ["activity", "reply", "approval", "answer", "failure", "interrupted", "metadata"] },
+        "state": { "enum": ["working", "waiting_for_approval", "waiting_for_answer", "failed", "interrupted", "idle_after_reply"] },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+    "actionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "state"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "state": { "enum": ["queued", "sent", "confirmed", "outcome_unknown", "failed", "cancelled"] },
+        "error": { "$ref": "#/$defs/error" }
+      },
+      "allOf": [{ "if": { "properties": { "state": { "enum": ["failed", "outcome_unknown"] } } }, "then": { "required": ["error"] } }]
+    }
+  }
+}

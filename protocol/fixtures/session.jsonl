@@ -1,6 +1,12 @@
 {"version":{"major":1,"minor":0},"messageId":"m-001","sender":"phone","type":"hello","body":{"clientInstanceId":"phone-1","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}
 {"version":{"major":1,"minor":0},"messageId":"m-002","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":["desktop_tasks","attachments","command_approval"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}}
-{"version":{"major":1,"minor":0},"messageId":"m-003","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"tasks":[{"taskId":"task-1","title":"Build launcher","projectLabel":"uf-u","state":"idle_after_reply","lastActivityAt":"2026-07-13T10:00:00Z"}]}}
+{"version":{"major":1,"minor":0},"messageId":"m-003","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"tasks":[{"taskId":"task-1","title":"Build launcher","projectLabel":"uf-u","state":"idle_after_reply","lastActivityAt":"2026-07-13t10:00:00z"}]}}
 {"version":{"major":1,"minor":0},"messageId":"m-004","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","taskId":"task-1","text":"Run the tests"}}
 {"version":{"major":1,"minor":0},"messageId":"m-005","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"action-1","state":"confirmed"}}
 {"version":{"major":1,"minor":0},"messageId":"m-006","sender":"phone","type":"ack","body":{"throughSeq":2}}
+{"version":{"major":1,"minor":0},"messageId":"m-007","sender":"phone","type":"attachment_offer","body":{"uploadId":"upload-1","declaredTotal":4,"sha256":"3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7"}}
+{"version":{"major":1,"minor":0},"messageId":"m-008","sender":"phone","type":"attachment_cancel","body":{"uploadId":"upload-1"}}
+{"version":{"major":1,"minor":0},"messageId":"m-009","sender":"phone","type":"attachment_complete","body":{"uploadId":"upload-2"}}
+{"version":{"major":1,"minor":0},"messageId":"m-010","sender":"companion","type":"attachment_ack","seq":3,"body":{"uploadId":"upload-2","state":"complete","receivedBytes":4,"sha256":"3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7","nextChunk":1}}
+{"version":{"major":1,"minor":0},"messageId":"m-011","sender":"phone","type":"ack","body":{"throughSeq":3}}
+{"version":{"major":1,"minor":0},"messageId":"m-012","sender":"phone","type":"action","body":{"actionId":"action-project-main","kind":"set_project","projectId":"project-main"}}
