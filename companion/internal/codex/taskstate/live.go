@@ -89,6 +89,28 @@ func mobileEvent(taskID, kind string, state State, summary string) MobileEvent {
 	return MobileEvent{TaskID: taskID, Kind: kind, State: state, Summary: summary}
 }
 
+func ProjectTaskState(taskID string, state State) (MobileEvent, error) {
+	if !validTextField(taskID, 256) {
+		return MobileEvent{}, ErrInvalidLiveNotification
+	}
+	switch state {
+	case Working:
+		return mobileEvent(taskID, "activity", state, "Codex is working"), nil
+	case WaitingForApproval:
+		return mobileEvent(taskID, "approval", state, "Needs your approval"), nil
+	case WaitingForAnswer:
+		return mobileEvent(taskID, "answer", state, "Needs your answer"), nil
+	case Failed:
+		return mobileEvent(taskID, "failure", state, "Codex hit an error"), nil
+	case Interrupted:
+		return mobileEvent(taskID, "interrupted", state, "Codex was interrupted"), nil
+	case IdleAfterReply:
+		return mobileEvent(taskID, "reply", state, "Codex replied"), nil
+	default:
+		return MobileEvent{}, ErrInvalidLiveNotification
+	}
+}
+
 func mobileActivitySummary(kind string) string {
 	switch kind {
 	case "reply":

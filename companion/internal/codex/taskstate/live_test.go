@@ -44,3 +44,29 @@ func TestProjectNotificationRejectsInvalidSupportedEventsAndSkipsUnrelatedOnes(t
 		t.Fatalf("unrelated notification error = %v", err)
 	}
 }
+
+func TestProjectTaskStateProducesOnlyFixedMobileSummaries(t *testing.T) {
+	tests := []struct {
+		state State
+		want  MobileEvent
+	}{
+		{Working, MobileEvent{TaskID: "thread-1", Kind: "activity", State: Working, Summary: "Codex is working"}},
+		{WaitingForApproval, MobileEvent{TaskID: "thread-1", Kind: "approval", State: WaitingForApproval, Summary: "Needs your approval"}},
+		{WaitingForAnswer, MobileEvent{TaskID: "thread-1", Kind: "answer", State: WaitingForAnswer, Summary: "Needs your answer"}},
+		{Failed, MobileEvent{TaskID: "thread-1", Kind: "failure", State: Failed, Summary: "Codex hit an error"}},
+		{Interrupted, MobileEvent{TaskID: "thread-1", Kind: "interrupted", State: Interrupted, Summary: "Codex was interrupted"}},
+		{IdleAfterReply, MobileEvent{TaskID: "thread-1", Kind: "reply", State: IdleAfterReply, Summary: "Codex replied"}},
+	}
+	for _, test := range tests {
+		got, err := ProjectTaskState("thread-1", test.state)
+		if err != nil || got != test.want {
+			t.Fatalf("ProjectTaskState(%q) = %#v, %v; want %#v", test.state, got, err, test.want)
+		}
+	}
+	if _, err := ProjectTaskState("", Working); err == nil {
+		t.Fatal("empty task ID was accepted")
+	}
+	if _, err := ProjectTaskState("thread-1", State("future")); err == nil {
+		t.Fatal("unknown task state was accepted")
+	}
+}

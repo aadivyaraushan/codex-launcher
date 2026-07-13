@@ -124,6 +124,7 @@ func startWith(ctx context.Context, options Options, deps dependencies) (*Sessio
 	}
 
 	var desktop desktopConnector
+	var desktopClient *desktopipc.Client
 	var tasks taskadapter.Set
 	adapterMode := "app_server"
 	if deps.goos == "darwin" {
@@ -132,7 +133,8 @@ func startWith(ctx context.Context, options Options, deps dependencies) (*Sessio
 			cleanupErr := closeOwners(nil, app)
 			return nil, errors.Join(ErrInvalidLifecycle, cleanupErr)
 		}
-		desktopClient, connectErr := desktop.Connect(ctx)
+		var connectErr error
+		desktopClient, connectErr = desktop.Connect(ctx)
 		if connectErr != nil {
 			logger.Error("[codex-runtime] Desktop connection failed", "platform", deps.goos, "error_class", fmt.Sprintf("%T", connectErr))
 			cleanupErr := closeOwners(desktop, app)
@@ -156,8 +158,14 @@ func startWith(ctx context.Context, options Options, deps dependencies) (*Sessio
 		done: make(chan struct{}), watchDone: make(chan struct{}),
 	}
 	logger.Info("[codex-runtime] ready", "platform", deps.goos, "adapter_mode", adapterMode, "output_shape", "owned_task_session")
+	appEvents := make(chan taskstate.MobileEvent, taskEventQueueSize)
+	var desktopEvents <-chan taskstate.MobileEvent
+	if desktopClient != nil {
+		desktopEvents = desktopClient.TaskEvents()
+	}
+	go mergeTaskEvents(eventContext, session.taskEvents, logger, appEvents, desktopEvents)
 	go func() {
-		if err := projectAppServerEvents(eventContext, app.Client().Events(), session.taskEvents, logger); err != nil {
+		if err := projectAppServerEvents(eventContext, app.Client().Events(), appEvents, logger); err != nil {
 			logger.Error("[codex-runtime] live event projection failed", "error_class", fmt.Sprintf("%T", err), "decision", "close_owned_runtime")
 			_ = session.Close()
 		}

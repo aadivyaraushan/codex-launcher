@@ -224,6 +224,13 @@ type Client struct {
 	buildErr        error
 	pendingActions  map[string]map[string]desktopPendingAction
 	consumedActions map[string]map[string]ActionKind
+	mobileEventMu   sync.Mutex
+	mobileEventOnce sync.Once
+	mobileVerified  map[string]bool
+	mobilePending   map[string]taskstate.MobileEvent
+	mobileOrder     []string
+	mobileSignal    chan struct{}
+	mobileEvents    chan taskstate.MobileEvent
 }
 
 type desktopPendingAction struct {
@@ -357,16 +364,21 @@ func newClient(connection io.ReadWriteCloser, desktopBuild string, logger *slog.
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Client{
+	client := &Client{
 		connection:      connection,
 		logger:          logger,
 		streams:         make(map[string]*StreamState),
 		pending:         make(map[string]chan wireMessage),
 		pendingActions:  make(map[string]map[string]desktopPendingAction),
 		consumedActions: make(map[string]map[string]ActionKind),
+		mobileVerified:  make(map[string]bool),
+		mobilePending:   make(map[string]taskstate.MobileEvent),
+		mobileSignal:    make(chan struct{}, 1),
+		mobileEvents:    make(chan taskstate.MobileEvent),
 		done:            make(chan struct{}),
 		buildErr:        verifyDesktopBuild(desktopBuild),
 	}
+	return client
 }
 
 func verifyDesktopBuild(desktopBuild string) error {
@@ -492,6 +504,7 @@ func (client *Client) LoadCompleteHistory(ctx context.Context, conversationID st
 	if err := client.waitForFreshSnapshot(ctx, stream, loaded.Revision, previousSnapshotGeneration); err != nil {
 		return 0, fmt.Errorf("wait for desktop task snapshot: %w", err)
 	}
+	client.markMobileStreamVerified(conversationID, stream)
 	return loaded.Revision, nil
 }
 
@@ -1027,9 +1040,11 @@ func (client *Client) handleInbound(message wireMessage) error {
 	if err := stream.apply(event); err != nil {
 		return fmt.Errorf("apply desktop stream event: %w", err)
 	}
-	if err := client.registerPendingState(event.ConversationID, stream.State().Materialized); err != nil {
+	retained := stream.State()
+	if err := client.registerPendingState(event.ConversationID, retained.Materialized); err != nil {
 		return err
 	}
+	client.queueMobileState(event.ConversationID, retained.Materialized)
 	stream.signalUpdate()
 	logStreamEvent(client.logger, event)
 	return nil

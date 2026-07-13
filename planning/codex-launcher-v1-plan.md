@@ -67,9 +67,13 @@
 > and then hands phone delivery to a bounded queue with write deadlines. Unknown
 > tasks refresh the catalog and broadcast a replacement snapshot before retry;
 > successful-event dedupe resets whenever that snapshot changes. Warm reconnects
-> replay retained results before snapshot replacement. Desktop follower-stream
-> projection, approval/question request routing, and the full transcript contract
-> remain unbuilt.
+> replay retained results before snapshot replacement. Successfully loaded and
+> verified Desktop histories now publish the same fixed, content-free task-state
+> events through a bounded, non-blocking projection path. The runtime merges
+> those events with app-server events before journal and phone delivery. A bare
+> tracked stream or failed owner load stays silent. Automatic follow policy for
+> the recent Desktop task list, approval/question request routing, and the full
+> transcript contract remain unbuilt.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
