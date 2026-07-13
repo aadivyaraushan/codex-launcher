@@ -37,6 +37,7 @@ class TaskEventReducerTest {
             assertEquals("Private title", updated[0].title)
             assertEquals("Private project", updated[0].projectLabel)
             assertEquals(expectedState, updated[0].state)
+            assertEquals(expectedState == TaskState.WORKING, updated[0].canRedirect)
             assertEquals(summary, updated[0].statusSummary)
             assertEquals(original[1], updated[1])
         }

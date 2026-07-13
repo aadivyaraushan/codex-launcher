@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -174,6 +175,14 @@ func TestClientRejectsUnsafeInputsAndUnsupportedApprovalDecisions(t *testing.T) 
 				t.Fatal("unsafe input was accepted")
 			}
 		})
+	}
+}
+
+func TestThreadNotLoadedClassificationIsExactAndSurvivesWrapping(t *testing.T) {
+	threadID := "00000000-0000-4000-8000-000000000000"
+	err := fmt.Errorf("read task: %w", &rpcError{Code: -32600, Message: "thread not loaded: " + threadID})
+	if !IsThreadNotLoaded(err, threadID) || IsThreadNotLoaded(&rpcError{Code: -32600, Message: "internal failure"}, threadID) || IsThreadNotLoaded(context.DeadlineExceeded, threadID) {
+		t.Fatal("thread-not-loaded classification was not exact")
 	}
 }
 

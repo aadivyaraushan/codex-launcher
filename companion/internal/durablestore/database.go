@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -96,6 +97,8 @@ CREATE TABLE IF NOT EXISTS pairing_offers (
 CREATE TABLE IF NOT EXISTS prompt_entries (
     action_id TEXT PRIMARY KEY,
     queue_key TEXT NOT NULL,
+    action_kind TEXT NOT NULL DEFAULT 'start_turn',
+    owner_source TEXT NOT NULL DEFAULT '',
     thread_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
     prompt TEXT NOT NULL,
@@ -129,8 +132,42 @@ CREATE TABLE IF NOT EXISTS event_acks (
     device_id TEXT PRIMARY KEY,
     sequence INTEGER NOT NULL
 );`
-	_, err := store.db.ExecContext(ctx, schema)
-	return err
+	if _, err := store.db.ExecContext(ctx, schema); err != nil {
+		return err
+	}
+	return ensurePromptColumns(ctx, store.db)
+}
+
+func ensurePromptColumns(ctx context.Context, database *sql.DB) error {
+	rows, err := database.QueryContext(ctx, `PRAGMA table_info(prompt_entries)`)
+	if err != nil {
+		return err
+	}
+	found := make(map[string]bool)
+	for rows.Next() {
+		var index, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&index, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		found[name] = true
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if !found["action_kind"] {
+		if _, err := database.ExecContext(ctx, `ALTER TABLE prompt_entries ADD COLUMN action_kind TEXT NOT NULL DEFAULT 'start_turn'`); err != nil {
+			return fmt.Errorf("add prompt action kind: %w", err)
+		}
+	}
+	if !found["owner_source"] {
+		if _, err := database.ExecContext(ctx, `ALTER TABLE prompt_entries ADD COLUMN owner_source TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add prompt owner source: %w", err)
+		}
+	}
+	return nil
 }
 
 func (store *Store) Close() error {

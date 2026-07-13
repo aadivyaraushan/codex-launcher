@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -40,7 +42,7 @@ func TestStorePreservesPairingQueueAndJournalAcrossReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry := promptqueue.Entry{
-		ActionID: "action-1", QueueKey: "new:action-1", ProjectID: "main", Prompt: "Build it",
+		ActionID: "action-1", QueueKey: "new:action-1", ActionKind: "start_turn", ProjectID: "main", Prompt: "Build it",
 		Model: "gpt-5", Effort: "high", PermissionMode: "workspace-write", State: promptqueue.StatePrepared,
 		CreatedAt: storeNow, UpdatedAt: storeNow,
 	}
@@ -77,7 +79,7 @@ func TestStorePreservesPairingQueueAndJournalAcrossReopen(t *testing.T) {
 		t.Fatalf("device = %#v, error = %v", gotDevice, err)
 	}
 	gotEntry, err := reopened.NextPending(ctx, "new:action-1")
-	if err != nil || gotEntry.State != promptqueue.StateSentUnknown || gotEntry.Prompt != "Build it" {
+	if err != nil || gotEntry.State != promptqueue.StateSentUnknown || gotEntry.Prompt != "Build it" || gotEntry.ActionKind != "start_turn" {
 		t.Fatalf("pending entry = %#v, error = %v", gotEntry, err)
 	}
 	events, err := reopened.ReplayAfter(ctx, 0)
@@ -98,11 +100,15 @@ func TestStoreKeepsCompareAndSwapAtomicAndMapsMissingRows(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	entry := promptqueue.Entry{
-		ActionID: "action-1", QueueKey: "thread-1", ThreadID: "thread-1", ProjectID: "main",
+		ActionID: "action-1", QueueKey: "thread-1", ActionKind: "start_turn", OwnerSource: "app_server", ThreadID: "thread-1", ProjectID: "main",
 		Prompt: "Continue", State: promptqueue.StatePrepared, CreatedAt: storeNow, UpdatedAt: storeNow,
 	}
 	if err := store.Create(ctx, entry); err != nil {
 		t.Fatal(err)
+	}
+	stored, err := store.Entry(ctx, "action-1")
+	if err != nil || stored.OwnerSource != "app_server" {
+		t.Fatalf("stored owner source = %q, %v", stored.OwnerSource, err)
 	}
 	if err := store.Create(ctx, entry); !errors.Is(err, promptqueue.ErrDuplicateAction) {
 		t.Fatalf("duplicate error = %v", err)
@@ -116,6 +122,62 @@ func TestStoreKeepsCompareAndSwapAtomicAndMapsMissingRows(t *testing.T) {
 	}
 	if _, err := store.Device(ctx, "missing"); !errors.Is(err, pairing.ErrDeviceNotFound) {
 		t.Fatalf("missing device error = %v", err)
+	}
+}
+
+func TestSQLiteEnumeratesPendingExistingTaskQueuesOnly(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "state.sqlite3"), eventjournal.Limits{MaxEvents: 8, MaxBytes: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	for _, entry := range []promptqueue.Entry{
+		{ActionID: "z", QueueKey: "thread-z", ThreadID: "thread-z", ActionKind: "start_turn", Prompt: "Later", State: promptqueue.StatePrepared, CreatedAt: storeNow, UpdatedAt: storeNow},
+		{ActionID: "a", QueueKey: "thread-a", ThreadID: "thread-a", ActionKind: "steer_turn", Prompt: "Maybe", State: promptqueue.StateSentUnknown, CreatedAt: storeNow, UpdatedAt: storeNow},
+		{ActionID: "new", QueueKey: "new:new", ProjectID: "main", ActionKind: "start_turn", Prompt: "New", State: promptqueue.StatePrepared, CreatedAt: storeNow, UpdatedAt: storeNow},
+	} {
+		if err := store.Create(ctx, entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids, err := store.PendingThreadIDs(ctx)
+	if err != nil || !slices.Equal(ids, []string{"thread-a", "thread-z"}) {
+		t.Fatalf("pending thread IDs = %#v, %v", ids, err)
+	}
+}
+
+func TestOpenAddsActionKindToAnExistingPromptDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.sqlite3")
+	legacy, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = legacy.Exec(`CREATE TABLE prompt_entries (
+action_id TEXT PRIMARY KEY, queue_key TEXT NOT NULL, thread_id TEXT NOT NULL, project_id TEXT NOT NULL, prompt TEXT NOT NULL,
+model TEXT NOT NULL, effort TEXT NOT NULL, permission_mode TEXT NOT NULL, request_hash TEXT NOT NULL, state TEXT NOT NULL,
+result_code TEXT NOT NULL, result_thread_id TEXT NOT NULL, result_turn_id TEXT NOT NULL, error_code TEXT NOT NULL,
+created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(context.Background(), path, eventjournal.Limits{MaxEvents: 8, MaxBytes: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	queue := promptqueue.New(store, nil)
+	if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		ActionID: "stop-legacy", QueueKey: "action:stop-legacy", ActionKind: "interrupt_turn", ThreadID: "thread-1", CreatedAt: storeNow,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := store.Entry(context.Background(), "stop-legacy")
+	if err != nil || entry.ActionKind != "interrupt_turn" {
+		t.Fatalf("migrated entry = %#v, %v", entry, err)
 	}
 }
 

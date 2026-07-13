@@ -63,7 +63,7 @@ func TestMapAppServerThreadUsesRuntimeFlagsAndStableMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if task.ID != "thread-1" || task.Title != "Launcher task" || task.ProjectLabel != "project" || task.State != WaitingForAnswer || task.UpdatedAtUnix != 1783900000 {
+	if task.ID != "thread-1" || task.Title != "Launcher task" || task.ProjectLabel != "project" || task.State != WaitingForAnswer || task.UpdatedAtUnix != 1783900000 || task.ActiveTurnID != "turn-1" {
 		t.Fatalf("mapped app-server task = %#v", task)
 	}
 	if task.Title == "private preview" {
@@ -106,6 +106,14 @@ func TestDesktopSnapshotUsesLastTurnAndEveryPendingRequest(t *testing.T) {
 	task, err = MapDesktopSnapshot(raw)
 	if err != nil || task.State != Interrupted {
 		t.Fatalf("interrupted desktop task = %#v, %v", task, err)
+	}
+}
+
+func TestDesktopBusyTaskKeepsItsActiveTurnIDForSafeControls(t *testing.T) {
+	raw := json.RawMessage(`{"type":"snapshot","conversationState":{"id":"thread-1","cwd":"/work/project","threadRuntimeStatus":{"type":"active","activeFlags":[]},"turns":[{"id":"turn-1","status":"inProgress"}],"requests":[]}}`)
+	task, err := MapDesktopSnapshot(raw)
+	if err != nil || task.State != Working || task.ActiveTurnID != "turn-1" {
+		t.Fatalf("busy Desktop task = %#v, %v", task, err)
 	}
 }
 

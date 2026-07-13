@@ -339,6 +339,7 @@ class LauncherActivity : ComponentActivity() {
                         )
                     LauncherDestination.TASK ->
                         sessionUiState.transcript?.let { transcript ->
+                            val taskSummary = sessionUiState.snapshot?.tasks?.singleOrNull { it.id == transcript.taskId }
                             TaskScreen(
                                 state = transcript,
                                 onBack = {
@@ -361,6 +362,13 @@ class LauncherActivity : ComponentActivity() {
                                 onArchiveTask = { sessionViewModel.archiveTask(transcript.taskId) },
                                 onForkTask = { sessionViewModel.forkTask(transcript.taskId) },
                                 onDismissUnresolvedFork = { sessionViewModel.dismissUnconfirmedFork(transcript.taskId) },
+                                taskState = taskSummary?.state?.takeIf { sessionUiState.taskControlsAvailable },
+                                canRedirect = taskSummary?.canRedirect == true,
+                                queueState = taskSummary?.queueState ?: app.codexlauncher.task.summary.TaskQueueState.NONE,
+                                onQueueFollowUp = { text -> sessionViewModel.queueTaskFollowUp(transcript.taskId, text) },
+                                onRedirect = { text -> sessionViewModel.redirectTask(transcript.taskId, text) },
+                                onStop = { sessionViewModel.stopTask(transcript.taskId) },
+                                onDismissUnresolvedControl = { sessionViewModel.dismissUnconfirmedTaskControl(transcript.taskId) },
                             )
                         } ?: LauncherLoadingScreen()
                     LauncherDestination.TASK_DETAIL ->

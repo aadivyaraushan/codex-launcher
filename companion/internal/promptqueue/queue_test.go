@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -255,6 +256,98 @@ func TestCallbackErrorsNeverLeakPromptContentToLogs(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "error_class=external_error") {
 		t.Fatalf("safe error class missing: %s", output.String())
+	}
+}
+
+func TestBusyAgainDefersQueuedPromptWithoutLosingItsOrderOrText(t *testing.T) {
+	store := NewMemoryStore()
+	queue := New(store, nil)
+	first := Entry{ActionID: "a-1", ThreadID: "thread-1", ProjectID: "project-1", Prompt: "first", CreatedAt: queueNow}
+	second := Entry{ActionID: "a-2", ThreadID: "thread-1", ProjectID: "project-1", Prompt: "second", CreatedAt: queueNow.Add(time.Second)}
+	if err := queue.Enqueue(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Enqueue(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queue.DispatchNext(context.Background(), "thread-1", func(context.Context, Entry) (Result, error) {
+		return Result{}, ErrSendDeferred
+	}, nil, queueNow.Add(2*time.Second)); !errors.Is(err, ErrSendDeferred) {
+		t.Fatalf("deferred dispatch error = %v", err)
+	}
+	stored, err := store.NextPrepared(context.Background(), "thread-1")
+	if err != nil || stored.ActionID != "a-1" || stored.Prompt != "first" || stored.State != StatePrepared {
+		t.Fatalf("first queued prompt after deferral = %#v, %v", stored, err)
+	}
+}
+
+func TestInterruptActionCanUseTheDurableStateMachineWithoutInventingPromptText(t *testing.T) {
+	store := NewMemoryStore()
+	queue := New(store, nil)
+	entry := Entry{ActionID: "stop-1", QueueKey: "action:stop-1", ActionKind: "interrupt_turn", ThreadID: "thread-1", CreatedAt: queueNow}
+	if err := queue.Enqueue(context.Background(), entry); err != nil {
+		t.Fatal(err)
+	}
+	result, err := queue.DispatchNext(context.Background(), "action:stop-1", func(_ context.Context, stored Entry) (Result, error) {
+		if stored.Prompt != "" || stored.ActionKind != "interrupt_turn" {
+			t.Fatalf("stored stop action = %#v", stored)
+		}
+		return Result{Code: "interrupted", ThreadID: "thread-1", TurnID: "turn-1"}, nil
+	}, nil, queueNow)
+	if err != nil || result.Code != "interrupted" {
+		t.Fatalf("interrupt result = %#v, %v", result, err)
+	}
+}
+
+func TestPendingThreadIDsFindsEveryDurableExistingTaskQueue(t *testing.T) {
+	store := NewMemoryStore()
+	queue := New(store, nil)
+	for _, entry := range []Entry{
+		{ActionID: "z-queued", QueueKey: "thread-z", ThreadID: "thread-z", Prompt: "Later", CreatedAt: queueNow},
+		{ActionID: "a-unknown", QueueKey: "thread-a", ThreadID: "thread-a", Prompt: "Maybe sent", CreatedAt: queueNow.Add(time.Second)},
+		{ActionID: "new-task", QueueKey: "new:new-task", ProjectID: "main", Prompt: "New", CreatedAt: queueNow.Add(2 * time.Second)},
+		{ActionID: "stop", QueueKey: "action:stop", ActionKind: "interrupt_turn", ThreadID: "thread-stop", CreatedAt: queueNow.Add(3 * time.Second)},
+	} {
+		if err := queue.Enqueue(context.Background(), entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, _ = queue.DispatchNext(context.Background(), "thread-a", func(context.Context, Entry) (Result, error) {
+		return Result{}, ErrSendOutcomeUnknown
+	}, nil, queueNow.Add(4*time.Second))
+
+	ids, err := queue.PendingThreadIDs(context.Background())
+	if err != nil || !slices.Equal(ids, []string{"thread-a", "thread-z"}) {
+		t.Fatalf("pending thread IDs = %#v, %v", ids, err)
+	}
+}
+
+func TestUserReviewCanClearOnlyTheMatchingUnknownExistingTaskAction(t *testing.T) {
+	store := NewMemoryStore()
+	queue := New(store, nil)
+	entry := Entry{ActionID: "unknown-1", QueueKey: "thread-1", ThreadID: "thread-1", Prompt: "Private prompt", CreatedAt: queueNow}
+	if err := queue.Enqueue(context.Background(), entry); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = queue.DispatchNext(context.Background(), "thread-1", func(context.Context, Entry) (Result, error) {
+		return Result{}, ErrSendOutcomeUnknown
+	}, nil, queueNow.Add(time.Second))
+
+	if err := queue.DismissUnknown(context.Background(), "unknown-1", "thread-2", queueNow.Add(2*time.Second)); !errors.Is(err, ErrInvalidEntry) {
+		t.Fatalf("cross-task dismissal error = %v", err)
+	}
+	if err := queue.DismissUnknown(context.Background(), "unknown-1", "thread-1", queueNow.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.Entry(context.Background(), "unknown-1")
+	if err != nil || stored.State != StateCanceled || stored.Prompt != "" || stored.ErrorCode != "user_reviewed" {
+		t.Fatalf("dismissed entry = %#v, %v", stored, err)
+	}
+	if err := queue.DismissUnknown(context.Background(), "unknown-1", "thread-1", queueNow.Add(3*time.Second)); err != nil {
+		t.Fatalf("idempotent dismissal = %v", err)
+	}
+	if err := queue.DismissUnknown(context.Background(), "never-received", "thread-1", queueNow.Add(3*time.Second)); err != nil {
+		t.Fatalf("missing action dismissal = %v", err)
 	}
 }
 

@@ -17,6 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import app.codexlauncher.task.management.TaskActionOutcome
+import app.codexlauncher.task.control.ExistingTaskControlOutcome
 
 class TaskScreenTest {
     @get:Rule
@@ -200,6 +201,62 @@ class TaskScreenTest {
 
         compose.runOnIdle { phase.value = ConnectionPhase.DISCONNECTED }
         compose.onNodeWithText("private command output").assertDoesNotExist()
+    }
+
+    @Test
+    fun busyTaskMakesQueueRedirectAndConfirmedStopDistinctBeforeAnyAction() {
+        var queued = ""
+        var redirected = ""
+        var stops = 0
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                TaskScreen(
+                    state = populatedState(),
+                    taskState = app.codexlauncher.task.summary.TaskState.WORKING,
+                    canRedirect = true,
+                    queueState = app.codexlauncher.task.summary.TaskQueueState.NONE,
+                    onQueueFollowUp = { queued = it; ExistingTaskControlOutcome.Queued },
+                    onRedirect = { redirected = it; ExistingTaskControlOutcome.Redirected },
+                    onStop = { stops += 1; ExistingTaskControlOutcome.Interrupted },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Queue").assertIsDisplayed()
+        compose.onNodeWithText("Redirect").assertIsDisplayed()
+        compose.onNodeWithText("Stop").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Follow-up message").performTextInput("Check tests")
+        compose.onNodeWithText("Queue follow-up").performClick()
+        compose.waitUntil { queued == "Check tests" }
+        assertEquals("", redirected)
+
+        compose.onNodeWithText("Stop").performClick()
+        compose.onNodeWithText("Stop this task?").assertIsDisplayed()
+        assertEquals(0, stops)
+        compose.onNodeWithText("Keep working").performClick()
+        assertEquals(0, stops)
+        compose.onNodeWithText("Stop").performClick()
+        compose.onNodeWithText("Stop task").performClick()
+        compose.waitUntil { stops == 1 }
+    }
+
+    @Test
+    fun unknownFollowUpShowsExplicitComputerReviewAction() {
+        var dismissed = false
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                TaskScreen(
+                    state = populatedState(),
+                    taskState = app.codexlauncher.task.summary.TaskState.WORKING,
+                    queueState = app.codexlauncher.task.summary.TaskQueueState.OUTCOME_UNKNOWN,
+                    onDismissUnresolvedControl = { dismissed = true; true },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Queued follow-up outcome unknown. Check Codex on your computer before sending another.").assertIsDisplayed()
+        compose.onNodeWithText("I checked Codex").performClick()
+        compose.waitUntil { dismissed }
     }
 
     private fun populatedState() =

@@ -224,7 +224,7 @@ func TestAppServerProcessHelper(t *testing.T) {
 			"result": map[string]any{"data": []any{map[string]any{
 				"id": "thread-1", "preview": "Build launcher", "cwd": "/work/launcher", "updatedAt": 42,
 				"status": map[string]any{"type": "active", "activeFlags": []string{}},
-				"turns":  []any{map[string]any{"status": "inProgress"}},
+				"turns":  []any{map[string]any{"id": "turn-1", "status": "inProgress"}},
 			}}},
 		})
 	}

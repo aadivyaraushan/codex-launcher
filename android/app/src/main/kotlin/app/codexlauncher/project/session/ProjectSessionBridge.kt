@@ -13,6 +13,7 @@ import app.codexlauncher.storage.actions.ActionRecordKind
 import app.codexlauncher.storage.actions.ActionResultCode
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary
+import app.codexlauncher.task.summary.TaskQueueState
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -64,6 +65,9 @@ class ProjectSessionBridge(
                         projectLabel = task.getValue("projectLabel").jsonPrimitive.content,
                         state = TaskState.fromWire(task.getValue("state").jsonPrimitive.content),
                         lastActivityAt = Instant.parse(task.getValue("lastActivityAt").jsonPrimitive.content),
+                        activeTurnId = task["activeTurnId"]?.jsonPrimitive?.content,
+                        canRedirect = task["canRedirect"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                        queueState = TaskQueueState.fromWire(task["queueState"]?.jsonPrimitive?.content ?: "none"),
                     )
                 },
         ).also {

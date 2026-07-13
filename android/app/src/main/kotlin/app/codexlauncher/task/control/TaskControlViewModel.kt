@@ -39,6 +39,29 @@ sealed interface NewTaskSendOutcome {
     data class Failed(val error: ActionErrorCode) : NewTaskSendOutcome
 }
 
+enum class ExistingTaskSendMode {
+    QUEUE,
+    REDIRECT,
+}
+
+sealed interface ExistingTaskControlOutcome {
+    data object Accepted : ExistingTaskControlOutcome
+
+    data object Queued : ExistingTaskControlOutcome
+
+    data object Redirected : ExistingTaskControlOutcome
+
+    data object Interrupted : ExistingTaskControlOutcome
+
+    data object NeedsReview : ExistingTaskControlOutcome
+
+    data object Invalid : ExistingTaskControlOutcome
+
+    data object Unavailable : ExistingTaskControlOutcome
+
+    data class Failed(val error: ActionErrorCode) : ExistingTaskControlOutcome
+}
+
 class TaskControlViewModel(
     private val sendAction: suspend (String, suspend () -> Boolean) -> ActionSendResult,
     private val journal: ActionJournal,
@@ -64,6 +87,83 @@ class TaskControlViewModel(
                 false -> Unit
             }
             startNewTaskOnce(projectId, prompt, selection, draftVersion)
+        } finally {
+            sending.set(false)
+        }
+    }
+
+    suspend fun sendToTask(taskId: String, prompt: String, mode: ExistingTaskSendMode): ExistingTaskControlOutcome {
+        val kind = if (mode == ExistingTaskSendMode.REDIRECT) ActionRecordKind.STEER_TURN else ActionRecordKind.START_TURN
+        return sendExistingControl(taskId, prompt, kind)
+    }
+
+    suspend fun stopTask(taskId: String): ExistingTaskControlOutcome =
+        sendExistingControl(taskId, null, ActionRecordKind.INTERRUPT_TURN)
+
+    private suspend fun sendExistingControl(
+        taskId: String,
+        prompt: String?,
+        kind: ActionRecordKind,
+    ): ExistingTaskControlOutcome {
+        if (!sending.compareAndSet(false, true)) return ExistingTaskControlOutcome.Unavailable
+        return try {
+            if (!taskId.matches(protocolIdPattern) || kind != ActionRecordKind.INTERRUPT_TURN &&
+                (prompt.isNullOrBlank() || prompt.encodeToByteArray().size > MAX_PROMPT_BYTES)
+            ) return ExistingTaskControlOutcome.Invalid
+            when (val unresolved = unresolvedExistingTaskRecords()) {
+                null -> return ExistingTaskControlOutcome.Unavailable
+                else -> if (unresolved.any { it.threadId == taskId }) return ExistingTaskControlOutcome.NeedsReview
+            }
+            val actionId = nextActionId()
+            if (!actionId.matches(protocolIdPattern)) return ExistingTaskControlOutcome.Invalid
+            val terminal = CompletableDeferred<TerminalNewTaskResult?>()
+            if (pending.putIfAbsent(actionId, terminal) != null) return ExistingTaskControlOutcome.Unavailable
+            val encoded = encodeExisting(actionId, taskId, prompt, kind)
+            val prepared = journal.prepare(actionId, kind, encoded, taskId, null)
+                ?: run {
+                    pending.remove(actionId, terminal)
+                    return ExistingTaskControlOutcome.Unavailable
+                }
+            var sentRecord: ActionRecord? = null
+            val sendResult = sendAction(encoded) {
+                journal.markSentUnknown(prepared).also { sentRecord = it } != null
+            }
+            if (sendResult == ActionSendResult.NOT_SENT) {
+                pending.remove(actionId, terminal)
+                return ExistingTaskControlOutcome.Unavailable
+            }
+            try {
+                val result = terminal.await() ?: return ExistingTaskControlOutcome.Unavailable
+                val sent = sentRecord ?: return ExistingTaskControlOutcome.Unavailable
+                when (result.state) {
+                    "confirmed" -> {
+                        val code = result.resultCode?.let(ActionResultCode::fromWire) ?: return ExistingTaskControlOutcome.Unavailable
+                        if (!journal.confirm(sent, code, null)) return ExistingTaskControlOutcome.Unavailable
+                        val requiresSnapshot = code != ActionResultCode.QUEUED
+                        onTerminalStored(actionId, result.sequence, requiresSnapshot, false)
+                        when (code) {
+                            ActionResultCode.ACCEPTED -> ExistingTaskControlOutcome.Accepted
+                            ActionResultCode.QUEUED -> ExistingTaskControlOutcome.Queued
+                            ActionResultCode.REDIRECTED -> ExistingTaskControlOutcome.Redirected
+                            ActionResultCode.INTERRUPTED -> ExistingTaskControlOutcome.Interrupted
+                            else -> ExistingTaskControlOutcome.Unavailable
+                        }
+                    }
+                    "outcome_unknown" -> {
+                        onTerminalStored(actionId, result.sequence, false, true)
+                        ExistingTaskControlOutcome.NeedsReview
+                    }
+                    "failed" -> {
+                        val error = result.errorCode?.let(ActionErrorCode::fromWire) ?: ActionErrorCode.INTERNAL
+                        if (!journal.confirm(sent, null, error)) return ExistingTaskControlOutcome.Unavailable
+                        onTerminalStored(actionId, result.sequence, false, false)
+                        ExistingTaskControlOutcome.Failed(error)
+                    }
+                    else -> ExistingTaskControlOutcome.Unavailable
+                }
+            } finally {
+                pending.remove(actionId, terminal)
+            }
         } finally {
             sending.set(false)
         }
@@ -139,6 +239,7 @@ class TaskControlViewModel(
                     sequence = sequence,
                     state = state,
                     errorCode = message.body["error"]?.jsonObject?.get("code")?.jsonPrimitive?.content,
+                    resultCode = message.body["resultCode"]?.jsonPrimitive?.content,
                 ),
             )
         }
@@ -161,17 +262,66 @@ class TaskControlViewModel(
         return records.all { journal.dismissUnknown(it.actionId) }
     }
 
+    suspend fun unresolvedExistingTaskIds(): Set<String> =
+        unresolvedExistingTaskRecords()?.mapNotNull { it.threadId }?.toSet() ?: emptySet()
+
+    suspend fun dismissUnresolvedExistingTask(taskId: String): Boolean {
+        if (!taskId.matches(protocolIdPattern)) return false
+        if (!sending.compareAndSet(false, true)) return false
+        return try {
+            val records = unresolvedExistingTaskRecords() ?: return false
+            val matching = records.filter { it.threadId == taskId }
+            if (matching.isEmpty()) return false
+            for (record in matching) {
+                val dismissalActionId = nextActionId()
+                if (!dismissalActionId.matches(protocolIdPattern)) return false
+                val terminal = CompletableDeferred<TerminalNewTaskResult?>()
+                if (pending.putIfAbsent(dismissalActionId, terminal) != null) return false
+                try {
+                    val encoded = encodeUnknownControlDismissal(dismissalActionId, taskId, record.actionId)
+                    if (sendAction(encoded) { true } == ActionSendResult.NOT_SENT) return false
+                    val result = terminal.await() ?: return false
+                    if (result.state != "confirmed" || result.resultCode != ActionResultCode.ACCEPTED.wireName) return false
+                    if (!journal.dismissUnknown(record.actionId)) return false
+                    onTerminalStored(dismissalActionId, result.sequence, false, false)
+                } finally {
+                    pending.remove(dismissalActionId, terminal)
+                }
+            }
+            true
+        } finally {
+            sending.set(false)
+        }
+    }
+
     private suspend fun hasUnresolvedNewTask(): Boolean? = unresolvedNewTaskRecords()?.isNotEmpty()
 
     private suspend fun unresolvedNewTaskRecords(): List<ActionRecord>? =
         when (val state = journal.unresolvedActions()) {
             is ActionRecordReadState.Available ->
-                state.records.filter { it.kind == ActionRecordKind.START_TURN && it.state == ActionRecordState.SENT_UNKNOWN }
+                state.records.filter { it.kind == ActionRecordKind.START_TURN && it.threadId == null && it.state == ActionRecordState.SENT_UNKNOWN }
             is ActionRecordReadState.Unavailable -> {
                 AppLog.info(
                     feature = "task-control",
                     message = "unconfirmed new task metadata unavailable",
                     fields = mapOf("failure_reason" to state.reason.name.lowercase(), "decision" to "block_new_task"),
+                )
+                null
+            }
+        }
+
+    private suspend fun unresolvedExistingTaskRecords(): List<ActionRecord>? =
+        when (val state = journal.unresolvedActions()) {
+            is ActionRecordReadState.Available ->
+                state.records.filter {
+                    it.state == ActionRecordState.SENT_UNKNOWN && it.threadId != null &&
+                        it.kind in existingTaskControlKinds
+                }
+            is ActionRecordReadState.Unavailable -> {
+                AppLog.info(
+                    feature = "task-control",
+                    message = "unconfirmed existing task metadata unavailable",
+                    fields = mapOf("failure_reason" to state.reason.name.lowercase(), "decision" to "block_existing_task_controls"),
                 )
                 null
             }
@@ -200,11 +350,57 @@ class TaskControlViewModel(
         return Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), envelope).also(ProtocolCodec::decodeText)
     }
 
-    private data class TerminalNewTaskResult(val sequence: Long, val state: String, val errorCode: String?)
+    private fun encodeExisting(actionId: String, taskId: String, prompt: String?, kind: ActionRecordKind): String {
+        val envelope =
+            buildJsonObject {
+                put("version", buildJsonObject { put("major", ProtocolCodec.PROTOCOL_MAJOR); put("minor", 0) })
+                put("messageId", actionId)
+                put("sender", "phone")
+                put("type", "action")
+                put(
+                    "body",
+                    buildJsonObject {
+                        put("actionId", actionId)
+                        put("kind", kind.wireName)
+                        put("taskId", taskId)
+                        prompt?.let { put("text", it) }
+                    },
+                )
+            }
+        return Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), envelope).also(ProtocolCodec::decodeText)
+    }
+
+    private fun encodeUnknownControlDismissal(actionId: String, taskId: String, targetActionId: String): String {
+        val envelope =
+            buildJsonObject {
+                put("version", buildJsonObject { put("major", ProtocolCodec.PROTOCOL_MAJOR); put("minor", 0) })
+                put("messageId", actionId)
+                put("sender", "phone")
+                put("type", "action")
+                put(
+                    "body",
+                    buildJsonObject {
+                        put("actionId", actionId)
+                        put("kind", "dismiss_unknown_control")
+                        put("taskId", taskId)
+                        put("targetActionId", targetActionId)
+                    },
+                )
+            }
+        return Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), envelope).also(ProtocolCodec::decodeText)
+    }
+
+    private data class TerminalNewTaskResult(
+        val sequence: Long,
+        val state: String,
+        val errorCode: String?,
+        val resultCode: String? = null,
+    )
 
     private companion object {
         const val MAX_PROMPT_BYTES = 128 * 1024
         val projectIdPattern = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
         val protocolIdPattern = Regex("^[A-Za-z0-9._:-]{1,128}$")
+        val existingTaskControlKinds = setOf(ActionRecordKind.START_TURN, ActionRecordKind.STEER_TURN, ActionRecordKind.INTERRUPT_TURN)
     }
 }

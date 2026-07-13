@@ -126,7 +126,17 @@
 > starts the first turn. Confirmed sends clear only the exact sent draft;
 > unknown outcomes survive phone and companion restarts, visibly block another
 > send, and require an explicit desktop check. Existing-task busy routing,
-> redirect, stop, dictation, and attachments remain.
+> redirect, and confirmed stop now use the same durable boundary. The companion
+> owns FIFO queue order, recovers an idle queue after restart, defers safely if
+> the task became busy again, and exposes queued/unknown state to Android. The
+> Pixel 9 API 36 emulator passed all 66 instrumented tests. Unknown Desktop
+> writes now stay durable across both companion and phone restarts, queue
+> recovery covers tasks outside Home, archive clears queued prompt content, and
+> `I checked Codex` cancels the exact unknown action without retrying Codex.
+> Stored owner routing also protects queued tasks older than the bounded recent
+> catalog, transient lookup failures retain prompts, definitive deletion clears
+> them, and Archive stays blocked until unknown controls are reviewed.
+> Dictation and attachments remain.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

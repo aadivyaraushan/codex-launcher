@@ -43,6 +43,8 @@ enum class ActionRecordState {
 
 enum class ActionResultCode(val wireName: String) {
     ACCEPTED("accepted"),
+    QUEUED("queued"),
+    REDIRECTED("redirected"),
     INTERRUPTED("interrupted"),
     CANCELLED("cancelled"),
     PROJECT_SELECTED("project_selected"),
@@ -51,6 +53,11 @@ enum class ActionResultCode(val wireName: String) {
     TASK_RENAMED("task_renamed"),
     TASK_ARCHIVED("task_archived"),
     TASK_FORKED("task_forked"),
+    ;
+
+    companion object {
+        fun fromWire(wireName: String): ActionResultCode? = entries.firstOrNull { it.wireName == wireName }
+    }
 }
 
 enum class ActionErrorCode(val wireName: String) {

@@ -13,6 +13,7 @@ type Store interface {
 	NextPending(context.Context, string) (Entry, error)
 	NextPrepared(context.Context, string) (Entry, error)
 	ThreadEntries(context.Context, string) ([]Entry, error)
+	PendingThreadIDs(context.Context) ([]string, error)
 }
 
 type MemoryStore struct {
@@ -117,6 +118,26 @@ func (store *MemoryStore) ThreadEntries(ctx context.Context, queueKey string) ([
 		return entries[left].CreatedAt.Before(entries[right].CreatedAt)
 	})
 	return entries, nil
+}
+
+func (store *MemoryStore) PendingThreadIDs(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	unique := make(map[string]struct{})
+	for _, entry := range store.entries {
+		if entry.QueueKey == entry.ThreadID && entry.ThreadID != "" && (entry.State == StatePrepared || entry.State == StateSentUnknown) {
+			unique[entry.ThreadID] = struct{}{}
+		}
+	}
+	ids := make([]string, 0, len(unique))
+	for id := range unique {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids, nil
 }
 
 func (store *MemoryStore) FailNextSave(err error) {

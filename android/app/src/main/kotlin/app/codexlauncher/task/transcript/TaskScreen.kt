@@ -33,6 +33,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.task.management.TaskActionOutcome
 import app.codexlauncher.task.management.TaskActionsMenu
+import app.codexlauncher.task.control.ExistingTaskControlOutcome
+import app.codexlauncher.task.control.TaskControls
+import app.codexlauncher.task.summary.TaskState
+import app.codexlauncher.task.summary.TaskQueueState
 
 @Composable
 fun TaskScreen(
@@ -48,6 +52,13 @@ fun TaskScreen(
     onArchiveTask: suspend () -> TaskActionOutcome = { TaskActionOutcome.Unavailable },
     onForkTask: suspend () -> TaskActionOutcome = { TaskActionOutcome.Unavailable },
     onDismissUnresolvedFork: suspend () -> Boolean = { false },
+    taskState: TaskState? = null,
+    canRedirect: Boolean = false,
+    queueState: TaskQueueState = TaskQueueState.NONE,
+    onQueueFollowUp: suspend (String) -> ExistingTaskControlOutcome = { ExistingTaskControlOutcome.Unavailable },
+    onRedirect: suspend (String) -> ExistingTaskControlOutcome = { ExistingTaskControlOutcome.Unavailable },
+    onStop: suspend () -> ExistingTaskControlOutcome = { ExistingTaskControlOutcome.Unavailable },
+    onDismissUnresolvedControl: suspend () -> Boolean = { false },
 ) {
     Column(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding(),
@@ -81,6 +92,7 @@ fun TaskScreen(
             )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
         when {
             state.loading && state.entries.isEmpty() ->
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -144,6 +156,19 @@ fun TaskScreen(
                         }
                     }
                 }
+        }
+        }
+        taskState?.let { current ->
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            TaskControls(
+                taskState = current,
+                canRedirect = canRedirect,
+                queueState = queueState,
+                onQueueFollowUp = onQueueFollowUp,
+                onRedirect = onRedirect,
+                onStop = onStop,
+                onDismissUnresolved = onDismissUnresolvedControl,
+            )
         }
     }
 }

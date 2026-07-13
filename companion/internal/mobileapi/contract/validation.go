@@ -530,8 +530,10 @@ func validateBody(message Message) error {
 		}
 	case "action_result":
 		state := stringValue(body["state"])
-		if message.Sender != "companion" || message.Sequence == nil || !onlyAllowedKeys(body, "actionId", "state", "error") ||
-			!validID(stringValue(body["actionId"])) || !knownActionState(state) || !validateOptionalError(body["error"], state == "failed" || state == "outcome_unknown") {
+		if message.Sender != "companion" || message.Sequence == nil || !onlyAllowedKeys(body, "actionId", "state", "resultCode", "error") ||
+			!validID(stringValue(body["actionId"])) || !knownActionState(state) ||
+			(body["resultCode"] != nil && !knownActionResultCode(stringValue(body["resultCode"]))) ||
+			!validateOptionalError(body["error"], state == "failed" || state == "outcome_unknown") {
 			return ErrInvalidActionState
 		}
 	case "ack":
@@ -732,9 +734,14 @@ func validateTasks(raw json.RawMessage) bool {
 	seen := make(map[string]struct{}, len(tasks))
 	for _, task := range tasks {
 		id := stringValue(task["taskId"])
-		if !onlyAllowedKeys(task, "taskId", "title", "projectLabel", "state", "lastActivityAt", "pendingRequest") ||
+		if !onlyAllowedKeys(task, "taskId", "title", "projectLabel", "state", "activeTurnId", "canRedirect", "queueState", "lastActivityAt", "pendingRequest") ||
 			!validID(id) || !safeDisplayString(task["title"], 256) || !safeDisplayString(task["projectLabel"], 128) ||
-			!knownTaskState(stringValue(task["state"])) || !validRFC3339(stringValue(task["lastActivityAt"])) {
+			!knownTaskState(stringValue(task["state"])) || !validRFC3339(stringValue(task["lastActivityAt"])) ||
+			(task["activeTurnId"] != nil && !validID(stringValue(task["activeTurnId"]))) ||
+			(task["canRedirect"] != nil && boolValue(task["canRedirect"]) == nil) {
+			return false
+		}
+		if queueState := stringValue(task["queueState"]); queueState != "" && queueState != "none" && queueState != "queued" && queueState != "outcome_unknown" {
 			return false
 		}
 		if _, duplicate := seen[id]; duplicate {
@@ -871,6 +878,15 @@ func knownActionState(state string) bool {
 	}
 }
 
+func knownActionResultCode(code string) bool {
+	switch code {
+	case "accepted", "queued", "redirected", "interrupted":
+		return true
+	default:
+		return false
+	}
+}
+
 func validActionTransition(previous, next string) bool {
 	if !knownActionState(next) {
 		return false
@@ -912,6 +928,10 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 		}
 	case "interrupt_turn":
 		if !exactKeys(body, "actionId", "kind", "taskId") || !validID(stringValue(body["taskId"])) {
+			return ErrInvalidAction
+		}
+	case "dismiss_unknown_control":
+		if !exactKeys(body, "actionId", "kind", "taskId", "targetActionId") || !validID(stringValue(body["taskId"])) || !validID(stringValue(body["targetActionId"])) {
 			return ErrInvalidAction
 		}
 	case "approval":

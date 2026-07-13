@@ -16,11 +16,25 @@ enum class TaskState(val wireName: String) {
     }
 }
 
+enum class TaskQueueState(val wireName: String) {
+    NONE("none"),
+    QUEUED("queued"),
+    OUTCOME_UNKNOWN("outcome_unknown"),
+    ;
+
+    companion object {
+        fun fromWire(wireName: String): TaskQueueState = entries.single { it.wireName == wireName }
+    }
+}
+
 data class TaskSummary(
     val id: String,
     val title: String,
     val projectLabel: String,
     val state: TaskState,
     val lastActivityAt: Instant,
+    val activeTurnId: String? = null,
+    val canRedirect: Boolean = false,
+    val queueState: TaskQueueState = TaskQueueState.NONE,
     val statusSummary: String? = null,
 )

@@ -9,6 +9,7 @@ import app.codexlauncher.storage.actions.ActionRecord
 import app.codexlauncher.storage.actions.ActionRecordKind
 import app.codexlauncher.storage.actions.ActionResultCode
 import app.codexlauncher.task.summary.TaskState
+import app.codexlauncher.task.summary.TaskQueueState
 import java.time.Instant
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -39,7 +40,7 @@ class ProjectSessionBridgeTest {
     fun mapsValidatedTaskSummariesWithoutRawCodexPayloads() {
         val bridge = bridge()
         val message = decode(
-            """{"version":{"major":1,"minor":0},"messageId":"snapshot-tasks","sender":"companion","type":"snapshot","seq":8,"body":{"baseSeq":8,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[{"taskId":"thread-1","title":"Build launcher","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"},{"taskId":"thread-2","title":"Review tests","projectLabel":"uf-u","state":"idle_after_reply","lastActivityAt":"2026-07-13T10:01:00Z"}]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"snapshot-tasks","sender":"companion","type":"snapshot","seq":8,"body":{"baseSeq":8,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[{"taskId":"thread-1","title":"Build launcher","projectLabel":"uf-u","state":"working","activeTurnId":"turn-1","canRedirect":true,"queueState":"outcome_unknown","lastActivityAt":"2026-07-13T10:02:00Z"},{"taskId":"thread-2","title":"Review tests","projectLabel":"uf-u","state":"idle_after_reply","canRedirect":false,"queueState":"none","lastActivityAt":"2026-07-13T10:01:00Z"}]}}""",
         )
 
         val tasks = bridge.snapshot(message).tasks
@@ -49,6 +50,9 @@ class ProjectSessionBridgeTest {
         assertEquals("Build launcher", tasks[0].title)
         assertEquals("uf-u", tasks[0].projectLabel)
         assertEquals(TaskState.WORKING, tasks[0].state)
+        assertEquals("turn-1", tasks[0].activeTurnId)
+        assertTrue(tasks[0].canRedirect)
+        assertEquals(TaskQueueState.OUTCOME_UNKNOWN, tasks[0].queueState)
         assertEquals(Instant.parse("2026-07-13T10:02:00Z"), tasks[0].lastActivityAt)
         assertEquals(TaskState.IDLE_AFTER_REPLY, tasks[1].state)
     }

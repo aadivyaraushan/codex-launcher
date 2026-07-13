@@ -107,6 +107,11 @@ func (err *rpcError) Error() string {
 	return fmt.Sprintf("app-server error %d: %s", err.Code, err.Message)
 }
 
+func IsThreadNotLoaded(err error, threadID string) bool {
+	var remote *rpcError
+	return validID(threadID) && errors.As(err, &remote) && remote.Code == -32600 && remote.Message == "thread not loaded: "+threadID
+}
+
 type response struct {
 	result json.RawMessage
 	err    error

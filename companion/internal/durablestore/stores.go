@@ -167,9 +167,9 @@ func scanDevice(row rowScanner) (pairing.DeviceRecord, error) {
 
 func (store *Store) Create(ctx context.Context, entry promptqueue.Entry) error {
 	result, err := store.db.ExecContext(ctx, `
-INSERT OR IGNORE INTO prompt_entries(action_id, queue_key, thread_id, project_id, prompt, model, effort, permission_mode, request_hash, state,
+INSERT OR IGNORE INTO prompt_entries(action_id, queue_key, action_kind, owner_source, thread_id, project_id, prompt, model, effort, permission_mode, request_hash, state,
 result_code, result_thread_id, result_turn_id, error_code, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, promptArguments(entry)...)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, promptArguments(entry)...)
 	if err != nil {
 		return err
 	}
@@ -187,7 +187,7 @@ func (store *Store) CompareAndSwap(ctx context.Context, expected promptqueue.Sta
 	arguments := promptArguments(entry)
 	arguments = append(arguments, entry.ActionID, string(expected))
 	result, err := store.db.ExecContext(ctx, `
-UPDATE prompt_entries SET queue_key = ?, thread_id = ?, project_id = ?, prompt = ?, model = ?, effort = ?, permission_mode = ?, request_hash = ?, state = ?,
+UPDATE prompt_entries SET queue_key = ?, action_kind = ?, owner_source = ?, thread_id = ?, project_id = ?, prompt = ?, model = ?, effort = ?, permission_mode = ?, request_hash = ?, state = ?,
 result_code = ?, result_thread_id = ?, result_turn_id = ?, error_code = ?, created_at = ?, updated_at = ?
 WHERE action_id = ? AND state = ?`, arguments[1:]...)
 	if err != nil {
@@ -256,18 +256,35 @@ func (store *Store) ThreadEntries(ctx context.Context, queueKey string) ([]promp
 	return entries, rows.Err()
 }
 
-const promptSelect = `SELECT action_id, queue_key, thread_id, project_id, prompt, model, effort, permission_mode, request_hash, state,
+func (store *Store) PendingThreadIDs(ctx context.Context) ([]string, error) {
+	rows, err := store.db.QueryContext(ctx, `SELECT DISTINCT thread_id FROM prompt_entries WHERE queue_key = thread_id AND thread_id <> '' AND state IN (?, ?) ORDER BY thread_id`, promptqueue.StatePrepared, promptqueue.StateSentUnknown)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+const promptSelect = `SELECT action_id, queue_key, action_kind, owner_source, thread_id, project_id, prompt, model, effort, permission_mode, request_hash, state,
 result_code, result_thread_id, result_turn_id, error_code, created_at, updated_at FROM prompt_entries`
 
 func promptArguments(entry promptqueue.Entry) []any {
-	return []any{entry.ActionID, entry.QueueKey, entry.ThreadID, entry.ProjectID, entry.Prompt, entry.Model, entry.Effort, entry.PermissionMode, entry.RequestHash,
+	return []any{entry.ActionID, entry.QueueKey, entry.ActionKind, entry.OwnerSource, entry.ThreadID, entry.ProjectID, entry.Prompt, entry.Model, entry.Effort, entry.PermissionMode, entry.RequestHash,
 		entry.State, entry.Result.Code, entry.Result.ThreadID, entry.Result.TurnID, entry.ErrorCode, encodeTime(entry.CreatedAt), encodeTime(entry.UpdatedAt)}
 }
 
 func scanEntry(row rowScanner) (promptqueue.Entry, error) {
 	var entry promptqueue.Entry
 	var createdAt, updatedAt string
-	err := row.Scan(&entry.ActionID, &entry.QueueKey, &entry.ThreadID, &entry.ProjectID, &entry.Prompt, &entry.Model, &entry.Effort,
+	err := row.Scan(&entry.ActionID, &entry.QueueKey, &entry.ActionKind, &entry.OwnerSource, &entry.ThreadID, &entry.ProjectID, &entry.Prompt, &entry.Model, &entry.Effort,
 		&entry.PermissionMode, &entry.RequestHash, &entry.State, &entry.Result.Code, &entry.Result.ThreadID, &entry.Result.TurnID, &entry.ErrorCode, &createdAt, &updatedAt)
 	if err != nil {
 		return promptqueue.Entry{}, err

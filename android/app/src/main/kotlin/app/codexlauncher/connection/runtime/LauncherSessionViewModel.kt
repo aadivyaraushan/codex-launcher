@@ -19,6 +19,7 @@ import app.codexlauncher.project.session.ProjectSessionBridge
 import app.codexlauncher.project.session.ProjectSnapshot
 import app.codexlauncher.storage.actions.ActionJournal
 import app.codexlauncher.task.summary.TaskEventReducer
+import app.codexlauncher.task.summary.TaskQueueState
 import app.codexlauncher.task.management.TaskAction
 import app.codexlauncher.task.management.TaskActionBridge
 import app.codexlauncher.task.management.TaskActionOutcome
@@ -26,6 +27,8 @@ import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
 import app.codexlauncher.task.control.NewTaskSendOutcome
 import app.codexlauncher.task.control.TaskControlViewModel
+import app.codexlauncher.task.control.ExistingTaskControlOutcome
+import app.codexlauncher.task.control.ExistingTaskSendMode
 import app.codexlauncher.task.composer.DraftVersion
 import app.codexlauncher.task.transcript.TaskTranscriptMapper
 import app.codexlauncher.task.transcript.TaskTranscriptUiState
@@ -55,11 +58,13 @@ data class LauncherSessionState(
     val snapshot: ProjectSnapshot? = null,
     val transcript: TaskTranscriptUiState? = null,
     val taskManagementAvailable: Boolean = false,
+    val taskControlsAvailable: Boolean = false,
     val newTaskOptions: NewTaskOptions? = null,
     val newTaskOptionsSessionId: String? = null,
     val newTaskNeedsReview: Boolean = false,
     val newTaskMessage: String? = null,
     val unconfirmedForkTaskIds: Set<String> = emptySet(),
+    val unconfirmedControlTaskIds: Set<String> = emptySet(),
 )
 
 class LauncherSessionViewModel(
@@ -211,12 +216,14 @@ class LauncherSessionViewModel(
         }
         transcriptCapable = "task_transcripts" in capabilities
         taskManagementCapable = "task_management" in capabilities
+        val taskControlsCapable = "desktop_tasks" in capabilities
         val newTaskOptions =
             if ("new_task_options" in capabilities) NewTaskOptions.fromWelcome(message.body) else null
         mutableState.value =
             mutableState.value.copy(
                 newTaskOptions = newTaskOptions,
                 newTaskOptionsSessionId = newTaskOptions?.let { message.body.getValue("sessionId").jsonPrimitive.content },
+                taskControlsAvailable = taskControlsCapable,
             )
         AppLog.info(
             feature = "new-task-options",
@@ -253,7 +260,7 @@ class LauncherSessionViewModel(
                 null
             }
         taskControlViewModel =
-            if (newTaskOptions != null) {
+            if (taskControlsCapable || newTaskOptions != null) {
                 TaskControlViewModel(
                     sendAction = connection::sendAction,
                     journal = actionJournal,
@@ -269,6 +276,7 @@ class LauncherSessionViewModel(
         taskControlViewModel?.let { controls ->
             submissionScope.launch {
                 publishNewTaskReview(expectedGeneration, controls.needsNewTaskReview())
+                publishUnconfirmedTaskControls(expectedGeneration, controls.unresolvedExistingTaskIds())
             }
         }
         taskActionBridge?.let { bridge ->
@@ -300,10 +308,63 @@ class LauncherSessionViewModel(
         return outcome
     }
 
+    suspend fun queueTaskFollowUp(taskId: String, prompt: String): ExistingTaskControlOutcome {
+        val outcome = taskControlViewModel?.sendToTask(taskId, prompt, ExistingTaskSendMode.QUEUE) ?: ExistingTaskControlOutcome.Unavailable
+        if (outcome == ExistingTaskControlOutcome.Queued) publishTaskQueueState(taskId, TaskQueueState.QUEUED)
+        if (outcome == ExistingTaskControlOutcome.NeedsReview) publishTaskQueueState(taskId, TaskQueueState.OUTCOME_UNKNOWN)
+        return outcome
+    }
+
+    suspend fun redirectTask(taskId: String, prompt: String): ExistingTaskControlOutcome {
+        val outcome = taskControlViewModel?.sendToTask(taskId, prompt, ExistingTaskSendMode.REDIRECT) ?: ExistingTaskControlOutcome.Unavailable
+        if (outcome == ExistingTaskControlOutcome.Queued) publishTaskQueueState(taskId, TaskQueueState.QUEUED)
+        if (outcome == ExistingTaskControlOutcome.NeedsReview) publishTaskQueueState(taskId, TaskQueueState.OUTCOME_UNKNOWN)
+        return outcome
+    }
+
+    suspend fun stopTask(taskId: String): ExistingTaskControlOutcome {
+        val outcome = taskControlViewModel?.stopTask(taskId) ?: ExistingTaskControlOutcome.Unavailable
+        if (outcome == ExistingTaskControlOutcome.NeedsReview) publishTaskQueueState(taskId, TaskQueueState.OUTCOME_UNKNOWN)
+        return outcome
+    }
+
+    @Synchronized
+    private fun publishTaskQueueState(taskId: String, queueState: TaskQueueState) {
+        val current = mutableState.value
+        val snapshot = current.snapshot ?: return
+        val index = snapshot.tasks.indexOfFirst { it.id == taskId }
+        if (index < 0) return
+        val tasks = snapshot.tasks.toMutableList()
+        tasks[index] = tasks[index].copy(queueState = queueState)
+        mutableState.value = current.copy(snapshot = snapshot.copy(tasks = tasks))
+    }
+
     suspend fun dismissUnconfirmedNewTask(): Boolean {
         val controls = taskControlViewModel ?: return false
         if (!controls.dismissUnresolvedNewTasks()) return false
         return publishNewTaskReview(generation.get(), false)
+    }
+
+    suspend fun dismissUnconfirmedTaskControl(taskId: String): Boolean {
+        val controls = taskControlViewModel ?: return false
+        if (!controls.dismissUnresolvedExistingTask(taskId)) return false
+        val remaining = controls.unresolvedExistingTaskIds()
+        if (!publishUnconfirmedTaskControls(generation.get(), remaining)) return false
+        if (taskId !in remaining) publishTaskQueueState(taskId, TaskQueueState.NONE)
+        return true
+    }
+
+    @Synchronized
+    private fun publishUnconfirmedTaskControls(expectedGeneration: Long, taskIds: Set<String>): Boolean {
+        if (generation.get() != expectedGeneration) return false
+        val current = mutableState.value
+        val snapshot = current.snapshot
+        val tasks = snapshot?.tasks?.map { task -> if (task.id in taskIds) task.copy(queueState = TaskQueueState.OUTCOME_UNKNOWN) else task }
+        mutableState.value = current.copy(
+            snapshot = if (snapshot != null && tasks != null) snapshot.copy(tasks = tasks) else snapshot,
+            unconfirmedControlTaskIds = taskIds,
+        )
+        return true
     }
 
     @Synchronized
@@ -599,7 +660,9 @@ class LauncherSessionViewModel(
         snapshot: ProjectSnapshot,
     ): Long? {
         if (!isCurrentSnapshot(expectedGeneration, snapshotToken)) return null
-        var tasks = snapshot.tasks
+        var tasks = snapshot.tasks.map { task ->
+            if (task.id in mutableState.value.unconfirmedControlTaskIds) task.copy(queueState = TaskQueueState.OUTCOME_UNKNOWN) else task
+        }
         var appliedThrough = snapshot.baseSequence
         val queuedEvents = pendingTaskEvents.filter { requireNotNull(it.sequence) > snapshot.baseSequence }
         pendingTaskEvents.clear()
@@ -629,11 +692,13 @@ class LauncherSessionViewModel(
                 snapshot = snapshot.copy(tasks = tasks),
                 transcript = nextTranscript,
                 taskManagementAvailable = taskManagementCapable,
+                taskControlsAvailable = mutableState.value.taskControlsAvailable,
                 newTaskOptions = mutableState.value.newTaskOptions,
                 newTaskOptionsSessionId = mutableState.value.newTaskOptionsSessionId,
                 newTaskNeedsReview = mutableState.value.newTaskNeedsReview,
                 newTaskMessage = mutableState.value.newTaskMessage,
                 unconfirmedForkTaskIds = mutableState.value.unconfirmedForkTaskIds,
+                unconfirmedControlTaskIds = mutableState.value.unconfirmedControlTaskIds,
             )
         AppLog.info(
             feature = "connection-runtime",

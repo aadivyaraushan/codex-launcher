@@ -75,6 +75,14 @@ class LauncherActivityTest {
 
     @Test
     fun homeOpensAllAppsAndPersistsAnAppearanceChoiceAcrossRecreation() {
+        compose.waitUntil(timeoutMillis = 3_000) {
+            try {
+                compose.onNodeWithText("All apps").assertIsDisplayed()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
         compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
         compose.onNodeWithText("Launcher settings").performClick()

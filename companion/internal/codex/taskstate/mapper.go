@@ -81,6 +81,8 @@ type Task struct {
 	Title         string
 	ProjectLabel  string
 	State         State
+	ActiveTurnID  string
+	CanRedirect   bool
 	UpdatedAtUnix int64
 	Source        Source
 }
@@ -97,17 +99,25 @@ func MapAppServerThread(raw json.RawMessage) (Task, error) {
 			ActiveFlags []string `json:"activeFlags"`
 		} `json:"status"`
 		Turns []struct {
+			ID     string `json:"id"`
 			Status string `json:"status"`
 		} `json:"turns"`
 	}
 	if err := json.Unmarshal(raw, &thread); err != nil || !validTextField(thread.ID, 256) || !validTextField(thread.CWD, 4096) || thread.UpdatedAt <= 0 || !validRuntime(thread.Status.Type, thread.Status.ActiveFlags) {
 		return Task{}, errors.New("invalid app-server thread")
 	}
-	lastTurnStatus := ""
+	lastTurnStatus, activeTurnID := "", ""
 	if len(thread.Turns) != 0 {
-		lastTurnStatus = thread.Turns[len(thread.Turns)-1].Status
+		last := thread.Turns[len(thread.Turns)-1]
+		lastTurnStatus = last.Status
 		if !validTurnStatus(lastTurnStatus) {
 			return Task{}, errors.New("invalid app-server turn status")
+		}
+		if lastTurnStatus == "inProgress" {
+			if !validTextField(last.ID, 256) {
+				return Task{}, errors.New("active app-server turn ID is invalid")
+			}
+			activeTurnID = last.ID
 		}
 	}
 	title := "Codex task"
@@ -116,7 +126,7 @@ func MapAppServerThread(raw json.RawMessage) (Task, error) {
 	} else if strings.TrimSpace(thread.Preview) != "" {
 		title = thread.Preview
 	}
-	return Task{ID: thread.ID, Title: bounded(title, 256), ProjectLabel: bounded(projectLabel(thread.CWD), 128), UpdatedAtUnix: thread.UpdatedAt, Source: SourceAppServer,
+	return Task{ID: thread.ID, Title: bounded(title, 256), ProjectLabel: bounded(projectLabel(thread.CWD), 128), ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", UpdatedAtUnix: thread.UpdatedAt, Source: SourceAppServer,
 		State: Map(Signals{ThreadID: thread.ID, RuntimeStatus: thread.Status.Type, ActiveFlags: thread.Status.ActiveFlags, LastTurnStatus: lastTurnStatus})}, nil
 }
 
@@ -144,6 +154,7 @@ func MapDesktopConversationState(raw json.RawMessage) (Task, error) {
 			Method string `json:"method"`
 		} `json:"requests"`
 		Turns []struct {
+			ID     string `json:"id"`
 			Status string `json:"status"`
 		} `json:"turns"`
 	}
@@ -160,15 +171,22 @@ func MapDesktopConversationState(raw json.RawMessage) (Task, error) {
 			pendingKind, pendingID = kind, request.ID
 		}
 	}
-	lastTurnStatus := ""
+	lastTurnStatus, activeTurnID := "", ""
 	if len(conversationState.Turns) != 0 {
-		lastTurnStatus = conversationState.Turns[len(conversationState.Turns)-1].Status
+		last := conversationState.Turns[len(conversationState.Turns)-1]
+		lastTurnStatus = last.Status
 		if lastTurnStatus != "" && !validTurnStatus(lastTurnStatus) {
 			return Task{}, errors.New("invalid desktop turn status")
 		}
+		if lastTurnStatus == "inProgress" {
+			if !validTextField(last.ID, 256) {
+				return Task{}, errors.New("active Desktop turn ID is invalid")
+			}
+			activeTurnID = last.ID
+		}
 	}
 	state := Map(Signals{ThreadID: conversationState.ID, RuntimeStatus: conversationState.RuntimeStatus.Type, ActiveFlags: conversationState.RuntimeStatus.ActiveFlags, LastTurnStatus: lastTurnStatus, PendingRequestKind: pendingKind, PendingRequestID: pendingID})
-	return Task{ID: conversationState.ID, Title: "Codex task", ProjectLabel: bounded(projectLabel(conversationState.CWD), 128), State: state, Source: SourceDesktop}, nil
+	return Task{ID: conversationState.ID, Title: "Codex task", ProjectLabel: bounded(projectLabel(conversationState.CWD), 128), State: state, ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", Source: SourceDesktop}, nil
 }
 
 func projectLabel(cwd string) string {

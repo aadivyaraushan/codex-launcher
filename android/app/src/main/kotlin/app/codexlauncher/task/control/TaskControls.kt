@@ -1,0 +1,154 @@
+package app.codexlauncher.task.control
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import app.codexlauncher.task.summary.TaskState
+import app.codexlauncher.task.summary.TaskQueueState
+import kotlinx.coroutines.launch
+
+@Composable
+fun TaskControls(
+    taskState: TaskState,
+    canRedirect: Boolean,
+    queueState: TaskQueueState,
+    modifier: Modifier = Modifier,
+    onQueueFollowUp: suspend (String) -> ExistingTaskControlOutcome,
+    onRedirect: suspend (String) -> ExistingTaskControlOutcome,
+    onStop: suspend () -> ExistingTaskControlOutcome,
+    onDismissUnresolved: suspend () -> Boolean,
+) {
+    val active = taskState in setOf(TaskState.WORKING, TaskState.WAITING_FOR_APPROVAL, TaskState.WAITING_FOR_ANSWER)
+    var text by remember { mutableStateOf("") }
+    var mode by remember(taskState, canRedirect) { mutableStateOf(ExistingTaskSendMode.QUEUE) }
+    var sending by remember { mutableStateOf(false) }
+    var stopDialog by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val followUpsBlocked = queueState == TaskQueueState.OUTCOME_UNKNOWN
+
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (queueState) {
+            TaskQueueState.QUEUED -> Text("Follow-up queued on your computer")
+            TaskQueueState.OUTCOME_UNKNOWN -> {
+                Text("Queued follow-up outcome unknown. Check Codex on your computer before sending another.")
+                TextButton(
+                    enabled = !sending,
+                    onClick = {
+                        sending = true
+                        scope.launch {
+                            message = if (onDismissUnresolved()) "Review cleared" else "Could not clear review yet"
+                            sending = false
+                        }
+                    },
+                ) { Text("I checked Codex") }
+            }
+            TaskQueueState.NONE -> Unit
+        }
+        if (active) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (mode == ExistingTaskSendMode.QUEUE) {
+                    Button(onClick = { mode = ExistingTaskSendMode.QUEUE }, enabled = !sending) { Text("Queue") }
+                } else {
+                    OutlinedButton(onClick = { mode = ExistingTaskSendMode.QUEUE }, enabled = !sending) { Text("Queue") }
+                }
+                if (canRedirect && taskState == TaskState.WORKING) {
+                    if (mode == ExistingTaskSendMode.REDIRECT) {
+                        Button(onClick = { mode = ExistingTaskSendMode.REDIRECT }, enabled = !sending) { Text("Redirect") }
+                    } else {
+                        OutlinedButton(onClick = { mode = ExistingTaskSendMode.REDIRECT }, enabled = !sending) { Text("Redirect") }
+                    }
+                }
+            }
+        }
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Follow-up message" },
+            enabled = !sending && !followUpsBlocked,
+            placeholder = { Text(if (active) "Add a follow-up or redirect…" else "Send a follow-up…") },
+            minLines = 1,
+            maxLines = 4,
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                enabled = !sending && !followUpsBlocked && text.isNotBlank(),
+                onClick = {
+                    val submitted = text
+                    sending = true
+                    scope.launch {
+                        val outcome = if (mode == ExistingTaskSendMode.REDIRECT) onRedirect(submitted) else onQueueFollowUp(submitted)
+                        message = outcome.message()
+                        if (outcome in setOf(ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued, ExistingTaskControlOutcome.Redirected)) text = ""
+                        sending = false
+                    }
+                },
+            ) {
+                Text(
+                    when {
+                        !active -> "Send follow-up"
+                        mode == ExistingTaskSendMode.REDIRECT -> "Redirect now"
+                        else -> "Queue follow-up"
+                    },
+                )
+            }
+            if (active) {
+                OutlinedButton(onClick = { stopDialog = true }, enabled = !sending) { Text("Stop") }
+            }
+        }
+        message?.let { Text(it) }
+    }
+
+    if (stopDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!sending) stopDialog = false },
+            title = { Text("Stop this task?") },
+            text = { Text("Codex will stop the current turn. Queued follow-ups stay queued.") },
+            confirmButton = {
+                Button(
+                    enabled = !sending,
+                    onClick = {
+                        sending = true
+                        scope.launch {
+                            val outcome = onStop()
+                            message = outcome.message()
+                            sending = false
+                            stopDialog = false
+                        }
+                    },
+                ) { Text("Stop task") }
+            },
+            dismissButton = { TextButton(enabled = !sending, onClick = { stopDialog = false }) { Text("Keep working") } },
+        )
+    }
+}
+
+private fun ExistingTaskControlOutcome.message(): String =
+    when (this) {
+        ExistingTaskControlOutcome.Accepted -> "Follow-up sent"
+        ExistingTaskControlOutcome.Queued -> "Follow-up queued"
+        ExistingTaskControlOutcome.Redirected -> "Current turn redirected"
+        ExistingTaskControlOutcome.Interrupted -> "Stop confirmed"
+        ExistingTaskControlOutcome.NeedsReview -> "Outcome unknown. Check Codex on your computer."
+        ExistingTaskControlOutcome.Invalid -> "That action is invalid"
+        ExistingTaskControlOutcome.Unavailable -> "Action unavailable"
+        is ExistingTaskControlOutcome.Failed -> "Action failed"
+    }

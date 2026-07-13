@@ -168,8 +168,10 @@ object ProtocolCodec {
             MessageType.TASK_PAGE -> if (sender != Sender.COMPANION || !validTaskPage(body)) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.ACTION_RESULT -> {
                 val state = optionalString(body, "state")
-                if (sender != Sender.COMPANION || sequence == null || body.keys.any { it !in setOf("actionId", "state", "error") } ||
-                    !optionalString(body, "actionId").isValidId() || state !in actionStates || !validOptionalError(body["error"], state in setOf("failed", "outcome_unknown"))
+                if (sender != Sender.COMPANION || sequence == null || body.keys.any { it !in setOf("actionId", "state", "resultCode", "error") } ||
+                    !optionalString(body, "actionId").isValidId() || state !in actionStates ||
+                    body["resultCode"] != null && optionalString(body, "resultCode") !in actionResultCodes ||
+                    !validOptionalError(body["error"], state in setOf("failed", "outcome_unknown"))
                 ) fail(ProtocolError.INVALID_ACTION_STATE)
             }
             MessageType.ACK -> if (sender != Sender.PHONE || body.keys != setOf("throughSeq") || (body["throughSeq"]?.jsonPrimitive?.longOrNull ?: 0) < 1) fail(ProtocolError.INVALID_ACK)
@@ -216,6 +218,10 @@ object ProtocolCodec {
             }
             "steer_turn" -> if (body.keys.any { it !in setOf("actionId", "kind", "taskId", "text", "attachmentIds") } || !optionalString(body, "taskId").isValidId() || !optionalString(body, "text").isBounded(131072) || optionalString(body, "text").isBlank() || !validOptionalIds(body["attachmentIds"])) fail(ProtocolError.INVALID_ACTION)
             "interrupt_turn" -> if (body.keys != setOf("actionId", "kind", "taskId") || !optionalString(body, "taskId").isValidId()) fail(ProtocolError.INVALID_ACTION)
+            "dismiss_unknown_control" -> if (
+                body.keys != setOf("actionId", "kind", "taskId", "targetActionId") ||
+                !optionalString(body, "taskId").isValidId() || !optionalString(body, "targetActionId").isValidId()
+            ) fail(ProtocolError.INVALID_ACTION)
             "approval" -> {
                 val requestKind = optionalString(body, "requestKind")
                 val decision = optionalString(body, "decision")
@@ -251,9 +257,12 @@ object ProtocolCodec {
         tasks.all { element ->
             val task = element.jsonObject
             val id = optionalString(task, "taskId")
-            task.keys.all { it in setOf("taskId", "title", "projectLabel", "state", "lastActivityAt", "pendingRequest") } &&
+            task.keys.all { it in setOf("taskId", "title", "projectLabel", "state", "activeTurnId", "canRedirect", "queueState", "lastActivityAt", "pendingRequest") } &&
                 id.isValidId() && ids.add(id) && optionalString(task, "title").isSafeDisplay(256) &&
                 optionalString(task, "projectLabel").isSafeDisplay(128) && optionalString(task, "state") in taskStates &&
+                (task["activeTurnId"] == null || optionalString(task, "activeTurnId").isValidId()) &&
+                (task["canRedirect"] == null || isJsonBoolean(task["canRedirect"])) &&
+                optionalString(task, "queueState") in setOf("", "none", "queued", "outcome_unknown") &&
                 runCatching { Instant.parse(optionalString(task, "lastActivityAt")) }.isSuccess && validPendingRequest(task["pendingRequest"])
         }
     }.getOrDefault(false)
@@ -459,6 +468,7 @@ object ProtocolCodec {
     private fun fail(error: ProtocolError): Nothing = throw Exception(error)
 
     private val actionStates = setOf("queued", "sent", "confirmed", "outcome_unknown", "failed", "cancelled")
+    private val actionResultCodes = setOf("accepted", "queued", "redirected", "interrupted")
     private val taskStates = setOf("working", "waiting_for_approval", "waiting_for_answer", "failed", "interrupted", "idle_after_reply")
     private val eventNames = setOf("activity", "reply", "approval", "answer", "failure", "interrupted", "metadata")
     private val transcriptStatuses = setOf("inProgress", "completed", "failed", "declined")

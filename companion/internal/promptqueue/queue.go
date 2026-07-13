@@ -19,6 +19,7 @@ var (
 	ErrStateConflict      = errors.New("queued prompt state changed concurrently")
 	ErrDispatchInProgress = errors.New("queued prompt is already being dispatched")
 	ErrSendNotSent        = errors.New("prompt was not sent")
+	ErrSendDeferred       = errors.New("prompt remains queued because the task is busy")
 	ErrSendOutcomeUnknown = errors.New("prompt send outcome is unknown")
 )
 
@@ -35,6 +36,8 @@ const (
 type Entry struct {
 	ActionID       string
 	QueueKey       string
+	ActionKind     string
+	OwnerSource    string
 	ThreadID       string
 	ProjectID      string
 	Prompt         string
@@ -63,6 +66,19 @@ type Queue struct {
 	logger *slog.Logger
 }
 
+type QueueStatus string
+
+type PendingThread struct {
+	ID          string
+	OwnerSource string
+}
+
+const (
+	QueueEmpty          QueueStatus = "none"
+	QueueWaiting        QueueStatus = "queued"
+	QueueOutcomeUnknown QueueStatus = "outcome_unknown"
+)
+
 func New(store Store, logger *slog.Logger) *Queue {
 	if logger == nil {
 		logger = slog.Default()
@@ -73,6 +89,9 @@ func New(store Store, logger *slog.Logger) *Queue {
 func (queue *Queue) Enqueue(ctx context.Context, entry Entry) error {
 	if entry.QueueKey == "" {
 		entry.QueueKey = entry.ThreadID
+	}
+	if entry.ActionKind == "" {
+		entry.ActionKind = "start_turn"
 	}
 	if queue == nil || queue.store == nil || !validEntry(entry) {
 		return ErrInvalidEntry
@@ -112,6 +131,15 @@ func (queue *Queue) DispatchNext(ctx context.Context, threadID string, sender Se
 	queue.logger.Info("[prompt-queue] sending prompt", "action_id", entry.ActionID, "thread_id", threadID, "branch_reason", "prepared_state_committed")
 	result, sendErr := sender(ctx, entry)
 	if sendErr != nil {
+		if errors.Is(sendErr, ErrSendDeferred) {
+			entry.State = StatePrepared
+			entry.UpdatedAt = now
+			if saveErr := queue.store.CompareAndSwap(ctx, StateSentUnknown, entry); saveErr != nil {
+				return Result{}, errors.Join(ErrOutcomeUnknown, fmt.Errorf("restore deferred prompt: %w", saveErr))
+			}
+			queue.logger.Info("[prompt-queue] prompt remains queued", "action_id", entry.ActionID, "thread_id", threadID, "branch_reason", "task_busy")
+			return Result{}, ErrSendDeferred
+		}
 		if errors.Is(sendErr, ErrSendNotSent) {
 			entry.State = StateFailed
 			entry.ErrorCode = "send_not_sent"
@@ -178,7 +206,112 @@ func (queue *Queue) Entry(ctx context.Context, actionID string) (Entry, error) {
 	return queue.store.Entry(ctx, actionID)
 }
 
+func (queue *Queue) Status(ctx context.Context, queueKey string) (QueueStatus, error) {
+	if queue == nil || queue.store == nil || !validID(queueKey) {
+		return QueueEmpty, ErrInvalidEntry
+	}
+	entries, err := queue.store.ThreadEntries(ctx, queueKey)
+	if err != nil {
+		return QueueEmpty, err
+	}
+	status := QueueEmpty
+	for _, entry := range entries {
+		switch entry.State {
+		case StateSentUnknown:
+			return QueueOutcomeUnknown, nil
+		case StatePrepared:
+			status = QueueWaiting
+		}
+	}
+	return status, nil
+}
+
+func (queue *Queue) PendingThreadIDs(ctx context.Context) ([]string, error) {
+	if queue == nil || queue.store == nil {
+		return nil, ErrInvalidEntry
+	}
+	ids, err := queue.store.PendingThreadIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		if !validID(id) {
+			return nil, ErrInvalidEntry
+		}
+	}
+	return ids, nil
+}
+
+func (queue *Queue) PendingThreads(ctx context.Context) ([]PendingThread, error) {
+	ids, err := queue.PendingThreadIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	threads := make([]PendingThread, 0, len(ids))
+	for _, id := range ids {
+		entries, readErr := queue.store.ThreadEntries(ctx, id)
+		if readErr != nil {
+			return nil, readErr
+		}
+		source := ""
+		for _, entry := range entries {
+			if entry.State != StatePrepared && entry.State != StateSentUnknown {
+				continue
+			}
+			if source != "" && entry.OwnerSource != "" && source != entry.OwnerSource {
+				return nil, ErrInvalidEntry
+			}
+			if entry.OwnerSource != "" {
+				source = entry.OwnerSource
+			}
+		}
+		threads = append(threads, PendingThread{ID: id, OwnerSource: source})
+	}
+	return threads, nil
+}
+
+func (queue *Queue) DismissUnknown(ctx context.Context, actionID, threadID string, now time.Time) error {
+	if queue == nil || queue.store == nil || !validID(actionID) || !validID(threadID) || now.IsZero() {
+		return ErrInvalidEntry
+	}
+	entry, err := queue.store.Entry(ctx, actionID)
+	if errors.Is(err, ErrActionNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if entry.ThreadID != threadID || entry.ActionKind != "start_turn" && entry.ActionKind != "steer_turn" && entry.ActionKind != "interrupt_turn" {
+		return ErrInvalidEntry
+	}
+	switch entry.State {
+	case StatePrepared, StateSentUnknown:
+		previous := entry.State
+		entry.State = StateCanceled
+		entry.Prompt = ""
+		entry.ErrorCode = "user_reviewed"
+		entry.UpdatedAt = now
+		if err := queue.store.CompareAndSwap(ctx, previous, entry); err != nil {
+			return err
+		}
+		queue.logger.Info("[prompt-queue] unknown action review cleared", "action_id", actionID, "thread_id", threadID, "decision", "cancel_without_retry")
+		return nil
+	case StateConfirmed, StateFailed, StateCanceled:
+		return nil
+	default:
+		return ErrInvalidEntry
+	}
+}
+
 func (queue *Queue) CancelThread(ctx context.Context, threadID, errorCode string, now time.Time) error {
+	return queue.cancelThread(ctx, threadID, errorCode, now, false)
+}
+
+func (queue *Queue) CancelUnavailableThread(ctx context.Context, threadID, errorCode string, now time.Time) error {
+	return queue.cancelThread(ctx, threadID, errorCode, now, true)
+}
+
+func (queue *Queue) cancelThread(ctx context.Context, threadID, errorCode string, now time.Time, includeUnknown bool) error {
 	if !validID(threadID) || !validID(errorCode) {
 		return ErrInvalidEntry
 	}
@@ -187,14 +320,15 @@ func (queue *Queue) CancelThread(ctx context.Context, threadID, errorCode string
 		return err
 	}
 	for _, entry := range entries {
-		if entry.State != StatePrepared {
+		if entry.State != StatePrepared && (!includeUnknown || entry.State != StateSentUnknown) {
 			continue
 		}
+		previous := entry.State
 		entry.State = StateCanceled
 		entry.ErrorCode = errorCode
 		entry.Prompt = ""
 		entry.UpdatedAt = now
-		if err := queue.store.CompareAndSwap(ctx, StatePrepared, entry); err != nil {
+		if err := queue.store.CompareAndSwap(ctx, previous, entry); err != nil {
 			if errors.Is(err, ErrStateConflict) {
 				continue
 			}
@@ -206,10 +340,26 @@ func (queue *Queue) CancelThread(ctx context.Context, threadID, errorCode string
 }
 
 func validEntry(entry Entry) bool {
-	return validID(entry.ActionID) && validID(entry.QueueKey) && (entry.ThreadID == "" || validID(entry.ThreadID)) && validID(entry.ProjectID) &&
+	return validID(entry.ActionID) && validID(entry.QueueKey) && (entry.ThreadID == "" || validID(entry.ThreadID)) &&
+		((entry.ThreadID == "" && validID(entry.ProjectID)) || (entry.ThreadID != "" && validOptionalID(entry.ProjectID))) &&
 		validOptionalID(entry.Model) && validOptionalID(entry.Effort) && validOptionalID(entry.PermissionMode) &&
-		validOptionalID(entry.RequestHash) &&
-		strings.TrimSpace(entry.Prompt) != "" && len(entry.Prompt) <= 128*1024 && !entry.CreatedAt.IsZero()
+		validOptionalID(entry.RequestHash) && validOwnerSource(entry.OwnerSource) &&
+		validActionPayload(entry.ActionKind, entry.Prompt) && !entry.CreatedAt.IsZero()
+}
+
+func validOwnerSource(source string) bool {
+	return source == "" || source == "app_server" || source == "desktop"
+}
+
+func validActionPayload(kind, prompt string) bool {
+	switch kind {
+	case "start_turn", "steer_turn":
+		return strings.TrimSpace(prompt) != "" && len(prompt) <= 128*1024
+	case "interrupt_turn":
+		return prompt == ""
+	default:
+		return false
+	}
 }
 
 func validResult(result Result, threadID string) bool {
@@ -232,6 +382,8 @@ func callbackErrorClass(err error) string {
 		return "deadline"
 	case errors.Is(err, ErrSendNotSent):
 		return "not_sent"
+	case errors.Is(err, ErrSendDeferred):
+		return "deferred"
 	case errors.Is(err, ErrSendOutcomeUnknown):
 		return "outcome_unknown"
 	default:

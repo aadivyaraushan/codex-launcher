@@ -150,6 +150,55 @@ class LauncherSessionViewModelTest {
     }
 
     @Test
+    fun unresolvedExistingControlIsVisibleAndBlocksAnotherWriteAfterRecreation() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val unknown =
+            ActionRecord(
+                actionId = "unknown-follow-up",
+                kind = ActionRecordKind.START_TURN,
+                state = ActionRecordState.SENT_UNKNOWN,
+                createdAtEpochMillis = 1,
+                updatedAtEpochMillis = 2,
+                threadId = "thread-1",
+                turnId = null,
+                payloadSha256 = "d".repeat(64),
+                resultCode = null,
+                errorCode = null,
+            )
+        val recreated =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { null },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = FakeActionJournal(initialRecords = listOf(unknown)),
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+
+        recreated.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "desktop_tasks")))
+        observer.onMessage(snapshotWithTask(1, "Task"))
+
+        assertEquals(app.codexlauncher.task.summary.TaskQueueState.OUTCOME_UNKNOWN, recreated.state.value.snapshot?.tasks?.single()?.queueState)
+        assertEquals(app.codexlauncher.task.control.ExistingTaskControlOutcome.NeedsReview, recreated.queueTaskFollowUp("thread-1", "Retry"))
+        assertFalse(connection.sent.any { ProtocolCodec.decodeText(it).body["kind"]?.jsonPrimitive?.content == "start_turn" })
+
+        val dismissal = async { recreated.dismissUnconfirmedTaskControl("thread-1") }
+        val dismissAction = ProtocolCodec.decodeText(connection.awaitType("action"))
+        assertEquals("dismiss_unknown_control", dismissAction.body.getValue("kind").jsonPrimitive.content)
+        val dismissActionId = dismissAction.body.getValue("actionId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"dismiss-result","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$dismissActionId","state":"confirmed","resultCode":"accepted"}}""",
+            ),
+        )
+        assertTrue(dismissal.await())
+        assertEquals(app.codexlauncher.task.summary.TaskQueueState.NONE, recreated.state.value.snapshot?.tasks?.single()?.queueState)
+    }
+
+    @Test
     fun newTaskOptionsFollowTheAuthenticatedSessionAndClearOnFailure() = runBlocking {
         lateinit var observer: SessionObserver
         val connection = FakeSessionConnection()

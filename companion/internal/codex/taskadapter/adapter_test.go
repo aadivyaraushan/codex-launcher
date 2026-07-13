@@ -97,6 +97,146 @@ func TestStartNewTaskFailsClosedOnMalformedResultsAndPartialCreation(t *testing.
 	}
 }
 
+func TestExistingTaskControlsReloadStateAndRouteIdleBusyAndStop(t *testing.T) {
+	states := []taskstate.Task{
+		{ID: "thread-1", State: taskstate.IdleAfterReply, Source: taskstate.SourceAppServer},
+		{ID: "thread-1", State: taskstate.Working, Source: taskstate.SourceAppServer, ActiveTurnID: "turn-1", CanRedirect: true},
+		{ID: "thread-1", State: taskstate.Working, Source: taskstate.SourceAppServer, ActiveTurnID: "turn-1", CanRedirect: true},
+	}
+	var calls []string
+	set := Set{
+		currentTask: func(context.Context, string) (taskstate.Task, error) {
+			task := states[0]
+			states = states[1:]
+			return task, nil
+		},
+		startExistingTurn: func(_ context.Context, task taskstate.Task, text string) (string, error) {
+			calls = append(calls, "start:"+task.ID+":"+text)
+			return "turn-started", nil
+		},
+		redirectExistingTurn: func(_ context.Context, task taskstate.Task, text string) (string, error) {
+			calls = append(calls, "redirect:"+task.ActiveTurnID+":"+text)
+			return task.ActiveTurnID, nil
+		},
+		interruptExistingTurn: func(_ context.Context, task taskstate.Task) (string, error) {
+			calls = append(calls, "stop:"+task.ActiveTurnID)
+			return task.ActiveTurnID, nil
+		},
+	}
+	started, err := set.StartExistingTurn(context.Background(), "thread-1", "continue")
+	if err != nil || started.TurnID != "turn-started" {
+		t.Fatalf("idle start = %#v, %v", started, err)
+	}
+	redirected, err := set.RedirectExistingTurn(context.Background(), "thread-1", "change direction")
+	if err != nil || redirected.TurnID != "turn-1" {
+		t.Fatalf("busy redirect = %#v, %v", redirected, err)
+	}
+	if _, err := set.InterruptExistingTurn(context.Background(), "thread-1"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"start:thread-1:continue", "redirect:turn-1:change direction", "stop:turn-1"}
+	if !slices.Equal(calls, want) {
+		t.Fatalf("control calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestRecoveryReadsAStoredTaskByOwnerWithoutTheBoundedRecentCatalog(t *testing.T) {
+	listCalled := false
+	set := Set{
+		catalog: newCatalog(func(context.Context, int) (json.RawMessage, error) {
+			listCalled = true
+			return json.RawMessage(`{"data":[]}`), nil
+		}, nil, nil),
+		readAppTask: func(context.Context, string) (json.RawMessage, error) {
+			return json.RawMessage(`{"thread":{"id":"thread-21","name":"Older task","preview":"","cwd":"/work/project","updatedAt":42,"status":{"type":"idle","activeFlags":[]},"turns":[]}}`), nil
+		},
+		startExistingTurn: func(_ context.Context, task taskstate.Task, text string) (string, error) {
+			if task.ID != "thread-21" || text != "Resume it" {
+				t.Fatalf("source-specific start = %#v, %q", task, text)
+			}
+			return "turn-started", nil
+		},
+	}
+	task, err := set.CurrentTaskFromSource(context.Background(), "thread-21", taskstate.SourceAppServer)
+	if err != nil || task.ID != "thread-21" || task.Source != taskstate.SourceAppServer || listCalled {
+		t.Fatalf("source-specific recovery task = %#v, error = %v, list called = %v", task, err, listCalled)
+	}
+	started, err := set.StartExistingTurnFromSource(context.Background(), "thread-21", "Resume it", taskstate.SourceAppServer)
+	if err != nil || started.TurnID != "turn-started" || listCalled {
+		t.Fatalf("source-specific recovery start = %#v, error = %v, list called = %v", started, err, listCalled)
+	}
+}
+
+func TestSourceSpecificStartMarksOnlyItsPreWriteLookupFailureAsTransient(t *testing.T) {
+	set := Set{
+		readAppTask: func(context.Context, string) (json.RawMessage, error) { return nil, context.DeadlineExceeded },
+		startExistingTurn: func(context.Context, taskstate.Task, string) (string, error) {
+			t.Fatal("write ran after failed lookup")
+			return "", nil
+		},
+	}
+	if _, err := set.StartExistingTurnFromSource(context.Background(), "thread-1", "Keep me", taskstate.SourceAppServer); !errors.Is(err, ErrTaskLookupTransient) || errors.Is(err, ErrTaskUnavailable) {
+		t.Fatalf("source-specific lookup error = %v", err)
+	}
+
+	set.readDesktopTask = func(context.Context, string) (json.RawMessage, error) { return nil, desktopipc.ErrOwnerUnavailable }
+	if _, err := set.CurrentTaskFromSource(context.Background(), "thread-1", taskstate.SourceDesktop); !errors.Is(err, desktopipc.ErrOwnerUnavailable) || errors.Is(err, ErrTaskUnavailable) {
+		t.Fatalf("temporary Desktop owner error = %v", err)
+	}
+}
+
+func TestExistingTaskControlsFailClosedWhenTaskStateOrCapabilityChanged(t *testing.T) {
+	tests := []struct {
+		name string
+		task taskstate.Task
+		run  func(Set) error
+		want error
+	}{
+		{name: "start became busy", task: taskstate.Task{ID: "thread-1", State: taskstate.Working, Source: taskstate.SourceAppServer, ActiveTurnID: "turn-1"}, run: func(set Set) error {
+			_, err := set.StartExistingTurn(context.Background(), "thread-1", "next")
+			return err
+		}, want: ErrTaskBusy},
+		{name: "redirect became idle", task: taskstate.Task{ID: "thread-1", State: taskstate.IdleAfterReply, Source: taskstate.SourceAppServer}, run: func(set Set) error {
+			_, err := set.RedirectExistingTurn(context.Background(), "thread-1", "next")
+			return err
+		}, want: ErrTaskNotBusy},
+		{name: "redirect disabled", task: taskstate.Task{ID: "thread-1", State: taskstate.Working, Source: taskstate.SourceAppServer, ActiveTurnID: "turn-1"}, run: func(set Set) error {
+			_, err := set.RedirectExistingTurn(context.Background(), "thread-1", "next")
+			return err
+		}, want: ErrRedirectUnsupported},
+		{name: "stop became idle", task: taskstate.Task{ID: "thread-1", State: taskstate.IdleAfterReply, Source: taskstate.SourceAppServer}, run: func(set Set) error { _, err := set.InterruptExistingTurn(context.Background(), "thread-1"); return err }, want: ErrTaskNotBusy},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			called := false
+			set := Set{
+				currentTask:           func(context.Context, string) (taskstate.Task, error) { return test.task, nil },
+				startExistingTurn:     func(context.Context, taskstate.Task, string) (string, error) { called = true; return "", nil },
+				redirectExistingTurn:  func(context.Context, taskstate.Task, string) (string, error) { called = true; return "", nil },
+				interruptExistingTurn: func(context.Context, taskstate.Task) (string, error) { called = true; return "turn-1", nil },
+			}
+			if err := test.run(set); !errors.Is(err, test.want) || called {
+				t.Fatalf("error = %v, want %v; write called = %v", err, test.want, called)
+			}
+		})
+	}
+}
+
+func TestStopCanInterruptATurnWaitingForApprovalOrAnswer(t *testing.T) {
+	for _, state := range []taskstate.State{taskstate.WaitingForApproval, taskstate.WaitingForAnswer} {
+		called := false
+		set := Set{
+			currentTask: func(context.Context, string) (taskstate.Task, error) {
+				return taskstate.Task{ID: "thread-1", State: state, Source: taskstate.SourceAppServer, ActiveTurnID: "turn-1"}, nil
+			},
+			interruptExistingTurn: func(context.Context, taskstate.Task) (string, error) { called = true; return "turn-1", nil },
+		}
+		if _, err := set.InterruptExistingTurn(context.Background(), "thread-1"); err != nil || !called {
+			t.Fatalf("stop waiting state %q = called %v, error %v", state, called, err)
+		}
+	}
+}
+
 func TestCatalogListsBoundedCandidatesWithoutClaimingRuntimeOwnership(t *testing.T) {
 	requestedLimit := 0
 	catalog := newCatalog(
@@ -120,7 +260,7 @@ func TestCatalogListsBoundedCandidatesWithoutClaimingRuntimeOwnership(t *testing
 func TestCatalogKeepsRuntimeLocalAppServerTasksOwned(t *testing.T) {
 	catalog := newCatalog(
 		func(context.Context, int) (json.RawMessage, error) {
-			return json.RawMessage(`{"data":[{"id":"cli-1","name":"CLI task","preview":"","cwd":"/work/project","updatedAt":43,"status":{"type":"active","activeFlags":[]},"turns":[{"status":"inProgress"}]}]}`), nil
+			return json.RawMessage(`{"data":[{"id":"cli-1","name":"CLI task","preview":"","cwd":"/work/project","updatedAt":43,"status":{"type":"active","activeFlags":[]},"turns":[{"id":"turn-1","status":"inProgress"}]}]}`), nil
 		}, nil, nil,
 	)
 	tasks, err := catalog.ListRecent(context.Background(), 3)
@@ -513,7 +653,7 @@ func TestAppServerOnlySetSupportsLinuxWithoutDesktop(t *testing.T) {
 
 func TestSetProvidesTheMobileRecentTaskSourceContract(t *testing.T) {
 	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
-		return json.RawMessage(`{"data":[{"id":"task-1","preview":"Build launcher","cwd":"/work/launcher","updatedAt":42,"status":{"type":"active","activeFlags":[]},"turns":[{"status":"inProgress"}]}]}`), nil
+		return json.RawMessage(`{"data":[{"id":"task-1","preview":"Build launcher","cwd":"/work/launcher","updatedAt":42,"status":{"type":"active","activeFlags":[]},"turns":[{"id":"turn-1","status":"inProgress"}]}]}`), nil
 	}, nil, nil)
 	set := Set{catalog: catalog}
 
@@ -574,7 +714,7 @@ func TestSetListRecentSkipsAppServerAndKeepsFailedDesktopCandidateReadable(t *te
 	stateReads := 0
 	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
 		return json.RawMessage(`{"data":[
-			{"id":"app-1","name":"App","preview":"","cwd":"/work/app","updatedAt":46,"status":{"type":"active","activeFlags":[]},"turns":[{"status":"inProgress"}]},
+			{"id":"app-1","name":"App","preview":"","cwd":"/work/app","updatedAt":46,"status":{"type":"active","activeFlags":[]},"turns":[{"id":"turn-app","status":"inProgress"}]},
 			{"id":"task-1","name":"One","preview":"","cwd":"/work/one","updatedAt":45,"status":{"type":"notLoaded","activeFlags":[]},"turns":[]},
 			{"id":"task-2","name":"Two","preview":"","cwd":"/work/two","updatedAt":44,"status":{"type":"notLoaded","activeFlags":[]},"turns":[]}
 		]}`), nil

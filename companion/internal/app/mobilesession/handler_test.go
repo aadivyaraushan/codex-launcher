@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskoptions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
@@ -578,6 +579,422 @@ func TestNewTaskOptionResolutionFailsClosedOnAnUnmappedPermissionMode(t *testing
 	}
 }
 
+func TestExistingIdleSendStartsImmediatelyAndBusySendQueuesDurably(t *testing.T) {
+	source := &existingTaskSource{task: taskstate.Task{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}}
+	store := promptqueue.NewMemoryStore()
+	handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 4)
+	idle := decode(t, `{"version":{"major":1,"minor":0},"messageId":"idle","sender":"phone","type":"action","body":{"actionId":"idle-action","kind":"start_turn","taskId":"thread-1","text":"Continue"}}`)
+	if err := handler.Handle(context.Background(), sender, idle); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(result.Body, []byte(`"state":"confirmed"`)) || !bytes.Contains(result.Body, []byte(`"resultCode":"accepted"`)) || !slices.Equal(source.calls, []string{"start:Continue"}) {
+		t.Fatalf("idle result = %s, calls = %#v", result.Body, source.calls)
+	}
+	_ = awaitSentMessage(t, sender.sent)
+
+	source.task.State = taskstate.Working
+	source.task.ActiveTurnID = "turn-active"
+	source.task.CanRedirect = true
+	busy := decode(t, `{"version":{"major":1,"minor":0},"messageId":"busy","sender":"phone","type":"action","body":{"actionId":"busy-action","kind":"start_turn","taskId":"thread-1","text":"After that"}}`)
+	if err := handler.Handle(context.Background(), sender, busy); err != nil {
+		t.Fatal(err)
+	}
+	queued := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(queued.Body, []byte(`"state":"confirmed"`)) || !bytes.Contains(queued.Body, []byte(`"resultCode":"queued"`)) || len(source.calls) != 1 {
+		t.Fatalf("busy result = %s, calls = %#v", queued.Body, source.calls)
+	}
+	entry, err := store.Entry(context.Background(), "busy-action")
+	if err != nil || entry.State != promptqueue.StatePrepared || entry.Prompt != "After that" {
+		t.Fatalf("busy queue entry = %#v, %v", entry, err)
+	}
+	snapshot, err := handler.refreshTaskSnapshot(context.Background())
+	if err != nil || !bytes.Contains(snapshot.Body, []byte(`"queueState":"queued"`)) {
+		t.Fatalf("queued snapshot = %s, %v", snapshot.Body, err)
+	}
+}
+
+func TestDesktopExistingTaskUnknownWritesStayUnknownAndNeverReplay(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		state      taskstate.State
+		activeTurn string
+		redirect   bool
+		action     string
+		wantCall   string
+	}{
+		{name: "start", state: taskstate.IdleAfterReply, action: `{"version":{"major":1,"minor":0},"messageId":"start","sender":"phone","type":"action","body":{"actionId":"unknown-start","kind":"start_turn","taskId":"thread-1","text":"Continue"}}`, wantCall: "start:Continue"},
+		{name: "redirect", state: taskstate.Working, activeTurn: "turn-1", redirect: true, action: `{"version":{"major":1,"minor":0},"messageId":"redirect","sender":"phone","type":"action","body":{"actionId":"unknown-redirect","kind":"steer_turn","taskId":"thread-1","text":"Change course"}}`, wantCall: "redirect:Change course"},
+		{name: "stop", state: taskstate.Working, activeTurn: "turn-1", action: `{"version":{"major":1,"minor":0},"messageId":"stop","sender":"phone","type":"action","body":{"actionId":"unknown-stop","kind":"interrupt_turn","taskId":"thread-1"}}`, wantCall: "stop"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := &existingTaskSource{
+				task: taskstate.Task{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: test.state, ActiveTurnID: test.activeTurn, CanRedirect: test.redirect, UpdatedAtUnix: sessionNow.Unix()},
+				err:  fmt.Errorf("desktop response lost: %w", desktopipc.ErrWriteOutcomeUnknown),
+			}
+			store := promptqueue.NewMemoryStore()
+			handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+			if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+				t.Fatal(err)
+			}
+			sender.messages = nil
+			sender.sent = make(chan contract.Message, 4)
+			action := decode(t, test.action)
+			for attempt := 0; attempt < 2; attempt++ {
+				if err := handler.Handle(context.Background(), sender, action); err != nil {
+					t.Fatal(err)
+				}
+				result := awaitSentMessage(t, sender.sent)
+				if !bytes.Contains(result.Body, []byte(`"state":"outcome_unknown"`)) {
+					t.Fatalf("attempt %d result = %s", attempt, result.Body)
+				}
+			}
+			if !slices.Equal(source.calls, []string{test.wantCall}) {
+				t.Fatalf("calls = %#v", source.calls)
+			}
+			var body struct {
+				ActionID string `json:"actionId"`
+			}
+			if json.Unmarshal(action.Body, &body) != nil {
+				t.Fatal("decode action body")
+			}
+			entry, err := store.Entry(context.Background(), body.ActionID)
+			if err != nil || entry.State != promptqueue.StateSentUnknown {
+				t.Fatalf("durable entry = %#v, %v", entry, err)
+			}
+		})
+	}
+}
+
+func TestRedirectUsesCurrentCapabilityAndFallsBackToQueueIfItChanged(t *testing.T) {
+	source := &existingTaskSource{task: taskstate.Task{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.Working, ActiveTurnID: "turn-active", CanRedirect: true, UpdatedAtUnix: sessionNow.Unix()}}
+	store := promptqueue.NewMemoryStore()
+	handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 4)
+	redirect := decode(t, `{"version":{"major":1,"minor":0},"messageId":"redirect","sender":"phone","type":"action","body":{"actionId":"redirect-action","kind":"steer_turn","taskId":"thread-1","text":"Do this first"}}`)
+	if err := handler.Handle(context.Background(), sender, redirect); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(result.Body, []byte(`"resultCode":"redirected"`)) || !slices.Equal(source.calls, []string{"redirect:Do this first"}) {
+		t.Fatalf("redirect result = %s, calls = %#v", result.Body, source.calls)
+	}
+	_ = awaitSentMessage(t, sender.sent)
+
+	source.task.CanRedirect = false
+	fallback := decode(t, `{"version":{"major":1,"minor":0},"messageId":"fallback","sender":"phone","type":"action","body":{"actionId":"fallback-action","kind":"steer_turn","taskId":"thread-1","text":"Queue this"}}`)
+	if err := handler.Handle(context.Background(), sender, fallback); err != nil {
+		t.Fatal(err)
+	}
+	queued := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(queued.Body, []byte(`"resultCode":"queued"`)) || len(source.calls) != 1 {
+		t.Fatalf("fallback result = %s, calls = %#v", queued.Body, source.calls)
+	}
+	entry, err := store.Entry(context.Background(), "fallback-action")
+	if err != nil || entry.State != promptqueue.StatePrepared {
+		t.Fatalf("fallback queue entry = %#v, %v", entry, err)
+	}
+}
+
+func TestStopReloadsTaskAndReturnsInterruptedOnlyAfterHostConfirmation(t *testing.T) {
+	source := &existingTaskSource{task: taskstate.Task{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.Working, ActiveTurnID: "turn-active", CanRedirect: true, UpdatedAtUnix: sessionNow.Unix()}}
+	handler, sender := newTestHandlerWithTaskQueue(t, source, promptqueue.NewMemoryStore())
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 2)
+	stop := decode(t, `{"version":{"major":1,"minor":0},"messageId":"stop","sender":"phone","type":"action","body":{"actionId":"stop-action","kind":"interrupt_turn","taskId":"thread-1"}}`)
+	if err := handler.Handle(context.Background(), sender, stop); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(result.Body, []byte(`"resultCode":"interrupted"`)) || !slices.Equal(source.calls, []string{"stop"}) {
+		t.Fatalf("stop result = %s, calls = %#v", result.Body, source.calls)
+	}
+	_ = awaitSentMessage(t, sender.sent)
+	if err := handler.Handle(context.Background(), sender, stop); err != nil {
+		t.Fatal(err)
+	}
+	replayed := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(replayed.Body, []byte(`"resultCode":"interrupted"`)) || !slices.Equal(source.calls, []string{"stop"}) {
+		t.Fatalf("duplicate stop result = %s, calls = %#v", replayed.Body, source.calls)
+	}
+}
+
+func TestUnknownStopOutcomeReplaysWithoutBlindlyInterruptingAgain(t *testing.T) {
+	source := &existingTaskSource{
+		task: taskstate.Task{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.Working, ActiveTurnID: "turn-active", CanRedirect: true, UpdatedAtUnix: sessionNow.Unix()},
+		err:  fmt.Errorf("lost response: %w", &appserver.OutcomeUnknownError{Method: "turn/interrupt", Cause: errors.New("connection lost")}),
+	}
+	handler, sender := newTestHandlerWithTaskQueue(t, source, promptqueue.NewMemoryStore())
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 2)
+	stop := decode(t, `{"version":{"major":1,"minor":0},"messageId":"stop","sender":"phone","type":"action","body":{"actionId":"stop-unknown","kind":"interrupt_turn","taskId":"thread-1"}}`)
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := handler.Handle(context.Background(), sender, stop); err != nil {
+			t.Fatal(err)
+		}
+		result := awaitSentMessage(t, sender.sent)
+		if !bytes.Contains(result.Body, []byte(`"state":"outcome_unknown"`)) {
+			t.Fatalf("unknown stop result = %s", result.Body)
+		}
+	}
+	if !slices.Equal(source.calls, []string{"stop"}) {
+		t.Fatalf("unknown stop calls = %#v", source.calls)
+	}
+}
+
+func TestReplyEventStartsOnlyTheOldestDurableQueuedFollowUp(t *testing.T) {
+	source := &existingTaskSource{task: taskstate.Task{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.Working, ActiveTurnID: "turn-active", CanRedirect: true, UpdatedAtUnix: sessionNow.Unix()}}
+	store := promptqueue.NewMemoryStore()
+	handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 8)
+	for _, action := range []string{
+		`{"version":{"major":1,"minor":0},"messageId":"first","sender":"phone","type":"action","body":{"actionId":"first-action","kind":"start_turn","taskId":"thread-1","text":"First"}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"second","sender":"phone","type":"action","body":{"actionId":"second-action","kind":"start_turn","taskId":"thread-1","text":"Second"}}`,
+	} {
+		if err := handler.Handle(context.Background(), sender, decode(t, action)); err != nil {
+			t.Fatal(err)
+		}
+		_ = awaitSentMessage(t, sender.sent)
+	}
+	source.task.State = taskstate.IdleAfterReply
+	source.task.ActiveTurnID = ""
+	source.task.CanRedirect = false
+	if err := handler.PublishTaskEvent(context.Background(), taskstate.MobileEvent{TaskID: "thread-1", Kind: "reply", State: taskstate.IdleAfterReply, Summary: "Codex replied"}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(source.calls, []string{"start:First"}) {
+		t.Fatalf("queue dispatch calls = %#v", source.calls)
+	}
+	first, _ := store.Entry(context.Background(), "first-action")
+	second, _ := store.Entry(context.Background(), "second-action")
+	if first.State != promptqueue.StateConfirmed || second.State != promptqueue.StatePrepared {
+		t.Fatalf("queue order states = first %s, second %s", first.State, second.State)
+	}
+}
+
+func TestCompanionRestartDispatchesAnAlreadyQueuedPromptWhenTaskIsIdle(t *testing.T) {
+	started := make(chan struct{}, 1)
+	source := &existingTaskSource{task: taskstate.Task{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}, started: started}
+	store := promptqueue.NewMemoryStore()
+	queue := promptqueue.New(store, nil)
+	if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		ActionID: "queued-before-restart", QueueKey: "thread-1", ActionKind: "start_turn", ThreadID: "thread-1", Prompt: "Resume me", CreatedAt: sessionNow,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = newTestHandlerWithTaskQueue(t, source, store)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("restart recovery did not dispatch")
+	}
+	if !slices.Equal(source.calls, []string{"start:Resume me"}) {
+		t.Fatalf("restart recovery calls = %#v", source.calls)
+	}
+	entry, err := store.Entry(context.Background(), "queued-before-restart")
+	if err != nil || entry.State != promptqueue.StateConfirmed {
+		t.Fatalf("recovered queue entry = %#v, %v", entry, err)
+	}
+}
+
+func TestCompanionRestartRecoversQueuedTaskOutsideTheHomeSnapshot(t *testing.T) {
+	started := make(chan struct{}, 1)
+	tasks := make([]taskstate.Task, 0, 5)
+	for index := 1; index <= 5; index++ {
+		tasks = append(tasks, taskstate.Task{ID: fmt.Sprintf("thread-%d", index), Title: "Task", ProjectLabel: "Main", State: taskstate.IdleAfterReply, Source: taskstate.SourceAppServer, UpdatedAtUnix: sessionNow.Unix() - int64(index)})
+	}
+	source := &recoveryTaskSource{tasks: tasks, started: started, currentErr: taskadapter.ErrUnknownCatalogTask, requireSourceStart: true}
+	store := promptqueue.NewMemoryStore()
+	queue := promptqueue.New(store, nil)
+	if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		ActionID: "queued-fifth", QueueKey: "thread-5", OwnerSource: string(taskstate.SourceAppServer), ThreadID: "thread-5", Prompt: "Resume hidden task", CreatedAt: sessionNow,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = newTestHandlerWithTaskQueue(t, source, store)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("queued task outside Home was not recovered")
+	}
+	if !slices.Equal(source.calls, []string{"start:thread-5:Resume hidden task"}) {
+		t.Fatalf("recovery calls = %#v", source.calls)
+	}
+}
+
+func TestCompanionRestartCancelsPromptForTaskRemovedWhileStopped(t *testing.T) {
+	source := &recoveryTaskSource{}
+	store := promptqueue.NewMemoryStore()
+	queue := promptqueue.New(store, nil)
+	if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		ActionID: "queued-deleted", QueueKey: "thread-deleted", OwnerSource: string(taskstate.SourceAppServer), ThreadID: "thread-deleted", Prompt: "Private prompt", CreatedAt: sessionNow,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = queue.DispatchNext(context.Background(), "thread-deleted", func(context.Context, promptqueue.Entry) (promptqueue.Result, error) {
+		return promptqueue.Result{}, promptqueue.ErrSendOutcomeUnknown
+	}, nil, sessionNow.Add(time.Second))
+	_, _ = newTestHandlerWithTaskQueue(t, source, store)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		entry, err := store.Entry(context.Background(), "queued-deleted")
+		if err == nil && entry.State == promptqueue.StateCanceled {
+			if entry.Prompt != "" || entry.ErrorCode != "task_unavailable" {
+				t.Fatalf("cancelled entry retained content = %#v", entry)
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("removed task queue was not cancelled")
+}
+
+func TestCompanionRestartRetainsQueueDuringTransientTaskLookupFailure(t *testing.T) {
+	source := &recoveryTaskSource{sourceErr: context.DeadlineExceeded}
+	store := promptqueue.NewMemoryStore()
+	queue := promptqueue.New(store, nil)
+	if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		ActionID: "queued-transient", QueueKey: "thread-transient", OwnerSource: string(taskstate.SourceAppServer), ThreadID: "thread-transient", Prompt: "Keep me", CreatedAt: sessionNow,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = newTestHandlerWithTaskQueue(t, source, store)
+	time.Sleep(20 * time.Millisecond)
+	entry, err := store.Entry(context.Background(), "queued-transient")
+	if err != nil || entry.State != promptqueue.StatePrepared || entry.Prompt != "Keep me" {
+		t.Fatalf("queue after transient lookup = %#v, %v", entry, err)
+	}
+}
+
+func TestCompanionRestartRetainsQueueWhenSecondSafetyReadFailsBeforeWrite(t *testing.T) {
+	source := &recoveryTaskSource{
+		tasks:          []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.IdleAfterReply, Source: taskstate.SourceAppServer, UpdatedAtUnix: sessionNow.Unix()}},
+		sourceStartErr: taskadapter.ErrTaskLookupTransient,
+	}
+	store := promptqueue.NewMemoryStore()
+	queue := promptqueue.New(store, nil)
+	if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		ActionID: "queued-second-read", QueueKey: "thread-1", OwnerSource: string(taskstate.SourceAppServer), ThreadID: "thread-1", Prompt: "Keep my position", CreatedAt: sessionNow,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = newTestHandlerWithTaskQueue(t, source, store)
+	time.Sleep(20 * time.Millisecond)
+	entry, err := store.Entry(context.Background(), "queued-second-read")
+	if err != nil || entry.State != promptqueue.StatePrepared || entry.Prompt != "Keep my position" || len(source.calls) != 0 {
+		t.Fatalf("queue after second lookup failure = %#v, error = %v, calls = %#v", entry, err, source.calls)
+	}
+}
+
+func TestArchivingTaskCancelsEveryQueuedPromptAndClearsItsText(t *testing.T) {
+	source := &taskManagementSource{tasks: []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.Working, ActiveTurnID: "turn-1", UpdatedAtUnix: sessionNow.Unix()}}}
+	store := promptqueue.NewMemoryStore()
+	queue := promptqueue.New(store, nil)
+	for index, prompt := range []string{"Private first", "Private second"} {
+		if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+			ActionID: fmt.Sprintf("queued-%d", index), QueueKey: "thread-1", ThreadID: "thread-1", Prompt: prompt, CreatedAt: sessionNow.Add(time.Duration(index) * time.Second),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.sent = make(chan contract.Message, 3)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"archive","sender":"phone","type":"action","body":{"actionId":"archive-1","kind":"archive_task","taskId":"thread-1"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	_ = awaitSentMessage(t, sender.sent)
+	for index := range 2 {
+		entry, err := store.Entry(context.Background(), fmt.Sprintf("queued-%d", index))
+		if err != nil || entry.State != promptqueue.StateCanceled || entry.Prompt != "" || entry.ErrorCode != "task_archived" {
+			t.Fatalf("archived queue entry %d = %#v, %v", index, entry, err)
+		}
+	}
+}
+
+func TestArchiveIsBlockedWhileAnUnknownControlStillNeedsReview(t *testing.T) {
+	source := &taskManagementSource{tasks: []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.Working, ActiveTurnID: "turn-1", UpdatedAtUnix: sessionNow.Unix()}}}
+	store := promptqueue.NewMemoryStore()
+	queue := promptqueue.New(store, nil)
+	if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		ActionID: "unknown-before-archive", QueueKey: "thread-1", ThreadID: "thread-1", Prompt: "Private prompt", CreatedAt: sessionNow,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = queue.DispatchNext(context.Background(), "thread-1", func(context.Context, promptqueue.Entry) (promptqueue.Result, error) {
+		return promptqueue.Result{}, promptqueue.ErrSendOutcomeUnknown
+	}, nil, sessionNow.Add(time.Second))
+	handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.sent = make(chan contract.Message, 2)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"archive","sender":"phone","type":"action","body":{"actionId":"archive-unknown","kind":"archive_task","taskId":"thread-1"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(result.Body, []byte(`"state":"failed"`)) || slices.Contains(source.calls, "archive:thread-1") {
+		t.Fatalf("archive result = %s, calls = %#v", result.Body, source.calls)
+	}
+	entry, err := store.Entry(context.Background(), "unknown-before-archive")
+	if err != nil || entry.State != promptqueue.StateSentUnknown || entry.Prompt != "Private prompt" {
+		t.Fatalf("unknown entry after blocked archive = %#v, %v", entry, err)
+	}
+}
+
+func TestExplicitComputerReviewClearsCompanionUnknownWithoutRetryingCodex(t *testing.T) {
+	source := &existingTaskSource{task: taskstate.Task{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.Working, ActiveTurnID: "turn-1", UpdatedAtUnix: sessionNow.Unix()}}
+	store := promptqueue.NewMemoryStore()
+	queue := promptqueue.New(store, nil)
+	if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		ActionID: "unknown-control", QueueKey: "thread-1", ThreadID: "thread-1", Prompt: "Private prompt", CreatedAt: sessionNow,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = queue.DispatchNext(context.Background(), "thread-1", func(context.Context, promptqueue.Entry) (promptqueue.Result, error) {
+		return promptqueue.Result{}, promptqueue.ErrSendOutcomeUnknown
+	}, nil, sessionNow.Add(time.Second))
+
+	handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.sent = make(chan contract.Message, 3)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"dismiss","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-control"}}`)
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(result.Body, []byte(`"state":"confirmed"`)) || !bytes.Contains(result.Body, []byte(`"resultCode":"accepted"`)) {
+		t.Fatalf("dismiss result = %s", result.Body)
+	}
+	entry, err := store.Entry(context.Background(), "unknown-control")
+	if err != nil || entry.State != promptqueue.StateCanceled || entry.Prompt != "" || len(source.calls) != 0 {
+		t.Fatalf("dismissed entry = %#v, error = %v, Codex calls = %#v", entry, err, source.calls)
+	}
+}
+
 func TestTaskManagementFailureReturnsSafeErrorWithoutPublishingStaleSnapshot(t *testing.T) {
 	source := &taskManagementSource{
 		tasks: []taskstate.Task{{ID: "thread-1", Title: "Original", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}},
@@ -845,6 +1262,134 @@ type newTaskSource struct {
 	starts                  []taskadapter.NewTaskRequest
 	tasks                   []taskstate.Task
 	startErr                error
+}
+
+type existingTaskSource struct {
+	task    taskstate.Task
+	calls   []string
+	err     error
+	started chan struct{}
+}
+
+type recoveryTaskSource struct {
+	tasks              []taskstate.Task
+	calls              []string
+	started            chan struct{}
+	currentErr         error
+	sourceErr          error
+	requireSourceStart bool
+	sourceStartErr     error
+}
+
+func (source *recoveryTaskSource) ListRecent(_ context.Context, limit int) ([]taskstate.Task, error) {
+	if limit > len(source.tasks) {
+		limit = len(source.tasks)
+	}
+	return append([]taskstate.Task(nil), source.tasks[:limit]...), nil
+}
+
+func (source *recoveryTaskSource) CurrentTask(_ context.Context, taskID string) (taskstate.Task, error) {
+	if source.currentErr != nil {
+		return taskstate.Task{}, source.currentErr
+	}
+	for _, task := range source.tasks {
+		if task.ID == taskID {
+			return task, nil
+		}
+	}
+	return taskstate.Task{}, taskadapter.ErrTaskUnavailable
+}
+
+func (source *recoveryTaskSource) CurrentTaskFromSource(_ context.Context, taskID string, owner taskstate.Source) (taskstate.Task, error) {
+	if source.sourceErr != nil {
+		return taskstate.Task{}, source.sourceErr
+	}
+	for _, task := range source.tasks {
+		if task.ID == taskID && task.Source == owner {
+			return task, nil
+		}
+	}
+	return taskstate.Task{}, taskadapter.ErrTaskUnavailable
+}
+
+func (source *recoveryTaskSource) StartExistingTurn(_ context.Context, taskID, text string) (taskadapter.ExistingTaskResult, error) {
+	if source.requireSourceStart {
+		return taskadapter.ExistingTaskResult{}, taskadapter.ErrUnknownCatalogTask
+	}
+	return source.start(taskID, text)
+}
+
+func (source *recoveryTaskSource) StartExistingTurnFromSource(_ context.Context, taskID, text string, owner taskstate.Source) (taskadapter.ExistingTaskResult, error) {
+	if source.sourceStartErr != nil {
+		return taskadapter.ExistingTaskResult{}, source.sourceStartErr
+	}
+	if owner != taskstate.SourceAppServer {
+		return taskadapter.ExistingTaskResult{}, taskstate.ErrAdapterSourceMismatch
+	}
+	return source.start(taskID, text)
+}
+
+func (source *recoveryTaskSource) start(taskID, text string) (taskadapter.ExistingTaskResult, error) {
+	source.calls = append(source.calls, "start:"+taskID+":"+text)
+	if source.started != nil {
+		select {
+		case source.started <- struct{}{}:
+		default:
+		}
+	}
+	return taskadapter.ExistingTaskResult{ThreadID: taskID, TurnID: "turn-started"}, nil
+}
+
+func (*recoveryTaskSource) RedirectExistingTurn(context.Context, string, string) (taskadapter.ExistingTaskResult, error) {
+	return taskadapter.ExistingTaskResult{}, errors.New("not used")
+}
+
+func (*recoveryTaskSource) InterruptExistingTurn(context.Context, string) (taskadapter.ExistingTaskResult, error) {
+	return taskadapter.ExistingTaskResult{}, errors.New("not used")
+}
+
+func (source *existingTaskSource) ListRecent(context.Context, int) ([]taskstate.Task, error) {
+	return []taskstate.Task{source.task}, nil
+}
+
+func (source *existingTaskSource) CurrentTask(context.Context, string) (taskstate.Task, error) {
+	return source.task, nil
+}
+
+func (source *existingTaskSource) StartExistingTurn(_ context.Context, _ string, text string) (taskadapter.ExistingTaskResult, error) {
+	source.calls = append(source.calls, "start:"+text)
+	if source.started != nil {
+		select {
+		case source.started <- struct{}{}:
+		default:
+		}
+	}
+	if source.err != nil {
+		return taskadapter.ExistingTaskResult{}, source.err
+	}
+	source.task.State = taskstate.Working
+	source.task.ActiveTurnID = "turn-started"
+	source.task.CanRedirect = true
+	return taskadapter.ExistingTaskResult{ThreadID: source.task.ID, TurnID: "turn-started"}, nil
+}
+
+func (source *existingTaskSource) RedirectExistingTurn(_ context.Context, _ string, text string) (taskadapter.ExistingTaskResult, error) {
+	source.calls = append(source.calls, "redirect:"+text)
+	if source.err != nil {
+		return taskadapter.ExistingTaskResult{}, source.err
+	}
+	return taskadapter.ExistingTaskResult{ThreadID: source.task.ID, TurnID: source.task.ActiveTurnID}, nil
+}
+
+func (source *existingTaskSource) InterruptExistingTurn(context.Context, string) (taskadapter.ExistingTaskResult, error) {
+	source.calls = append(source.calls, "stop")
+	turnID := source.task.ActiveTurnID
+	if source.err == nil {
+		source.task.State = taskstate.Interrupted
+		source.task.ActiveTurnID = ""
+		source.task.CanRedirect = false
+	}
+	return taskadapter.ExistingTaskResult{ThreadID: source.task.ID, TurnID: turnID}, source.err
 }
 
 func (source *newTaskSource) ListRecent(context.Context, int) ([]taskstate.Task, error) {

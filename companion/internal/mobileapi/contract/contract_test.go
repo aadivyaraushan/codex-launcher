@@ -198,6 +198,22 @@ func TestContractAcceptsOnlyBoundedTaskManagementActions(t *testing.T) {
 	}
 }
 
+func TestContractAcceptsOnlyExactUnknownControlDismissal(t *testing.T) {
+	valid := `{"version":{"major":1,"minor":0},"messageId":"dismiss","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-1"}}`
+	if _, err := DecodeText([]byte(valid)); err != nil {
+		t.Fatalf("valid dismissal was rejected: %v", err)
+	}
+	invalid := []string{
+		`{"version":{"major":1,"minor":0},"messageId":"missing","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1"}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"extra","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-1","text":"hidden"}}`,
+	}
+	for _, frame := range invalid {
+		if _, err := DecodeText([]byte(frame)); !errors.Is(err, ErrInvalidAction) {
+			t.Fatalf("invalid dismissal error = %v", err)
+		}
+	}
+}
+
 func TestContractAcceptsBoundedUnsequencedTaskTranscriptPages(t *testing.T) {
 	read := `{"version":{"major":1,"minor":0},"messageId":"read-1","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":32,"beforeEntryId":"agent-2"}}`
 	if _, err := DecodeText([]byte(read)); err != nil {

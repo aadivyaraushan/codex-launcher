@@ -98,6 +98,16 @@ class ProtocolContractTest {
     }
 
     @Test
+    fun `codec accepts only exact unknown control dismissal`() {
+        val valid = """{"version":{"major":1,"minor":0},"messageId":"dismiss","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-1"}}"""
+        assertEquals("dismiss", ProtocolCodec.decodeText(valid).messageId)
+        listOf(
+            """{"version":{"major":1,"minor":0},"messageId":"missing","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1"}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"extra","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-1","text":"hidden"}}""",
+        ).forEach { frame -> assertError(ProtocolError.INVALID_ACTION) { ProtocolCodec.decodeText(frame) } }
+    }
+
+    @Test
     fun `codec accepts bounded unsequenced transcript pages`() {
         val read = """{"version":{"major":1,"minor":0},"messageId":"read-1","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":32,"beforeEntryId":"agent-2"}}"""
         assertEquals("read-1", ProtocolCodec.decodeText(read).messageId)
