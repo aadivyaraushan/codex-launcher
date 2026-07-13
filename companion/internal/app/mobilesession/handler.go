@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
@@ -19,6 +20,10 @@ import (
 
 type TaskSource interface {
 	ListRecent(context.Context, int) ([]taskstate.Task, error)
+}
+
+type TaskTranscriptSource interface {
+	ReadTranscript(context.Context, string, tasktranscript.PageOptions) (tasktranscript.Page, error)
 }
 
 var (
@@ -31,22 +36,23 @@ var (
 )
 
 type Handler struct {
-	ctx          context.Context
-	computerName string
-	projects     *projects.Service
-	journal      *eventjournal.Journal
-	logger       *slog.Logger
-	now          func() time.Time
-	taskCapable  bool
-	taskSource   TaskSource
-	nextID       atomic.Uint64
-	publishMu    sync.Mutex
-	mu           sync.Mutex
-	active       map[string]transport.MessageSender
-	activeView   atomic.Value
-	snapshotGen  atomic.Uint64
-	broadcasts   chan outboundBroadcast
-	sendTimeout  time.Duration
+	ctx              context.Context
+	computerName     string
+	projects         *projects.Service
+	journal          *eventjournal.Journal
+	logger           *slog.Logger
+	now              func() time.Time
+	taskCapable      bool
+	taskSource       TaskSource
+	transcriptSource TaskTranscriptSource
+	nextID           atomic.Uint64
+	publishMu        sync.Mutex
+	mu               sync.Mutex
+	active           map[string]transport.MessageSender
+	activeView       atomic.Value
+	snapshotGen      atomic.Uint64
+	broadcasts       chan outboundBroadcast
+	sendTimeout      time.Duration
 }
 
 const (
@@ -116,6 +122,7 @@ func NewWithTaskSource(ctx context.Context, computerName string, projectService 
 		computerName: computerName, projects: projectService, journal: journal, logger: logger, now: now, taskCapable: taskSource != nil, taskSource: taskSource,
 		active: make(map[string]transport.MessageSender), broadcasts: make(chan outboundBroadcast, broadcastQueueSize), sendTimeout: defaultSendTimeout,
 	}
+	handler.transcriptSource, _ = taskSource.(TaskTranscriptSource)
 	handler.activeView.Store([]transport.MessageSender{})
 	handler.snapshotGen.Store(1)
 	go handler.deliverBroadcasts()
@@ -162,13 +169,15 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 		return handler.journal.Acknowledge(ctx, sender.DeviceID(), body.ThroughSequence)
 	case "action":
 		return handler.handleAction(ctx, sender, message)
+	case "task_read":
+		return handler.handleTaskRead(ctx, sender, message)
 	default:
 		return ErrUnsupportedMessage
 	}
 }
 
 func (handler *Handler) handleHello(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
-	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable)); err != nil {
+	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil)); err != nil {
 		return err
 	}
 	var body struct {
@@ -307,6 +316,97 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	handler.logger.Info("[mobile-session] project action resolved", "device_id", sender.DeviceID(), "project_id", action.ProjectID, "result_state", result["state"])
 	handler.queueDelivery("action_result", sequence, body, []transport.MessageSender{sender})
 	return nil
+}
+
+type taskPageBody struct {
+	RequestID     string                 `json:"requestId"`
+	TaskID        string                 `json:"taskId"`
+	Entries       []tasktranscript.Entry `json:"entries"`
+	EarlierCursor string                 `json:"earlierCursor,omitempty"`
+	Truncated     bool                   `json:"truncated"`
+	Error         *taskPageError         `json:"error,omitempty"`
+}
+
+type taskPageError struct {
+	Code      string `json:"code"`
+	Retryable bool   `json:"retryable"`
+}
+
+func (handler *Handler) handleTaskRead(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
+	if handler.transcriptSource == nil {
+		return ErrUnsupportedMessage
+	}
+	var request struct {
+		RequestID     string `json:"requestId"`
+		TaskID        string `json:"taskId"`
+		Limit         int    `json:"limit"`
+		BeforeEntryID string `json:"beforeEntryId"`
+	}
+	if err := json.Unmarshal(message.Body, &request); err != nil {
+		return err
+	}
+	handler.logger.Info("[mobile-session] transcript read requested", "device_id", sender.DeviceID(), "task_id", request.TaskID, "input_limit", request.Limit, "has_cursor", request.BeforeEntryID != "")
+	page, readErr := handler.transcriptSource.ReadTranscript(ctx, request.TaskID, tasktranscript.PageOptions{
+		TaskID: request.TaskID, BeforeEntryID: request.BeforeEntryID, Limit: request.Limit,
+	})
+	if readErr == nil && page.TaskID != request.TaskID {
+		readErr = tasktranscript.ErrTaskMismatch
+	}
+	response := taskPageBody{RequestID: request.RequestID, TaskID: request.TaskID, Entries: []tasktranscript.Entry{}}
+	if readErr != nil {
+		response.Error = transcriptReadError(readErr)
+		handler.logger.Error("[mobile-session] transcript read failed", "device_id", sender.DeviceID(), "task_id", request.TaskID, "error_class", fmt.Sprintf("%T", readErr), "error_code", response.Error.Code)
+	} else {
+		response.Entries = page.Entries
+		response.EarlierCursor = page.EarlierCursor
+		response.Truncated = page.Truncated
+		handler.logger.Info("[mobile-session] transcript read ready", "device_id", sender.DeviceID(), "task_id", request.TaskID, "output_count", len(page.Entries), "has_earlier", page.EarlierCursor != "", "truncated", page.Truncated)
+	}
+	body, err := validatedTaskPageBody(response)
+	if err != nil {
+		handler.logger.Error("[mobile-session] transcript page rejected", "device_id", sender.DeviceID(), "task_id", request.TaskID, "branch_reason", "invalid_safe_projection", "error_class", fmt.Sprintf("%T", err))
+		response = taskPageBody{
+			RequestID: request.RequestID, TaskID: request.TaskID, Entries: []tasktranscript.Entry{},
+			Error: &taskPageError{Code: "internal", Retryable: true},
+		}
+		body, err = validatedTaskPageBody(response)
+		if err != nil {
+			return err
+		}
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	current := handler.active[sender.DeviceID()]
+	if current == nil || current.ConnectionID() != sender.ConnectionID() {
+		return ErrSessionSuperseded
+	}
+	return handler.send(ctx, sender, "task_page", nil, body)
+}
+
+func validatedTaskPageBody(response taskPageBody) (json.RawMessage, error) {
+	body, err := json.Marshal(response)
+	if err != nil {
+		return nil, err
+	}
+	message := contract.Message{
+		Version: contract.Version{Major: contract.ProtocolMajor, Minor: contract.ProtocolMinor}, MessageID: "task-page-validation",
+		Sender: "companion", Type: "task_page", Body: body,
+	}
+	if _, err := contract.EncodeText(message); err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func transcriptReadError(err error) *taskPageError {
+	switch {
+	case errors.Is(err, tasktranscript.ErrTaskMismatch), errors.Is(err, tasktranscript.ErrUnknownCursor), errors.Is(err, tasktranscript.ErrInvalidTranscript):
+		return &taskPageError{Code: "invalid_action", Retryable: false}
+	case errors.Is(err, taskstate.ErrUnresolvedTaskSource), errors.Is(err, taskstate.ErrUnknownTaskSource):
+		return &taskPageError{Code: "owner_unavailable", Retryable: false}
+	default:
+		return &taskPageError{Code: "internal", Retryable: true}
+	}
 }
 
 func (handler *Handler) PublishTaskEvent(ctx context.Context, taskEvent taskstate.MobileEvent) error {
@@ -457,10 +557,13 @@ func (handler *Handler) send(ctx context.Context, sender transport.MessageSender
 	return nil
 }
 
-func welcomeBody(sessionID string, taskCapable bool) json.RawMessage {
+func welcomeBody(sessionID string, taskCapable, transcriptCapable bool) json.RawMessage {
 	capabilities := []string{"set_project"}
 	if taskCapable {
 		capabilities = append(capabilities, "desktop_tasks")
+	}
+	if transcriptCapable {
+		capabilities = append(capabilities, "task_transcripts")
 	}
 	body, _ := json.Marshal(struct {
 		SessionID    string   `json:"sessionId"`

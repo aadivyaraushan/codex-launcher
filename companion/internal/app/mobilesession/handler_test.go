@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
@@ -85,6 +87,119 @@ func TestColdHelloIncludesOnlyTypedSafeTaskSummaries(t *testing.T) {
 	}
 	if bytes.Contains(sender.messages[1].Body, []byte(`"source"`)) || bytes.Contains(sender.messages[1].Body, []byte(`"raw"`)) {
 		t.Fatalf("snapshot exposed an internal task field: %s", sender.messages[1].Body)
+	}
+}
+
+func TestTaskReadSendsUnsequencedPageWithoutPersistingTranscriptContent(t *testing.T) {
+	privateReply := "private Desktop reply"
+	var gotOptions tasktranscript.PageOptions
+	source := transcriptTaskSource{
+		list: func(context.Context, int) ([]taskstate.Task, error) {
+			return []taskstate.Task{{
+				ID: "thread-1", Title: "Build launcher", ProjectLabel: "uf-u", State: taskstate.IdleAfterReply,
+				UpdatedAtUnix: sessionNow.Unix(), Source: taskstate.SourceDesktop,
+			}}, nil
+		},
+		read: func(_ context.Context, taskID string, options tasktranscript.PageOptions) (tasktranscript.Page, error) {
+			gotOptions = options
+			return tasktranscript.Page{
+				TaskID:  taskID,
+				Entries: []tasktranscript.Entry{{ID: "agent-1", TurnID: "turn-1", Kind: tasktranscript.KindAgent, Text: privateReply}},
+			}, nil
+		},
+	}
+	handler, sender := newTestHandlerWithTasks(t, source)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-transcript","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	var welcome struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if json.Unmarshal(sender.messages[0].Body, &welcome) != nil || strings.Join(welcome.Capabilities, ",") != "set_project,desktop_tasks,task_transcripts" {
+		t.Fatalf("capabilities = %#v", welcome.Capabilities)
+	}
+	read := decode(t, `{"version":{"major":1,"minor":0},"messageId":"read-transcript","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":32,"beforeEntryId":"agent-2"}}`)
+	if err := handler.Handle(context.Background(), sender, read); err != nil {
+		t.Fatal(err)
+	}
+	if gotOptions.TaskID != "thread-1" || gotOptions.Limit != 32 || gotOptions.BeforeEntryID != "agent-2" {
+		t.Fatalf("read options = %#v", gotOptions)
+	}
+	if len(sender.messages) != 3 || sender.messages[2].Type != "task_page" || sender.messages[2].Sequence != nil || !bytes.Contains(sender.messages[2].Body, []byte(privateReply)) {
+		t.Fatalf("task page = %#v", sender.messages)
+	}
+	snapshot, err := handler.journal.Snapshot(sessionNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(snapshot.Body, []byte(privateReply)) {
+		t.Fatalf("transcript content reached durable snapshot: %s", snapshot.Body)
+	}
+}
+
+func TestTaskReadIsUnavailableWhenSourceCannotReadTranscripts(t *testing.T) {
+	handler, sender := newTestHandlerWithTasks(t, taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
+		return []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "uf-u", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()}}, nil
+	}))
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-no-transcript","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	read := decode(t, `{"version":{"major":1,"minor":0},"messageId":"read-transcript","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":32}}`)
+	if err := handler.Handle(context.Background(), sender, read); !errors.Is(err, ErrUnsupportedMessage) {
+		t.Fatalf("task read error = %v, want %v", err, ErrUnsupportedMessage)
+	}
+}
+
+func TestTaskReadRejectsCrossTaskSourceResultWithoutLeakingContent(t *testing.T) {
+	privateOtherTaskReply := "private reply from another task"
+	source := transcriptTaskSource{
+		list: func(context.Context, int) ([]taskstate.Task, error) {
+			return []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "uf-u", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()}}, nil
+		},
+		read: func(context.Context, string, tasktranscript.PageOptions) (tasktranscript.Page, error) {
+			return tasktranscript.Page{
+				TaskID:  "thread-2",
+				Entries: []tasktranscript.Entry{{ID: "agent-1", TurnID: "turn-1", Kind: tasktranscript.KindAgent, Text: privateOtherTaskReply}},
+			}, nil
+		},
+	}
+	handler, sender := newTestHandlerWithTasks(t, source)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-cross-task","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	read := decode(t, `{"version":{"major":1,"minor":0},"messageId":"read-cross-task","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":32}}`)
+	if err := handler.Handle(context.Background(), sender, read); err != nil {
+		t.Fatal(err)
+	}
+	response := sender.messages[len(sender.messages)-1]
+	if response.Type != "task_page" || bytes.Contains(response.Body, []byte(privateOtherTaskReply)) || !bytes.Contains(response.Body, []byte(`"code":"invalid_action"`)) {
+		t.Fatalf("cross-task response = %s", response.Body)
+	}
+}
+
+func TestTaskReadConvertsInvalidSourcePageToContentFreeInternalError(t *testing.T) {
+	privateReply := "must not leave the companion"
+	source := transcriptTaskSource{
+		list: func(context.Context, int) ([]taskstate.Task, error) {
+			return []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "uf-u", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()}}, nil
+		},
+		read: func(context.Context, string, tasktranscript.PageOptions) (tasktranscript.Page, error) {
+			return tasktranscript.Page{TaskID: "thread-1", Entries: []tasktranscript.Entry{{
+				ID: "plan-1", TurnID: "turn-1", Kind: tasktranscript.KindPlan, Text: "", Output: privateReply,
+			}}}, nil
+		},
+	}
+	handler, sender := newTestHandlerWithTasks(t, source)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-invalid-page","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	read := decode(t, `{"version":{"major":1,"minor":0},"messageId":"read-invalid-page","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":32}}`)
+	if err := handler.Handle(context.Background(), sender, read); err != nil {
+		t.Fatal(err)
+	}
+	response := sender.messages[len(sender.messages)-1]
+	if response.Type != "task_page" || bytes.Contains(response.Body, []byte(privateReply)) || !bytes.Contains(response.Body, []byte(`"entries":[]`)) || !bytes.Contains(response.Body, []byte(`"code":"internal"`)) {
+		t.Fatalf("invalid source response = %s", response.Body)
 	}
 }
 
@@ -319,6 +434,19 @@ type taskSourceFunc func(context.Context, int) ([]taskstate.Task, error)
 
 func (source taskSourceFunc) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {
 	return source(ctx, limit)
+}
+
+type transcriptTaskSource struct {
+	list func(context.Context, int) ([]taskstate.Task, error)
+	read func(context.Context, string, tasktranscript.PageOptions) (tasktranscript.Page, error)
+}
+
+func (source transcriptTaskSource) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {
+	return source.list(ctx, limit)
+}
+
+func (source transcriptTaskSource) ReadTranscript(ctx context.Context, taskID string, options tasktranscript.PageOptions) (tasktranscript.Page, error) {
+	return source.read(ctx, taskID, options)
 }
 
 func decode(t *testing.T, frame string) contract.Message {

@@ -12,6 +12,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 )
 
 func TestRealAdapterSetRoutesByOwnedSourceWithoutFallback(t *testing.T) {
@@ -584,5 +585,67 @@ func TestSetListRecentStopsDesktopFollowingWhenSyncIsCancelled(t *testing.T) {
 
 	if _, err := set.ListRecent(ctx, 1); !errors.Is(err, context.Canceled) || loadCalls != 0 {
 		t.Fatalf("cancelled follow error = %v, load calls = %d", err, loadCalls)
+	}
+}
+
+func TestCatalogReadsBoundedAppServerTranscriptWithTurns(t *testing.T) {
+	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[{"id":"app-1","name":"App","preview":"","cwd":"/work/app","updatedAt":46,"status":{"type":"active","activeFlags":[]},"turns":[{"status":"completed"}]}]}`), nil
+	}, nil, nil)
+	readTaskID := ""
+	catalog.readAppTranscript = func(_ context.Context, taskID string) (json.RawMessage, error) {
+		readTaskID = taskID
+		return json.RawMessage(`{"thread":{"id":"app-1","turns":[{"id":"turn-1","status":"completed","items":[{"id":"agent-1","type":"agentMessage","text":"Done"}]}]}}`), nil
+	}
+	if _, err := catalog.ListRecent(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := catalog.ReadTranscript(context.Background(), "app-1", tasktranscript.PageOptions{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readTaskID != "app-1" || page.TaskID != "app-1" || len(page.Entries) != 1 || page.Entries[0].Text != "Done" {
+		t.Fatalf("app-server transcript = %#v, read task = %q", page, readTaskID)
+	}
+}
+
+func TestCatalogReadsOnlyVerifiedDesktopTranscriptAndRejectsCandidate(t *testing.T) {
+	state := json.RawMessage(`{"id":"desktop-1","cwd":"/work/desktop","threadRuntimeStatus":{"type":"idle","activeFlags":[]},"requests":[],"turns":[{"role":"assistant","text":"Desktop reply"}]}`)
+	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[{"id":"desktop-1","name":"Desktop","preview":"","cwd":"/work/desktop","updatedAt":45,"status":{"type":"notLoaded","activeFlags":[]},"turns":[]}]}`), nil
+	}, func(context.Context, string) error { return nil }, func(string) (json.RawMessage, error) { return state, nil })
+	if _, err := catalog.ListRecent(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.ReadTranscript(context.Background(), "desktop-1", tasktranscript.PageOptions{Limit: 10}); !errors.Is(err, taskstate.ErrUnresolvedTaskSource) {
+		t.Fatalf("unverified Desktop transcript error = %v", err)
+	}
+	if _, err := catalog.ResolveDesktopOwner(context.Background(), "desktop-1"); err != nil {
+		t.Fatal(err)
+	}
+	page, err := catalog.ReadTranscript(context.Background(), "desktop-1", tasktranscript.PageOptions{Limit: 10})
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].Text != "Desktop reply" {
+		t.Fatalf("verified Desktop transcript = %#v, %v", page, err)
+	}
+}
+
+func TestCatalogTranscriptFailuresLogOnlySafeMetadata(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	catalog := newCatalogWithLogger(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[{"id":"app-1","name":"App","preview":"","cwd":"/work/app","updatedAt":46,"status":{"type":"active","activeFlags":[]},"turns":[]}]}`), nil
+	}, nil, nil, logger)
+	catalog.readAppTranscript = func(context.Context, string) (json.RawMessage, error) {
+		return nil, errors.New("private transcript provider failure")
+	}
+	if _, err := catalog.ListRecent(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.ReadTranscript(context.Background(), "app-1", tasktranscript.PageOptions{Limit: 10}); err == nil {
+		t.Fatal("transcript provider error was hidden")
+	}
+	if strings.Contains(logs.String(), "private transcript provider failure") || !strings.Contains(logs.String(), "error_class") {
+		t.Fatalf("unsafe transcript logs: %s", logs.String())
 	}
 }

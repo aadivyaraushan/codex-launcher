@@ -51,6 +51,36 @@ class LauncherStartupPolicyTest {
     }
 
     @Test
+    fun taskTranscriptIsReachableOnlyFromThePairedHomeRoot() {
+        assertEquals(
+            LauncherDestination.TASK,
+            visibleDestination(LauncherDestination.HOME, LauncherDestination.TASK),
+        )
+        assertEquals(
+            LauncherDestination.PAIRING,
+            visibleDestination(LauncherDestination.PAIRING, LauncherDestination.TASK),
+        )
+        assertEquals(
+            LauncherDestination.TASK_DETAIL,
+            visibleDestination(LauncherDestination.HOME, LauncherDestination.TASK_DETAIL),
+        )
+        assertEquals(
+            LauncherDestination.PAIRING,
+            visibleDestination(LauncherDestination.PAIRING, LauncherDestination.TASK_DETAIL),
+        )
+        assertEquals(
+            LauncherDestination.HOME,
+            visibleDestination(
+                root = LauncherDestination.HOME,
+                requested = LauncherDestination.TASK_DETAIL,
+                phase = ConnectionPhase.DISCONNECTED,
+                hasTranscript = false,
+                hasDetail = true,
+            ),
+        )
+    }
+
+    @Test
     fun offlineProjectSurfaceCannotRetainComputerDerivedChoices() {
         val onlineState =
             ProjectSelectionUiState(

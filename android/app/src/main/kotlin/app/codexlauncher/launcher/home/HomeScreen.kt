@@ -1,6 +1,7 @@
 package app.codexlauncher.launcher.home
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Column
@@ -57,6 +58,7 @@ fun HomeScreen(
     onAttach: () -> Unit = {},
     onDictate: () -> Unit = {},
     onConnectionHelp: () -> Unit = {},
+    onOpenTask: (String) -> Unit = {},
     connectionHelpVisible: Boolean = false,
 ) {
     val density = LocalDensity.current
@@ -111,6 +113,7 @@ fun HomeScreen(
                     onSend = onSend,
                     onAttach = onAttach,
                     onDictate = onDictate,
+                    onOpenTask = onOpenTask,
                     imeBottomPx = imeBottomPx,
                     modifier = Modifier.weight(1f),
                 )
@@ -193,6 +196,7 @@ private fun OnlineContent(
     onSend: (String) -> Unit,
     onAttach: () -> Unit,
     onDictate: () -> Unit,
+    onOpenTask: (String) -> Unit,
     imeBottomPx: Int,
     modifier: Modifier,
 ) {
@@ -205,7 +209,13 @@ private fun OnlineContent(
     }
     LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
         items(state.tasks, key = { it.id }) { task ->
-            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenTask(task.id) }
+                        .padding(vertical = 12.dp),
+            ) {
                 Text(task.title, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(task.stateLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

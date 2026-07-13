@@ -79,7 +79,19 @@
 > permission until a fresh snapshot is mapped, matched, and explicitly
 > authorized. Revocable event tokens cancel stale blocked delivery and guard the
 > final journal attempt. Catalog logs contain only safe error types.
-> Approval/question request routing and the full transcript contract remain
+> Task 9 now also has a bounded, read-only transcript path. App-server tasks use
+> the installed Codex 0.144.1 `thread/read` contract with turns included;
+> verified Desktop tasks use their already materialized follower state.
+> `task_read` and `task_page` are unsequenced, so transcript text, command output,
+> and diffs never enter the replay journal or phone storage. The phone keeps only
+> the active transcript in memory, supports stable earlier-page cursors, rejects
+> stale or cross-task responses, clears content on disconnect, and opens command
+> output and file diffs only on explicit detail screens. Home, Task, and detail
+> UI tests pass on the Pixel 9 Android 16 emulator. Incomplete plan/file items
+> fall back to content-free activity labels, null transcript arrays are rejected
+> on both sides, and every complete outgoing page is validated before send.
+> Approval/question request
+> routing, task management, new-task options, and live transcript deltas remain
 > unbuilt.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.

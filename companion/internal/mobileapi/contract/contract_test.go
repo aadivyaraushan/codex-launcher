@@ -155,6 +155,44 @@ func TestContractAcceptsOnlyOpaqueApprovedProjectIdentifiers(t *testing.T) {
 	}
 }
 
+func TestContractAcceptsBoundedUnsequencedTaskTranscriptPages(t *testing.T) {
+	read := `{"version":{"major":1,"minor":0},"messageId":"read-1","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":32,"beforeEntryId":"agent-2"}}`
+	if _, err := DecodeText([]byte(read)); err != nil {
+		t.Fatalf("task read was rejected: %v", err)
+	}
+	page := `{"version":{"major":1,"minor":0},"messageId":"page-1","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":[
+		{"id":"user-1","turnId":"turn-1","kind":"user","text":"Fix it"},
+		{"id":"command-1","turnId":"turn-1","kind":"command","status":"completed","command":"go test ./...","output":"ok"},
+		{"id":"file-1","turnId":"turn-1","kind":"file_change","status":"completed","changes":[{"path":"src/main.go","kind":"update","diff":"@@"}]}
+	],"earlierCursor":"user-1","truncated":false}}`
+	message, err := DecodeText([]byte(page))
+	if err != nil {
+		t.Fatalf("task page was rejected: %v", err)
+	}
+	if message.Sequence != nil {
+		t.Fatalf("task page unexpectedly entered durable sequence: %v", *message.Sequence)
+	}
+}
+
+func TestContractRejectsTranscriptInternalsAndMalformedPages(t *testing.T) {
+	frames := map[string]string{
+		"sequenced page":           `{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","seq":2,"body":{"requestId":"request-1","taskId":"thread-1","entries":[],"truncated":false}}`,
+		"raw cwd":                  `{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":[{"id":"command-1","turnId":"turn-1","kind":"command","status":"completed","command":"pwd","cwd":"/private"}],"truncated":false}}`,
+		"hidden reasoning content": `{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":[{"id":"reason-1","turnId":"turn-1","kind":"reasoning","text":"summary","content":"hidden"}],"truncated":false}}`,
+		"unknown entry kind":       `{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":[{"id":"item-1","turnId":"turn-1","kind":"raw","text":"private"}],"truncated":false}}`,
+		"null entries":             `{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":null,"truncated":false}}`,
+		"null file changes":        `{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":[{"id":"file-1","turnId":"turn-1","kind":"file_change","status":"inProgress","changes":null}],"truncated":false}}`,
+		"invalid read limit":       `{"version":{"major":1,"minor":0},"messageId":"read","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":65}}`,
+	}
+	for name, frame := range frames {
+		t.Run(name, func(t *testing.T) {
+			if _, err := DecodeText([]byte(frame)); !errors.Is(err, ErrInvalidEnvelope) {
+				t.Fatalf("error = %v, want %v", err, ErrInvalidEnvelope)
+			}
+		})
+	}
+}
+
 func TestSnapshotCarriesOnlySafeComputerAndOpaqueProjectChoices(t *testing.T) {
 	valid := `{"version":{"major":1,"minor":0},"messageId":"snapshot-projects","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Aadi's Mac","projects":[{"id":"project-main","displayName":"Codex Launcher"}],"tasks":[]}}`
 	if _, err := DecodeText([]byte(valid)); err != nil {

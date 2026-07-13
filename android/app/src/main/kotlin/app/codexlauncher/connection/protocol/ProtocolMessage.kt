@@ -26,6 +26,8 @@ enum class MessageType(val wireName: String) {
     WELCOME("welcome"),
     SNAPSHOT("snapshot"),
     EVENT("event"),
+    TASK_READ("task_read"),
+    TASK_PAGE("task_page"),
     ACTION("action"),
     ACTION_RESULT("action_result"),
     ACK("ack"),

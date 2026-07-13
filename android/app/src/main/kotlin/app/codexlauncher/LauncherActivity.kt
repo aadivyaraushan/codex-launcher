@@ -66,6 +66,9 @@ import app.codexlauncher.storage.pairing.DeviceIdentityStore
 import app.codexlauncher.storage.pairing.deviceIdentityDataStore
 import app.codexlauncher.storage.pairing.pairingDataStore
 import app.codexlauncher.storage.secrets.PairingKeyStore
+import app.codexlauncher.task.transcript.TaskScreen
+import app.codexlauncher.task.transcript.TranscriptDetail
+import app.codexlauncher.task.transcript.TranscriptDetailScreen
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -124,6 +127,7 @@ class LauncherActivity : ComponentActivity() {
             var destination by rememberSaveable { mutableStateOf(LauncherDestination.PAIRING) }
             var installedApps by remember { mutableStateOf(emptyList<InstalledApp>()) }
             var connectionHelpVisible by rememberSaveable { mutableStateOf(false) }
+            var transcriptDetail by remember { mutableStateOf<TranscriptDetail?>(null) }
             var cameraPermissionGranted by remember {
                 mutableStateOf(
                     ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
@@ -139,7 +143,16 @@ class LauncherActivity : ComponentActivity() {
             val pairedComputer = (pairingState as? PairingRecordState.Loaded)?.record
             val loadedRootDestination = pairingState.startDestination()
             val rootDestination = loadedRootDestination ?: LauncherDestination.PAIRING
-            val visibleDestination = loadedRootDestination?.let { visibleDestination(it, destination) }
+            val visibleDestination =
+                loadedRootDestination?.let {
+                    visibleDestination(
+                        root = it,
+                        requested = destination,
+                        phase = sessionUiState.connection.phase,
+                        hasTranscript = sessionUiState.transcript != null,
+                        hasDetail = transcriptDetail != null,
+                    )
+                }
             LaunchedEffect(pairingState) {
                 when {
                     pairingState is PairingRecordState.Loaded && pairedComputer == null -> destination = LauncherDestination.PAIRING
@@ -150,14 +163,29 @@ class LauncherActivity : ComponentActivity() {
                     is PairingRecordState.Loaded -> loaded.record?.let(sessionViewModel::connect) ?: sessionViewModel.disconnect()
                 }
             }
-            LaunchedEffect(sessionUiState.connection.phase) {
+            LaunchedEffect(destination, sessionUiState.connection.phase, sessionUiState.transcript?.taskId) {
                 if (destination == LauncherDestination.PROJECT && sessionUiState.connection.phase != ConnectionPhase.ONLINE) {
                     destination = LauncherDestination.HOME
+                }
+                if (destination == LauncherDestination.TASK &&
+                    (sessionUiState.connection.phase != ConnectionPhase.ONLINE || sessionUiState.transcript == null)
+                ) {
+                    sessionViewModel.closeTask()
+                    transcriptDetail = null
+                    destination = LauncherDestination.HOME
+                }
+                if (destination == LauncherDestination.TASK_DETAIL &&
+                    (sessionUiState.connection.phase != ConnectionPhase.ONLINE || sessionUiState.transcript == null || transcriptDetail == null)
+                ) {
+                    transcriptDetail = null
+                    destination = if (sessionUiState.transcript == null) LauncherDestination.HOME else LauncherDestination.TASK
                 }
             }
             val currentHomeIntentSequence = homeIntentSequence
             LaunchedEffect(currentHomeIntentSequence, pairingState) {
                 if (pairingState is PairingRecordState.Loaded) {
+                    sessionViewModel.closeTask()
+                    transcriptDetail = null
                     destination = if (pairedComputer == null) LauncherDestination.PAIRING else LauncherDestination.HOME
                 }
                 connectionHelpVisible = false
@@ -167,11 +195,20 @@ class LauncherActivity : ComponentActivity() {
                     installedApps = appsLoader.load()
                 }
             }
-            BackHandler(enabled = destination == LauncherDestination.APPS || destination == LauncherDestination.APPEARANCE || destination == LauncherDestination.PROJECT) {
+            BackHandler(enabled = destination in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE, LauncherDestination.PROJECT, LauncherDestination.TASK, LauncherDestination.TASK_DETAIL)) {
                 destination =
                     when (destination) {
                         LauncherDestination.APPEARANCE -> LauncherDestination.APPS
                         LauncherDestination.PROJECT -> LauncherDestination.HOME
+                        LauncherDestination.TASK -> {
+                            sessionViewModel.closeTask()
+                            transcriptDetail = null
+                            LauncherDestination.HOME
+                        }
+                        LauncherDestination.TASK_DETAIL -> {
+                            transcriptDetail = null
+                            LauncherDestination.TASK
+                        }
                         LauncherDestination.APPS -> rootDestination
                         LauncherDestination.PAIRING, LauncherDestination.HOME -> destination
                     }
@@ -210,8 +247,44 @@ class LauncherActivity : ComponentActivity() {
                             onAllApps = { destination = LauncherDestination.APPS },
                             onAndroidSettings = ::openAndroidSettings,
                             onConnectionHelp = { connectionHelpVisible = true },
+                            onOpenTask = { taskId ->
+                                if (sessionViewModel.openTask(taskId)) {
+                                    transcriptDetail = null
+                                    destination = LauncherDestination.TASK
+                                }
+                            },
                             connectionHelpVisible = connectionHelpVisible,
                         )
+                    LauncherDestination.TASK ->
+                        sessionUiState.transcript?.let { transcript ->
+                            TaskScreen(
+                                state = transcript,
+                                onBack = {
+                                    sessionViewModel.closeTask()
+                                    transcriptDetail = null
+                                    destination = LauncherDestination.HOME
+                                },
+                                onLoadEarlier = { sessionViewModel.loadEarlierTranscript() },
+                                onViewCommandOutput = { entry ->
+                                    transcriptDetail = TranscriptDetail.Command(entry)
+                                    destination = LauncherDestination.TASK_DETAIL
+                                },
+                                onViewFileChange = { entry, change ->
+                                    transcriptDetail = TranscriptDetail.File(entry, change)
+                                    destination = LauncherDestination.TASK_DETAIL
+                                },
+                            )
+                        } ?: LauncherLoadingScreen()
+                    LauncherDestination.TASK_DETAIL ->
+                        transcriptDetail?.let { detail ->
+                            TranscriptDetailScreen(
+                                detail = detail,
+                                onBack = {
+                                    transcriptDetail = null
+                                    destination = LauncherDestination.TASK
+                                },
+                            )
+                        } ?: LauncherLoadingScreen()
                     LauncherDestination.PROJECT ->
                         ProjectSelector(
                             state = visibleProjectSelection(sessionUiState.connection.phase, projectUiState),
@@ -281,6 +354,8 @@ internal enum class LauncherDestination {
     PAIRING,
     HOME,
     PROJECT,
+    TASK,
+    TASK_DETAIL,
     APPS,
     APPEARANCE,
 }
@@ -300,10 +375,22 @@ internal fun PairingRecordState.startDestination(): LauncherDestination? =
 internal fun visibleDestination(
     root: LauncherDestination,
     requested: LauncherDestination,
+    phase: ConnectionPhase = ConnectionPhase.ONLINE,
+    hasTranscript: Boolean = true,
+    hasDetail: Boolean = true,
 ): LauncherDestination =
     when (requested) {
         LauncherDestination.PAIRING, LauncherDestination.HOME -> root
         LauncherDestination.PROJECT -> if (root == LauncherDestination.HOME) requested else root
+        LauncherDestination.TASK ->
+            if (root == LauncherDestination.HOME && phase == ConnectionPhase.ONLINE && hasTranscript) requested else root
+        LauncherDestination.TASK_DETAIL ->
+            when {
+                root != LauncherDestination.HOME -> root
+                phase != ConnectionPhase.ONLINE || !hasTranscript -> LauncherDestination.HOME
+                hasDetail -> LauncherDestination.TASK_DETAIL
+                else -> LauncherDestination.TASK
+            }
         LauncherDestination.APPS, LauncherDestination.APPEARANCE -> requested
     }
 

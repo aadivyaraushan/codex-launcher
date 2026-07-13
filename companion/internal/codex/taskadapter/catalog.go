@@ -12,6 +12,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 )
 
 const MaxRecentCatalogTasks = 20
@@ -23,16 +24,17 @@ var (
 )
 
 type Catalog struct {
-	list      func(context.Context, int) (json.RawMessage, error)
-	load      func(context.Context, string) error
-	state     func(string) (json.RawMessage, error)
-	resume    func(context.Context, string) (json.RawMessage, error)
-	rename    func(context.Context, string, string) error
-	archive   func(context.Context, string) error
-	fork      func(context.Context, string) (json.RawMessage, error)
-	authorize func(string) error
-	revoke    func(string)
-	logger    *slog.Logger
+	list              func(context.Context, int) (json.RawMessage, error)
+	load              func(context.Context, string) error
+	state             func(string) (json.RawMessage, error)
+	resume            func(context.Context, string) (json.RawMessage, error)
+	rename            func(context.Context, string, string) error
+	archive           func(context.Context, string) error
+	fork              func(context.Context, string) (json.RawMessage, error)
+	readAppTranscript func(context.Context, string) (json.RawMessage, error)
+	authorize         func(string) error
+	revoke            func(string)
+	logger            *slog.Logger
 
 	mu         sync.RWMutex
 	candidates map[string]taskstate.Task
@@ -77,6 +79,9 @@ func NewAppServerCatalog(appServer *appserver.Client) (*Catalog, error) {
 }
 
 func configureAppServerActions(catalog *Catalog, appServer *appserver.Client) {
+	catalog.readAppTranscript = func(ctx context.Context, taskID string) (json.RawMessage, error) {
+		return appServer.ReadThread(ctx, taskID, true)
+	}
 	catalog.resume = func(ctx context.Context, taskID string) (json.RawMessage, error) {
 		result, err := appServer.ResumeThread(ctx, taskID, appserver.ThreadOptions{})
 		if err != nil {
@@ -99,6 +104,55 @@ func configureAppServerActions(catalog *Catalog, appServer *appserver.Client) {
 		}
 		return extractThread(result)
 	}
+}
+
+func (catalog *Catalog) ReadTranscript(ctx context.Context, taskID string, options tasktranscript.PageOptions) (tasktranscript.Page, error) {
+	if catalog == nil {
+		return tasktranscript.Page{}, errors.New("task catalog is unavailable")
+	}
+	if options.TaskID != "" && options.TaskID != taskID {
+		return tasktranscript.Page{}, tasktranscript.ErrTaskMismatch
+	}
+	options.TaskID = taskID
+	candidate, err := catalog.candidate(taskID)
+	if err != nil {
+		return tasktranscript.Page{}, err
+	}
+	catalog.logger.Debug("[codex-adapter] transcript requested", "task_id", taskID, "source", candidate.Source, "input_limit", options.Limit, "has_cursor", options.BeforeEntryID != "")
+	var page tasktranscript.Page
+	switch candidate.Source {
+	case taskstate.SourceAppServer:
+		if catalog.readAppTranscript == nil {
+			return tasktranscript.Page{}, errors.New("app-server transcript reader is unavailable")
+		}
+		raw, readErr := catalog.readAppTranscript(ctx, taskID)
+		if readErr != nil {
+			catalog.logger.Error("[codex-adapter] app-server transcript read failed", "task_id", taskID, "error_class", fmt.Sprintf("%T", readErr))
+			return tasktranscript.Page{}, fmt.Errorf("read app-server task transcript: %w", readErr)
+		}
+		page, err = tasktranscript.MapAppServerPage(raw, options)
+	case taskstate.SourceDesktop:
+		if catalog.state == nil {
+			return tasktranscript.Page{}, errors.New("Desktop transcript reader is unavailable")
+		}
+		raw, readErr := catalog.state(taskID)
+		if readErr != nil {
+			catalog.logger.Error("[codex-adapter] Desktop transcript read failed", "task_id", taskID, "error_class", fmt.Sprintf("%T", readErr))
+			return tasktranscript.Page{}, fmt.Errorf("read Desktop task transcript: %w", readErr)
+		}
+		page, err = tasktranscript.MapDesktopPage(raw, options)
+	case taskstate.SourceCatalog:
+		return tasktranscript.Page{}, taskstate.ErrUnresolvedTaskSource
+	default:
+		return tasktranscript.Page{}, taskstate.ErrUnknownTaskSource
+	}
+	if err != nil {
+		catalog.logger.Error("[codex-adapter] transcript mapping failed", "task_id", taskID, "source", candidate.Source, "error_class", fmt.Sprintf("%T", err))
+		return tasktranscript.Page{}, fmt.Errorf("map Codex task transcript: %w", err)
+	}
+	encoded, _ := json.Marshal(page)
+	catalog.logger.Info("[codex-adapter] transcript ready", "task_id", taskID, "source", candidate.Source, "output_count", len(page.Entries), "output_bytes", len(encoded), "truncated", page.Truncated)
+	return page, nil
 }
 
 func newCatalog(

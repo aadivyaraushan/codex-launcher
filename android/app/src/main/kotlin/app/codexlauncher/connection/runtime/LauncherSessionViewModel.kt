@@ -19,6 +19,8 @@ import app.codexlauncher.project.session.ProjectSessionBridge
 import app.codexlauncher.project.session.ProjectSnapshot
 import app.codexlauncher.storage.actions.ActionJournal
 import app.codexlauncher.task.summary.TaskEventReducer
+import app.codexlauncher.task.transcript.TaskTranscriptMapper
+import app.codexlauncher.task.transcript.TaskTranscriptUiState
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -42,6 +44,7 @@ import kotlinx.serialization.json.put
 data class LauncherSessionState(
     val connection: ConnectionSnapshot = ConnectionSnapshot.initial(),
     val snapshot: ProjectSnapshot? = null,
+    val transcript: TaskTranscriptUiState? = null,
 )
 
 class LauncherSessionViewModel(
@@ -61,6 +64,8 @@ class LauncherSessionViewModel(
     private var activeDeviceId: String? = null
     private var activeConnection: SessionConnection? = null
     private var projectBridge: ProjectSessionBridge? = null
+    private var transcriptCapable = false
+    private var pendingTranscript: PendingTranscriptRequest? = null
     private val acknowledgementGate = SequenceAcknowledgementGate()
     private val acknowledgementMutex = Mutex()
     private val pendingProjectAcknowledgement = AtomicReference<ProjectAcknowledgement?>()
@@ -157,6 +162,7 @@ class LauncherSessionViewModel(
                     MessageType.WELCOME -> acceptCapabilities(expectedGeneration, message)
                     MessageType.SNAPSHOT -> applySnapshot(expectedGeneration, message)
                     MessageType.EVENT -> applyTaskEvent(expectedGeneration, message)
+                    MessageType.TASK_PAGE -> applyTaskPage(expectedGeneration, message)
                     MessageType.ACTION_RESULT -> projectBridge?.accept(message)
                     else -> Unit
                 }
@@ -178,6 +184,7 @@ class LauncherSessionViewModel(
             fail(expectedGeneration, SessionFailure.INVALID_PROTOCOL)
             return
         }
+        transcriptCapable = "task_transcripts" in capabilities
         val connection = activeConnection ?: return
         projectBridge =
             ProjectSessionBridge(
@@ -190,6 +197,102 @@ class LauncherSessionViewModel(
                     pendingProjectAcknowledgement.set(ProjectAcknowledgement(expectedGeneration, actionId, sequence))
                 },
             )
+    }
+
+    @Synchronized
+    fun openTask(taskId: String): Boolean {
+        val current = mutableState.value
+        val task = current.snapshot?.tasks?.singleOrNull { it.id == taskId }
+        if (!transcriptCapable || current.connection.phase != app.codexlauncher.connection.state.ConnectionPhase.ONLINE || task == null) return false
+        mutableState.value = current.copy(transcript = TaskTranscriptUiState(taskId = taskId, title = task.title))
+        return sendTranscriptRead(taskId, beforeEntryId = null, appendEarlier = false)
+    }
+
+    @Synchronized
+    fun loadEarlierTranscript(): Boolean {
+        val transcript = mutableState.value.transcript ?: return false
+        val cursor = transcript.earlierCursor ?: return false
+        if (transcript.loading) return false
+        mutableState.value = mutableState.value.copy(transcript = transcript.copy(loading = true, errorCode = null))
+        return sendTranscriptRead(transcript.taskId, beforeEntryId = cursor, appendEarlier = true)
+    }
+
+    @Synchronized
+    fun closeTask() {
+        pendingTranscript = null
+        mutableState.value = mutableState.value.copy(transcript = null)
+    }
+
+    private fun sendTranscriptRead(taskId: String, beforeEntryId: String?, appendEarlier: Boolean): Boolean {
+        val connection = activeConnection ?: return false
+        val requestId = UUID.randomUUID().toString()
+        val encoded =
+            buildJsonObject {
+                put("version", buildJsonObject { put("major", ProtocolCodec.PROTOCOL_MAJOR); put("minor", 0) })
+                put("messageId", UUID.randomUUID().toString())
+                put("sender", "phone")
+                put("type", "task_read")
+                put("body", buildJsonObject {
+                    put("requestId", requestId)
+                    put("taskId", taskId)
+                    put("limit", TRANSCRIPT_PAGE_SIZE)
+                    beforeEntryId?.let { put("beforeEntryId", it) }
+                })
+            }.toString().also(ProtocolCodec::decodeText)
+        pendingTranscript = PendingTranscriptRequest(generation.get(), requestId, taskId, appendEarlier)
+        if (!connection.sendText(encoded)) {
+            fail(generation.get(), SessionFailure.CONNECTION_LOST)
+            return false
+        }
+        AppLog.info(
+            feature = "task-transcript",
+            message = "transcript page requested",
+            fields = mapOf("task_id" to taskId, "has_cursor" to (beforeEntryId != null), "input_limit" to TRANSCRIPT_PAGE_SIZE),
+        )
+        return true
+    }
+
+    @Synchronized
+    private fun applyTaskPage(expectedGeneration: Long, message: ProtocolMessage) {
+        if (generation.get() != expectedGeneration) return
+        val page = TaskTranscriptMapper.map(message)
+        val pending = pendingTranscript ?: return
+        if (page.requestId != pending.requestId) return
+        if (pending.generation != expectedGeneration || page.taskId != pending.taskId) {
+            fail(expectedGeneration, SessionFailure.INVALID_PROTOCOL)
+            return
+        }
+        val current = mutableState.value.transcript
+        if (current == null || current.taskId != pending.taskId) {
+            pendingTranscript = null
+            return
+        }
+        pendingTranscript = null
+        if (page.errorCode != null) {
+            mutableState.value = mutableState.value.copy(
+                transcript = current.copy(loading = false, errorCode = page.errorCode),
+            )
+            return
+        }
+        val entries = if (pending.appendEarlier) page.entries + current.entries else page.entries
+        if (entries.map { it.id }.distinct().size != entries.size) {
+            fail(expectedGeneration, SessionFailure.INVALID_PROTOCOL)
+            return
+        }
+        mutableState.value = mutableState.value.copy(
+            transcript = current.copy(
+                entries = entries,
+                earlierCursor = page.earlierCursor,
+                truncated = current.truncated || page.truncated,
+                loading = false,
+                errorCode = null,
+            ),
+        )
+        AppLog.info(
+            feature = "task-transcript",
+            message = "transcript page applied",
+            fields = mapOf("task_id" to page.taskId, "page_count" to page.entries.size, "total_count" to entries.size, "has_earlier" to (page.earlierCursor != null)),
+        )
     }
 
     private fun applySnapshot(expectedGeneration: Long, message: ProtocolMessage) {
@@ -472,6 +575,8 @@ class LauncherSessionViewModel(
         snapshotScope = newSnapshotScope()
         projectBridge?.close()
         projectBridge = null
+        transcriptCapable = false
+        pendingTranscript = null
         acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
         pendingTaskEvents.clear()
@@ -553,6 +658,8 @@ class LauncherSessionViewModel(
         snapshotScope = newSnapshotScope()
         projectBridge?.close()
         projectBridge = null
+        transcriptCapable = false
+        pendingTranscript = null
         acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
         pendingTaskEvents.clear()
@@ -581,6 +688,13 @@ private data class ProjectAcknowledgement(
     val sequence: Long,
 )
 
+private data class PendingTranscriptRequest(
+    val generation: Long,
+    val requestId: String,
+    val taskId: String,
+    val appendEarlier: Boolean,
+)
+
 private data class ProjectActionRequest(
     val generation: Long,
     val bridge: ProjectSessionBridge,
@@ -594,6 +708,7 @@ private data class SnapshotTicket(
 )
 
 private const val MAX_PENDING_TASK_EVENTS = 128
+private const val TRANSCRIPT_PAGE_SIZE = 32
 
 internal fun retryDelayMillis(attempt: Int): Long {
     val exponent = (attempt - 1).coerceIn(0, 5)

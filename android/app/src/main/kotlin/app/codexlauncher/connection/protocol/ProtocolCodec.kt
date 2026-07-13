@@ -23,6 +23,9 @@ object ProtocolCodec {
     const val MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
     const val MAX_ATTACHMENT_FRAME_BYTES = MAX_ATTACHMENT_BYTES + 4096 + 12 + 32
     const val MAX_SNAPSHOT_TASKS = 20
+    const val MAX_TRANSCRIPT_PAGE_ENTRIES = 64
+    const val MAX_TRANSCRIPT_ENTRY_RUNES = 8192
+    const val MAX_TRANSCRIPT_FILE_CHANGES = 64
 
     private val json = Json { isLenient = false }
     private val envelopeKeys = setOf("version", "messageId", "sender", "type", "seq", "body")
@@ -155,6 +158,13 @@ object ProtocolCodec {
                 !validProjects(body["projects"]) || !validTasks(body["tasks"])
             ) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.EVENT -> if (sender != Sender.COMPANION || sequence == null || body.keys != setOf("taskId", "event", "state", "summary") || !optionalString(body, "taskId").isValidId() || optionalString(body, "event") !in eventNames || optionalString(body, "state") !in taskStates || !optionalString(body, "summary").isSafeDisplay(512)) fail(ProtocolError.INVALID_ENVELOPE)
+            MessageType.TASK_READ -> if (
+                sender != Sender.PHONE || body.keys.any { it !in setOf("requestId", "taskId", "limit", "beforeEntryId") } ||
+                !optionalString(body, "requestId").isValidId() || !optionalString(body, "taskId").isValidId() ||
+                (body["limit"]?.jsonPrimitive?.intOrNull ?: 0) !in 1..MAX_TRANSCRIPT_PAGE_ENTRIES ||
+                body["beforeEntryId"] != null && !optionalString(body, "beforeEntryId").isValidId()
+            ) fail(ProtocolError.INVALID_ENVELOPE)
+            MessageType.TASK_PAGE -> if (sender != Sender.COMPANION || !validTaskPage(body)) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.ACTION_RESULT -> {
                 val state = optionalString(body, "state")
                 if (sender != Sender.COMPANION || sequence == null || body.keys.any { it !in setOf("actionId", "state", "error") } ||
@@ -227,6 +237,50 @@ object ProtocolCodec {
                 runCatching { Instant.parse(optionalString(task, "lastActivityAt")) }.isSuccess && validPendingRequest(task["pendingRequest"])
         }
     }.getOrDefault(false)
+
+    private fun validTaskPage(body: JsonObject): Boolean = runCatching {
+        if (body.keys.any { it !in setOf("requestId", "taskId", "entries", "earlierCursor", "truncated", "error") } ||
+            !optionalString(body, "requestId").isValidId() || !optionalString(body, "taskId").isValidId() ||
+            !isJsonBoolean(body["truncated"]) || body["earlierCursor"] != null && !optionalString(body, "earlierCursor").isValidId()
+        ) return@runCatching false
+        val entries = body["entries"]?.jsonArray ?: return@runCatching false
+        if (entries.size > MAX_TRANSCRIPT_PAGE_ENTRIES) return@runCatching false
+        if (body["error"] != null) {
+            return@runCatching entries.isEmpty() && body["earlierCursor"] == null && validOptionalError(body["error"], required = true)
+        }
+        val ids = mutableSetOf<String>()
+        entries.all { element ->
+            val entry = element.jsonObject
+            val id = optionalString(entry, "id")
+            id.isValidId() && ids.add(id) && optionalString(entry, "turnId").isValidId() && validTranscriptEntry(entry)
+        }
+    }.getOrDefault(false)
+
+    private fun validTranscriptEntry(entry: JsonObject): Boolean =
+        when (optionalString(entry, "kind")) {
+            "user", "agent", "reasoning", "plan", "activity" ->
+                entry.keys == setOf("id", "turnId", "kind", "text") && optionalString(entry, "text").isBounded(MAX_TRANSCRIPT_ENTRY_RUNES)
+            "command" ->
+                entry.keys.all { it in setOf("id", "turnId", "kind", "status", "command", "output") } &&
+                    optionalString(entry, "status") in transcriptStatuses && optionalString(entry, "command").isBounded(MAX_TRANSCRIPT_ENTRY_RUNES) &&
+                    (entry["output"] == null || optionalString(entry, "output").isBounded(MAX_TRANSCRIPT_ENTRY_RUNES))
+            "file_change" -> {
+                if (entry.keys != setOf("id", "turnId", "kind", "status", "changes") || optionalString(entry, "status") !in transcriptStatuses) {
+                    false
+                } else {
+                    runCatching {
+                        val changes = entry.getValue("changes").jsonArray
+                        changes.size <= MAX_TRANSCRIPT_FILE_CHANGES && changes.all { element ->
+                            val change = element.jsonObject
+                            change.keys.all { it in setOf("path", "kind", "diff") } && optionalString(change, "path").isBounded(4096) &&
+                                optionalString(change, "kind").isSafeDisplay(64) &&
+                                (change["diff"] == null || optionalString(change, "diff").isBounded(MAX_TRANSCRIPT_ENTRY_RUNES))
+                        }
+                    }.getOrDefault(false)
+                }
+            }
+            else -> false
+        }
 
     private fun validProjects(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
         val projects = value?.jsonArray ?: return@runCatching false
@@ -331,6 +385,7 @@ object ProtocolCodec {
     private val actionStates = setOf("queued", "sent", "confirmed", "outcome_unknown", "failed", "cancelled")
     private val taskStates = setOf("working", "waiting_for_approval", "waiting_for_answer", "failed", "interrupted", "idle_after_reply")
     private val eventNames = setOf("activity", "reply", "approval", "answer", "failure", "interrupted", "metadata")
+    private val transcriptStatuses = setOf("inProgress", "completed", "failed", "declined")
     private val requestKinds = setOf("command", "file", "permissions", "question", "mcp_elicitation")
     private val errorCodes = setOf("computer_offline", "connection_lost", "desktop_incompatible", "owner_unavailable", "invalid_action", "outcome_unknown", "sequence_gap", "unauthorized", "quota_exceeded", "attachment_invalid", "internal")
     private val limitKeys = setOf("maxJsonBytes", "maxAttachmentBytes", "maxDeviceUploads", "maxGlobalUploads", "maxTemporaryBytes", "uploadExpirySeconds")

@@ -108,6 +108,22 @@ class HomeScreenTest {
     }
 
     @Test
+    fun tappingATaskRowOpensThatTask() {
+        var openedTask = ""
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    onOpenTask = { openedTask = it },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Private task title").performClick()
+        assertEquals("thread-1", openedTask)
+    }
+
+    @Test
     fun swipeUpOpensAllAppsAndExpandedHelpStaysOfflineSafe() {
         var allAppsOpens = 0
         compose.setContent {

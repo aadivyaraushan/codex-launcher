@@ -85,6 +85,28 @@ class ProtocolContractTest {
     }
 
     @Test
+    fun `codec accepts bounded unsequenced transcript pages`() {
+        val read = """{"version":{"major":1,"minor":0},"messageId":"read-1","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":32,"beforeEntryId":"agent-2"}}"""
+        assertEquals("read-1", ProtocolCodec.decodeText(read).messageId)
+        val page = """{"version":{"major":1,"minor":0},"messageId":"page-1","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":[{"id":"user-1","turnId":"turn-1","kind":"user","text":"Fix it"},{"id":"command-1","turnId":"turn-1","kind":"command","status":"completed","command":"go test ./...","output":"ok"},{"id":"file-1","turnId":"turn-1","kind":"file_change","status":"completed","changes":[{"path":"src/main.go","kind":"update","diff":"@@"}]}],"earlierCursor":"user-1","truncated":false}}"""
+        val decoded = ProtocolCodec.decodeText(page)
+        assertEquals("page-1", decoded.messageId)
+        assertEquals(null, decoded.sequence)
+    }
+
+    @Test
+    fun `codec rejects transcript internals and malformed pages`() {
+        listOf(
+            """{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","seq":2,"body":{"requestId":"request-1","taskId":"thread-1","entries":[],"truncated":false}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":[{"id":"command-1","turnId":"turn-1","kind":"command","status":"completed","command":"pwd","cwd":"/private"}],"truncated":false}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":[{"id":"reason-1","turnId":"turn-1","kind":"reasoning","text":"summary","content":"hidden"}],"truncated":false}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":null,"truncated":false}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","body":{"requestId":"request-1","taskId":"thread-1","entries":[{"id":"file-1","turnId":"turn-1","kind":"file_change","status":"inProgress","changes":null}],"truncated":false}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"read","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":65}}""",
+        ).forEach { frame -> assertError(ProtocolError.INVALID_ENVELOPE) { ProtocolCodec.decodeText(frame) } }
+    }
+
+    @Test
     fun `snapshot carries only safe computer and opaque project choices`() {
         val valid = """{"version":{"major":1,"minor":0},"messageId":"snapshot-projects","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Aadi's Mac","projects":[{"id":"project-main","displayName":"Codex Launcher"}],"tasks":[]}}"""
         assertEquals("snapshot-projects", ProtocolCodec.decodeText(valid).messageId)

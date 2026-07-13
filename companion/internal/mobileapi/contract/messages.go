@@ -9,16 +9,19 @@ import (
 )
 
 const (
-	ProtocolMajor           = 1
-	ProtocolMinor           = 0
-	MaxSnapshotTasks        = 20
-	MaxJSONFrameBytes       = 256 * 1024
-	MaxAttachmentBytes      = 20 * 1024 * 1024
-	MaxAttachmentFrameBytes = MaxAttachmentBytes + 4096 + 12 + 32
-	MaxDeviceUploads        = 2
-	MaxGlobalUploads        = 4
-	MaxTemporaryBytes       = 100 * 1024 * 1024
-	UploadExpirySeconds     = 15 * 60
+	ProtocolMajor            = 1
+	ProtocolMinor            = 0
+	MaxSnapshotTasks         = 20
+	MaxJSONFrameBytes        = 256 * 1024
+	MaxAttachmentBytes       = 20 * 1024 * 1024
+	MaxAttachmentFrameBytes  = MaxAttachmentBytes + 4096 + 12 + 32
+	MaxDeviceUploads         = 2
+	MaxGlobalUploads         = 4
+	MaxTemporaryBytes        = 100 * 1024 * 1024
+	UploadExpirySeconds      = 15 * 60
+	MaxTranscriptPageEntries = 64
+	MaxTranscriptEntryRunes  = 8192
+	MaxTranscriptFileChanges = 64
 )
 
 var (

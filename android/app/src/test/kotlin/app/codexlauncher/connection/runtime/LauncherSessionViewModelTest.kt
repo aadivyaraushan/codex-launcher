@@ -113,6 +113,88 @@ class LauncherSessionViewModelTest {
     }
 
     @Test
+    fun transcriptPagesStayInMemoryAndOlderPagesPrependInOrder() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts")))
+        observer.onMessage(snapshotWithTask(1, "Build launcher"))
+
+        assertTrue(viewModel.openTask("thread-1"))
+        val firstRead = ProtocolCodec.decodeText(connection.awaitType("task_read"))
+        val firstRequestId = firstRead.body.getValue("requestId").jsonPrimitive.content
+        assertEquals("thread-1", firstRead.body.getValue("taskId").jsonPrimitive.content)
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"page-latest","sender":"companion","type":"task_page","body":{"requestId":"$firstRequestId","taskId":"thread-1","entries":[{"id":"user-2","turnId":"turn-2","kind":"user","text":"Run tests"},{"id":"agent-2","turnId":"turn-2","kind":"agent","text":"All tests pass"}],"earlierCursor":"user-2","truncated":false}}""",
+            ),
+        )
+        assertEquals(listOf("user-2", "agent-2"), viewModel.state.value.transcript?.entries?.map { it.id })
+
+        assertTrue(viewModel.loadEarlierTranscript())
+        val olderRead = ProtocolCodec.decodeText(connection.sent.last())
+        assertEquals("task_read", olderRead.type.wireName)
+        assertEquals("user-2", olderRead.body.getValue("beforeEntryId").jsonPrimitive.content)
+        val olderRequestId = olderRead.body.getValue("requestId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"page-older","sender":"companion","type":"task_page","body":{"requestId":"$olderRequestId","taskId":"thread-1","entries":[{"id":"user-1","turnId":"turn-1","kind":"user","text":"Fix it"},{"id":"command-1","turnId":"turn-1","kind":"command","status":"completed","command":"go test ./...","output":"ok"}],"truncated":false}}""",
+            ),
+        )
+
+        val transcript = requireNotNull(viewModel.state.value.transcript)
+        assertEquals("Build launcher", transcript.title)
+        assertEquals(listOf("user-1", "command-1", "user-2", "agent-2"), transcript.entries.map { it.id })
+        assertEquals(null, transcript.earlierCursor)
+        assertFalse(transcript.loading)
+        assertEquals(null, transcript.errorCode)
+        assertEquals(1, connection.sent.count { ProtocolCodec.decodeText(it).type.wireName == "ack" })
+
+        viewModel.disconnect()
+        assertEquals(null, viewModel.state.value.transcript)
+    }
+
+    @Test
+    fun staleTranscriptPageCannotReplaceANewerTaskRequest() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts")))
+        observer.onMessage(snapshotWithTask(1, "Build launcher"))
+
+        assertTrue(viewModel.openTask("thread-1"))
+        val requestId = ProtocolCodec.decodeText(connection.awaitType("task_read")).body.getValue("requestId").jsonPrimitive.content
+        viewModel.closeTask()
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"page-stale","sender":"companion","type":"task_page","body":{"requestId":"$requestId","taskId":"thread-1","entries":[{"id":"agent-1","turnId":"turn-1","kind":"agent","text":"private stale reply"}],"truncated":false}}""",
+            ),
+        )
+
+        assertEquals(null, viewModel.state.value.transcript)
+    }
+
+    @Test
     fun connectionFailurePreventsAnOlderSnapshotLoadFromRestoringOnlineContent() = runBlocking {
         lateinit var observer: SessionObserver
         val storedProject = CompletableDeferred<ProjectChoice?>()

@@ -517,6 +517,16 @@ func validateBody(message Message) error {
 			!validID(stringValue(body["taskId"])) || !knownEvent(stringValue(body["event"])) || !knownTaskState(stringValue(body["state"])) || !safeDisplayString(body["summary"], 512) {
 			return ErrInvalidEnvelope
 		}
+	case "task_read":
+		if message.Sender != "phone" || !onlyAllowedKeys(body, "requestId", "taskId", "limit", "beforeEntryId") ||
+			!validID(stringValue(body["requestId"])) || !validID(stringValue(body["taskId"])) ||
+			!uintInRange(body["limit"], 1, MaxTranscriptPageEntries) || body["beforeEntryId"] != nil && !validID(stringValue(body["beforeEntryId"])) {
+			return ErrInvalidEnvelope
+		}
+	case "task_page":
+		if message.Sender != "companion" || !validateTaskPage(body) {
+			return ErrInvalidEnvelope
+		}
 	case "action_result":
 		state := stringValue(body["state"])
 		if message.Sender != "companion" || message.Sequence == nil || !onlyAllowedKeys(body, "actionId", "state", "error") ||
@@ -628,6 +638,70 @@ func validateTasks(raw json.RawMessage) bool {
 		}
 	}
 	return true
+}
+
+func validateTaskPage(body map[string]json.RawMessage) bool {
+	if !onlyAllowedKeys(body, "requestId", "taskId", "entries", "earlierCursor", "truncated", "error") ||
+		!validID(stringValue(body["requestId"])) || !validID(stringValue(body["taskId"])) || boolValue(body["truncated"]) == nil ||
+		body["earlierCursor"] != nil && !validID(stringValue(body["earlierCursor"])) {
+		return false
+	}
+	var entries []map[string]json.RawMessage
+	if bytes.Equal(bytes.TrimSpace(body["entries"]), []byte("null")) || json.Unmarshal(body["entries"], &entries) != nil || len(entries) > MaxTranscriptPageEntries {
+		return false
+	}
+	if body["error"] != nil {
+		return len(entries) == 0 && body["earlierCursor"] == nil && validateOptionalError(body["error"], true)
+	}
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		id := stringValue(entry["id"])
+		if !validID(id) || !validID(stringValue(entry["turnId"])) || !validateTranscriptEntry(entry) {
+			return false
+		}
+		if _, duplicate := seen[id]; duplicate {
+			return false
+		}
+		seen[id] = struct{}{}
+	}
+	return true
+}
+
+func validateTranscriptEntry(entry map[string]json.RawMessage) bool {
+	switch stringValue(entry["kind"]) {
+	case "user", "agent", "reasoning", "plan", "activity":
+		return exactKeys(entry, "id", "turnId", "kind", "text") && boundedString(entry["text"], MaxTranscriptEntryRunes)
+	case "command":
+		return onlyAllowedKeys(entry, "id", "turnId", "kind", "status", "command", "output") &&
+			knownTranscriptStatus(stringValue(entry["status"])) && boundedString(entry["command"], MaxTranscriptEntryRunes) &&
+			(entry["output"] == nil || boundedString(entry["output"], MaxTranscriptEntryRunes))
+	case "file_change":
+		if !exactKeys(entry, "id", "turnId", "kind", "status", "changes") || !knownTranscriptStatus(stringValue(entry["status"])) {
+			return false
+		}
+		var changes []map[string]json.RawMessage
+		if bytes.Equal(bytes.TrimSpace(entry["changes"]), []byte("null")) || json.Unmarshal(entry["changes"], &changes) != nil || len(changes) > MaxTranscriptFileChanges {
+			return false
+		}
+		for _, change := range changes {
+			if !onlyAllowedKeys(change, "path", "kind", "diff") || !boundedString(change["path"], 4096) || !safeDisplayString(change["kind"], 64) ||
+				(change["diff"] != nil && !boundedString(change["diff"], MaxTranscriptEntryRunes)) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func knownTranscriptStatus(status string) bool {
+	switch status {
+	case "inProgress", "completed", "failed", "declined":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateProjects(raw json.RawMessage) bool {

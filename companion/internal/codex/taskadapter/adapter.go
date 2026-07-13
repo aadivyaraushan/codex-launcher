@@ -7,6 +7,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 )
 
 type Set struct {
@@ -122,6 +123,13 @@ func (set Set) Rename(ctx context.Context, taskID, name string) error {
 
 func (set Set) Archive(ctx context.Context, taskID string) error {
 	return set.catalog.Archive(ctx, taskID)
+}
+
+func (set Set) ReadTranscript(ctx context.Context, taskID string, options tasktranscript.PageOptions) (tasktranscript.Page, error) {
+	if set.catalog == nil {
+		return tasktranscript.Page{}, errors.New("task catalog is unavailable")
+	}
+	return set.catalog.ReadTranscript(ctx, taskID, options)
 }
 
 func (set Set) ForkToAppServer(ctx context.Context, taskID string) (taskstate.Task, error) {
