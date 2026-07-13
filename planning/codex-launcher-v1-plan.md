@@ -93,6 +93,11 @@
 > Approval/question request
 > routing, task management, new-task options, and live transcript deltas remain
 > unbuilt.
+> The encrypted unfinished-draft storage layer is now implemented separately:
+> a distinct non-exportable Android Keystore AES-256-GCM key, authenticated
+> version/time metadata, 128 KiB limit, caller-owned expiry policy, fail-closed
+> reads, and fsync plus atomic replacement all pass on the API 36 Pixel 9
+> emulator. Composer wiring and unpair wipe ownership remain.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
