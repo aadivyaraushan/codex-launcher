@@ -7,10 +7,12 @@ import android.os.ParcelFileDescriptor
 import android.provider.Settings
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.intent.Intents
 import androidx.test.espresso.intent.Intents.intended
@@ -50,16 +52,16 @@ class LauncherActivityTest {
     }
 
     @Test
-    fun freshLaunchShowsThePrivateOfflineSurface() {
+    fun freshUnpairedLaunchShowsSetupWithoutComputerContent() {
         compose.waitUntil(timeoutMillis = 3_000) {
             try {
-                compose.onNodeWithText("Computer offline").assertIsDisplayed()
+                compose.onNodeWithText("Pair with your computer").assertIsDisplayed()
                 true
             } catch (_: AssertionError) {
                 false
             }
         }
-        compose.onNodeWithText("Tasks stay on your computer. Reconnect to load a fresh view.").assertIsDisplayed()
+        compose.onNodeWithText("Your ChatGPT sign-in stays on your computer. The phone stores only its pairing key and non-secret connection details.").assertIsDisplayed()
     }
 
     @Test
@@ -97,6 +99,26 @@ class LauncherActivityTest {
     }
 
     @Test
+    fun allAppsBackArrowReturnsAnUnpairedUserToSetup() {
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
+
+        compose.onNodeWithContentDescription("Back").performClick()
+
+        compose.onNodeWithText("Pair with your computer").assertIsDisplayed()
+    }
+
+    @Test
+    fun pairingInputSurvivesActivityRecreation() {
+        compose.onNodeWithText("Enter link").performClick()
+        compose.onNodeWithContentDescription("Pairing link").performTextInput("codex-launcher://pair?draft")
+
+        scenario.recreate()
+
+        compose.onNodeWithContentDescription("Pairing link").assertTextContains("codex-launcher://pair?draft")
+    }
+
+    @Test
     fun AndroidBackReturnsAppearanceToAllAppsAndThenHome() {
         compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithText("Launcher settings").performClick()
@@ -106,7 +128,7 @@ class LauncherActivityTest {
         compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
 
         runShellCommand("input keyevent KEYCODE_BACK")
-        compose.onNodeWithText("Computer offline").assertIsDisplayed()
+        compose.onNodeWithText("Pair with your computer").assertIsDisplayed()
     }
 
     @Test
@@ -121,7 +143,7 @@ class LauncherActivityTest {
 
         compose.waitUntil(timeoutMillis = 3_000) {
             try {
-                compose.onNodeWithText("Computer offline").assertIsDisplayed()
+                compose.onNodeWithText("Pair with your computer").assertIsDisplayed()
                 true
             } catch (_: AssertionError) {
                 false

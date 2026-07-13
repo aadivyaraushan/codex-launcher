@@ -1,11 +1,21 @@
 package app.codexlauncher
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -15,12 +25,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
 import app.codexlauncher.appearance.theme.ThemePreferenceStore
 import app.codexlauncher.appearance.theme.themeDataStore
 import app.codexlauncher.appearance.settings.AppearanceScreen
 import app.codexlauncher.connection.state.ConnectionSnapshot
+import app.codexlauncher.connection.pairing.PairingScreen
+import app.codexlauncher.connection.pairing.PairingViewModel
+import app.codexlauncher.connection.pairing.network.AndroidDevicePairingSigner
+import app.codexlauncher.connection.pairing.network.PairingClient
+import app.codexlauncher.connection.pairing.network.PairedComputer
+import app.codexlauncher.connection.pairing.network.PinnedPairingTransport
 import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.launcher.apps.AppDrawerScreen
 import app.codexlauncher.launcher.apps.InstalledApp
@@ -28,10 +51,31 @@ import app.codexlauncher.launcher.apps.InstalledAppsLoader
 import app.codexlauncher.launcher.apps.InstalledAppsRepository
 import app.codexlauncher.launcher.home.HomeScreen
 import app.codexlauncher.launcher.home.HomeUiPolicy
+import app.codexlauncher.storage.pairing.PairingRecordStore
+import app.codexlauncher.storage.pairing.DeviceIdentityStore
+import app.codexlauncher.storage.pairing.deviceIdentityDataStore
+import app.codexlauncher.storage.pairing.pairingDataStore
+import app.codexlauncher.storage.secrets.PairingKeyStore
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class LauncherActivity : ComponentActivity() {
     private val themePreferences by lazy { ThemePreferenceStore(applicationContext.themeDataStore) }
+    private val pairingRecords by lazy { PairingRecordStore(applicationContext.pairingDataStore) }
+    private val deviceIdentity by lazy { DeviceIdentityStore(applicationContext.deviceIdentityDataStore) }
+    private val pairingViewModel: PairingViewModel by viewModels {
+        viewModelFactory { initializer { createPairingViewModel() } }
+    }
+
+    private fun createPairingViewModel(): PairingViewModel {
+        val client = PairingClient(AndroidDevicePairingSigner(PairingKeyStore()), PinnedPairingTransport())
+        return PairingViewModel(
+            pair = client::pair,
+            save = pairingRecords::save,
+            deviceId = deviceIdentity::loadOrCreate,
+            deviceName = Build.MODEL.ifBlank { "Android device" },
+        )
+    }
     private var homeIntentSequence by mutableLongStateOf(0L)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,24 +85,43 @@ class LauncherActivity : ComponentActivity() {
             message = "activity created",
             fields = mapOf("input_shape" to "saved_state=${savedInstanceState != null}"),
         )
-        val initialState =
-            HomeUiPolicy.render(
-                computerName = "Paired computer",
-                connection = ConnectionSnapshot.initial(),
-                projects = emptyList(),
-                tasks = emptyList(),
-            )
         setContent {
             val appearanceMode by themePreferences.mode.collectAsState(initial = AppearanceMode.FOLLOW_SYSTEM)
+            val pairingUiState by pairingViewModel.state.collectAsState()
             val scope = rememberCoroutineScope()
             val appsRepository = remember { InstalledAppsRepository(applicationContext) }
             val appsLoader = remember { InstalledAppsLoader(appsRepository) }
-            var destination by rememberSaveable { mutableStateOf(LauncherDestination.HOME) }
+            var pairingState by remember { mutableStateOf<PairingRecordState>(PairingRecordState.Loading) }
+            var destination by rememberSaveable { mutableStateOf(LauncherDestination.PAIRING) }
             var installedApps by remember { mutableStateOf(emptyList<InstalledApp>()) }
             var connectionHelpVisible by rememberSaveable { mutableStateOf(false) }
+            var cameraPermissionGranted by remember {
+                mutableStateOf(
+                    ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
+                )
+            }
+            val cameraPermission =
+                rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    cameraPermissionGranted = granted
+                }
+            LaunchedEffect(Unit) {
+                pairingRecords.paired.collect { paired -> pairingState = PairingRecordState.Loaded(paired) }
+            }
+            val pairedComputer = (pairingState as? PairingRecordState.Loaded)?.record
+            val loadedRootDestination = pairingState.startDestination()
+            val rootDestination = loadedRootDestination ?: LauncherDestination.PAIRING
+            val visibleDestination = loadedRootDestination?.let { visibleDestination(it, destination) }
+            LaunchedEffect(pairingState) {
+                when {
+                    pairingState is PairingRecordState.Loaded && pairedComputer == null -> destination = LauncherDestination.PAIRING
+                    pairedComputer != null && destination == LauncherDestination.PAIRING -> destination = LauncherDestination.HOME
+                }
+            }
             val currentHomeIntentSequence = homeIntentSequence
-            LaunchedEffect(currentHomeIntentSequence) {
-                destination = LauncherDestination.HOME
+            LaunchedEffect(currentHomeIntentSequence, pairingState) {
+                if (pairingState is PairingRecordState.Loaded) {
+                    destination = if (pairedComputer == null) LauncherDestination.PAIRING else LauncherDestination.HOME
+                }
                 connectionHelpVisible = false
             }
             LaunchedEffect(destination) {
@@ -66,14 +129,41 @@ class LauncherActivity : ComponentActivity() {
                     installedApps = appsLoader.load()
                 }
             }
-            BackHandler(enabled = destination != LauncherDestination.HOME) {
-                destination = destination.parent
+            BackHandler(enabled = destination == LauncherDestination.APPS || destination == LauncherDestination.APPEARANCE) {
+                destination =
+                    when (destination) {
+                        LauncherDestination.APPEARANCE -> LauncherDestination.APPS
+                        LauncherDestination.APPS -> rootDestination
+                        LauncherDestination.PAIRING, LauncherDestination.HOME -> destination
+                    }
             }
             QuietInstrumentTheme(mode = appearanceMode) {
-                when (destination) {
+                if (visibleDestination == null) {
+                    LauncherLoadingScreen()
+                } else when (visibleDestination) {
+                    LauncherDestination.PAIRING ->
+                        PairingScreen(
+                            state = pairingUiState,
+                            cameraPermissionGranted = cameraPermissionGranted,
+                            onRequestCameraPermission = { cameraPermission.launch(Manifest.permission.CAMERA) },
+                            onShowScanner = pairingViewModel::showScanner,
+                            onShowManualEntry = pairingViewModel::showManualEntry,
+                            onManualEntryChanged = pairingViewModel::updateManualEntry,
+                            onSubmitManual = pairingViewModel::submitManualEntry,
+                            onQrDecoded = pairingViewModel::submitScanned,
+                            onRetrySave = pairingViewModel::submitSaveRetry,
+                            onAllApps = { destination = LauncherDestination.APPS },
+                            onAndroidSettings = ::openAndroidSettings,
+                        )
                     LauncherDestination.HOME ->
                         HomeScreen(
-                            state = initialState,
+                            state =
+                                HomeUiPolicy.render(
+                                    computerName = "Paired computer",
+                                    connection = ConnectionSnapshot.initial(),
+                                    projects = emptyList(),
+                                    tasks = emptyList(),
+                                ),
                             onRetry = {
                                 AppLog.info(
                                     feature = "launcher",
@@ -89,7 +179,7 @@ class LauncherActivity : ComponentActivity() {
                     LauncherDestination.APPS ->
                         AppDrawerScreen(
                             apps = installedApps,
-                            onBack = { destination = LauncherDestination.HOME },
+                            onBack = { destination = rootDestination },
                             onLaunch = appsRepository::launch,
                             onAndroidSettings = ::openAndroidSettings,
                             onLauncherSettings = { destination = LauncherDestination.APPEARANCE },
@@ -130,19 +220,42 @@ class LauncherActivity : ComponentActivity() {
         )
         startActivity(Intent(Settings.ACTION_SETTINGS))
     }
+
 }
 
-private enum class LauncherDestination {
+@Composable
+private fun LauncherLoadingScreen() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(
+            modifier = Modifier.semantics { contentDescription = "Loading launcher" },
+        )
+    }
+}
+
+internal enum class LauncherDestination {
+    PAIRING,
     HOME,
     APPS,
     APPEARANCE,
-    ;
-
-    val parent: LauncherDestination
-        get() =
-            when (this) {
-                HOME -> HOME
-                APPS -> HOME
-                APPEARANCE -> APPS
-            }
 }
+
+internal sealed interface PairingRecordState {
+    data object Loading : PairingRecordState
+
+    data class Loaded(val record: PairedComputer?) : PairingRecordState
+}
+
+internal fun PairingRecordState.startDestination(): LauncherDestination? =
+    when (this) {
+        PairingRecordState.Loading -> null
+        is PairingRecordState.Loaded -> if (record == null) LauncherDestination.PAIRING else LauncherDestination.HOME
+    }
+
+internal fun visibleDestination(
+    root: LauncherDestination,
+    requested: LauncherDestination,
+): LauncherDestination =
+    when (requested) {
+        LauncherDestination.PAIRING, LauncherDestination.HOME -> root
+        LauncherDestination.APPS, LauncherDestination.APPEARANCE -> requested
+    }

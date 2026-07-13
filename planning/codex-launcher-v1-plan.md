@@ -12,9 +12,11 @@
 > point, and kill/restart integration remain. Task 7 is verified on a Pixel 9 Android 16 emulator:
 > selectable Home role, offline Home, searchable app drawer, Android Settings
 > escape, persisted appearance, bundled fonts, accessibility scans, and large
-> text behavior. Task 8 now also has strict pairing-link parsing and a
-> metadata-only paired-computer store. QR capture, pairing UI, and the existing
-> folder/offline-state rules are not yet wired into the launcher UI.
+> text behavior. Task 8 now also has strict pairing-link parsing, QR/manual
+> setup UI, CameraX/ZXing scanning, an app-private phone ID, and a metadata-only
+> paired-computer store wired into unpaired launcher startup. Project selection,
+> reduced-protection confirmation, unpair, and the existing folder/offline-state
+> rules are not yet wired into the launcher UI.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
