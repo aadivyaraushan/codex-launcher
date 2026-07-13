@@ -153,6 +153,7 @@ func TestSetProjectReturnsSequencedConfirmedOrFailedResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	sender.messages = nil
+	sender.sent = make(chan contract.Message, 2)
 
 	for _, test := range []struct {
 		actionID string
@@ -168,7 +169,7 @@ func TestSetProjectReturnsSequencedConfirmedOrFailedResult(t *testing.T) {
 		if err := handler.Handle(context.Background(), sender, message); err != nil {
 			t.Fatal(err)
 		}
-		result := sender.messages[len(sender.messages)-1]
+		result := awaitSentMessage(t, sender.sent)
 		if result.Type != "action_result" || result.Sequence == nil {
 			t.Fatalf("result = %#v", result)
 		}
@@ -222,10 +223,11 @@ func TestNewHelloReplacesTheOlderDeviceSessionBeforeMoreEventsAreApplied(t *test
 	}
 	action.MessageID = "request-current"
 	action.Body = json.RawMessage(`{"actionId":"action-current","kind":"set_project","projectId":"main"}`)
+	second.sent = make(chan contract.Message, 1)
 	if err := handler.Handle(context.Background(), second, action); err != nil {
 		t.Fatal(err)
 	}
-	result := second.messages[len(second.messages)-1]
+	result := awaitSentMessage(t, second.sent)
 	if result.Sequence == nil || *result.Sequence != 2 {
 		t.Fatalf("current session result sequence = %v, want 2", result.Sequence)
 	}
@@ -239,6 +241,7 @@ type recordingSender struct {
 	store        *eventjournal.MemoryStore
 	connectionID uint64
 	closed       bool
+	sent         chan contract.Message
 }
 
 func (sender *recordingSender) DeviceID() string     { return sender.deviceID }
@@ -253,6 +256,9 @@ func (sender *recordingSender) Send(_ context.Context, message contract.Message)
 	decoded, err := contract.DecodeText(encoded)
 	if err == nil {
 		sender.messages = append(sender.messages, decoded)
+		if sender.sent != nil {
+			sender.sent <- decoded
+		}
 	}
 	return err
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
@@ -24,6 +25,7 @@ type Dependencies struct {
 	Random       io.Reader
 	Logger       *slog.Logger
 	TaskSource   mobilesession.TaskSource
+	TaskEvents   <-chan taskstate.MobileEvent
 }
 
 type Runtime struct {
@@ -74,6 +76,9 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 		Queue:    promptqueue.New(dependencies.PromptStore, logger),
 		Journal:  journal,
 		Mobile:   mobileServer,
+	}
+	if dependencies.TaskEvents != nil {
+		go pumpTaskEvents(ctx, dependencies.TaskEvents, mobileHandler, logger)
 	}
 	logger.Info("[app] runtime ready", "input_shape", "pairing,projects,queue,journal,mobile_transport", "project_count", len(config.Projects), "listen_port", config.ListenPort)
 	return runtime, nil

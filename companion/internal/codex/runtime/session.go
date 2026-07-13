@@ -13,9 +13,11 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver/process"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 )
 
 const desktopClientType = "codex-launcher-companion"
+const taskEventQueueSize = 64
 
 var (
 	ErrDesktopUnavailable        = taskadapter.ErrDesktopUnavailable
@@ -31,10 +33,12 @@ type Options struct {
 }
 
 type Session struct {
-	tasks   taskadapter.Set
-	app     appSession
-	desktop desktopConnector
-	logger  *slog.Logger
+	tasks       taskadapter.Set
+	app         appSession
+	desktop     desktopConnector
+	logger      *slog.Logger
+	taskEvents  chan taskstate.MobileEvent
+	eventCancel context.CancelFunc
 
 	closeOnce   sync.Once
 	closeResult error
@@ -145,8 +149,19 @@ func startWith(ctx context.Context, options Options, deps dependencies) (*Sessio
 		return nil, errors.Join(fmt.Errorf("build Codex task adapters: %w", err), cleanupErr)
 	}
 
-	session := &Session{tasks: tasks, app: app, desktop: desktop, logger: logger, done: make(chan struct{}), watchDone: make(chan struct{})}
+	eventContext, eventCancel := context.WithCancel(ctx)
+	session := &Session{
+		tasks: tasks, app: app, desktop: desktop, logger: logger,
+		taskEvents: make(chan taskstate.MobileEvent, taskEventQueueSize), eventCancel: eventCancel,
+		done: make(chan struct{}), watchDone: make(chan struct{}),
+	}
 	logger.Info("[codex-runtime] ready", "platform", deps.goos, "adapter_mode", adapterMode, "output_shape", "owned_task_session")
+	go func() {
+		if err := projectAppServerEvents(eventContext, app.Client().Events(), session.taskEvents, logger); err != nil {
+			logger.Error("[codex-runtime] live event projection failed", "error_class", fmt.Sprintf("%T", err), "decision", "close_owned_runtime")
+			_ = session.Close()
+		}
+	}()
 	go session.watch(ctx)
 	return session, nil
 }
@@ -156,6 +171,15 @@ func (session *Session) Tasks() taskadapter.Set {
 		return taskadapter.Set{}
 	}
 	return session.tasks
+}
+
+func (session *Session) TaskEvents() <-chan taskstate.MobileEvent {
+	if session == nil || session.taskEvents == nil {
+		closed := make(chan taskstate.MobileEvent)
+		close(closed)
+		return closed
+	}
+	return session.taskEvents
 }
 
 func (session *Session) Done() <-chan struct{} {
@@ -173,6 +197,9 @@ func (session *Session) Close() error {
 	}
 	session.closeOnce.Do(func() {
 		session.closing.Store(true)
+		if session.eventCancel != nil {
+			session.eventCancel()
+		}
 		session.closeResult = closeOwners(session.desktop, session.app)
 		if session.closeResult != nil {
 			session.logger.Error("[codex-runtime] stop failed", "error_class", fmt.Sprintf("%T", session.closeResult))

@@ -1,0 +1,46 @@
+package taskstate
+
+import (
+	"encoding/json"
+	"errors"
+	"testing"
+)
+
+func TestProjectNotificationProducesOnlyStableMobileSummaries(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		params string
+		want   MobileEvent
+	}{
+		{name: "turn started", method: "turn/started", params: `{"threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress","items":[]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "activity", State: Working, Summary: "Codex is working"}},
+		{name: "reply", method: "turn/completed", params: `{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "reply", State: IdleAfterReply, Summary: "Codex replied"}},
+		{name: "failure", method: "turn/completed", params: `{"threadId":"thread-1","turn":{"id":"turn-1","status":"failed","items":[]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "failure", State: Failed, Summary: "Codex hit an error"}},
+		{name: "interrupted", method: "turn/completed", params: `{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted","items":[]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "interrupted", State: Interrupted, Summary: "Codex was interrupted"}},
+		{name: "approval", method: "thread/status/changed", params: `{"threadId":"thread-1","status":{"type":"active","activeFlags":["waitingOnApproval"]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "approval", State: WaitingForApproval, Summary: "Needs your approval"}},
+		{name: "answer", method: "thread/status/changed", params: `{"threadId":"thread-1","status":{"type":"active","activeFlags":["waitingOnUserInput"]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "answer", State: WaitingForAnswer, Summary: "Needs your answer"}},
+		{name: "command", method: "item/commandExecution/outputDelta", params: `{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","delta":"private command output"}`, want: MobileEvent{TaskID: "thread-1", Kind: "activity", State: Working, Summary: "Running a command"}},
+		{name: "file", method: "item/fileChange/patchUpdated", params: `{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","changes":[{"path":"private/file.go","kind":{"type":"update"},"diff":"private diff"}]}`, want: MobileEvent{TaskID: "thread-1", Kind: "activity", State: Working, Summary: "Editing files"}},
+		{name: "writing reply", method: "item/agentMessage/delta", params: `{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","delta":"private reply"}`, want: MobileEvent{TaskID: "thread-1", Kind: "activity", State: Working, Summary: "Writing a reply"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := ProjectNotification(test.method, json.RawMessage(test.params))
+			if err != nil || got != test.want {
+				t.Fatalf("ProjectNotification() = %#v, %v; want %#v", got, err, test.want)
+			}
+		})
+	}
+}
+
+func TestProjectNotificationRejectsInvalidSupportedEventsAndSkipsUnrelatedOnes(t *testing.T) {
+	if _, err := ProjectNotification("turn/completed", json.RawMessage(`{"threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}}`)); !errors.Is(err, ErrInvalidLiveNotification) {
+		t.Fatalf("in-progress completion error = %v", err)
+	}
+	if _, err := ProjectNotification("thread/status/changed", json.RawMessage(`{"threadId":"thread-1","status":{"type":"idle"}}`)); !errors.Is(err, ErrUnsupportedLiveNotification) {
+		t.Fatalf("idle status error = %v", err)
+	}
+	if _, err := ProjectNotification("account/updated", json.RawMessage(`{"private":"content"}`)); !errors.Is(err, ErrUnsupportedLiveNotification) {
+		t.Fatalf("unrelated notification error = %v", err)
+	}
+}

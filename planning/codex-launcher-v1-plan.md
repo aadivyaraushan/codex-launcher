@@ -61,8 +61,15 @@
 > and per-session cancellation stop old load/action work from changing a fresh
 > connection. Unknown tasks or
 > overflow clear content and reconnect for a fresh snapshot; no event body is
-> persisted. The companion-to-Codex live event producer and full transcript
-> contract remain unbuilt.
+> persisted. The companion now projects verified Codex app-server notifications
+> into fixed, content-free mobile summaries, keeps draining raw deltas through a
+> bounded per-task coalescer, commits each accepted update to the event journal,
+> and then hands phone delivery to a bounded queue with write deadlines. Unknown
+> tasks refresh the catalog and broadcast a replacement snapshot before retry;
+> successful-event dedupe resets whenever that snapshot changes. Warm reconnects
+> replay retained results before snapshot replacement. Desktop follower-stream
+> projection, approval/question request routing, and the full transcript contract
+> remain unbuilt.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

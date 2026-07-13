@@ -25,9 +25,12 @@ var (
 	ErrMissingDependency  = errors.New("mobile session dependency is missing")
 	ErrUnsupportedMessage = errors.New("mobile session message is unsupported")
 	ErrSessionSuperseded  = errors.New("mobile session was replaced")
+	ErrInvalidTaskEvent   = errors.New("mobile task event is invalid")
+	ErrUnknownTaskEvent   = errors.New("mobile task event references an unknown task")
 )
 
 type Handler struct {
+	ctx          context.Context
 	computerName string
 	projects     *projects.Service
 	journal      *eventjournal.Journal
@@ -36,8 +39,25 @@ type Handler struct {
 	taskCapable  bool
 	taskSource   TaskSource
 	nextID       atomic.Uint64
+	publishMu    sync.Mutex
 	mu           sync.Mutex
 	active       map[string]transport.MessageSender
+	activeView   atomic.Value
+	snapshotGen  atomic.Uint64
+	broadcasts   chan outboundBroadcast
+	sendTimeout  time.Duration
+}
+
+const (
+	broadcastQueueSize = 128
+	defaultSendTimeout = 2 * time.Second
+)
+
+type outboundBroadcast struct {
+	messageType string
+	sequence    uint64
+	body        json.RawMessage
+	recipients  []transport.MessageSender
 }
 
 type snapshotState struct {
@@ -90,32 +110,47 @@ func NewWithTaskSource(ctx context.Context, computerName string, projectService 
 		return nil, fmt.Errorf("initialize mobile snapshot: %w", err)
 	}
 	logger.Info("[mobile-session] initial task snapshot ready", "task_count", len(tasks), "output_shape", "safe_task_summaries")
-	return &Handler{
+	handler := &Handler{
+		ctx:          ctx,
 		computerName: computerName, projects: projectService, journal: journal, logger: logger, now: now, taskCapable: taskSource != nil, taskSource: taskSource,
-		active: make(map[string]transport.MessageSender),
-	}, nil
+		active: make(map[string]transport.MessageSender), broadcasts: make(chan outboundBroadcast, broadcastQueueSize), sendTimeout: defaultSendTimeout,
+	}
+	handler.activeView.Store([]transport.MessageSender{})
+	handler.snapshotGen.Store(1)
+	go handler.deliverBroadcasts()
+	return handler, nil
 }
 
 func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
 	if handler == nil || sender == nil || sender.ConnectionID() == 0 {
 		return ErrMissingDependency
 	}
-	handler.mu.Lock()
-	defer handler.mu.Unlock()
 	if message.Type == "hello" {
+		handler.publishMu.Lock()
+		defer handler.publishMu.Unlock()
+		handler.logger.Info("[mobile-session] message received", "device_id", sender.DeviceID(), "message_type", message.Type, "input_shape", "validated_protocol_message")
+		if err := handler.handleHello(ctx, sender, message); err != nil {
+			return err
+		}
+		handler.mu.Lock()
 		previous := handler.active[sender.DeviceID()]
 		handler.active[sender.DeviceID()] = sender
+		handler.storeActiveViewLocked()
+		handler.mu.Unlock()
 		if previous != nil && previous.ConnectionID() != sender.ConnectionID() {
 			previous.Close()
 			handler.logger.Info("[mobile-session] older device session replaced", "device_id", sender.DeviceID(), "session_id", sender.SessionID(), "decision", "single_active_session")
 		}
-	} else if current := handler.active[sender.DeviceID()]; current == nil || current.ConnectionID() != sender.ConnectionID() {
+		return nil
+	}
+	handler.mu.Lock()
+	current := handler.active[sender.DeviceID()]
+	handler.mu.Unlock()
+	if current == nil || current.ConnectionID() != sender.ConnectionID() {
 		return ErrSessionSuperseded
 	}
 	handler.logger.Info("[mobile-session] message received", "device_id", sender.DeviceID(), "message_type", message.Type, "input_shape", "validated_protocol_message")
 	switch message.Type {
-	case "hello":
-		return handler.handleHello(ctx, sender, message)
 	case "ack":
 		var body struct {
 			ThroughSequence uint64 `json:"throughSeq"`
@@ -132,9 +167,6 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 }
 
 func (handler *Handler) handleHello(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
-	if err := handler.refreshTaskSnapshot(ctx); err != nil {
-		return err
-	}
 	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable)); err != nil {
 		return err
 	}
@@ -162,7 +194,7 @@ func (handler *Handler) handleHello(ctx context.Context, sender transport.Messag
 			return err
 		}
 	}
-	snapshot, err := handler.journal.Snapshot(handler.now())
+	snapshot, err := handler.refreshTaskSnapshot(ctx)
 	if err != nil {
 		return err
 	}
@@ -178,30 +210,61 @@ func (handler *Handler) handleHello(ctx context.Context, sender transport.Messag
 	return handler.send(ctx, sender, "snapshot", &sequence, bodyBytes)
 }
 
-func (handler *Handler) refreshTaskSnapshot(ctx context.Context) error {
+func (handler *Handler) refreshTaskSnapshot(ctx context.Context) (eventjournal.Snapshot, error) {
 	if handler.taskSource == nil {
-		return nil
+		return handler.journal.Snapshot(handler.now())
 	}
 	tasks, err := loadSnapshotTasks(ctx, handler.taskSource)
 	if err != nil {
 		handler.logger.Error("[mobile-session] task refresh failed", "branch_reason", "catalog_unavailable", "error_class", fmt.Sprintf("%T", err))
-		return err
+		return eventjournal.Snapshot{}, err
 	}
 	state := snapshotState{ComputerName: handler.computerName, Projects: handler.projects.List(), Tasks: tasks}
 	if _, err := validatedSnapshotBody(1, state); err != nil {
 		handler.logger.Error("[mobile-session] task refresh rejected", "branch_reason", "invalid_safe_projection", "error_class", fmt.Sprintf("%T", err))
-		return err
+		return eventjournal.Snapshot{}, err
 	}
 	encoded, err := json.Marshal(state)
 	if err != nil {
-		return err
+		return eventjournal.Snapshot{}, err
 	}
 	snapshot, err := handler.journal.ReplaceSnapshot(ctx, encoded, handler.now())
 	if err != nil {
+		return eventjournal.Snapshot{}, err
+	}
+	handler.snapshotGen.Add(1)
+	handler.logger.Info("[mobile-session] task snapshot refreshed", "task_count", len(tasks), "base_sequence", snapshot.BaseSequence, "output_shape", "safe_task_summaries")
+	return snapshot, nil
+}
+
+func (handler *Handler) RefreshTaskSnapshot(ctx context.Context) error {
+	if handler == nil {
+		return ErrMissingDependency
+	}
+	handler.publishMu.Lock()
+	defer handler.publishMu.Unlock()
+	snapshot, err := handler.refreshTaskSnapshot(ctx)
+	if err != nil {
 		return err
 	}
-	handler.logger.Info("[mobile-session] task snapshot refreshed", "task_count", len(tasks), "base_sequence", snapshot.BaseSequence, "output_shape", "safe_task_summaries")
+	var state snapshotState
+	if json.Unmarshal(snapshot.Body, &state) != nil {
+		return ErrInvalidTaskEvent
+	}
+	body, err := validatedSnapshotBody(snapshot.BaseSequence, state)
+	if err != nil {
+		return err
+	}
+	recipients := handler.queueBroadcast("snapshot", snapshot.BaseSequence, body)
+	handler.logger.Info("[mobile-session] refreshed task snapshot queued", "base_sequence", snapshot.BaseSequence, "recipient_count", recipients, "output_shape", "safe_task_summaries")
 	return nil
+}
+
+func (handler *Handler) TaskSnapshotGeneration() uint64 {
+	if handler == nil {
+		return 0
+	}
+	return handler.snapshotGen.Load()
 }
 
 func (handler *Handler) handleAction(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
@@ -225,6 +288,14 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	if err != nil {
 		return err
 	}
+	handler.publishMu.Lock()
+	defer handler.publishMu.Unlock()
+	handler.mu.Lock()
+	current := handler.active[sender.DeviceID()]
+	handler.mu.Unlock()
+	if current == nil || current.ConnectionID() != sender.ConnectionID() {
+		return ErrSessionSuperseded
+	}
 	event, err := handler.journal.Apply(ctx, "action_result", body, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) {
 		return current, nil
 	})
@@ -233,7 +304,132 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	}
 	sequence := event.Sequence
 	handler.logger.Info("[mobile-session] project action resolved", "device_id", sender.DeviceID(), "project_id", action.ProjectID, "result_state", result["state"])
-	return handler.send(ctx, sender, "action_result", &sequence, body)
+	handler.queueDelivery("action_result", sequence, body, []transport.MessageSender{sender})
+	return nil
+}
+
+func (handler *Handler) PublishTaskEvent(ctx context.Context, taskEvent taskstate.MobileEvent) error {
+	if handler == nil {
+		return ErrMissingDependency
+	}
+	body, err := json.Marshal(struct {
+		TaskID  string `json:"taskId"`
+		Event   string `json:"event"`
+		State   string `json:"state"`
+		Summary string `json:"summary"`
+	}{taskEvent.TaskID, taskEvent.Kind, string(taskEvent.State), taskEvent.Summary})
+	if err != nil || !validTaskEventBody(body) {
+		return ErrInvalidTaskEvent
+	}
+	handler.publishMu.Lock()
+	defer handler.publishMu.Unlock()
+	createdAt := handler.now()
+	journalEvent, err := handler.journal.Apply(ctx, "event", body, createdAt, func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) {
+		var state snapshotState
+		if json.Unmarshal(current, &state) != nil {
+			return nil, ErrInvalidTaskEvent
+		}
+		found := false
+		for index := range state.Tasks {
+			if state.Tasks[index].TaskID != taskEvent.TaskID {
+				continue
+			}
+			state.Tasks[index].State = string(taskEvent.State)
+			state.Tasks[index].LastActivityAt = createdAt.UTC().Format(time.RFC3339)
+			found = true
+			break
+		}
+		if !found {
+			return nil, ErrUnknownTaskEvent
+		}
+		if _, validationErr := validatedSnapshotBody(1, state); validationErr != nil {
+			return nil, ErrInvalidTaskEvent
+		}
+		return json.Marshal(state)
+	})
+	if err != nil {
+		return err
+	}
+	sequence := journalEvent.Sequence
+	recipients := handler.queueBroadcast("event", sequence, body)
+	handler.logger.Info("[mobile-session] live task event committed", "thread_id", taskEvent.TaskID, "event_kind", taskEvent.Kind, "task_state", taskEvent.State, "sequence", sequence, "recipient_count", recipients)
+	return nil
+}
+
+func (handler *Handler) queueBroadcast(messageType string, sequence uint64, body json.RawMessage) int {
+	recipients, _ := handler.activeView.Load().([]transport.MessageSender)
+	return handler.queueDelivery(messageType, sequence, body, recipients)
+}
+
+func (handler *Handler) queueDelivery(messageType string, sequence uint64, body json.RawMessage, recipients []transport.MessageSender) int {
+	if len(recipients) == 0 {
+		return 0
+	}
+	broadcast := outboundBroadcast{
+		messageType: messageType, sequence: sequence, body: append(json.RawMessage(nil), body...),
+		recipients: append([]transport.MessageSender(nil), recipients...),
+	}
+	select {
+	case handler.broadcasts <- broadcast:
+		return len(recipients)
+	default:
+		handler.logger.Error("[mobile-session] broadcast queue full", "message_type", messageType, "recipient_count", len(recipients), "decision", "disconnect_for_replay")
+		handler.disconnectRecipients(recipients)
+		return len(recipients)
+	}
+}
+
+func (handler *Handler) deliverBroadcasts() {
+	for {
+		select {
+		case <-handler.ctx.Done():
+			return
+		case broadcast := <-handler.broadcasts:
+			var wait sync.WaitGroup
+			for _, sender := range broadcast.recipients {
+				wait.Add(1)
+				go func(sender transport.MessageSender) {
+					defer wait.Done()
+					sequence := broadcast.sequence
+					if err := handler.send(handler.ctx, sender, broadcast.messageType, &sequence, broadcast.body); err != nil {
+						handler.disconnectRecipients([]transport.MessageSender{sender})
+					}
+				}(sender)
+			}
+			wait.Wait()
+		}
+	}
+}
+
+func (handler *Handler) disconnectRecipients(recipients []transport.MessageSender) {
+	handler.mu.Lock()
+	for _, sender := range recipients {
+		current := handler.active[sender.DeviceID()]
+		if current != nil && current.ConnectionID() == sender.ConnectionID() {
+			delete(handler.active, sender.DeviceID())
+		}
+		sender.Close()
+	}
+	handler.storeActiveViewLocked()
+	handler.mu.Unlock()
+}
+
+func (handler *Handler) storeActiveViewLocked() {
+	recipients := make([]transport.MessageSender, 0, len(handler.active))
+	for _, sender := range handler.active {
+		recipients = append(recipients, sender)
+	}
+	handler.activeView.Store(recipients)
+}
+
+func validTaskEventBody(body json.RawMessage) bool {
+	sequence := uint64(1)
+	message := contract.Message{
+		Version: contract.Version{Major: contract.ProtocolMajor, Minor: contract.ProtocolMinor}, MessageID: "event-validation",
+		Sender: "companion", Type: "event", Sequence: &sequence, Body: body,
+	}
+	_, err := contract.EncodeText(message)
+	return err == nil
 }
 
 func (handler *Handler) send(ctx context.Context, sender transport.MessageSender, messageType string, sequence *uint64, body json.RawMessage) error {
@@ -242,7 +438,9 @@ func (handler *Handler) send(ctx context.Context, sender transport.MessageSender
 		MessageID: fmt.Sprintf("companion-%d", handler.nextID.Add(1)),
 		Sender:    "companion", Type: messageType, Sequence: sequence, Body: body,
 	}
-	if err := sender.Send(ctx, message); err != nil {
+	sendContext, cancel := context.WithTimeout(ctx, handler.sendTimeout)
+	defer cancel()
+	if err := sender.Send(sendContext, message); err != nil {
 		handler.logger.Error("[mobile-session] message send failed", "device_id", sender.DeviceID(), "message_type", messageType, "error_class", fmt.Sprintf("%T", err))
 		return err
 	}
