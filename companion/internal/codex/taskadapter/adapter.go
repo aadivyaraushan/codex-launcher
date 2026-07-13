@@ -45,6 +45,10 @@ func NewAppServerOnly(appServer *appserver.Client) (Set, error) {
 }
 
 func (set Set) ListRecentCandidates(ctx context.Context, limit int) ([]taskstate.Task, error) {
+	return set.ListRecent(ctx, limit)
+}
+
+func (set Set) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {
 	if set.catalog == nil {
 		return nil, errors.New("task catalog is unavailable")
 	}

@@ -317,3 +317,15 @@ func TestAppServerOnlySetSupportsLinuxWithoutDesktop(t *testing.T) {
 		t.Fatalf("desktop route error = %v", err)
 	}
 }
+
+func TestSetProvidesTheMobileRecentTaskSourceContract(t *testing.T) {
+	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[{"id":"task-1","preview":"Build launcher","cwd":"/work/launcher","updatedAt":42,"status":{"type":"active","activeFlags":[]},"turns":[{"status":"inProgress"}]}]}`), nil
+	}, nil, nil)
+	set := Set{catalog: catalog}
+
+	tasks, err := set.ListRecent(context.Background(), 1)
+	if err != nil || len(tasks) != 1 || tasks[0].ID != "task-1" {
+		t.Fatalf("recent tasks = %#v, %v", tasks, err)
+	}
+}

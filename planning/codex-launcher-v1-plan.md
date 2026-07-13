@@ -26,8 +26,12 @@
 > checks are not yet complete. Task 9 has started with a typed, protocol-
 > validated recent-task snapshot path from an injected Codex catalog through
 > the companion and into the existing Android Home rows. Each hello refreshes
-> the list at a new snapshot base; runnable companion startup still needs to
-> provide the real catalog and later transcript/action work remains.
+> the list at a new snapshot base. A new owned-process boundary now validates
+> the configured Codex binary, starts only local `app-server --stdio`, and
+> exposes that initialized client to the existing task catalog. Runnable
+> companion startup still needs durable stores, CLI/main composition, and the
+> platform-specific Desktop/app-server adapter choice; later transcript/action
+> work also remains.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
