@@ -851,6 +851,24 @@ func TestSessionConnectorReconnectsWithFreshTaskState(t *testing.T) {
 	}
 }
 
+func TestSessionConnectorDoneTracksTheConnectedClient(t *testing.T) {
+	connector := newTestSessionConnector("codex-launcher-test", nil, nil)
+	client := &Client{done: make(chan struct{})}
+	connector.current = client
+
+	select {
+	case <-connector.Done():
+		t.Fatal("connector reported a live client as stopped")
+	default:
+	}
+	close(client.done)
+	select {
+	case <-connector.Done():
+	case <-time.After(time.Second):
+		t.Fatal("connector did not report the client stop")
+	}
+}
+
 func TestClientCloseIsRepeatableAndReportsPlannedShutdown(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	tracked := &closeTrackingConnection{ReadWriteCloser: clientConn, closed: make(chan struct{})}

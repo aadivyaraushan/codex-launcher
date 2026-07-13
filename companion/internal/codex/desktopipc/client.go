@@ -320,6 +320,18 @@ func (connector *SessionConnector) Connect(ctx context.Context) (*Client, error)
 	return client, nil
 }
 
+func (connector *SessionConnector) Done() <-chan struct{} {
+	if connector == nil {
+		return closedSignal()
+	}
+	connector.mu.Lock()
+	defer connector.mu.Unlock()
+	if connector.current == nil {
+		return closedSignal()
+	}
+	return connector.current.done
+}
+
 func (connector *SessionConnector) Close() error {
 	if connector == nil {
 		return nil
@@ -333,6 +345,12 @@ func (connector *SessionConnector) Close() error {
 	connector.current = nil
 	connector.logger.Info("[desktop-ipc] connector stopped", "decision", "owner_closed")
 	return err
+}
+
+func closedSignal() <-chan struct{} {
+	done := make(chan struct{})
+	close(done)
+	return done
 }
 
 func newClient(connection io.ReadWriteCloser, desktopBuild string, logger *slog.Logger) *Client {
