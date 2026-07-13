@@ -1,9 +1,11 @@
 # Codex Launcher V1 Implementation Plan
 
 > **Status:** In progress. Tasks 0-4 and 2A are complete. Task 5's Go pairing
-> core is green; Android Keystore and pinned transport remain. Task 6's queue
-> and event-journal cores and Task 8's folder/offline rules are green but not
-> yet wired into the runnable companion and launcher.
+> core is green; Android Keystore and pinned transport remain. Task 6 now has
+> strict Unix config storage, runtime wiring, CLI safety, queue, and journal
+> cores. Windows ACL storage, SQLite, transport, setup, doctor, and the CLI
+> entry point remain. Task 8's folder and offline-state rules are green but are
+> not yet wired into the launcher UI.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"net"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -358,6 +359,22 @@ func (service *Service) Authenticate(ctx context.Context, proof SessionProof, no
 	service.mu.Unlock()
 	service.logger.Info("[pairing] session authenticated", "device_id", proof.DeviceID, "session_id", proof.SessionID)
 	return session, nil
+}
+
+func (service *Service) Devices(ctx context.Context) ([]DeviceInfo, error) {
+	service.deviceMu.RLock()
+	defer service.deviceMu.RUnlock()
+	records, err := service.store.Devices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	devices := make([]DeviceInfo, 0, len(records))
+	for _, record := range records {
+		devices = append(devices, DeviceInfo{ID: record.ID, Name: record.Name, PairedAt: record.PairedAt})
+	}
+	sort.Slice(devices, func(left, right int) bool { return devices[left].ID < devices[right].ID })
+	service.logger.Debug("[pairing] devices listed", "output_count", len(devices))
+	return devices, nil
 }
 
 func (service *Service) Revoke(ctx context.Context, deviceID string) error {

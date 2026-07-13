@@ -49,6 +49,18 @@ func TestPairingOfferIsBoundExpiredAndSingleUse(t *testing.T) {
 	}
 }
 
+func TestDeviceListNeverExposesStoredPublicKeys(t *testing.T) {
+	service, _, _ := pairedService(t)
+	devices, err := service.Devices(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := DeviceInfo{ID: "pixel-9", Name: "Pixel 9", PairedAt: testNow}
+	if len(devices) != 1 || devices[0] != want {
+		t.Fatalf("devices = %#v, want %#v", devices, want)
+	}
+}
+
 func TestPairingRejectsWrongBindingKeyAndInterruptedCommit(t *testing.T) {
 	store := NewMemoryStore()
 	service, err := NewService(context.Background(), store, rand.Reader)

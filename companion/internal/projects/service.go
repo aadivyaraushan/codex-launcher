@@ -17,9 +17,9 @@ var (
 )
 
 type Config struct {
-	ID          string
-	DisplayName string
-	Path        string
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
+	Path        string `json:"path"`
 }
 
 type Choice struct {

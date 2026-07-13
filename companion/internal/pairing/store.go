@@ -22,6 +22,12 @@ type DeviceRecord struct {
 	PairedAt          time.Time
 }
 
+type DeviceInfo struct {
+	ID       string    `json:"id"`
+	Name     string    `json:"name"`
+	PairedAt time.Time `json:"pairedAt"`
+}
+
 type Store interface {
 	HostIdentity(context.Context) (ed25519.PrivateKey, error)
 	SaveHostIdentity(context.Context, ed25519.PrivateKey) error
