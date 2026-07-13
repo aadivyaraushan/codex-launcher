@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
-	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
 	"github.com/codex-launcher/codex-launcher/companion/internal/promptqueue"
@@ -243,7 +242,6 @@ func TestRuntimeWiresSharedStoresWithoutChangingHostIdentityOrConfirmedResult(t 
 	eventStore := eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 32, MaxBytes: 64 * 1024})
 	dependencies := Dependencies{
 		PairingStore: pairingStore, PromptStore: promptStore, EventStore: eventStore, Random: rand.Reader,
-		MobileHandler: func(context.Context, string, contract.Message) error { return nil },
 	}
 
 	first, err := NewRuntime(context.Background(), config, dependencies)
@@ -288,14 +286,12 @@ func TestRuntimeRejectsMissingStoresAndRandomSource(t *testing.T) {
 	valid := Dependencies{
 		PairingStore: pairing.NewMemoryStore(), PromptStore: promptqueue.NewMemoryStore(),
 		EventStore: eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 4, MaxBytes: 1024}), Random: rand.Reader,
-		MobileHandler: func(context.Context, string, contract.Message) error { return nil },
 	}
 	for name, mutate := range map[string]func(*Dependencies){
-		"pairing store":  func(dependencies *Dependencies) { dependencies.PairingStore = nil },
-		"prompt store":   func(dependencies *Dependencies) { dependencies.PromptStore = nil },
-		"event store":    func(dependencies *Dependencies) { dependencies.EventStore = nil },
-		"random source":  func(dependencies *Dependencies) { dependencies.Random = nil },
-		"mobile handler": func(dependencies *Dependencies) { dependencies.MobileHandler = nil },
+		"pairing store": func(dependencies *Dependencies) { dependencies.PairingStore = nil },
+		"prompt store":  func(dependencies *Dependencies) { dependencies.PromptStore = nil },
+		"event store":   func(dependencies *Dependencies) { dependencies.EventStore = nil },
+		"random source": func(dependencies *Dependencies) { dependencies.Random = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
 			dependencies := valid

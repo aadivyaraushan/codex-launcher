@@ -15,7 +15,6 @@ import (
 
 	companionapp "github.com/codex-launcher/codex-launcher/companion/internal/app"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
-	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
 	"github.com/codex-launcher/codex-launcher/companion/internal/promptqueue"
@@ -145,11 +144,10 @@ func newTestRuntime(t *testing.T) *companionapp.Runtime {
 	}
 	config := companionapp.Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}}
 	runtime, err := companionapp.NewRuntime(context.Background(), config, companionapp.Dependencies{
-		PairingStore:  pairing.NewMemoryStore(),
-		PromptStore:   promptqueue.NewMemoryStore(),
-		EventStore:    eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 32, MaxBytes: 64 * 1024}),
-		Random:        rand.Reader,
-		MobileHandler: func(context.Context, string, contract.Message) error { return nil },
+		PairingStore: pairing.NewMemoryStore(),
+		PromptStore:  promptqueue.NewMemoryStore(),
+		EventStore:   eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 32, MaxBytes: 64 * 1024}),
+		Random:       rand.Reader,
 	})
 	if err != nil {
 		t.Fatal(err)

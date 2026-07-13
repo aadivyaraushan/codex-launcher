@@ -25,8 +25,8 @@ type Config struct {
 }
 
 type Choice struct {
-	ID          string
-	DisplayName string
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
 }
 
 type project struct {

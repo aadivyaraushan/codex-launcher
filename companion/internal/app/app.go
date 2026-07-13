@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
@@ -16,12 +18,11 @@ import (
 var ErrMissingDependency = errors.New("companion runtime dependency is missing")
 
 type Dependencies struct {
-	PairingStore  pairing.Store
-	PromptStore   promptqueue.Store
-	EventStore    eventjournal.Store
-	Random        io.Reader
-	Logger        *slog.Logger
-	MobileHandler transport.MessageHandler
+	PairingStore pairing.Store
+	PromptStore  promptqueue.Store
+	EventStore   eventjournal.Store
+	Random       io.Reader
+	Logger       *slog.Logger
 }
 
 type Runtime struct {
@@ -37,7 +38,7 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	if dependencies.PairingStore == nil || dependencies.PromptStore == nil || dependencies.EventStore == nil || dependencies.Random == nil || dependencies.MobileHandler == nil {
+	if dependencies.PairingStore == nil || dependencies.PromptStore == nil || dependencies.EventStore == nil || dependencies.Random == nil {
 		return nil, ErrMissingDependency
 	}
 	logger := dependencies.Logger
@@ -54,7 +55,13 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 		logger.Error("[app] project startup failed", "error_class", "project_initialization")
 		return nil, ErrInvalidConfig
 	}
-	mobileServer, err := transport.NewServer(pairingService, dependencies.MobileHandler, logger)
+	journal := eventjournal.New(dependencies.EventStore, logger)
+	mobileHandler, err := mobilesession.NewWithLogger(ctx, config.ComputerName, projectService, journal, logger, time.Now)
+	if err != nil {
+		logger.Error("[app] mobile session startup failed", "error_class", "mobile_session_initialization")
+		return nil, err
+	}
+	mobileServer, err := transport.NewServer(pairingService, mobileHandler.Handle, logger)
 	if err != nil {
 		logger.Error("[app] mobile transport startup failed", "error_class", "mobile_transport_initialization")
 		return nil, err
@@ -64,7 +71,7 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 		Pairing:  pairingService,
 		Projects: projectService,
 		Queue:    promptqueue.New(dependencies.PromptStore, logger),
-		Journal:  eventjournal.New(dependencies.EventStore, logger),
+		Journal:  journal,
 		Mobile:   mobileServer,
 	}
 	logger.Info("[app] runtime ready", "input_shape", "pairing,projects,queue,journal,mobile_transport", "project_count", len(config.Projects), "listen_port", config.ListenPort)

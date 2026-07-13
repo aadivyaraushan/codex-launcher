@@ -32,6 +32,7 @@ class ProjectSelectionViewModel(
     private val select: suspend (String) -> Boolean,
     private val save: suspend (ProjectChoice) -> Boolean,
     private val clear: suspend () -> Boolean,
+    private val afterSelectionApplied: suspend () -> Unit = {},
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     workScope: CoroutineScope? = null,
 ) : ViewModel() {
@@ -79,6 +80,7 @@ class ProjectSelectionViewModel(
 
     suspend fun selectProject(projectId: String): Boolean {
         if (!selectionMutex.tryLock()) return false
+        var computerResultApplied = false
         return try {
             val request = stateMutex.withLock {
                 val choice = mutableState.value.choices.singleOrNull { it.id == projectId } ?: return@withLock null
@@ -112,7 +114,7 @@ class ProjectSelectionViewModel(
                     pendingChoice = choice
                     savePendingChoice()
                 }
-            }
+            }.also { computerResultApplied = true }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -123,9 +125,27 @@ class ProjectSelectionViewModel(
                 fields = mapOf("project_id" to projectId, "decision" to "keep_previous_selection"),
             )
             stateMutex.withLock { showUnavailable() }
+            computerResultApplied = true
             false
         } finally {
-            selectionMutex.unlock()
+            try {
+                if (computerResultApplied) {
+                    try {
+                        afterSelectionApplied()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        AppLog.error(
+                            feature = "project-selection",
+                            message = "applied project result could not be acknowledged",
+                            error = error,
+                            fields = mapOf("decision" to "connection_runtime_handles_failure"),
+                        )
+                    }
+                }
+            } finally {
+                selectionMutex.unlock()
+            }
         }
     }
 

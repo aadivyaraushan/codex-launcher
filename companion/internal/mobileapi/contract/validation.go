@@ -59,6 +59,20 @@ func DecodeText(frame []byte) (Message, error) {
 	return message, nil
 }
 
+func EncodeText(message Message) ([]byte, error) {
+	encoded, err := json.Marshal(message)
+	if err != nil {
+		return nil, fmt.Errorf("%w: encode message", ErrInvalidEnvelope)
+	}
+	if len(encoded) > MaxJSONFrameBytes {
+		return nil, ErrFrameTooLarge
+	}
+	if _, err := DecodeText(encoded); err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
 type Session struct {
 	seenActions       map[string]struct{}
 	actionStates      map[string]string

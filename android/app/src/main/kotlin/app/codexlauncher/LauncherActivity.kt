@@ -37,13 +37,15 @@ import app.codexlauncher.appearance.theme.QuietInstrumentTheme
 import app.codexlauncher.appearance.theme.ThemePreferenceStore
 import app.codexlauncher.appearance.theme.themeDataStore
 import app.codexlauncher.appearance.settings.AppearanceScreen
-import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.connection.pairing.PairingScreen
 import app.codexlauncher.connection.pairing.PairingViewModel
 import app.codexlauncher.connection.pairing.network.AndroidDevicePairingSigner
 import app.codexlauncher.connection.pairing.network.PairingClient
 import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.connection.pairing.network.PinnedPairingTransport
+import app.codexlauncher.connection.runtime.LauncherSessionViewModel
+import app.codexlauncher.connection.session.CompanionSessionClient
+import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.launcher.apps.AppDrawerScreen
 import app.codexlauncher.launcher.apps.InstalledApp
@@ -51,20 +53,29 @@ import app.codexlauncher.launcher.apps.InstalledAppsLoader
 import app.codexlauncher.launcher.apps.InstalledAppsRepository
 import app.codexlauncher.launcher.home.HomeScreen
 import app.codexlauncher.launcher.home.HomeUiPolicy
+import app.codexlauncher.project.selection.ProjectSelector
+import app.codexlauncher.project.selection.ProjectSelectionUiState
+import app.codexlauncher.storage.projects.ProjectSelectionStore
+import app.codexlauncher.storage.projects.projectSelectionDataStore
 import app.codexlauncher.storage.pairing.PairingRecordStore
 import app.codexlauncher.storage.pairing.DeviceIdentityStore
 import app.codexlauncher.storage.pairing.deviceIdentityDataStore
 import app.codexlauncher.storage.pairing.pairingDataStore
 import app.codexlauncher.storage.secrets.PairingKeyStore
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class LauncherActivity : ComponentActivity() {
     private val themePreferences by lazy { ThemePreferenceStore(applicationContext.themeDataStore) }
     private val pairingRecords by lazy { PairingRecordStore(applicationContext.pairingDataStore) }
     private val deviceIdentity by lazy { DeviceIdentityStore(applicationContext.deviceIdentityDataStore) }
+    private val projectSelections by lazy { ProjectSelectionStore(applicationContext.projectSelectionDataStore) }
     private val pairingViewModel: PairingViewModel by viewModels {
         viewModelFactory { initializer { createPairingViewModel() } }
+    }
+    private val sessionViewModel: LauncherSessionViewModel by viewModels {
+        viewModelFactory { initializer { createSessionViewModel() } }
     }
 
     private fun createPairingViewModel(): PairingViewModel {
@@ -74,6 +85,16 @@ class LauncherActivity : ComponentActivity() {
             save = pairingRecords::save,
             deviceId = deviceIdentity::loadOrCreate,
             deviceName = Build.MODEL.ifBlank { "Android device" },
+        )
+    }
+
+    private fun createSessionViewModel(): LauncherSessionViewModel {
+        val client = CompanionSessionClient(AndroidDevicePairingSigner(PairingKeyStore()))
+        return LauncherSessionViewModel(
+            connect = client::connect,
+            loadProject = { projectSelections.selected.first() },
+            saveProject = projectSelections::save,
+            clearProject = projectSelections::clear,
         )
     }
     private var homeIntentSequence by mutableLongStateOf(0L)
@@ -88,6 +109,8 @@ class LauncherActivity : ComponentActivity() {
         setContent {
             val appearanceMode by themePreferences.mode.collectAsState(initial = AppearanceMode.FOLLOW_SYSTEM)
             val pairingUiState by pairingViewModel.state.collectAsState()
+            val sessionUiState by sessionViewModel.state.collectAsState()
+            val projectUiState by sessionViewModel.projectSelection.state.collectAsState()
             val scope = rememberCoroutineScope()
             val appsRepository = remember { InstalledAppsRepository(applicationContext) }
             val appsLoader = remember { InstalledAppsLoader(appsRepository) }
@@ -116,6 +139,15 @@ class LauncherActivity : ComponentActivity() {
                     pairingState is PairingRecordState.Loaded && pairedComputer == null -> destination = LauncherDestination.PAIRING
                     pairedComputer != null && destination == LauncherDestination.PAIRING -> destination = LauncherDestination.HOME
                 }
+                when (val loaded = pairingState) {
+                    PairingRecordState.Loading -> sessionViewModel.disconnect()
+                    is PairingRecordState.Loaded -> loaded.record?.let(sessionViewModel::connect) ?: sessionViewModel.disconnect()
+                }
+            }
+            LaunchedEffect(sessionUiState.connection.phase) {
+                if (destination == LauncherDestination.PROJECT && sessionUiState.connection.phase != ConnectionPhase.ONLINE) {
+                    destination = LauncherDestination.HOME
+                }
             }
             val currentHomeIntentSequence = homeIntentSequence
             LaunchedEffect(currentHomeIntentSequence, pairingState) {
@@ -129,10 +161,11 @@ class LauncherActivity : ComponentActivity() {
                     installedApps = appsLoader.load()
                 }
             }
-            BackHandler(enabled = destination == LauncherDestination.APPS || destination == LauncherDestination.APPEARANCE) {
+            BackHandler(enabled = destination == LauncherDestination.APPS || destination == LauncherDestination.APPEARANCE || destination == LauncherDestination.PROJECT) {
                 destination =
                     when (destination) {
                         LauncherDestination.APPEARANCE -> LauncherDestination.APPS
+                        LauncherDestination.PROJECT -> LauncherDestination.HOME
                         LauncherDestination.APPS -> rootDestination
                         LauncherDestination.PAIRING, LauncherDestination.HOME -> destination
                     }
@@ -159,22 +192,28 @@ class LauncherActivity : ComponentActivity() {
                         HomeScreen(
                             state =
                                 HomeUiPolicy.render(
-                                    computerName = "Paired computer",
-                                    connection = ConnectionSnapshot.initial(),
-                                    projects = emptyList(),
+                                    computerName = sessionUiState.snapshot?.computerName ?: "Paired computer",
+                                    connection = sessionUiState.connection,
+                                    projects = sessionUiState.snapshot?.projects ?: emptyList(),
                                     tasks = emptyList(),
                                 ),
                             onRetry = {
-                                AppLog.info(
-                                    feature = "launcher",
-                                    message = "retry requested",
-                                    fields = mapOf("decision" to "await_connection_runtime"),
-                                )
+                                pairedComputer?.let { sessionViewModel.connect(it, force = true) }
                             },
+                            onChooseProject = { destination = LauncherDestination.PROJECT },
                             onAllApps = { destination = LauncherDestination.APPS },
                             onAndroidSettings = ::openAndroidSettings,
                             onConnectionHelp = { connectionHelpVisible = true },
                             connectionHelpVisible = connectionHelpVisible,
+                        )
+                    LauncherDestination.PROJECT ->
+                        ProjectSelector(
+                            state = visibleProjectSelection(sessionUiState.connection.phase, projectUiState),
+                            onSelect = sessionViewModel.projectSelection::submitSelection,
+                            onRetrySave = sessionViewModel.projectSelection::submitSaveRetry,
+                            onBack = { destination = LauncherDestination.HOME },
+                            onAllApps = { destination = LauncherDestination.APPS },
+                            onAndroidSettings = ::openAndroidSettings,
                         )
                     LauncherDestination.APPS ->
                         AppDrawerScreen(
@@ -235,6 +274,7 @@ private fun LauncherLoadingScreen() {
 internal enum class LauncherDestination {
     PAIRING,
     HOME,
+    PROJECT,
     APPS,
     APPEARANCE,
 }
@@ -257,5 +297,11 @@ internal fun visibleDestination(
 ): LauncherDestination =
     when (requested) {
         LauncherDestination.PAIRING, LauncherDestination.HOME -> root
+        LauncherDestination.PROJECT -> if (root == LauncherDestination.HOME) requested else root
         LauncherDestination.APPS, LauncherDestination.APPEARANCE -> requested
     }
+
+internal fun visibleProjectSelection(
+    phase: ConnectionPhase,
+    state: ProjectSelectionUiState,
+): ProjectSelectionUiState = if (phase == ConnectionPhase.ONLINE) state else ProjectSelectionUiState()

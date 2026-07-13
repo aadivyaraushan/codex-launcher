@@ -40,8 +40,14 @@ func TestPinnedTLSServerPairsAuthenticatesAndClosesARevokedPhone(t *testing.T) {
 		t.Fatal(err)
 	}
 	messages := make(chan contract.Message, 1)
-	server, err := NewServer(pairingService, func(_ context.Context, _ string, message contract.Message) error {
+	server, err := NewServer(pairingService, func(ctx context.Context, sender MessageSender, message contract.Message) error {
 		messages <- message
+		if message.Type == "hello" {
+			return sender.Send(ctx, contract.Message{
+				Version: contract.Version{Major: 1}, MessageID: "welcome-test", Sender: "companion", Type: "welcome",
+				Body: json.RawMessage(`{"sessionId":"session-1","capabilities":[],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}`),
+			})
+		}
 		return nil
 	}, nil)
 	if err != nil {
@@ -209,6 +215,14 @@ func TestPinnedTLSServerPairsAuthenticatesAndClosesARevokedPhone(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("valid phone frame did not reach the handler")
 	}
+	messageType, outbound, err := connection.Read(ctx)
+	if err != nil || messageType != websocket.MessageText {
+		t.Fatalf("outbound frame type = %v, error = %v", messageType, err)
+	}
+	welcome, err := contract.DecodeText(outbound)
+	if err != nil || welcome.Type != "welcome" || welcome.Sender != "companion" {
+		t.Fatalf("outbound welcome = %#v, error = %v", welcome, err)
+	}
 
 	if err := pairingService.Revoke(ctx, "pixel-9"); err != nil {
 		t.Fatal(err)
@@ -225,7 +239,7 @@ func TestServerRejectsPlaintextAndAnUnknownDevice(t *testing.T) {
 	defer cancel()
 	pairingService, _ := pairing.NewService(ctx, pairing.NewMemoryStore(), rand.Reader)
 	certificate, _ := pairingService.TLSCertificate(testNow)
-	server, _ := NewServer(pairingService, func(context.Context, string, contract.Message) error { return nil }, nil)
+	server, _ := NewServer(pairingService, func(context.Context, MessageSender, contract.Message) error { return nil }, nil)
 	server.now = func() time.Time { return testNow }
 	listener, _ := net.Listen("tcp", "127.0.0.1:0")
 	done := make(chan error, 1)
@@ -259,7 +273,7 @@ func TestServerDoesNotLogUnvalidatedIdentifiers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := NewServer(pairingService, func(context.Context, string, contract.Message) error { return nil }, logger)
+	server, err := NewServer(pairingService, func(context.Context, MessageSender, contract.Message) error { return nil }, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +302,7 @@ func TestPairingBodyReadHasADeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := NewServer(pairingService, func(context.Context, string, contract.Message) error { return nil }, nil)
+	server, err := NewServer(pairingService, func(context.Context, MessageSender, contract.Message) error { return nil }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +351,7 @@ func TestServerCapsPreauthenticationWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := NewServer(pairingService, func(context.Context, string, contract.Message) error { return nil }, nil)
+	server, err := NewServer(pairingService, func(context.Context, MessageSender, contract.Message) error { return nil }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

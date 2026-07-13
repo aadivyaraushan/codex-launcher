@@ -53,7 +53,7 @@ class CompanionSessionClientTest {
         val endpoint = server.url("/v1/session?deviceId=pixel-9&sessionId=session-1").toString().replaceFirst("https://", "wss://")
         val observer =
             object : SessionObserver {
-                override fun onReady(connection: CompanionSessionConnection, attachmentKey: ByteArray) {
+                override fun onReady(connection: SessionConnection, attachmentKey: ByteArray) {
                     assertEquals(32, attachmentKey.size)
                     ready.countDown()
                 }
@@ -103,7 +103,7 @@ class CompanionSessionClientTest {
         val endpoint = server.url("/v1/session?deviceId=pixel-9&sessionId=session-1").toString().replaceFirst("https://", "wss://")
         val observer =
             object : SessionObserver {
-                override fun onReady(connection: CompanionSessionConnection, attachmentKey: ByteArray) = Unit
+                override fun onReady(connection: SessionConnection, attachmentKey: ByteArray) = Unit
 
                 override fun onMessage(message: ProtocolMessage) = Unit
 
@@ -130,7 +130,7 @@ class CompanionSessionClientTest {
         helloReceived: CountDownLatch,
         allowWelcome: CountDownLatch? = null,
         firstCompanionFrame: String =
-            """{"version":{"major":1,"minor":0},"messageId":"welcome-1","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":[],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"welcome-1","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":["set_project"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}}""",
     ): MockWebServer {
         val certificates = HandshakeCertificates.Builder().heldCertificate(TestHostCertificate.held()).build()
         return MockWebServer().also { server ->

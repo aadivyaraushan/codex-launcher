@@ -26,7 +26,7 @@ enum class SessionFailure {
 }
 
 interface SessionObserver {
-    fun onReady(connection: CompanionSessionConnection, attachmentKey: ByteArray)
+    fun onReady(connection: SessionConnection, attachmentKey: ByteArray)
 
     fun onMessage(message: ProtocolMessage)
 
@@ -35,9 +35,15 @@ interface SessionObserver {
     fun onClosed()
 }
 
+interface SessionConnection {
+    fun sendText(encoded: String): Boolean
+
+    fun close()
+}
+
 class CompanionSessionConnection internal constructor(
     private val client: OkHttpClient,
-) {
+) : SessionConnection {
     private val socket = AtomicReference<WebSocket?>()
     private val ready = AtomicBoolean(false)
     private val stopped = AtomicBoolean(false)
@@ -50,14 +56,14 @@ class CompanionSessionConnection internal constructor(
         ready.set(true)
     }
 
-    fun sendText(encoded: String): Boolean {
+    override fun sendText(encoded: String): Boolean {
         if (!ready.get() || stopped.get() || encoded.encodeToByteArray().size > ProtocolCodec.MAX_JSON_FRAME_BYTES) return false
         val message = runCatching { ProtocolCodec.decodeText(encoded) }.getOrNull() ?: return false
         if (message.sender != Sender.PHONE) return false
         return socket.get()?.send(encoded) == true
     }
 
-    fun close() {
+    override fun close() {
         if (stopped.compareAndSet(false, true)) {
             ready.set(false)
             socket.getAndSet(null)?.close(1000, "client closed")
@@ -90,7 +96,7 @@ class CompanionSessionClient private constructor(
         paired: PairedComputer,
         sessionId: String,
         observer: SessionObserver,
-    ): CompanionSessionConnection {
+    ): SessionConnection {
         val handshake = SessionHandshake(paired, sessionId, signer)
         val client =
             tlsClients.builder(paired.hostIdentityPin())

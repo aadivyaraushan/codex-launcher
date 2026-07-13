@@ -1,5 +1,8 @@
 package app.codexlauncher
 
+import app.codexlauncher.connection.state.ConnectionPhase
+import app.codexlauncher.project.selection.ProjectChoice
+import app.codexlauncher.project.selection.ProjectSelectionUiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -33,5 +36,30 @@ class LauncherStartupPolicyTest {
             LauncherDestination.APPS,
             visibleDestination(LauncherDestination.PAIRING, LauncherDestination.APPS),
         )
+    }
+
+    @Test
+    fun projectSelectionIsReachableOnlyFromThePairedHomeRoot() {
+        assertEquals(
+            LauncherDestination.PROJECT,
+            visibleDestination(LauncherDestination.HOME, LauncherDestination.PROJECT),
+        )
+        assertEquals(
+            LauncherDestination.PAIRING,
+            visibleDestination(LauncherDestination.PAIRING, LauncherDestination.PROJECT),
+        )
+    }
+
+    @Test
+    fun offlineProjectSurfaceCannotRetainComputerDerivedChoices() {
+        val onlineState =
+            ProjectSelectionUiState(
+                computerName = "Studio Mac",
+                choices = listOf(ProjectChoice("main", "Main")),
+                selectedProjectId = "main",
+            )
+
+        assertEquals(ProjectSelectionUiState(), visibleProjectSelection(ConnectionPhase.DISCONNECTED, onlineState))
+        assertEquals(onlineState, visibleProjectSelection(ConnectionPhase.ONLINE, onlineState))
     }
 }

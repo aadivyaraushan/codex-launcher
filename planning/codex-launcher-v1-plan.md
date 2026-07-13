@@ -15,11 +15,13 @@
 > text behavior. Task 8 now also has strict pairing-link parsing, QR/manual
 > setup UI, CameraX/ZXing scanning, an app-private phone ID, and a metadata-only
 > paired-computer store wired into unpaired launcher startup. Its project-
-> selection foundation now includes safe computer/project snapshot fields,
-> approved opaque project choices, phone-side selection storage, save-only
-> retry, and the Compose selector. Live session routing into that selector,
-> reduced-protection confirmation, unpair, and the existing folder/offline-state
-> rules are not yet wired into the launcher UI.
+> selection path now includes safe computer/project snapshot fields, approved
+> opaque project choices, phone-side selection storage, save-only retry, the
+> Compose selector, companion-owned welcome/snapshot/project-action handling,
+> pinned WebSocket replies, and live launcher routing through truthful
+> connecting/syncing/online/offline states. Reduced-protection confirmation,
+> unpair, automatic reconnect policy, and the remaining folder/offline checks
+> are not yet complete.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

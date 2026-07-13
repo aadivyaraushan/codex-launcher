@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -30,7 +31,15 @@ const (
 
 var ErrMissingDependency = errors.New("mobile transport dependency is missing")
 
-type MessageHandler func(context.Context, string, contract.Message) error
+type MessageSender interface {
+	DeviceID() string
+	SessionID() string
+	ConnectionID() uint64
+	Send(context.Context, contract.Message) error
+	Close()
+}
+
+type MessageHandler func(context.Context, MessageSender, contract.Message) error
 
 type Server struct {
 	pairing         *pairing.Service
@@ -40,6 +49,7 @@ type Server struct {
 	quota           *contract.AttachmentQuota
 	pairReadTimeout time.Duration
 	preauthSlots    chan struct{}
+	nextConnection  atomic.Uint64
 }
 
 func NewServer(pairingService *pairing.Service, handler MessageHandler, logger *slog.Logger) (*Server, error) {
@@ -274,7 +284,11 @@ func (server *Server) handleSession(response http.ResponseWriter, request *http.
 		close(revoked)
 	}()
 	server.logger.Info("[mobile-transport] session authenticated", "device_id", deviceID, "session_id", sessionID, "output_shape", "authenticated_websocket")
-	server.readFrames(request.Context(), connection, protocolSession, deviceID, sessionID)
+	sender := &websocketMessageSender{
+		connection: connection, deviceID: deviceID, sessionID: sessionID,
+		connectionID: server.nextConnection.Add(1),
+	}
+	server.readFrames(request.Context(), connection, protocolSession, sender)
 	authenticatedSession.Close()
 	<-revoked
 }
@@ -294,7 +308,8 @@ func (server *Server) endPreauthentication() {
 	<-server.preauthSlots
 }
 
-func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn, session *contract.Session, deviceID, sessionID string) {
+func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn, session *contract.Session, sender MessageSender) {
+	deviceID, sessionID := sender.DeviceID(), sender.SessionID()
 	initialized := false
 	for {
 		messageType, frame, err := connection.Read(ctx)
@@ -321,7 +336,7 @@ func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn
 			if message.Type == "hello" {
 				initialized = true
 			}
-			if handleErr := server.handle(ctx, deviceID, message); handleErr != nil {
+			if handleErr := server.handle(ctx, sender, message); handleErr != nil {
 				server.logger.Error("[mobile-transport] message handler failed", "device_id", deviceID, "session_id", sessionID, "error_class", fmt.Sprintf("%T", handleErr))
 				_ = connection.Close(websocket.StatusInternalError, "handler failed")
 				return
@@ -342,6 +357,39 @@ func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn
 			return
 		}
 	}
+}
+
+type websocketMessageSender struct {
+	connection   *websocket.Conn
+	deviceID     string
+	sessionID    string
+	connectionID uint64
+	writeMu      sync.Mutex
+}
+
+func (sender *websocketMessageSender) DeviceID() string { return sender.deviceID }
+
+func (sender *websocketMessageSender) SessionID() string { return sender.sessionID }
+
+func (sender *websocketMessageSender) ConnectionID() uint64 { return sender.connectionID }
+
+func (sender *websocketMessageSender) Close() {
+	if sender != nil && sender.connection != nil {
+		sender.connection.CloseNow()
+	}
+}
+
+func (sender *websocketMessageSender) Send(ctx context.Context, message contract.Message) error {
+	if sender == nil || sender.connection == nil || message.Sender != "companion" {
+		return contract.ErrInvalidEnvelope
+	}
+	encoded, err := contract.EncodeText(message)
+	if err != nil {
+		return err
+	}
+	sender.writeMu.Lock()
+	defer sender.writeMu.Unlock()
+	return sender.connection.Write(ctx, websocket.MessageText, encoded)
 }
 
 func (server *Server) closeForPolicy(connection *websocket.Conn, reason string) {
