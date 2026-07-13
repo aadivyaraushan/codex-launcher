@@ -36,7 +36,13 @@
 > Runnable companion startup still needs durable stores and CLI/main
 > composition; later transcript/action work also remains. The pinned Desktop
 > connector has an explicit owner-close path and exposes its current stop signal,
-> so the runtime does not retain or advertise stale Desktop state.
+> so the runtime does not retain or advertise stale Desktop state. Task 9 now
+> also has the phone's metadata-only action journal: strict
+> `PREPARED → SENT_UNKNOWN → CONFIRMED` transitions, a fixed JSON allowlist,
+> explicit unavailable/corrupt read states, 24-hour confirmed retention, a
+> 128-record cap that never evicts unknown outcomes, and an atomic wipe method.
+> It is verified with real DataStore on the API 36 emulator but is not yet wired
+> around the real send path or the full unpair wipe owner.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
