@@ -26,6 +26,10 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 kotlin {
@@ -45,6 +49,8 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.junit)
+    testImplementation(libs.mockwebserver)
+    testImplementation(libs.okhttp.tls)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.compose.ui.test.junit4.accessibility)

@@ -5,6 +5,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.KeyPairGenerator
+import java.security.Signature
 import java.util.Base64
 
 class HostIdentityPinTest {
@@ -27,5 +28,28 @@ class HostIdentityPinTest {
 
         assertThrows(IllegalArgumentException::class.java) { HostIdentityPin.parse("not base64!") }
         assertThrows(IllegalArgumentException::class.java) { HostIdentityPin.parse(p256Encoded) }
+    }
+
+    @Test
+    fun verifiesOnlySignaturesFromThePinnedHostIdentity() {
+        val expected = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+        val other = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(expected.public.encoded)
+        val message = "session challenge".encodeToByteArray()
+        val expectedSignature = Signature.getInstance("Ed25519").run {
+            initSign(expected.private)
+            update(message)
+            sign()
+        }
+        val otherSignature = Signature.getInstance("Ed25519").run {
+            initSign(other.private)
+            update(message)
+            sign()
+        }
+
+        val pin = HostIdentityPin.parse(encoded)
+        assertTrue(pin.verifies(message, expectedSignature))
+        assertFalse(pin.verifies(message, otherSignature))
+        assertFalse(pin.verifies("changed".encodeToByteArray(), expectedSignature))
     }
 }

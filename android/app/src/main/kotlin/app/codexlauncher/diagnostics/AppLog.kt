@@ -34,7 +34,7 @@ object AppLog {
     }
 
     fun info(feature: String, message: String, fields: Map<String, Any?> = emptyMap()) {
-        Log.i(tag(feature), format(feature, Level.INFO, message, fields))
+        runCatching { Log.i(tag(feature), format(feature, Level.INFO, message, fields)) }
     }
 
     fun error(
@@ -44,7 +44,7 @@ object AppLog {
         fields: Map<String, Any?> = emptyMap(),
     ) {
         val errorFields = fields + safeErrorFields(error)
-        Log.e(tag(feature), format(feature, Level.ERROR, message, errorFields))
+        runCatching { Log.e(tag(feature), format(feature, Level.ERROR, message, errorFields)) }
     }
 
     internal fun safeErrorFields(error: Throwable): Map<String, String> {

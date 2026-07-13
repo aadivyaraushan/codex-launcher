@@ -1,10 +1,10 @@
 # Codex Launcher V1 Implementation Plan
 
 > **Status:** In progress. Tasks 0-4, 2A, and 7 are complete. Task 5 now has the
-> Go pairing core, exact host-SPKI pin, Android Keystore P-256 signing key, and
-> authenticated TLS 1.3 WebSocket server. The physical Pixel 9 hardware check,
-> Android network client, reduced-protection warning/enforcement, and packet
-> capture remain. Task 6 now has strict Unix
+> Go pairing core, exact host-SPKI pin, Android Keystore P-256 signing key,
+> authenticated TLS 1.3 WebSocket server, and Android pinned pairing/session
+> clients. The physical Pixel 9 hardware check, reduced-protection
+> warning/enforcement, and packet capture remain. Task 6 now has strict Unix
 > config storage, runtime wiring, CLI safety, queue, journal, and mobile
 > transport cores. The transport binds proofs to their exact sockets, limits
 > pre-authentication work, and requires `hello` before actions. Windows ACL
@@ -12,8 +12,9 @@
 > point, and kill/restart integration remain. Task 7 is verified on a Pixel 9 Android 16 emulator:
 > selectable Home role, offline Home, searchable app drawer, Android Settings
 > escape, persisted appearance, bundled fonts, accessibility scans, and large
-> text behavior. Task 8's folder and offline-state rules are green but are not
-> yet wired into the launcher UI.
+> text behavior. Task 8 now also has strict pairing-link parsing and a
+> metadata-only paired-computer store. QR capture, pairing UI, and the existing
+> folder/offline-state rules are not yet wired into the launcher UI.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
