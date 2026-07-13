@@ -227,6 +227,7 @@ type Client struct {
 	mobileEventMu   sync.Mutex
 	mobileEventOnce sync.Once
 	mobileVerified  map[string]bool
+	mobileAuth      map[string]*taskstate.EventAuthorization
 	mobilePending   map[string]taskstate.MobileEvent
 	mobileOrder     []string
 	mobileSignal    chan struct{}
@@ -372,6 +373,7 @@ func newClient(connection io.ReadWriteCloser, desktopBuild string, logger *slog.
 		pendingActions:  make(map[string]map[string]desktopPendingAction),
 		consumedActions: make(map[string]map[string]ActionKind),
 		mobileVerified:  make(map[string]bool),
+		mobileAuth:      make(map[string]*taskstate.EventAuthorization),
 		mobilePending:   make(map[string]taskstate.MobileEvent),
 		mobileSignal:    make(chan struct{}, 1),
 		mobileEvents:    make(chan taskstate.MobileEvent),
@@ -483,6 +485,7 @@ func (client *Client) LoadCompleteHistory(ctx context.Context, conversationID st
 		return 0, errors.New("desktop task ID is required")
 	}
 	stream := client.Stream(conversationID)
+	client.markMobileStreamUnverified(conversationID)
 	previousSnapshotGeneration := stream.State().SnapshotGeneration
 	params, err := json.Marshal(map[string]string{"conversationId": conversationID})
 	if err != nil {
@@ -504,8 +507,25 @@ func (client *Client) LoadCompleteHistory(ctx context.Context, conversationID st
 	if err := client.waitForFreshSnapshot(ctx, stream, loaded.Revision, previousSnapshotGeneration); err != nil {
 		return 0, fmt.Errorf("wait for desktop task snapshot: %w", err)
 	}
-	client.markMobileStreamVerified(conversationID, stream)
 	return loaded.Revision, nil
+}
+
+func (client *Client) AuthorizeMobileEvents(conversationID string) error {
+	if conversationID == "" {
+		return errors.New("desktop task ID is required")
+	}
+	stream := client.Stream(conversationID)
+	task, err := taskstate.MapDesktopConversationState(stream.State().Materialized)
+	if err != nil || task.ID != conversationID {
+		client.markMobileStreamUnverified(conversationID)
+		return ErrInvalidFrame
+	}
+	client.markMobileStreamVerified(conversationID, stream)
+	return nil
+}
+
+func (client *Client) RevokeMobileEvents(conversationID string) {
+	client.markMobileStreamUnverified(conversationID)
 }
 
 func (client *Client) WaitForRevision(ctx context.Context, conversationID string, revision uint64) error {

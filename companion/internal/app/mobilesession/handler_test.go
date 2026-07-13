@@ -118,6 +118,35 @@ func TestTaskSnapshotFailsClosedWhenCatalogFailsOrReturnsUnsafeData(t *testing.T
 	}
 }
 
+func TestTaskSnapshotRequestsAndEnforcesFourHomeTasks(t *testing.T) {
+	requestedLimit := 0
+	source := taskSourceFunc(func(_ context.Context, limit int) ([]taskstate.Task, error) {
+		requestedLimit = limit
+		return []taskstate.Task{
+			{ID: "thread-1", Title: "One", ProjectLabel: "Project", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()},
+			{ID: "thread-2", Title: "Two", ProjectLabel: "Project", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()},
+			{ID: "thread-3", Title: "Three", ProjectLabel: "Project", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()},
+			{ID: "thread-4", Title: "Four", ProjectLabel: "Project", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()},
+			{ID: "thread-5", Title: "Five", ProjectLabel: "Project", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()},
+		}, nil
+	})
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectService, err := projects.New([]projects.Config{{ID: "main", DisplayName: "Main", Path: root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal := eventjournal.New(eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 16, MaxBytes: 64 * 1024}), nil)
+	if _, err := NewWithTaskSource(context.Background(), "Studio Mac", projectService, journal, source, nil, func() time.Time { return sessionNow }); err == nil {
+		t.Fatal("five Home tasks were accepted")
+	}
+	if requestedLimit != 4 {
+		t.Fatalf("Home task request limit = %d", requestedLimit)
+	}
+}
+
 func TestEachHelloRefreshesTasksWithANewSnapshotBase(t *testing.T) {
 	calls := 0
 	source := taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {

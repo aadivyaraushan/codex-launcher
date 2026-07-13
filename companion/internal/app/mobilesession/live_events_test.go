@@ -51,6 +51,29 @@ func TestPublishTaskEventCommitsSnapshotStateBeforeBroadcast(t *testing.T) {
 	}
 }
 
+func TestPublishTaskEventRejectsRevokedAuthorizationBeforeJournalCommit(t *testing.T) {
+	handler, _ := newTestHandlerWithTasks(t, taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
+		return []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "uf-u", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()}}, nil
+	}))
+	authorization := taskstate.NewEventAuthorization()
+	authorization.Revoke()
+	err := handler.PublishTaskEvent(context.Background(), taskstate.MobileEvent{
+		TaskID: "thread-1", Kind: "reply", State: taskstate.IdleAfterReply, Summary: "Codex replied",
+		Authorization: authorization,
+	})
+	if !errors.Is(err, ErrTaskEventAuthorizationRevoked) {
+		t.Fatalf("revoked event error = %v", err)
+	}
+	snapshot, snapshotErr := handler.journal.Snapshot(sessionNow)
+	if snapshotErr != nil {
+		t.Fatal(snapshotErr)
+	}
+	var state snapshotState
+	if json.Unmarshal(snapshot.Body, &state) != nil || len(state.Tasks) != 1 || state.Tasks[0].State != string(taskstate.Working) {
+		t.Fatalf("revoked event changed journal snapshot: %#v", state.Tasks)
+	}
+}
+
 func TestPublishTaskEventDoesNotWaitForBlockedPhone(t *testing.T) {
 	handler, base := newTestHandlerWithTasks(t, taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
 		return []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "uf-u", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()}}, nil

@@ -29,7 +29,8 @@ func (client *Client) queueMobileState(threadID string, materialized json.RawMes
 }
 
 func (client *Client) queueMobileStateLocked(threadID string, materialized json.RawMessage) bool {
-	if !client.mobileVerified[threadID] {
+	authorization := client.mobileAuth[threadID]
+	if !client.mobileVerified[threadID] || authorization == nil || !authorization.Valid() {
 		return false
 	}
 	task, err := taskstate.MapDesktopConversationState(materialized)
@@ -42,6 +43,7 @@ func (client *Client) queueMobileStateLocked(threadID string, materialized json.
 		client.logger.Debug("[desktop-ipc] mobile state projection skipped", "thread_id", threadID, "branch_reason", "state_not_mobile_safe")
 		return false
 	}
+	event.Authorization = authorization
 	if _, exists := client.mobilePending[threadID]; exists {
 		client.mobilePending[threadID] = event
 	} else {
@@ -69,12 +71,35 @@ func (client *Client) markMobileStreamVerified(threadID string, stream *StreamSt
 		return
 	}
 	client.mobileEventMu.Lock()
+	if previous := client.mobileAuth[threadID]; previous != nil {
+		previous.Revoke()
+	}
+	authorization := taskstate.NewEventAuthorization()
 	client.mobileVerified[threadID] = true
+	client.mobileAuth[threadID] = authorization
 	queued := client.queueMobileStateLocked(threadID, stream.State().Materialized)
 	client.mobileEventMu.Unlock()
 	if queued {
 		client.signalMobileEvent()
 	}
+}
+
+func (client *Client) markMobileStreamUnverified(threadID string) {
+	client.mobileEventMu.Lock()
+	if authorization := client.mobileAuth[threadID]; authorization != nil {
+		authorization.Revoke()
+	}
+	delete(client.mobileVerified, threadID)
+	delete(client.mobileAuth, threadID)
+	delete(client.mobilePending, threadID)
+	for index, pendingID := range client.mobileOrder {
+		if pendingID != threadID {
+			continue
+		}
+		client.mobileOrder = append(client.mobileOrder[:index], client.mobileOrder[index+1:]...)
+		break
+	}
+	client.mobileEventMu.Unlock()
 }
 
 func (client *Client) deliverMobileEvents() {
@@ -93,6 +118,8 @@ func (client *Client) deliverMobileEvents() {
 			select {
 			case <-client.done:
 				return
+			case <-event.Authorization.Done():
+				continue
 			case client.mobileEvents <- event:
 				client.logger.Debug("[desktop-ipc] mobile state projected", "thread_id", event.TaskID, "event_kind", event.Kind, "task_state", event.State)
 			}

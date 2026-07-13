@@ -22,11 +22,12 @@ type TaskSource interface {
 }
 
 var (
-	ErrMissingDependency  = errors.New("mobile session dependency is missing")
-	ErrUnsupportedMessage = errors.New("mobile session message is unsupported")
-	ErrSessionSuperseded  = errors.New("mobile session was replaced")
-	ErrInvalidTaskEvent   = errors.New("mobile task event is invalid")
-	ErrUnknownTaskEvent   = errors.New("mobile task event references an unknown task")
+	ErrMissingDependency             = errors.New("mobile session dependency is missing")
+	ErrUnsupportedMessage            = errors.New("mobile session message is unsupported")
+	ErrSessionSuperseded             = errors.New("mobile session was replaced")
+	ErrInvalidTaskEvent              = errors.New("mobile task event is invalid")
+	ErrUnknownTaskEvent              = errors.New("mobile task event references an unknown task")
+	ErrTaskEventAuthorizationRevoked = errors.New("Desktop task event authorization was revoked")
 )
 
 type Handler struct {
@@ -324,29 +325,37 @@ func (handler *Handler) PublishTaskEvent(ctx context.Context, taskEvent taskstat
 	handler.publishMu.Lock()
 	defer handler.publishMu.Unlock()
 	createdAt := handler.now()
-	journalEvent, err := handler.journal.Apply(ctx, "event", body, createdAt, func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) {
-		var state snapshotState
-		if json.Unmarshal(current, &state) != nil {
-			return nil, ErrInvalidTaskEvent
-		}
-		found := false
-		for index := range state.Tasks {
-			if state.Tasks[index].TaskID != taskEvent.TaskID {
-				continue
+	var journalEvent eventjournal.Event
+	authorized, err := taskEvent.Authorization.RunIfValid(func() error {
+		var applyErr error
+		journalEvent, applyErr = handler.journal.Apply(ctx, "event", body, createdAt, func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) {
+			var state snapshotState
+			if json.Unmarshal(current, &state) != nil {
+				return nil, ErrInvalidTaskEvent
 			}
-			state.Tasks[index].State = string(taskEvent.State)
-			state.Tasks[index].LastActivityAt = createdAt.UTC().Format(time.RFC3339)
-			found = true
-			break
-		}
-		if !found {
-			return nil, ErrUnknownTaskEvent
-		}
-		if _, validationErr := validatedSnapshotBody(1, state); validationErr != nil {
-			return nil, ErrInvalidTaskEvent
-		}
-		return json.Marshal(state)
+			found := false
+			for index := range state.Tasks {
+				if state.Tasks[index].TaskID != taskEvent.TaskID {
+					continue
+				}
+				state.Tasks[index].State = string(taskEvent.State)
+				state.Tasks[index].LastActivityAt = createdAt.UTC().Format(time.RFC3339)
+				found = true
+				break
+			}
+			if !found {
+				return nil, ErrUnknownTaskEvent
+			}
+			if _, validationErr := validatedSnapshotBody(1, state); validationErr != nil {
+				return nil, ErrInvalidTaskEvent
+			}
+			return json.Marshal(state)
+		})
+		return applyErr
 	})
+	if !authorized {
+		return ErrTaskEventAuthorizationRevoked
+	}
 	if err != nil {
 		return err
 	}
@@ -476,11 +485,11 @@ func loadSnapshotTasks(ctx context.Context, source TaskSource) ([]snapshotTask, 
 	if source == nil {
 		return []snapshotTask{}, nil
 	}
-	tasks, err := source.ListRecent(ctx, contract.MaxSnapshotTasks)
+	tasks, err := source.ListRecent(ctx, taskstate.MaxHomeTasks)
 	if err != nil {
 		return nil, fmt.Errorf("list recent Codex tasks: %w", err)
 	}
-	if len(tasks) > contract.MaxSnapshotTasks {
+	if len(tasks) > taskstate.MaxHomeTasks {
 		return nil, errors.New("Codex task catalog exceeded its requested limit")
 	}
 	projected := make([]snapshotTask, 0, len(tasks))

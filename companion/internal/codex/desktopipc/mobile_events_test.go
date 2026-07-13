@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -86,9 +87,18 @@ func TestVerifiedHistoryProjectsCurrentDesktopStateWithoutTaskContent(t *testing
 	if err := <-serverResult; err != nil {
 		t.Fatal(err)
 	}
+	events := client.TaskEvents()
 	select {
-	case event := <-client.TaskEvents():
-		if event != (taskstate.MobileEvent{TaskID: "thread-1", Kind: "activity", State: taskstate.Working, Summary: "Codex is working"}) {
+	case event := <-events:
+		t.Fatalf("history load authorized mobile event before mapped owner proof: %#v", event)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := client.AuthorizeMobileEvents("thread-1"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		if event.TaskID != "thread-1" || event.Kind != "activity" || event.State != taskstate.Working || event.Summary != "Codex is working" || event.Authorization == nil || !event.Authorization.Valid() {
 			t.Fatalf("mobile event = %#v", event)
 		}
 	case <-time.After(time.Second):
@@ -131,6 +141,66 @@ func TestFailedOwnerLoadCannotAuthorizeMobileEvents(t *testing.T) {
 	select {
 	case event := <-client.TaskEvents():
 		t.Fatalf("failed owner load published mobile event: %#v", event)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestFailedFreshOwnerCheckRevokesPreviousMobileAuthorizationAndPendingState(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer serverConn.Close()
+	client := newClient(clientConn, PinnedDesktopBuild, nil)
+	defer client.Close()
+	client.clientID = "client-1"
+	stream := client.Stream("thread-1")
+	if err := client.handleInbound(desktopStateMessage(t, "thread-1", map[string]any{
+		"type": "snapshot", "revision": 1,
+		"conversationState": map[string]any{
+			"id": "thread-1", "cwd": "/project", "threadRuntimeStatus": map[string]any{"type": "active", "activeFlags": []any{}}, "turns": []any{}, "requests": []any{},
+		},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	client.markMobileStreamVerified("thread-1", stream)
+	events := client.TaskEvents()
+	deadline := time.Now().Add(time.Second)
+	for {
+		client.mobileEventMu.Lock()
+		pending := len(client.mobileOrder)
+		client.mobileEventMu.Unlock()
+		if pending == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("delivery worker did not pop the authorized event")
+		}
+		runtime.Gosched()
+	}
+	client.startReader()
+	go func() {
+		request, _ := readTestFrame(serverConn)
+		_ = writeTestFrame(serverConn, map[string]any{"type": "response", "requestId": request.RequestID, "resultType": "error", "error": "no-client-found"})
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := client.LoadCompleteHistory(ctx, "thread-1"); !errors.Is(err, ErrOwnerUnavailable) {
+		t.Fatalf("fresh owner error = %v", err)
+	}
+
+	select {
+	case event := <-events:
+		t.Fatalf("revoked stream retained queued mobile event: %#v", event)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := client.handleInbound(desktopStateMessage(t, "thread-1", map[string]any{
+		"type": "patches", "baseRevision": 1, "revision": 2, "patches": []any{
+			map[string]any{"op": "replace", "path": []any{"threadRuntimeStatus", "type"}, "value": "idle"},
+		},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("revoked stream published later mobile event: %#v", event)
 	case <-time.After(50 * time.Millisecond):
 	}
 }

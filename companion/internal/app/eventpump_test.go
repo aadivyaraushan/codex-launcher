@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
@@ -27,6 +28,40 @@ func TestPumpTaskEventsPublishesEveryProjectedUpdate(t *testing.T) {
 	}
 }
 
+func TestPumpTaskEventsDoesNotHoldAuthorizationWhileWaitingForPublisher(t *testing.T) {
+	authorization := taskstate.NewEventAuthorization()
+	events := make(chan taskstate.MobileEvent, 1)
+	events <- taskstate.MobileEvent{
+		TaskID: "thread-1", Kind: "activity", State: taskstate.Working, Summary: "Codex is working",
+		Authorization: authorization,
+	}
+	close(events)
+	publisher := &authorizationOrderedPublisher{authorization: authorization, publishStarted: make(chan struct{})}
+	publisher.mu.Lock()
+	done := make(chan struct{})
+	go func() {
+		pumpTaskEvents(context.Background(), events, publisher, nil)
+		close(done)
+	}()
+	<-publisher.publishStarted
+	revoked := make(chan struct{})
+	go func() {
+		authorization.Revoke()
+		close(revoked)
+	}()
+	select {
+	case <-revoked:
+	case <-time.After(200 * time.Millisecond):
+		publisher.mu.Unlock()
+		t.Fatal("authorization revoke deadlocked behind publisher lock")
+	}
+	publisher.mu.Unlock()
+	<-done
+	if publisher.published != 0 {
+		t.Fatalf("revoked Desktop events published = %d", publisher.published)
+	}
+}
+
 func TestPumpTaskEventsDeduplicatesOnlyAfterDurablePublicationSucceeds(t *testing.T) {
 	event := taskstate.MobileEvent{TaskID: "thread-1", Kind: "activity", State: taskstate.Working, Summary: "Codex is working"}
 	events := make(chan taskstate.MobileEvent, 2)
@@ -39,6 +74,19 @@ func TestPumpTaskEventsDeduplicatesOnlyAfterDurablePublicationSucceeds(t *testin
 
 	if len(publisher.events) != 2 {
 		t.Fatalf("publish attempts = %d, want one retry followed by deduplication", len(publisher.events))
+	}
+}
+
+func TestPumpTaskEventsNeverRetriesPermanentlyRevokedDesktopEvent(t *testing.T) {
+	events := make(chan taskstate.MobileEvent, 1)
+	events <- taskstate.MobileEvent{TaskID: "thread-1", Kind: "activity", State: taskstate.Working, Summary: "Codex is working"}
+	close(events)
+	publisher := &recordingTaskEventPublisher{publishErrors: []error{mobilesession.ErrTaskEventAuthorizationRevoked}}
+
+	pumpTaskEvents(context.Background(), events, publisher, nil)
+
+	if len(publisher.events) != 1 {
+		t.Fatalf("revoked Desktop event publish attempts = %d, want 1", len(publisher.events))
 	}
 }
 
@@ -131,6 +179,28 @@ type snapshotChangingPublisher struct {
 	firstPublished chan struct{}
 	once           sync.Once
 }
+
+type authorizationOrderedPublisher struct {
+	mu             sync.Mutex
+	authorization  *taskstate.EventAuthorization
+	publishStarted chan struct{}
+	startedOnce    sync.Once
+	published      int
+}
+
+func (publisher *authorizationOrderedPublisher) PublishTaskEvent(_ context.Context, _ taskstate.MobileEvent) error {
+	publisher.startedOnce.Do(func() { close(publisher.publishStarted) })
+	publisher.mu.Lock()
+	defer publisher.mu.Unlock()
+	_, err := publisher.authorization.RunIfValid(func() error {
+		publisher.published++
+		return nil
+	})
+	return err
+}
+
+func (*authorizationOrderedPublisher) RefreshTaskSnapshot(context.Context) error { return nil }
+func (*authorizationOrderedPublisher) TaskSnapshotGeneration() uint64            { return 0 }
 
 func (publisher *snapshotChangingPublisher) PublishTaskEvent(_ context.Context, event taskstate.MobileEvent) error {
 	publisher.mu.Lock()

@@ -38,16 +38,22 @@ func pumpTaskEvents(ctx context.Context, events <-chan taskstate.MobileEvent, pu
 			if published.Contains(event) {
 				continue
 			}
+			publishGeneration := snapshotGeneration
 			if err := publishTaskEvent(ctx, publisher, event, logger); err != nil {
+				if errors.Is(err, mobilesession.ErrTaskEventAuthorizationRevoked) {
+					logger.Debug("[app] revoked Desktop task event skipped", "thread_id", event.TaskID, "event_kind", event.Kind, "branch_reason", "desktop_authorization_revoked")
+					continue
+				}
 				if ctx.Err() != nil && errors.Is(err, context.Canceled) {
 					return
 				}
 				logger.Error("[app] live task event publish failed", "thread_id", event.TaskID, "event_kind", event.Kind, "error_class", fmt.Sprintf("%T", err), "attempt_count", maxTaskEventPublishAttempts)
 				continue
 			}
-			if currentGeneration := publisher.TaskSnapshotGeneration(); currentGeneration != snapshotGeneration {
+			if currentGeneration := publisher.TaskSnapshotGeneration(); currentGeneration != publishGeneration {
 				published.Reset()
 				snapshotGeneration = currentGeneration
+				continue
 			}
 			published.Record(event)
 		}
@@ -64,6 +70,9 @@ func publishTaskEvent(ctx context.Context, publisher taskEventPublisher, event t
 			return err
 		}
 		lastErr = publisher.PublishTaskEvent(ctx, event)
+		if errors.Is(lastErr, mobilesession.ErrTaskEventAuthorizationRevoked) {
+			return lastErr
+		}
 		if lastErr == nil {
 			return nil
 		}

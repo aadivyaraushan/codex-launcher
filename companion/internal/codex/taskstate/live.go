@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 var (
@@ -12,10 +13,61 @@ var (
 )
 
 type MobileEvent struct {
-	TaskID  string
-	Kind    string
-	State   State
-	Summary string
+	TaskID        string
+	Kind          string
+	State         State
+	Summary       string
+	Authorization *EventAuthorization
+}
+
+type EventAuthorization struct {
+	mu      sync.RWMutex
+	valid   bool
+	revoked chan struct{}
+}
+
+func NewEventAuthorization() *EventAuthorization {
+	return &EventAuthorization{valid: true, revoked: make(chan struct{})}
+}
+
+func (authorization *EventAuthorization) Revoke() {
+	if authorization == nil {
+		return
+	}
+	authorization.mu.Lock()
+	if authorization.valid {
+		authorization.valid = false
+		close(authorization.revoked)
+	}
+	authorization.mu.Unlock()
+}
+
+func (authorization *EventAuthorization) Done() <-chan struct{} {
+	if authorization == nil {
+		return nil
+	}
+	return authorization.revoked
+}
+
+func (authorization *EventAuthorization) Valid() bool {
+	if authorization == nil {
+		return true
+	}
+	authorization.mu.RLock()
+	defer authorization.mu.RUnlock()
+	return authorization.valid
+}
+
+func (authorization *EventAuthorization) RunIfValid(run func() error) (bool, error) {
+	if authorization == nil {
+		return true, run()
+	}
+	authorization.mu.RLock()
+	defer authorization.mu.RUnlock()
+	if !authorization.valid {
+		return false, nil
+	}
+	return true, run()
 }
 
 func ProjectNotification(method string, params json.RawMessage) (MobileEvent, error) {

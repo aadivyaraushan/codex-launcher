@@ -71,9 +71,16 @@
 > verified Desktop histories now publish the same fixed, content-free task-state
 > events through a bounded, non-blocking projection path. The runtime merges
 > those events with app-server events before journal and phone delivery. A bare
-> tracked stream or failed owner load stays silent. Automatic follow policy for
-> the recent Desktop task list, approval/question request routing, and the full
-> transcript contract remain unbuilt.
+> tracked stream or failed owner load stays silent. Home now requests, returns,
+> and follows at most the four tasks in the approved visual design. It checks
+> Desktop ownership only for unresolved catalog rows, leaves failed checks
+> readable but non-live, and places working, waiting, and failed tasks before
+> replied or interrupted work. Each fresh owner check revokes older live
+> permission until a fresh snapshot is mapped, matched, and explicitly
+> authorized. Revocable event tokens cancel stale blocked delivery and guard the
+> final journal attempt. Catalog logs contain only safe error types.
+> Approval/question request routing and the full transcript contract remain
+> unbuilt.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

@@ -45,14 +45,61 @@ func NewAppServerOnly(appServer *appserver.Client) (Set, error) {
 }
 
 func (set Set) ListRecentCandidates(ctx context.Context, limit int) ([]taskstate.Task, error) {
-	return set.ListRecent(ctx, limit)
-}
-
-func (set Set) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {
 	if set.catalog == nil {
 		return nil, errors.New("task catalog is unavailable")
 	}
 	return set.catalog.ListRecent(ctx, limit)
+}
+
+func (set Set) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {
+	tasks, err := set.ListRecentCandidates(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(tasks) > taskstate.MaxHomeTasks {
+		tasks = tasks[:taskstate.MaxHomeTasks]
+	}
+	for index := range tasks {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if tasks[index].Source != taskstate.SourceCatalog || set.catalog.load == nil {
+			continue
+		}
+		resolved, resolveErr := set.catalog.ResolveDesktopOwner(ctx, tasks[index].ID)
+		if resolveErr != nil {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		tasks[index] = resolved
+	}
+	return orderHomeTasks(tasks), nil
+}
+
+func orderHomeTasks(tasks []taskstate.Task) []taskstate.Task {
+	ordered := make([]taskstate.Task, 0, len(tasks))
+	for _, task := range tasks {
+		if homeTaskNeedsAttention(task.State) {
+			ordered = append(ordered, task)
+		}
+	}
+	for _, task := range tasks {
+		if !homeTaskNeedsAttention(task.State) {
+			ordered = append(ordered, task)
+		}
+	}
+	return ordered
+}
+
+func homeTaskNeedsAttention(state taskstate.State) bool {
+	switch state {
+	case taskstate.Working, taskstate.WaitingForApproval, taskstate.WaitingForAnswer, taskstate.Failed:
+		return true
+	default:
+		return false
+	}
 }
 
 func (set Set) ResolveDesktopOwner(ctx context.Context, taskID string) (taskstate.Task, error) {

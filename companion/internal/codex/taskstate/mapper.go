@@ -10,6 +10,8 @@ import (
 
 type State string
 
+const MaxHomeTasks = 4
+
 const (
 	Working            State = "working"
 	WaitingForApproval State = "waiting_for_approval"

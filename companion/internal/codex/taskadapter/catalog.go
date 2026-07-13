@@ -23,14 +23,16 @@ var (
 )
 
 type Catalog struct {
-	list    func(context.Context, int) (json.RawMessage, error)
-	load    func(context.Context, string) error
-	state   func(string) (json.RawMessage, error)
-	resume  func(context.Context, string) (json.RawMessage, error)
-	rename  func(context.Context, string, string) error
-	archive func(context.Context, string) error
-	fork    func(context.Context, string) (json.RawMessage, error)
-	logger  *slog.Logger
+	list      func(context.Context, int) (json.RawMessage, error)
+	load      func(context.Context, string) error
+	state     func(string) (json.RawMessage, error)
+	resume    func(context.Context, string) (json.RawMessage, error)
+	rename    func(context.Context, string, string) error
+	archive   func(context.Context, string) error
+	fork      func(context.Context, string) (json.RawMessage, error)
+	authorize func(string) error
+	revoke    func(string)
+	logger    *slog.Logger
 
 	mu         sync.RWMutex
 	candidates map[string]taskstate.Task
@@ -57,6 +59,8 @@ func NewCatalog(desktop *desktopipc.Client, appServer *appserver.Client) (*Catal
 		},
 		slog.Default(),
 	)
+	catalog.authorize = desktop.AuthorizeMobileEvents
+	catalog.revoke = desktop.RevokeMobileEvents
 	configureAppServerActions(catalog, appServer)
 	return catalog, nil
 }
@@ -126,7 +130,7 @@ func (catalog *Catalog) ListRecent(ctx context.Context, limit int) ([]taskstate.
 	}
 	raw, err := catalog.list(ctx, limit)
 	if err != nil {
-		catalog.logger.Error("[codex-adapter] catalog list failed", "error", err)
+		catalog.logger.Error("[codex-adapter] catalog list failed", "error_class", fmt.Sprintf("%T", err))
 		return nil, fmt.Errorf("list shared Codex catalog: %w", err)
 	}
 	var result struct {
@@ -141,7 +145,7 @@ func (catalog *Catalog) ListRecent(ctx context.Context, limit int) ([]taskstate.
 	for _, thread := range result.Data {
 		task, mapErr := taskstate.MapAppServerThread(thread)
 		if mapErr != nil {
-			catalog.logger.Error("[codex-adapter] catalog task rejected", "branch_reason", "invalid_task_shape", "error", mapErr)
+			catalog.logger.Error("[codex-adapter] catalog task rejected", "branch_reason", "invalid_task_shape", "error_class", fmt.Sprintf("%T", mapErr))
 			return nil, fmt.Errorf("map shared Codex catalog task: %w", mapErr)
 		}
 		var runtime struct {
@@ -182,18 +186,28 @@ func (catalog *Catalog) ResolveDesktopOwner(ctx context.Context, taskID string) 
 		return taskstate.Task{}, taskstate.ErrAdapterSourceMismatch
 	}
 	if err := catalog.load(ctx, taskID); err != nil {
-		catalog.logger.Info("[codex-adapter] Desktop owner check rejected", "task_id", taskID, "branch_reason", "owner_not_verified", "error", err)
+		catalog.revokeMobileEvents(taskID)
+		catalog.logger.Info("[codex-adapter] Desktop owner check rejected", "task_id", taskID, "branch_reason", "owner_not_verified", "error_class", fmt.Sprintf("%T", err))
 		return taskstate.Task{}, fmt.Errorf("verify desktop task owner: %w", err)
 	}
 	raw, err := catalog.state(taskID)
 	if err != nil {
-		catalog.logger.Error("[codex-adapter] verified Desktop state unavailable", "task_id", taskID, "error", err)
+		catalog.revokeMobileEvents(taskID)
+		catalog.logger.Error("[codex-adapter] verified Desktop state unavailable", "task_id", taskID, "error_class", fmt.Sprintf("%T", err))
 		return taskstate.Task{}, fmt.Errorf("read verified desktop task: %w", err)
 	}
 	task, err := taskstate.MapDesktopConversationState(raw)
 	if err != nil || task.ID != taskID {
+		catalog.revokeMobileEvents(taskID)
 		catalog.logger.Error("[codex-adapter] verified Desktop state rejected", "task_id", taskID, "branch_reason", "state_mismatch")
 		return taskstate.Task{}, errors.New("verified desktop state does not match catalog task")
+	}
+	if catalog.authorize != nil {
+		if err := catalog.authorize(taskID); err != nil {
+			catalog.revokeMobileEvents(taskID)
+			catalog.logger.Error("[codex-adapter] verified Desktop authorization rejected", "task_id", taskID, "branch_reason", "authorization_failed", "error_class", fmt.Sprintf("%T", err))
+			return taskstate.Task{}, fmt.Errorf("authorize verified desktop task: %w", err)
+		}
 	}
 	task.Title = candidate.Title
 	task.UpdatedAtUnix = candidate.UpdatedAtUnix
@@ -202,6 +216,12 @@ func (catalog *Catalog) ResolveDesktopOwner(ctx context.Context, taskID string) 
 	catalog.mu.Unlock()
 	catalog.logger.Info("[codex-adapter] Desktop owner resolved", "task_id", taskID, "branch_reason", "desktop_owner_verified")
 	return task, nil
+}
+
+func (catalog *Catalog) revokeMobileEvents(taskID string) {
+	if catalog.revoke != nil {
+		catalog.revoke(taskID)
+	}
 }
 
 func (catalog *Catalog) ResumeWithAppServer(ctx context.Context, taskID string) (taskstate.Task, error) {
@@ -230,13 +250,13 @@ func (catalog *Catalog) ResumeWithAppServer(ctx context.Context, taskID string) 
 			// An exact owner-unavailable result is the only safe Desktop check
 			// that permits the user's explicit app-server resume choice.
 		default:
-			catalog.logger.Error("[codex-adapter] app-server resume blocked", "task_id", taskID, "branch_reason", "desktop_check_failed", "error", ownerErr)
+			catalog.logger.Error("[codex-adapter] app-server resume blocked", "task_id", taskID, "branch_reason", "desktop_check_failed", "error_class", fmt.Sprintf("%T", ownerErr))
 			return taskstate.Task{}, fmt.Errorf("verify no Desktop owner before app-server resume: %w", ownerErr)
 		}
 	}
 	raw, err := catalog.resume(ctx, taskID)
 	if err != nil {
-		catalog.logger.Error("[codex-adapter] explicit app-server resume failed", "task_id", taskID, "error", err)
+		catalog.logger.Error("[codex-adapter] explicit app-server resume failed", "task_id", taskID, "error_class", fmt.Sprintf("%T", err))
 		return taskstate.Task{}, fmt.Errorf("explicitly resume task with app-server: %w", err)
 	}
 	thread, err := extractThread(raw)
@@ -260,7 +280,7 @@ func (catalog *Catalog) Rename(ctx context.Context, taskID, name string) error {
 		return errors.New("shared task rename is unavailable")
 	}
 	if err := catalog.rename(ctx, taskID, name); err != nil {
-		catalog.logger.Error("[codex-adapter] shared task rename failed", "task_id", taskID, "error", err)
+		catalog.logger.Error("[codex-adapter] shared task rename failed", "task_id", taskID, "error_class", fmt.Sprintf("%T", err))
 		return fmt.Errorf("rename shared Codex task: %w", err)
 	}
 	catalog.logger.Info("[codex-adapter] shared task renamed", "task_id", taskID)
@@ -275,7 +295,7 @@ func (catalog *Catalog) Archive(ctx context.Context, taskID string) error {
 		return errors.New("shared task archive is unavailable")
 	}
 	if err := catalog.archive(ctx, taskID); err != nil {
-		catalog.logger.Error("[codex-adapter] shared task archive failed", "task_id", taskID, "error", err)
+		catalog.logger.Error("[codex-adapter] shared task archive failed", "task_id", taskID, "error_class", fmt.Sprintf("%T", err))
 		return fmt.Errorf("archive shared Codex task: %w", err)
 	}
 	catalog.logger.Info("[codex-adapter] shared task archived", "task_id", taskID)
@@ -291,12 +311,12 @@ func (catalog *Catalog) ForkToAppServer(ctx context.Context, taskID string) (tas
 	}
 	raw, err := catalog.fork(ctx, taskID)
 	if err != nil {
-		catalog.logger.Error("[codex-adapter] shared task fork failed", "task_id", taskID, "error", err)
+		catalog.logger.Error("[codex-adapter] shared task fork failed", "task_id", taskID, "error_class", fmt.Sprintf("%T", err))
 		return taskstate.Task{}, fmt.Errorf("fork shared Codex task: %w", err)
 	}
 	task, err := taskstate.MapAppServerThread(raw)
 	if err != nil {
-		catalog.logger.Error("[codex-adapter] shared task fork rejected", "task_id", taskID, "branch_reason", "invalid_result", "error", err)
+		catalog.logger.Error("[codex-adapter] shared task fork rejected", "task_id", taskID, "branch_reason", "invalid_result", "error_class", fmt.Sprintf("%T", err))
 		return taskstate.Task{}, fmt.Errorf("map app-server fork: %w", err)
 	}
 	catalog.logger.Info("[codex-adapter] shared task forked", "task_id", taskID, "fork_task_id", task.ID, "source", task.Source)
