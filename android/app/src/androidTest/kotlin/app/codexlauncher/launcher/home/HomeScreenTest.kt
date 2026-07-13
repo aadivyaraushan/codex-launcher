@@ -24,6 +24,8 @@ import app.codexlauncher.task.configuration.NewTaskSelection
 import app.codexlauncher.task.configuration.PermissionModeOption
 import app.codexlauncher.task.configuration.ReasoningOption
 import app.codexlauncher.task.configuration.TaskModelOption
+import app.codexlauncher.task.composer.DraftComposerPhase
+import app.codexlauncher.task.composer.DraftComposerState
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -84,10 +86,13 @@ class HomeScreenTest {
     @Test
     fun selectedProjectEnablesTheComposerAction() {
         var sentPrompt = ""
+        var prompt by mutableStateOf("")
         compose.setContent {
             QuietInstrumentTheme(AppearanceMode.DARK) {
                 HomeScreen(
                     state = onlineState(selectedProjectName = "Codex Launcher"),
+                    composerState = readyDraft(prompt),
+                    onPromptChange = { prompt = it },
                     onSend = { prompt, _ -> sentPrompt = prompt },
                 )
             }
@@ -102,11 +107,14 @@ class HomeScreenTest {
     @Test
     fun hostOptionsCanBeChangedAndAreIncludedWithThePrompt() {
         var sent: Pair<String, NewTaskSelection>? = null
+        var prompt by mutableStateOf("")
         compose.setContent {
             QuietInstrumentTheme(AppearanceMode.DARK) {
                 HomeScreen(
                     state = onlineState(selectedProjectName = "Codex Launcher"),
                     newTaskOptions = taskOptions(),
+                    composerState = readyDraft(prompt),
+                    onPromptChange = { prompt = it },
                     onSend = { prompt, selection -> sent = prompt to requireNotNull(selection) },
                 )
             }
@@ -124,6 +132,21 @@ class HomeScreenTest {
         compose.onNodeWithContentDescription("Send prompt").performClick()
 
         assertEquals("Run tests" to NewTaskSelection("model-b", "low", "danger-full-access"), sent)
+    }
+
+    @Test
+    fun encryptedDraftStateRestoresTextAndReportsStorageFailuresWithoutDiscardingIt() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    composerState = DraftComposerState("restored private prompt", DraftComposerPhase.READY, saveFailed = true),
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Prompt").assertTextContains("restored private prompt")
+        compose.onNodeWithText("Draft could not be saved. Your text is still here.").assertIsDisplayed()
     }
 
     @Test
@@ -239,9 +262,14 @@ class HomeScreenTest {
 
     @Test
     fun keyboardDoesNotCoverTheOnlineComposerActions() {
+        var prompt by mutableStateOf("")
         compose.setContent {
             QuietInstrumentTheme(AppearanceMode.DARK) {
-                HomeScreen(state = onlineState(selectedProjectName = "Codex Launcher"))
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    composerState = readyDraft(prompt),
+                    onPromptChange = { prompt = it },
+                )
             }
         }
 
@@ -307,4 +335,6 @@ class HomeScreenTest {
                     PermissionModeOption("danger-full-access", "Full access", "Codex can read and change files anywhere your computer account can access. Approvals still apply.", false),
                 ),
         )
+
+    private fun readyDraft(text: String) = DraftComposerState(text = text, phase = DraftComposerPhase.READY)
 }

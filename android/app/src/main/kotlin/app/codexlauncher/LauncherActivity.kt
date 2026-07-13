@@ -73,6 +73,7 @@ import app.codexlauncher.storage.wipe.WipeResult
 import app.codexlauncher.task.transcript.TaskScreen
 import app.codexlauncher.task.transcript.TranscriptDetail
 import app.codexlauncher.task.transcript.TranscriptDetailScreen
+import app.codexlauncher.task.composer.DraftComposerViewModel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -85,6 +86,16 @@ class LauncherActivity : ComponentActivity() {
     }
     private val sessionViewModel: LauncherSessionViewModel by viewModels {
         viewModelFactory { initializer { createSessionViewModel() } }
+    }
+    private val draftComposerViewModel: DraftComposerViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                DraftComposerViewModel(
+                    loadDraft = localState.drafts::load,
+                    saveDraft = localState.drafts::save,
+                )
+            }
+        }
     }
 
     private fun createPairingViewModel(): PairingViewModel {
@@ -130,6 +141,7 @@ class LauncherActivity : ComponentActivity() {
             val appearanceMode by themePreferences.mode.collectAsState(initial = AppearanceMode.FOLLOW_SYSTEM)
             val pairingUiState by pairingViewModel.state.collectAsState()
             val sessionUiState by sessionViewModel.state.collectAsState()
+            val draftComposerState by draftComposerViewModel.state.collectAsState()
             val projectUiState by sessionViewModel.projectSelection.state.collectAsState()
             val scope = rememberCoroutineScope()
             val appsRepository = remember { InstalledAppsRepository(applicationContext) }
@@ -200,7 +212,14 @@ class LauncherActivity : ComponentActivity() {
                 when (val loaded = pairingState) {
                     PairingRecordState.Loading -> sessionViewModel.disconnect()
                     PairingRecordState.RecoveryFailed -> sessionViewModel.disconnect()
-                    is PairingRecordState.Loaded -> loaded.record?.let(sessionViewModel::connect) ?: sessionViewModel.disconnect()
+                    is PairingRecordState.Loaded ->
+                        loaded.record?.let { paired ->
+                            draftComposerViewModel.load(paired.pairingGeneration)
+                            sessionViewModel.connect(paired)
+                        } ?: run {
+                            draftComposerViewModel.reset()
+                            sessionViewModel.disconnect()
+                        }
                 }
             }
             LaunchedEffect(destination, sessionUiState.connection.phase, sessionUiState.transcript?.taskId) {
@@ -288,6 +307,8 @@ class LauncherActivity : ComponentActivity() {
                                 ),
                             newTaskOptions = sessionUiState.newTaskOptions,
                             newTaskOptionsKey = sessionUiState.newTaskOptionsSessionId,
+                            composerState = draftComposerState,
+                            onPromptChange = draftComposerViewModel::update,
                             onRetry = {
                                 pairedComputer?.let { sessionViewModel.connect(it, force = true) }
                             },

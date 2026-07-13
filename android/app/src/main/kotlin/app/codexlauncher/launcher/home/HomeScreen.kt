@@ -48,6 +48,8 @@ import app.codexlauncher.appearance.theme.QuietInstrumentTokens
 import app.codexlauncher.task.configuration.NewTaskOptionControls
 import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
+import app.codexlauncher.task.composer.DraftComposerPhase
+import app.codexlauncher.task.composer.DraftComposerState
 
 @Composable
 fun HomeScreen(
@@ -59,6 +61,8 @@ fun HomeScreen(
     onChooseProject: () -> Unit = {},
     newTaskOptions: NewTaskOptions? = null,
     newTaskOptionsKey: String? = null,
+    composerState: DraftComposerState = DraftComposerState(phase = DraftComposerPhase.READY),
+    onPromptChange: (String) -> Unit = {},
     onSend: (String, NewTaskSelection?) -> Unit = { _, _ -> },
     onAttach: () -> Unit = {},
     onDictate: () -> Unit = {},
@@ -117,6 +121,8 @@ fun HomeScreen(
                     state = state,
                     newTaskOptions = newTaskOptions,
                     newTaskOptionsKey = newTaskOptionsKey,
+                    composerState = composerState,
+                    onPromptChange = onPromptChange,
                     onChooseProject = onChooseProject,
                     onSend = onSend,
                     onAttach = onAttach,
@@ -210,6 +216,8 @@ private fun OnlineContent(
     state: HomeUiState,
     newTaskOptions: NewTaskOptions?,
     newTaskOptionsKey: String?,
+    composerState: DraftComposerState,
+    onPromptChange: (String) -> Unit,
     onChooseProject: () -> Unit,
     onSend: (String, NewTaskSelection?) -> Unit,
     onAttach: () -> Unit,
@@ -218,7 +226,6 @@ private fun OnlineContent(
     imeBottomPx: Int,
     modifier: Modifier,
 ) {
-    var prompt by rememberSaveable { mutableStateOf("") }
     var promptFocused by rememberSaveable { mutableStateOf(false) }
     var selectedModelId by rememberSaveable(newTaskOptionsKey) { mutableStateOf("") }
     var selectedReasoningId by rememberSaveable(newTaskOptionsKey) { mutableStateOf("") }
@@ -277,8 +284,9 @@ private fun OnlineContent(
                 Spacer(Modifier.height(8.dp))
             }
             OutlinedTextField(
-                value = prompt,
-                onValueChange = { prompt = it },
+                value = composerState.text,
+                onValueChange = onPromptChange,
+                enabled = composerState.canEdit,
                 placeholder = { Text("What do you want done?") },
                 modifier =
                     Modifier
@@ -289,6 +297,20 @@ private fun OnlineContent(
                 maxLines = 5,
                 shape = RoundedCornerShape(6.dp),
             )
+            when {
+                composerState.phase == DraftComposerPhase.UNAVAILABLE ->
+                    Text(
+                        "Draft storage is unavailable. Reconnect or restart before writing a prompt.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                composerState.saveFailed ->
+                    Text(
+                        "Draft could not be saved. Your text is still here.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+            }
         }
         item {
             Row(
@@ -309,8 +331,8 @@ private fun OnlineContent(
                     Text("⌁")
                 }
                 IconButton(
-                    onClick = { onSend(prompt, selection) },
-                    enabled = state.canSend && prompt.isNotBlank(),
+                    onClick = { onSend(composerState.text, selection) },
+                    enabled = state.canSend && composerState.canEdit && composerState.text.isNotBlank(),
                     modifier = Modifier.size(48.dp).semantics { contentDescription = "Send prompt" },
                 ) {
                     Text("↑")

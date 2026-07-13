@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.codexlauncher.storage.secrets.PAIRING_KEY_ALIAS
+import app.codexlauncher.task.composer.DraftComposerViewModel
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
@@ -15,6 +16,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -58,6 +62,34 @@ class EncryptedDraftStoreTest {
         assertNull("Draft AES key material must not be exportable", secretKey.encoded)
         assertTrue(androidKeyStore.containsAlias(DRAFT_KEY_ALIAS))
         assertFalse("Drafts must never reuse the pairing key", DRAFT_KEY_ALIAS == PAIRING_KEY_ALIAS)
+    }
+
+    @Test
+    fun composerEditsRoundTripThroughRealAndroidEncryption() = runBlocking {
+        val firstStore = store()
+        val firstComposer =
+            DraftComposerViewModel(
+                loadDraft = firstStore::load,
+                saveDraft = firstStore::save,
+                storageDispatcher = Dispatchers.Unconfined,
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        firstComposer.load()
+        firstComposer.update("unfinished encrypted composer text")
+        yield()
+
+        val restoredStore = store()
+        val restoredComposer =
+            DraftComposerViewModel(
+                loadDraft = restoredStore::load,
+                saveDraft = restoredStore::save,
+                storageDispatcher = Dispatchers.Unconfined,
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        restoredComposer.load()
+
+        assertEquals("unfinished encrypted composer text", restoredComposer.state.value.text)
+        assertFalse(draftFile.readText().contains("unfinished encrypted composer text"))
     }
 
     @Test

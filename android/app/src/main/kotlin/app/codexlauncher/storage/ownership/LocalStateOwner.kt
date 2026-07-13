@@ -32,7 +32,7 @@ class LocalStateOwner(context: Context) {
     val actionJournal = StoredActionJournal(actionRecords)
     val pairingKeys = PairingKeyStore()
     private val draftKeys = DraftKeyStore()
-    private val draftStore =
+    val drafts =
         EncryptedDraftStore(
             file = File(appContext.noBackupFilesDir, "drafts/unfinished.bin"),
             keys = draftKeys,
@@ -46,7 +46,7 @@ class LocalStateOwner(context: Context) {
             intent = WipeIntentStore(appContext.wipeIntentDataStore),
             projects = projectSelections,
             actions = actionRecords,
-            drafts = draftStore,
+            drafts = drafts,
             draftKeys = draftKeys,
             deviceIdentity = deviceIdentity,
             pairingKeys = pairingKeys,

@@ -1,6 +1,6 @@
 # Encrypted unfinished draft checkpoint
 
-**Date:** 2026-07-13
+**Date:** 2026-07-14
 
 ## What this is for
 
@@ -29,6 +29,15 @@ without storing readable work text in the phone's app files.
   They never log draft text.
 - The test record lives under Android's `noBackupFilesDir`; the app manifest
   also keeps `android:allowBackup="false"`.
+- The Home composer now restores this record only after paired-state recovery
+  opens the local write gate. Activity recreation and offline connection state
+  retain the same ViewModel-owned text.
+- Rapid edits use one ordered, conflated worker: an active write finishes, then
+  only the newest waiting edit is saved. Encryption, file reads, `fd.sync()`,
+  and atomic replacement run on `Dispatchers.IO`, not Android's UI thread.
+- Returned and thrown read errors make the composer unavailable without
+  exposing content. Returned and thrown save errors keep the visible text,
+  show a save warning, and leave the worker able to save the next edit.
 
 ## Test-first evidence
 
@@ -55,7 +64,9 @@ JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home \
   -Pandroid.testInstrumentationRunnerArguments.class=app.codexlauncher.storage.drafts.EncryptedDraftStoreTest
 ```
 
-The Pixel 9 Android 16 emulator passed all 7 draft-store tests.
+The Pixel 9 Android 16 emulator passed the real Keystore composer round trip,
+the 12-test Home UI class, and the full 62/62 connected-device suite. Android
+unit tests and lint also passed.
 
 The independent final review returned `READY`. The reviewer separately ran
 the full Android unit/lint gate and `git diff --check`; both passed.
@@ -71,5 +82,6 @@ used here.
 
 ## Remaining work
 
-The composer is not yet wired to this store. Task 9 still needs the draft UI
-owner, unpair wipe integration, and task/new-task actions.
+Task 10 must clear the draft only after a new task has crossed its durable send
+boundary. A failed or uncertain send must keep the encrypted draft visible for
+recovery.
