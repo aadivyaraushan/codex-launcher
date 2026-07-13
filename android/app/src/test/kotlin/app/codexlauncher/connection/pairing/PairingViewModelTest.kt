@@ -107,6 +107,23 @@ class PairingViewModelTest {
         assertFalse(viewModel.state.value.canRetrySave)
     }
 
+    @Test
+    fun completedPairingStateCanBeResetAfterExplicitUnpair() = runBlocking {
+        val viewModel =
+            PairingViewModel(
+                pair = { _, _, _ -> pairedComputer() },
+                save = { true },
+                deviceId = { "android-1234" },
+                deviceName = "Pixel 9",
+                ioDispatcher = Dispatchers.Unconfined,
+            )
+        assertTrue(viewModel.pairScanned(validOffer()))
+
+        viewModel.resetAfterUnpair()
+
+        assertEquals(PairingUiState(), viewModel.state.value)
+    }
+
     private fun validOffer(): String {
         val identity = Base64.getUrlEncoder().withoutPadding().encodeToString(TestHostCertificate.keyPair().public.encoded)
         val secret = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() })

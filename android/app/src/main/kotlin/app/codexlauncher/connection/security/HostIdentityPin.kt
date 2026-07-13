@@ -1,18 +1,17 @@
 package app.codexlauncher.connection.security
 
-import java.security.KeyFactory
+import com.google.crypto.tink.PublicKeyVerify
+import com.google.crypto.tink.subtle.Ed25519Verify
 import java.security.MessageDigest
 import java.security.PublicKey
-import java.security.Signature
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
-import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 import javax.net.ssl.X509TrustManager
 
 class HostIdentityPin private constructor(
     private val expectedSubjectPublicKeyInfo: ByteArray,
-    private val hostPublicKey: PublicKey,
+    private val verifier: PublicKeyVerify,
 ) {
     fun matches(publicKey: PublicKey): Boolean =
         MessageDigest.isEqual(expectedSubjectPublicKeyInfo, publicKey.encoded)
@@ -21,11 +20,8 @@ class HostIdentityPin private constructor(
 
     fun verifies(message: ByteArray, signature: ByteArray): Boolean =
         runCatching {
-            Signature.getInstance("Ed25519").run {
-                initVerify(hostPublicKey)
-                update(message)
-                verify(signature)
-            }
+            verifier.verify(signature, message)
+            true
         }.getOrDefault(false)
 
     companion object {
@@ -36,18 +32,23 @@ class HostIdentityPin private constructor(
                 } catch (error: IllegalArgumentException) {
                     throw IllegalArgumentException("Invalid host identity pin", error)
                 }
-            require(subjectPublicKeyInfo.size in 32..128) { "Invalid host identity pin" }
-            val publicKey =
+            require(subjectPublicKeyInfo.size == ED25519_SPKI_BYTES) { "Invalid host identity pin" }
+            require(subjectPublicKeyInfo.copyOfRange(0, ED25519_SPKI_PREFIX.size).contentEquals(ED25519_SPKI_PREFIX)) {
+                "Host identity must be Ed25519"
+            }
+            val rawPublicKey = subjectPublicKeyInfo.copyOfRange(ED25519_SPKI_PREFIX.size, subjectPublicKeyInfo.size)
+            val verifier =
                 try {
-                    KeyFactory.getInstance("Ed25519").generatePublic(X509EncodedKeySpec(subjectPublicKeyInfo))
+                    Ed25519Verify(rawPublicKey)
                 } catch (error: Exception) {
                     throw IllegalArgumentException("Invalid host identity pin", error)
                 }
-            require(publicKey.algorithm.equals("Ed25519", ignoreCase = true) || publicKey.algorithm.equals("EdDSA", ignoreCase = true)) {
-                "Host identity must be Ed25519"
-            }
-            return HostIdentityPin(publicKey.encoded.copyOf(), publicKey)
+            return HostIdentityPin(subjectPublicKeyInfo.copyOf(), verifier)
         }
+
+        private const val ED25519_SPKI_BYTES = 44
+        private val ED25519_SPKI_PREFIX =
+            byteArrayOf(0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00)
     }
 }
 

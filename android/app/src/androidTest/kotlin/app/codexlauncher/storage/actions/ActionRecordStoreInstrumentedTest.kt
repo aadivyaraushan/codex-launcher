@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.codexlauncher.storage.wipe.LocalStateWriteGate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -37,7 +38,8 @@ class ActionRecordStoreInstrumentedTest {
 
     @Test
     fun realDataStoreContainsOnlyMetadataAndCanBeWiped() = runBlocking {
-        val store = ActionRecordStore(dataStore)
+        val gate = LocalStateWriteGate().also { assertTrue(it.openAfterStartup(pairingPresent = true)) }
+        val store = ActionRecordStore(dataStore, gate)
         val record = record("action-device-1")
         val unknown = record("action-device-2")
         val confirmed = record("action-device-3")
@@ -57,7 +59,7 @@ class ActionRecordStoreInstrumentedTest {
                 ),
             ),
         )
-        val recreatedStore = ActionRecordStore(dataStore)
+        val recreatedStore = ActionRecordStore(dataStore, gate)
         val restored = (recreatedStore.state.first() as ActionRecordReadState.Available).records
         assertEquals(setOf(ActionRecordState.PREPARED, ActionRecordState.SENT_UNKNOWN, ActionRecordState.CONFIRMED), restored.map { it.state }.toSet())
         val preferences = dataStore.data.first()
@@ -90,13 +92,14 @@ class ActionRecordStoreInstrumentedTest {
 
     @Test
     fun realDataStoreSerializesSimultaneousPreparedWrites() = runBlocking {
-        val store = ActionRecordStore(dataStore)
+        val gate = LocalStateWriteGate().also { assertTrue(it.openAfterStartup(pairingPresent = true)) }
+        val store = ActionRecordStore(dataStore, gate)
         val saved = coroutineScope {
             (0 until 32).map { index -> async { store.save(record("concurrent-$index")) } }.awaitAll()
         }
 
         assertTrue(saved.all { it })
-        val restored = (ActionRecordStore(dataStore).state.first() as ActionRecordReadState.Available).records
+        val restored = (ActionRecordStore(dataStore, gate).state.first() as ActionRecordReadState.Available).records
         assertEquals(32, restored.size)
         assertEquals(32, restored.map { it.actionId }.distinct().size)
     }

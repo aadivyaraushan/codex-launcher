@@ -13,8 +13,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -27,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.core.content.ContextCompat
@@ -56,16 +66,10 @@ import app.codexlauncher.launcher.home.HomeUiPolicy
 import app.codexlauncher.launcher.home.toHomeTask
 import app.codexlauncher.project.selection.ProjectSelector
 import app.codexlauncher.project.selection.ProjectSelectionUiState
-import app.codexlauncher.storage.projects.ProjectSelectionStore
-import app.codexlauncher.storage.projects.projectSelectionDataStore
-import app.codexlauncher.storage.actions.ActionRecordStore
-import app.codexlauncher.storage.actions.StoredActionJournal
-import app.codexlauncher.storage.actions.actionRecordDataStore
-import app.codexlauncher.storage.pairing.PairingRecordStore
-import app.codexlauncher.storage.pairing.DeviceIdentityStore
-import app.codexlauncher.storage.pairing.deviceIdentityDataStore
-import app.codexlauncher.storage.pairing.pairingDataStore
-import app.codexlauncher.storage.secrets.PairingKeyStore
+import app.codexlauncher.storage.pairing.PairingRecordReadState
+import app.codexlauncher.storage.wipe.LocalStateWriteResult
+import app.codexlauncher.storage.wipe.StartupRecovery
+import app.codexlauncher.storage.wipe.WipeResult
 import app.codexlauncher.task.transcript.TaskScreen
 import app.codexlauncher.task.transcript.TranscriptDetail
 import app.codexlauncher.task.transcript.TranscriptDetailScreen
@@ -75,10 +79,7 @@ import kotlinx.coroutines.launch
 
 class LauncherActivity : ComponentActivity() {
     private val themePreferences by lazy { ThemePreferenceStore(applicationContext.themeDataStore) }
-    private val pairingRecords by lazy { PairingRecordStore(applicationContext.pairingDataStore) }
-    private val deviceIdentity by lazy { DeviceIdentityStore(applicationContext.deviceIdentityDataStore) }
-    private val projectSelections by lazy { ProjectSelectionStore(applicationContext.projectSelectionDataStore) }
-    private val actionJournal by lazy { StoredActionJournal(ActionRecordStore(applicationContext.actionRecordDataStore)) }
+    private val localState get() = (application as LauncherApplication).localState
     private val pairingViewModel: PairingViewModel by viewModels {
         viewModelFactory { initializer { createPairingViewModel() } }
     }
@@ -87,23 +88,33 @@ class LauncherActivity : ComponentActivity() {
     }
 
     private fun createPairingViewModel(): PairingViewModel {
-        val client = PairingClient(AndroidDevicePairingSigner(PairingKeyStore()), PinnedPairingTransport())
+        val client = PairingClient(AndroidDevicePairingSigner(localState.pairingKeys), PinnedPairingTransport())
         return PairingViewModel(
-            pair = client::pair,
-            save = pairingRecords::save,
-            deviceId = deviceIdentity::loadOrCreate,
+            pair = { encoded, deviceId, deviceName ->
+                when (val result = localState.gate.withPairingWrite { client.pair(encoded, deviceId, deviceName) }) {
+                    is LocalStateWriteResult.Completed -> result.value
+                    LocalStateWriteResult.Blocked -> throw IllegalStateException("Pairing is unavailable while local state is being recovered")
+                }
+            },
+            save = localState.pairingRecords::save,
+            deviceId = {
+                when (val result = localState.gate.withPairingWrite(localState.deviceIdentity::loadOrCreate)) {
+                    is LocalStateWriteResult.Completed -> result.value
+                    LocalStateWriteResult.Blocked -> throw IllegalStateException("Pairing is unavailable while local state is being recovered")
+                }
+            },
             deviceName = Build.MODEL.ifBlank { "Android device" },
         )
     }
 
     private fun createSessionViewModel(): LauncherSessionViewModel {
-        val client = CompanionSessionClient(AndroidDevicePairingSigner(PairingKeyStore()))
+        val client = CompanionSessionClient(AndroidDevicePairingSigner(localState.pairingKeys))
         return LauncherSessionViewModel(
             connect = client::connect,
-            loadProject = { projectSelections.selected.first() },
-            saveProject = projectSelections::save,
-            clearProject = projectSelections::clear,
-            actionJournal = actionJournal,
+            loadProject = { localState.projectSelections.selected.first() },
+            saveProject = localState.projectSelections::save,
+            clearProject = localState.projectSelections::clear,
+            actionJournal = localState.actionJournal,
         )
     }
     private var homeIntentSequence by mutableLongStateOf(0L)
@@ -124,9 +135,12 @@ class LauncherActivity : ComponentActivity() {
             val appsRepository = remember { InstalledAppsRepository(applicationContext) }
             val appsLoader = remember { InstalledAppsLoader(appsRepository) }
             var pairingState by remember { mutableStateOf<PairingRecordState>(PairingRecordState.Loading) }
+            var localStorageUiState by remember { mutableStateOf(LocalStorageUiState.RECOVERING) }
+            var recoveryAttempt by remember { mutableLongStateOf(0L) }
             var destination by rememberSaveable { mutableStateOf(LauncherDestination.PAIRING) }
             var installedApps by remember { mutableStateOf(emptyList<InstalledApp>()) }
             var connectionHelpVisible by rememberSaveable { mutableStateOf(false) }
+            var unpairConfirmVisible by rememberSaveable { mutableStateOf(false) }
             var transcriptDetail by remember { mutableStateOf<TranscriptDetail?>(null) }
             var cameraPermissionGranted by remember {
                 mutableStateOf(
@@ -137,8 +151,33 @@ class LauncherActivity : ComponentActivity() {
                 rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                     cameraPermissionGranted = granted
                 }
-            LaunchedEffect(Unit) {
-                pairingRecords.paired.collect { paired -> pairingState = PairingRecordState.Loaded(paired) }
+            LaunchedEffect(recoveryAttempt) {
+                localStorageUiState = LocalStorageUiState.RECOVERING
+                pairingState = PairingRecordState.Loading
+                when (
+                    localState.wiper.recover {
+                        when (val stored = localState.pairingRecords.readForStartup()) {
+                            is PairingRecordReadState.Paired -> true
+                            PairingRecordReadState.Unpaired -> false
+                            PairingRecordReadState.Unavailable -> throw IllegalStateException("Pairing storage is unavailable")
+                        }
+                    }
+                ) {
+                    StartupRecovery.Paired,
+                    StartupRecovery.Unpaired,
+                    -> {
+                        localStorageUiState = LocalStorageUiState.READY
+                        localState.pairingRecords.paired.collect { paired ->
+                            if (localStorageUiState == LocalStorageUiState.READY) {
+                                pairingState = PairingRecordState.Loaded(paired)
+                            }
+                        }
+                    }
+                    StartupRecovery.StorageUnavailable -> {
+                        localStorageUiState = LocalStorageUiState.FAILED
+                        pairingState = PairingRecordState.RecoveryFailed
+                    }
+                }
             }
             val pairedComputer = (pairingState as? PairingRecordState.Loaded)?.record
             val loadedRootDestination = pairingState.startDestination()
@@ -160,6 +199,7 @@ class LauncherActivity : ComponentActivity() {
                 }
                 when (val loaded = pairingState) {
                     PairingRecordState.Loading -> sessionViewModel.disconnect()
+                    PairingRecordState.RecoveryFailed -> sessionViewModel.disconnect()
                     is PairingRecordState.Loaded -> loaded.record?.let(sessionViewModel::connect) ?: sessionViewModel.disconnect()
                 }
             }
@@ -214,9 +254,15 @@ class LauncherActivity : ComponentActivity() {
                     }
             }
             QuietInstrumentTheme(mode = appearanceMode) {
-                if (visibleDestination == null) {
+                if (pairingState == PairingRecordState.RecoveryFailed && destination !in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE)) {
+                    LocalStateRecoveryScreen(
+                        onRetry = { recoveryAttempt += 1 },
+                        onAllApps = { destination = LauncherDestination.APPS },
+                        onAndroidSettings = ::openAndroidSettings,
+                    )
+                } else if (visibleDestination == null && destination !in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE)) {
                     LauncherLoadingScreen()
-                } else when (visibleDestination) {
+                } else when (visibleDestination ?: destination) {
                     LauncherDestination.PAIRING ->
                         PairingScreen(
                             state = pairingUiState,
@@ -247,6 +293,7 @@ class LauncherActivity : ComponentActivity() {
                             onAllApps = { destination = LauncherDestination.APPS },
                             onAndroidSettings = ::openAndroidSettings,
                             onConnectionHelp = { connectionHelpVisible = true },
+                            onManageComputer = { unpairConfirmVisible = true },
                             onOpenTask = { taskId ->
                                 if (sessionViewModel.openTask(taskId)) {
                                     transcriptDetail = null
@@ -309,6 +356,48 @@ class LauncherActivity : ComponentActivity() {
                             onBack = { destination = LauncherDestination.APPS },
                         )
                 }
+                if (unpairConfirmVisible) {
+                    AlertDialog(
+                        onDismissRequest = { unpairConfirmVisible = false },
+                        title = { Text("Remove this computer?") },
+                        text = {
+                            Text("This removes the pairing, selected project, action records, and unfinished draft from this phone. Your Codex tasks stay on the computer.")
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    unpairConfirmVisible = false
+                                    sessionViewModel.disconnect()
+                                    sessionViewModel.closeTask()
+                                    transcriptDetail = null
+                                    localStorageUiState = LocalStorageUiState.WIPING
+                                    pairingState = PairingRecordState.Loading
+                                    scope.launch {
+                                        when (localState.wiper.wipe()) {
+                                            WipeResult.Complete -> {
+                                                pairingViewModel.resetAfterUnpair()
+                                                localStorageUiState = LocalStorageUiState.READY
+                                                pairingState = PairingRecordState.Loaded(null)
+                                                destination = LauncherDestination.PAIRING
+                                            }
+                                            WipeResult.AlreadyInProgress -> {
+                                                localStorageUiState = LocalStorageUiState.FAILED
+                                                pairingState = PairingRecordState.RecoveryFailed
+                                            }
+                                            is WipeResult.Incomplete -> {
+                                                localStorageUiState = LocalStorageUiState.FAILED
+                                                pairingState = PairingRecordState.RecoveryFailed
+                                            }
+                                        }
+                                    }
+                                },
+                            ) { Text("Remove computer") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { unpairConfirmVisible = false }) { Text("Cancel") }
+                        },
+                    )
+                }
             }
         }
     }
@@ -350,6 +439,24 @@ private fun LauncherLoadingScreen() {
     }
 }
 
+@Composable
+private fun LocalStateRecoveryScreen(
+    onRetry: () -> Unit,
+    onAllApps: () -> Unit,
+    onAndroidSettings: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+    ) {
+        Text("Finishing private data cleanup", style = MaterialTheme.typography.headlineSmall)
+        Text("Codex Launcher could not safely finish removing local data. Try again before pairing.")
+        Button(onClick = onRetry) { Text("Try again") }
+        OutlinedButton(onClick = onAllApps) { Text("All apps") }
+        OutlinedButton(onClick = onAndroidSettings) { Text("Android Settings") }
+    }
+}
+
 internal enum class LauncherDestination {
     PAIRING,
     HOME,
@@ -363,12 +470,22 @@ internal enum class LauncherDestination {
 internal sealed interface PairingRecordState {
     data object Loading : PairingRecordState
 
+    data object RecoveryFailed : PairingRecordState
+
     data class Loaded(val record: PairedComputer?) : PairingRecordState
+}
+
+private enum class LocalStorageUiState {
+    RECOVERING,
+    READY,
+    WIPING,
+    FAILED,
 }
 
 internal fun PairingRecordState.startDestination(): LauncherDestination? =
     when (this) {
         PairingRecordState.Loading -> null
+        PairingRecordState.RecoveryFailed -> null
         is PairingRecordState.Loaded -> if (record == null) LauncherDestination.PAIRING else LauncherDestination.HOME
     }
 

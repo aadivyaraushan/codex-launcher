@@ -78,6 +78,24 @@ class PairingRecordStoreTest {
                 NoOpPairingRecordReporter,
             )
         assertNull(unavailable.paired.first())
+        assertEquals(PairingRecordReadState.Unavailable, unavailable.readForStartup())
+    }
+
+    @Test
+    fun startupDistinguishesAbsentValidAndCorruptPairingState() = runBlocking {
+        assertEquals(
+            PairingRecordReadState.Unpaired,
+            PairingRecordStore(FakePreferencesDataStore(), NoOpPairingRecordReporter).readForStartup(),
+        )
+        val validStore = PairingRecordStore(FakePreferencesDataStore(), NoOpPairingRecordReporter)
+        val expected = pairedComputer()
+        assertTrue(validStore.save(expected))
+        assertEquals(PairingRecordReadState.Paired(expected), validStore.readForStartup())
+        val corrupt = preferencesOf(stringPreferencesKey("host") to "100.64.0.10")
+        assertEquals(
+            PairingRecordReadState.Unavailable,
+            PairingRecordStore(FakePreferencesDataStore(corrupt), NoOpPairingRecordReporter).readForStartup(),
+        )
     }
 
     @Test

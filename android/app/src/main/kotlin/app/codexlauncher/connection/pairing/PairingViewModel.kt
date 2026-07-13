@@ -45,7 +45,7 @@ data class PairingUiState(
 )
 
 class PairingViewModel(
-    private val pair: (encoded: String, deviceId: String, deviceName: String) -> PairedComputer,
+    private val pair: suspend (encoded: String, deviceId: String, deviceName: String) -> PairedComputer,
     private val save: suspend (PairedComputer) -> Boolean,
     private val deviceId: suspend () -> String,
     private val deviceName: String,
@@ -87,6 +87,16 @@ class PairingViewModel(
 
     fun submitSaveRetry() {
         submissionScope.launch { retrySave() }
+    }
+
+    fun resetAfterUnpair() {
+        pendingRecord = null
+        mutableState.value = PairingUiState()
+        AppLog.info(
+            feature = "pairing-ui",
+            message = "pairing UI reset after unpair",
+            fields = mapOf("output_shape" to "fresh_pairing"),
+        )
     }
 
     suspend fun pairManualEntry(): Boolean = pairEncoded(mutableState.value.manualEntry)

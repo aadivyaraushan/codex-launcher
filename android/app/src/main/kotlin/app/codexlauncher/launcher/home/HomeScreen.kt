@@ -58,6 +58,7 @@ fun HomeScreen(
     onAttach: () -> Unit = {},
     onDictate: () -> Unit = {},
     onConnectionHelp: () -> Unit = {},
+    onManageComputer: () -> Unit = {},
     onOpenTask: (String) -> Unit = {},
     connectionHelpVisible: Boolean = false,
 ) {
@@ -95,7 +96,7 @@ fun HomeScreen(
                     .imePadding(),
         ) {
             if (!compactForIme) {
-                Header(state)
+                Header(state, onManageComputer)
                 Spacer(Modifier.height(24.dp))
             }
             if (state.contentBaseSequence == null) {
@@ -126,16 +127,24 @@ fun HomeScreen(
 }
 
 @Composable
-private fun Header(state: HomeUiState) {
+private fun Header(
+    state: HomeUiState,
+    onManageComputer: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("Codex", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-        Column(horizontalAlignment = Alignment.End) {
-            Text("Computer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(state.computerName, style = MaterialTheme.typography.bodyMedium)
+        TextButton(
+            onClick = onManageComputer,
+            modifier = Modifier.semantics { contentDescription = "Manage paired computer" },
+        ) {
+            Column(horizontalAlignment = Alignment.End) {
+                Text("Computer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(state.computerName, style = MaterialTheme.typography.bodyMedium)
+            }
         }
     }
 }

@@ -1,6 +1,8 @@
 package app.codexlauncher.storage.drafts
 
 import app.codexlauncher.diagnostics.AppLog
+import app.codexlauncher.storage.wipe.LocalStateWriteGate
+import app.codexlauncher.storage.wipe.LocalStateWriteResult
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
@@ -35,6 +37,7 @@ class EncryptedDraftStore(
     private val maxAge: Duration,
     private val commit: (File, ByteArray) -> Unit = ::commitAtomically,
     private val read: (File) -> ByteArray = File::readBytes,
+    private val writeGate: LocalStateWriteGate? = null,
 ) {
     private val operationLock = operationLocks.computeIfAbsent(file.absolutePath) { Any() }
 
@@ -42,7 +45,8 @@ class EncryptedDraftStore(
         require(!maxAge.isZero && !maxAge.isNegative)
     }
 
-    fun save(text: String, savedAt: Instant = now()): Boolean = synchronized(operationLock) { saveLocked(text, savedAt) }
+    suspend fun save(text: String, savedAt: Instant = now()): Boolean =
+        guardedOperation { synchronized(operationLock) { saveLocked(text, savedAt) } }
 
     private fun saveLocked(text: String, savedAt: Instant): Boolean {
         val plaintext = text.encodeToByteArray()
@@ -81,7 +85,12 @@ class EncryptedDraftStore(
         }
     }
 
-    fun load(readAt: Instant = now()): DraftReadState = synchronized(operationLock) { loadLocked(readAt) }
+    suspend fun load(readAt: Instant = now()): DraftReadState =
+        when (val result = writeGate?.withPairedWrite { synchronized(operationLock) { loadLocked(readAt) } }) {
+            null -> synchronized(operationLock) { loadLocked(readAt) }
+            is LocalStateWriteResult.Completed -> result.value
+            LocalStateWriteResult.Blocked -> DraftReadState.Unavailable(DraftReadFailure.STORAGE_IO)
+        }
 
     private fun loadLocked(readAt: Instant): DraftReadState {
         staleTemporaryFile().delete()
@@ -139,7 +148,16 @@ class EncryptedDraftStore(
         }
     }
 
-    fun clear(): Boolean = synchronized(operationLock) { clearLocked() }
+    suspend fun clear(): Boolean = guardedOperation { synchronized(operationLock) { clearLocked() } }
+
+    internal fun clearForWipe(): Boolean = synchronized(operationLock) { clearLocked() }
+
+    private suspend fun guardedOperation(block: suspend () -> Boolean): Boolean =
+        when (val result = writeGate?.withPairedWrite(block)) {
+            null -> block()
+            is LocalStateWriteResult.Completed -> result.value
+            LocalStateWriteResult.Blocked -> false
+        }
 
     private fun clearLocked(): Boolean =
         try {

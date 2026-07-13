@@ -11,6 +11,7 @@ class LauncherStartupPolicyTest {
     @Test
     fun storageLoadingHasNoLauncherDestination() {
         assertNull(PairingRecordState.Loading.startDestination())
+        assertNull(PairingRecordState.RecoveryFailed.startDestination())
     }
 
     @Test

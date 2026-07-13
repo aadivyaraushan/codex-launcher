@@ -55,6 +55,15 @@ class DeviceIdentityStore internal constructor(
         }
     }
 
+    internal suspend fun clearForWipe(): Boolean =
+        try {
+            dataStore.edit { preferences -> preferences.clear() }
+            true
+        } catch (error: IOException) {
+            reporter.failed(error)
+            false
+        }
+
     private companion object {
         val deviceIdKey = stringPreferencesKey("device_id")
     }

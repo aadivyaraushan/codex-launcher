@@ -13,6 +13,7 @@ kotlinxSerialization = "1.11.0"
 cameraX = "1.6.1"
 lifecycle = "2.10.0"
 zxing = "3.5.4"
+tink = "1.23.0"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
@@ -38,6 +39,7 @@ camera-view = { module = "androidx.camera:camera-view", version.ref = "cameraX" 
 lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-viewmodel-ktx = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "tink" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

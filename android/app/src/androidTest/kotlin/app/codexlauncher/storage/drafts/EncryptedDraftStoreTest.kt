@@ -14,6 +14,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -43,7 +44,7 @@ class EncryptedDraftStoreTest {
     }
 
     @Test
-    fun savesOnlyCiphertextAndRestoresAfterStoreRecreation() {
+    fun savesOnlyCiphertextAndRestoresAfterStoreRecreation() = runBlocking {
         val privateDraft = "Fix the private checkout flow"
         val first = store()
         assertTrue(first.save(privateDraft, now))
@@ -60,7 +61,7 @@ class EncryptedDraftStoreTest {
     }
 
     @Test
-    fun emptyDraftDeletesCiphertextAndExpiredDraftIsEvicted() {
+    fun emptyDraftDeletesCiphertextAndExpiredDraftIsEvicted() = runBlocking {
         val store = store(maxAge = Duration.ofHours(2))
         assertTrue(store.save("unfinished", now))
         assertTrue(store.save("   ", now.plusSeconds(1)))
@@ -73,7 +74,7 @@ class EncryptedDraftStoreTest {
     }
 
     @Test
-    fun oversizedCorruptAndFutureRecordsFailClosedWithoutReturningContent() {
+    fun oversizedCorruptAndFutureRecordsFailClosedWithoutReturningContent() = runBlocking {
         val store = store()
         assertFalse(store.save("x".repeat(MAX_DRAFT_BYTES + 1), now))
         assertEquals(DraftReadState.Empty, store.load(now))
@@ -87,7 +88,7 @@ class EncryptedDraftStoreTest {
     }
 
     @Test
-    fun failedAtomicReplacementKeepsTheLastCommittedDraft() {
+    fun failedAtomicReplacementKeepsTheLastCommittedDraft() = runBlocking {
         val stable = store()
         assertTrue(stable.save("first committed draft", now))
 
@@ -104,7 +105,7 @@ class EncryptedDraftStoreTest {
     }
 
     @Test
-    fun tamperedExpiredTimestampIsRejectedWithoutDeletingAuthenticatedCiphertext() {
+    fun tamperedExpiredTimestampIsRejectedWithoutDeletingAuthenticatedCiphertext() = runBlocking {
         val store = store(maxAge = Duration.ofHours(2))
         assertTrue(store.save("must survive unauthenticated expiry", now))
         val tampered = draftFile.readBytes()
@@ -116,7 +117,7 @@ class EncryptedDraftStoreTest {
     }
 
     @Test
-    fun oversizedStoredRecordIsRejectedBeforeItsBodyIsRead() {
+    fun oversizedStoredRecordIsRejectedBeforeItsBodyIsRead() = runBlocking {
         draftFile.parentFile?.mkdirs()
         RandomAccessFile(draftFile, "rw").use { it.setLength((MAX_DRAFT_BYTES + 2048).toLong()) }
         var bodyReads = 0
@@ -137,7 +138,7 @@ class EncryptedDraftStoreTest {
     }
 
     @Test
-    fun separateStoreInstancesSerializeOperationsForTheSameFile() {
+    fun separateStoreInstancesSerializeOperationsForTheSameFile() = runBlocking {
         val firstCommitEntered = CountDownLatch(1)
         val releaseFirstCommit = CountDownLatch(1)
         val activeCommits = AtomicInteger()
@@ -157,9 +158,9 @@ class EncryptedDraftStoreTest {
         val second = EncryptedDraftStore(draftFile, keyStore, { now }, Duration.ofDays(7), commit)
         val executor = Executors.newFixedThreadPool(2)
         try {
-            val firstSave = executor.submit<Boolean> { first.save("first", now) }
+            val firstSave = executor.submit<Boolean> { runBlocking { first.save("first", now) } }
             assertTrue(firstCommitEntered.await(2, TimeUnit.SECONDS))
-            val secondSave = executor.submit<Boolean> { second.save("second", now.plusSeconds(1)) }
+            val secondSave = executor.submit<Boolean> { runBlocking { second.save("second", now.plusSeconds(1)) } }
             Thread.sleep(100)
             releaseFirstCommit.countDown()
             assertTrue(firstSave.get(2, TimeUnit.SECONDS))

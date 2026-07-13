@@ -13,18 +13,34 @@ import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.connection.security.HostIdentityPin
 import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.storage.secrets.PairingKeyProtection
+import app.codexlauncher.storage.wipe.LocalStateWriteGate
+import app.codexlauncher.storage.wipe.LocalStateWriteResult
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 
 internal val Context.pairingDataStore by preferencesDataStore(name = "paired_computer")
+
+sealed interface PairingRecordReadState {
+    data class Paired(val record: PairedComputer) : PairingRecordReadState
+
+    data object Unpaired : PairingRecordReadState
+
+    data object Unavailable : PairingRecordReadState
+}
 
 class PairingRecordStore internal constructor(
     private val dataStore: DataStore<Preferences>,
     private val reporter: PairingRecordReporter,
+    private val writeGate: LocalStateWriteGate? = null,
 ) {
-    constructor(dataStore: DataStore<Preferences>) : this(dataStore, AppPairingRecordReporter)
+    constructor(dataStore: DataStore<Preferences>, writeGate: LocalStateWriteGate) : this(
+        dataStore,
+        AppPairingRecordReporter,
+        writeGate,
+    )
 
     val paired: Flow<PairedComputer?> =
         dataStore.data
@@ -37,26 +53,49 @@ class PairingRecordStore internal constructor(
                 }
             }.map(::readRecord)
 
+    suspend fun readForStartup(): PairingRecordReadState =
+        try {
+            val preferences = dataStore.data.first()
+            if (preferences.asMap().isEmpty()) {
+                PairingRecordReadState.Unpaired
+            } else {
+                readRecord(preferences)?.let(PairingRecordReadState::Paired) ?: PairingRecordReadState.Unavailable
+            }
+        } catch (error: IOException) {
+            reporter.readFailed(error)
+            PairingRecordReadState.Unavailable
+        }
+
     suspend fun save(record: PairedComputer): Boolean {
         if (!isValid(record)) {
             reporter.invalidRecord()
             return false
         }
-        return write(present = true) {
-            clear()
-            this[versionKey] = RECORD_VERSION
-            this[hostKey] = record.host
-            this[portKey] = record.port
-            this[protocolKey] = record.protocol
-            this[hostIdentityKey] = record.hostIdentity
-            this[deviceIdKey] = record.deviceId
-            this[deviceNameKey] = record.deviceName
-            this[pairingGenerationKey] = record.pairingGeneration
-            this[keyProtectionKey] = record.keyProtection.name
+        val save = suspend {
+            write(present = true) {
+                clear()
+                this[versionKey] = RECORD_VERSION
+                this[hostKey] = record.host
+                this[portKey] = record.port
+                this[protocolKey] = record.protocol
+                this[hostIdentityKey] = record.hostIdentity
+                this[deviceIdKey] = record.deviceId
+                this[deviceNameKey] = record.deviceName
+                this[pairingGenerationKey] = record.pairingGeneration
+                this[keyProtectionKey] = record.keyProtection.name
+            }
         }
+        return writeGate?.completePairing(save) ?: save()
     }
 
-    suspend fun clear(): Boolean = write(present = false) { clear() }
+    suspend fun clear(): Boolean =
+        when (val result = writeGate?.withPairedWrite { write(present = false) { clear() } }) {
+            null -> write(present = false) { clear() }
+            is LocalStateWriteResult.Completed -> result.value
+            LocalStateWriteResult.Blocked -> false
+        }
+
+    internal suspend fun clearForWipe(): Boolean = write(present = false) { clear() }
 
     private suspend fun write(
         present: Boolean,

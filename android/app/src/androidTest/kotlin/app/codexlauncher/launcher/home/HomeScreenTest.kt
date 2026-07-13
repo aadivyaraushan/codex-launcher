@@ -124,6 +124,23 @@ class HomeScreenTest {
     }
 
     @Test
+    fun tappingTheFixedComputerOpensItsManagementAction() {
+        var manageCalls = 0
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = offlineState(),
+                    onManageComputer = { manageCalls += 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Manage paired computer").performClick()
+
+        assertEquals(1, manageCalls)
+    }
+
+    @Test
     fun swipeUpOpensAllAppsAndExpandedHelpStaysOfflineSafe() {
         var allAppsOpens = 0
         compose.setContent {

@@ -22,8 +22,13 @@
 > connecting/syncing/online/offline states. Connection loss now schedules a
 > capped automatic reconnect to the same paired computer, while manual
 > disconnect, revoked pairing, and incompatible protocol stop retrying.
-> Reduced-protection confirmation, unpair, and the remaining folder/offline
-> checks are not yet complete. Task 9 has started with a typed, protocol-
+> Reduced-protection confirmation and the remaining folder/offline checks are
+> not yet complete. Unpair now uses an application-owned, fail-closed local
+> write gate and durable wipe marker. The real Pixel 9 API 36 flow removes the
+> project choice, action records, encrypted draft and key, device identity,
+> pairing key, and paired-computer record before reopening fresh pairing; failed
+> reads/deletions and overlapping wipes remain blocked for recovery. Task 9 has
+> started with a typed, protocol-
 > validated recent-task snapshot path from an injected Codex catalog through
 > the companion and into the existing Android Home rows. Each hello refreshes
 > the list at a new snapshot base. A new owned-process boundary now validates
@@ -51,8 +56,8 @@
 > after the socket accepts the acknowledgement. Socket loss after the boundary
 > stays conservatively unresolved, and the 128-record cap may evict old
 > definitely-unsent records but never an unknown outcome. The same boundary
-> still needs to be reused by prompt/approval/task actions, and the full unpair
-> wipe owner is not yet built. Validated live task events now update the
+> still needs to be reused by prompt/approval/task actions. Validated live task
+> events now update the
 > matching Home row's state and short summary in memory. Events arriving while
 > the fresh snapshot/project state loads wait in a bounded 128-item queue,
 > only the newest overlapping snapshot can publish, and later events are
@@ -97,7 +102,9 @@
 > a distinct non-exportable Android Keystore AES-256-GCM key, authenticated
 > version/time metadata, 128 KiB limit, caller-owned expiry policy, fail-closed
 > reads, and fsync plus atomic replacement all pass on the API 36 Pixel 9
-> emulator. Composer wiring and unpair wipe ownership remain.
+> emulator. Composer wiring remains. The unfinished draft is included in the
+> application-owned unpair wipe and was verified with real Android storage and
+> Keystore state on the same emulator.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

@@ -7,6 +7,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.codexlauncher.diagnostics.AppLog
+import app.codexlauncher.storage.wipe.LocalStateWriteGate
+import app.codexlauncher.storage.wipe.LocalStateWriteResult
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -32,9 +34,14 @@ internal val Context.actionRecordDataStore by preferencesDataStore(name = "actio
 class ActionRecordStore internal constructor(
     private val dataStore: DataStore<Preferences>,
     private val reporter: ActionRecordReporter,
+    private val writeGate: LocalStateWriteGate? = null,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
-    constructor(dataStore: DataStore<Preferences>) : this(dataStore, AppActionRecordReporter)
+    constructor(dataStore: DataStore<Preferences>, writeGate: LocalStateWriteGate) : this(
+        dataStore,
+        AppActionRecordReporter,
+        writeGate = writeGate,
+    )
 
     val state: Flow<ActionRecordReadState> =
         flow {
@@ -58,7 +65,11 @@ class ActionRecordStore internal constructor(
             reporter.invalidRecord()
             return false
         }
-        return try {
+        return guardedWrite { saveUnguarded(record) }
+    }
+
+    private suspend fun saveUnguarded(record: ActionRecord): Boolean =
+        try {
             var recordCount = 0
             dataStore.edit { preferences ->
                 val stored = decodePreferences(preferences)
@@ -108,13 +119,16 @@ class ActionRecordStore internal constructor(
             reporter.writeFailed(error)
             false
         }
-    }
 
-    suspend fun acknowledge(actionId: String): Boolean = removeIf(actionId, ActionRecordState.CONFIRMED)
+    suspend fun acknowledge(actionId: String): Boolean = guardedWrite { removeIf(actionId, ActionRecordState.CONFIRMED) }
 
-    suspend fun dismissUnknown(actionId: String): Boolean = removeIf(actionId, ActionRecordState.SENT_UNKNOWN)
+    suspend fun dismissUnknown(actionId: String): Boolean = guardedWrite { removeIf(actionId, ActionRecordState.SENT_UNKNOWN) }
 
-    suspend fun clearAll(): Boolean =
+    suspend fun clearAll(): Boolean = guardedWrite(::clearAllUnguarded)
+
+    internal suspend fun clearAllForWipe(): Boolean = clearAllUnguarded()
+
+    private suspend fun clearAllUnguarded(): Boolean =
         try {
             dataStore.edit { preferences -> preferences.clear() }
             reporter.writeCompleted(0)
@@ -156,6 +170,14 @@ class ActionRecordStore internal constructor(
     }
 
     private suspend fun pruneExpired() {
+        if (writeGate != null) {
+            writeGate.withPairedWrite { pruneExpiredUnguarded() }
+        } else {
+            pruneExpiredUnguarded()
+        }
+    }
+
+    private suspend fun pruneExpiredUnguarded() {
         try {
             var changed = false
             var recordCount = 0
@@ -175,6 +197,13 @@ class ActionRecordStore internal constructor(
             reporter.writeFailed(error)
         }
     }
+
+    private suspend fun guardedWrite(block: suspend () -> Boolean): Boolean =
+        when (val result = writeGate?.withPairedWrite(block)) {
+            null -> block()
+            is LocalStateWriteResult.Completed -> result.value
+            LocalStateWriteResult.Blocked -> false
+        }
 
     private fun readState(preferences: Preferences): ActionRecordReadState =
         try {

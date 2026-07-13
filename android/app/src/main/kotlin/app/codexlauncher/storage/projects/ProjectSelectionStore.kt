@@ -9,6 +9,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.project.selection.ProjectChoice
+import app.codexlauncher.storage.wipe.LocalStateWriteGate
+import app.codexlauncher.storage.wipe.LocalStateWriteResult
 import app.codexlauncher.project.selection.isValid
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
@@ -20,8 +22,13 @@ internal val Context.projectSelectionDataStore by preferencesDataStore(name = "p
 class ProjectSelectionStore internal constructor(
     private val dataStore: DataStore<Preferences>,
     private val reporter: ProjectSelectionReporter,
+    private val writeGate: LocalStateWriteGate? = null,
 ) {
-    constructor(dataStore: DataStore<Preferences>) : this(dataStore, AppProjectSelectionReporter)
+    constructor(dataStore: DataStore<Preferences>, writeGate: LocalStateWriteGate) : this(
+        dataStore,
+        AppProjectSelectionReporter,
+        writeGate,
+    )
 
     val selected: Flow<ProjectChoice?> =
         dataStore.data
@@ -39,14 +46,25 @@ class ProjectSelectionStore internal constructor(
             reporter.invalidRecord()
             return false
         }
-        return write(true) {
-            clear()
-            this[projectIdKey] = choice.id
-            this[displayNameKey] = choice.displayName
+        return guardedWrite {
+            write(true) {
+                clear()
+                this[projectIdKey] = choice.id
+                this[displayNameKey] = choice.displayName
+            }
         }
     }
 
-    suspend fun clear(): Boolean = write(false) { clear() }
+    suspend fun clear(): Boolean = guardedWrite { write(false) { clear() } }
+
+    internal suspend fun clearForWipe(): Boolean = write(false) { clear() }
+
+    private suspend fun guardedWrite(block: suspend () -> Boolean): Boolean =
+        when (val result = writeGate?.withPairedWrite(block)) {
+            null -> block()
+            is LocalStateWriteResult.Completed -> result.value
+            LocalStateWriteResult.Blocked -> false
+        }
 
     private fun read(preferences: Preferences): ProjectChoice? {
         if (preferences.asMap().isEmpty()) return null
