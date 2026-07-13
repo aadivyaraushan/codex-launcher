@@ -32,6 +32,36 @@ import org.junit.Test
 
 class LauncherSessionViewModelTest {
     @Test
+    fun newTaskOptionsFollowTheAuthenticatedSessionAndClearOnFailure() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val viewModel =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { null },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = FakeActionJournal(),
+                nextSessionId = { "session-1" },
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcomeWithOptions())
+        observer.onMessage(snapshotWithTask(1, "Task"))
+
+        assertEquals("Codex 1", viewModel.state.value.newTaskOptions?.models?.single()?.displayName)
+        assertEquals("workspace-write", viewModel.state.value.newTaskOptions?.defaultSelection()?.permissionModeId)
+        assertEquals("session-1", viewModel.state.value.newTaskOptionsSessionId)
+
+        observer.onFailure(SessionFailure.CONNECTION_LOST)
+
+        assertEquals(null, viewModel.state.value.newTaskOptions)
+        assertEquals(null, viewModel.state.value.newTaskOptionsSessionId)
+    }
+
+    @Test
     fun recreatedSessionLoadsUnconfirmedForkAndBlocksDuplicateUntilReviewed() = runBlocking {
         lateinit var observer: SessionObserver
         val connection = FakeSessionConnection()
@@ -1289,6 +1319,11 @@ class LauncherSessionViewModelTest {
             """{"version":{"major":1,"minor":0},"messageId":"welcome-1","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":[$encodedCapabilities],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}}""",
         )
     }
+
+    private fun welcomeWithOptions(): ProtocolMessage =
+        decode(
+            """{"version":{"major":1,"minor":0},"messageId":"welcome-options","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":["set_project","new_task_options"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Balanced."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Project changes.","isDefault":true}]}}}""",
+        )
 
     private fun decode(frame: String): ProtocolMessage = ProtocolCodec.decodeText(frame)
 

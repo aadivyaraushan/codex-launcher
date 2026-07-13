@@ -6,6 +6,7 @@ import (
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskoptions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 )
@@ -77,6 +78,13 @@ func (set Set) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, err
 		tasks[index] = resolved
 	}
 	return orderHomeTasks(tasks), nil
+}
+
+func (set Set) NewTaskOptions(ctx context.Context) (taskoptions.Catalog, error) {
+	if set.app == nil {
+		return taskoptions.Catalog{}, errors.New("app-server adapter is unavailable")
+	}
+	return taskoptions.Load(ctx, set.app.ListModels)
 }
 
 func orderHomeTasks(tasks []taskstate.Task) []taskstate.Task {

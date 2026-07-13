@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskoptions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
@@ -25,6 +26,10 @@ type TaskSource interface {
 
 type TaskTranscriptSource interface {
 	ReadTranscript(context.Context, string, tasktranscript.PageOptions) (tasktranscript.Page, error)
+}
+
+type NewTaskOptionsSource interface {
+	NewTaskOptions(context.Context) (taskoptions.Catalog, error)
 }
 
 type TaskManagementSource interface {
@@ -55,6 +60,7 @@ type Handler struct {
 	taskSource       TaskSource
 	transcriptSource TaskTranscriptSource
 	managementSource TaskManagementSource
+	optionSource     NewTaskOptionsSource
 	nextID           atomic.Uint64
 	publishMu        sync.Mutex
 	mu               sync.Mutex
@@ -137,6 +143,7 @@ func NewWithTaskSource(ctx context.Context, computerName string, projectService 
 	}
 	handler.transcriptSource, _ = taskSource.(TaskTranscriptSource)
 	handler.managementSource, _ = taskSource.(TaskManagementSource)
+	handler.optionSource, _ = taskSource.(NewTaskOptionsSource)
 	handler.activeView.Store([]transport.MessageSender{})
 	handler.snapshotGen.Store(1)
 	go handler.deliverBroadcasts()
@@ -191,7 +198,19 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 }
 
 func (handler *Handler) handleHello(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
-	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil)); err != nil {
+	options := taskoptions.Catalog{Models: []taskoptions.Model{}, PermissionModes: []taskoptions.PermissionMode{}}
+	optionsCapable := false
+	if handler.optionSource != nil {
+		loaded, err := handler.optionSource.NewTaskOptions(ctx)
+		if err != nil {
+			handler.logger.Error("[mobile-session] new task options unavailable", "branch_reason", "unsafe_or_unavailable_catalog", "error_class", fmt.Sprintf("%T", err))
+		} else {
+			options = loaded
+			optionsCapable = true
+			handler.logger.Info("[mobile-session] new task options ready", "model_count", len(options.Models), "permission_mode_count", len(options.PermissionModes), "output_shape", "safe_option_catalog")
+		}
+	}
+	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, options)); err != nil {
 		return err
 	}
 	var body struct {
@@ -674,7 +693,7 @@ func (handler *Handler) send(ctx context.Context, sender transport.MessageSender
 	return nil
 }
 
-func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable bool) json.RawMessage {
+func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable bool, options taskoptions.Catalog) json.RawMessage {
 	capabilities := []string{"set_project"}
 	if taskCapable {
 		capabilities = append(capabilities, "desktop_tasks")
@@ -685,13 +704,18 @@ func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCap
 	if managementCapable {
 		capabilities = append(capabilities, "task_management")
 	}
+	if optionsCapable {
+		capabilities = append(capabilities, "new_task_options")
+	}
 	body, _ := json.Marshal(struct {
-		SessionID    string   `json:"sessionId"`
-		Capabilities []string `json:"capabilities"`
-		Limits       any      `json:"limits"`
+		SessionID      string              `json:"sessionId"`
+		Capabilities   []string            `json:"capabilities"`
+		Limits         any                 `json:"limits"`
+		NewTaskOptions taskoptions.Catalog `json:"newTaskOptions"`
 	}{
-		SessionID:    sessionID,
-		Capabilities: capabilities,
+		SessionID:      sessionID,
+		Capabilities:   capabilities,
+		NewTaskOptions: options,
 		Limits: struct {
 			MaxJSONBytes       int `json:"maxJsonBytes"`
 			MaxAttachmentBytes int `json:"maxAttachmentBytes"`

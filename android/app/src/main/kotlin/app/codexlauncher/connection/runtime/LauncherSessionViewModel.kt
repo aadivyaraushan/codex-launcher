@@ -22,6 +22,7 @@ import app.codexlauncher.task.summary.TaskEventReducer
 import app.codexlauncher.task.management.TaskAction
 import app.codexlauncher.task.management.TaskActionBridge
 import app.codexlauncher.task.management.TaskActionOutcome
+import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.transcript.TaskTranscriptMapper
 import app.codexlauncher.task.transcript.TaskTranscriptUiState
 import java.util.UUID
@@ -50,6 +51,8 @@ data class LauncherSessionState(
     val snapshot: ProjectSnapshot? = null,
     val transcript: TaskTranscriptUiState? = null,
     val taskManagementAvailable: Boolean = false,
+    val newTaskOptions: NewTaskOptions? = null,
+    val newTaskOptionsSessionId: String? = null,
     val unconfirmedForkTaskIds: Set<String> = emptySet(),
 )
 
@@ -199,6 +202,22 @@ class LauncherSessionViewModel(
         }
         transcriptCapable = "task_transcripts" in capabilities
         taskManagementCapable = "task_management" in capabilities
+        val newTaskOptions =
+            if ("new_task_options" in capabilities) NewTaskOptions.fromWelcome(message.body) else null
+        mutableState.value =
+            mutableState.value.copy(
+                newTaskOptions = newTaskOptions,
+                newTaskOptionsSessionId = newTaskOptions?.let { message.body.getValue("sessionId").jsonPrimitive.content },
+            )
+        AppLog.info(
+            feature = "new-task-options",
+            message = "host task options accepted",
+            fields = mapOf(
+                "model_count" to (newTaskOptions?.models?.size ?: 0),
+                "permission_mode_count" to (newTaskOptions?.permissionModes?.size ?: 0),
+                "decision" to if (newTaskOptions == null) "hide_option_controls" else "show_host_options",
+            ),
+        )
         val connection = activeConnection ?: return
         projectBridge =
             ProjectSessionBridge(
@@ -556,6 +575,8 @@ class LauncherSessionViewModel(
                 snapshot = snapshot.copy(tasks = tasks),
                 transcript = nextTranscript,
                 taskManagementAvailable = taskManagementCapable,
+                newTaskOptions = mutableState.value.newTaskOptions,
+                newTaskOptionsSessionId = mutableState.value.newTaskOptionsSessionId,
                 unconfirmedForkTaskIds = mutableState.value.unconfirmedForkTaskIds,
             )
         AppLog.info(

@@ -45,6 +45,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
+import app.codexlauncher.task.configuration.NewTaskOptionControls
+import app.codexlauncher.task.configuration.NewTaskOptions
+import app.codexlauncher.task.configuration.NewTaskSelection
 
 @Composable
 fun HomeScreen(
@@ -54,7 +57,9 @@ fun HomeScreen(
     onAllApps: () -> Unit = {},
     onAndroidSettings: () -> Unit = {},
     onChooseProject: () -> Unit = {},
-    onSend: (String) -> Unit = {},
+    newTaskOptions: NewTaskOptions? = null,
+    newTaskOptionsKey: String? = null,
+    onSend: (String, NewTaskSelection?) -> Unit = { _, _ -> },
     onAttach: () -> Unit = {},
     onDictate: () -> Unit = {},
     onConnectionHelp: () -> Unit = {},
@@ -110,6 +115,8 @@ fun HomeScreen(
             } else {
                 OnlineContent(
                     state = state,
+                    newTaskOptions = newTaskOptions,
+                    newTaskOptionsKey = newTaskOptionsKey,
                     onChooseProject = onChooseProject,
                     onSend = onSend,
                     onAttach = onAttach,
@@ -201,8 +208,10 @@ private fun OfflineContent(
 @Composable
 private fun OnlineContent(
     state: HomeUiState,
+    newTaskOptions: NewTaskOptions?,
+    newTaskOptionsKey: String?,
     onChooseProject: () -> Unit,
-    onSend: (String) -> Unit,
+    onSend: (String, NewTaskSelection?) -> Unit,
     onAttach: () -> Unit,
     onDictate: () -> Unit,
     onOpenTask: (String) -> Unit,
@@ -211,6 +220,18 @@ private fun OnlineContent(
 ) {
     var prompt by rememberSaveable { mutableStateOf("") }
     var promptFocused by rememberSaveable { mutableStateOf(false) }
+    var selectedModelId by rememberSaveable(newTaskOptionsKey) { mutableStateOf("") }
+    var selectedReasoningId by rememberSaveable(newTaskOptionsKey) { mutableStateOf("") }
+    var selectedPermissionId by rememberSaveable(newTaskOptionsKey) { mutableStateOf("") }
+    val selection =
+        newTaskOptions?.normalize(NewTaskSelection(selectedModelId, selectedReasoningId, selectedPermissionId))
+    LaunchedEffect(newTaskOptions, selection) {
+        selection?.let {
+            selectedModelId = it.modelId
+            selectedReasoningId = it.reasoningId
+            selectedPermissionId = it.permissionModeId
+        }
+    }
     val listState = rememberLazyListState()
     val actionRowIndex = state.tasks.size + 2
     LaunchedEffect(promptFocused, imeBottomPx, actionRowIndex) {
@@ -243,6 +264,18 @@ private fun OnlineContent(
         }
         item {
             Spacer(Modifier.height(8.dp))
+            if (newTaskOptions != null && selection != null) {
+                NewTaskOptionControls(
+                    options = newTaskOptions,
+                    selection = selection,
+                    onSelectionChange = {
+                        selectedModelId = it.modelId
+                        selectedReasoningId = it.reasoningId
+                        selectedPermissionId = it.permissionModeId
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             OutlinedTextField(
                 value = prompt,
                 onValueChange = { prompt = it },
@@ -276,7 +309,7 @@ private fun OnlineContent(
                     Text("⌁")
                 }
                 IconButton(
-                    onClick = { onSend(prompt) },
+                    onClick = { onSend(prompt, selection) },
                     enabled = state.canSend && prompt.isNotBlank(),
                     modifier = Modifier.size(48.dp).semantics { contentDescription = "Send prompt" },
                 ) {

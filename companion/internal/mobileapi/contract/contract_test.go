@@ -372,6 +372,28 @@ func TestProductionValidationRejectsFieldsOutsideSchema(t *testing.T) {
 	}
 }
 
+func TestWelcomeAcceptsStrictNewTaskOptionCatalog(t *testing.T) {
+	frame := `{"version":{"major":1,"minor":0},"messageId":"welcome-options","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":["new_task_options"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Balances speed and depth."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Can change the selected project.","isDefault":true}]}}}`
+	if _, err := DecodeText([]byte(frame)); err != nil {
+		t.Fatalf("valid new task options were rejected: %v", err)
+	}
+}
+
+func TestWelcomeRejectsUnsafeNewTaskOptionCatalogs(t *testing.T) {
+	frames := []string{
+		`{"version":{"major":1,"minor":0},"messageId":"bad-options-1","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":["new_task_options"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[],"permissionModes":[]}}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"bad-options-2","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":["new_task_options"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"high","reasoning":[{"id":"medium","displayName":"Medium","description":"Safe."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Safe.","isDefault":true}]}}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"bad-options-3","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":[],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Safe."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Safe.","isDefault":true}]}}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"bad-options-4","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":["new_task_options"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":null,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Safe."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Safe.","isDefault":true}]}}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"bad-options-5","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":["new_task_options"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Safe."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Safe.","isDefault":true},{"id":"read-only","displayName":"Read only","description":"Safe.","isDefault":null}]}}}`,
+	}
+	for _, frame := range frames {
+		if _, err := DecodeText([]byte(frame)); err == nil {
+			t.Fatalf("DecodeText accepted unsafe new task options: %s", frame)
+		}
+	}
+}
+
 func TestExpiredAttachmentsCannotReceiveOrComplete(t *testing.T) {
 	key := []byte("0123456789abcdef0123456789abcdef")
 	for _, operation := range []string{"receive", "complete"} {

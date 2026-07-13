@@ -148,8 +148,9 @@ object ProtocolCodec {
             }
             MessageType.WELCOME -> {
                 val limits = objectField(body, "limits")
-                if (sender != Sender.COMPANION || body.keys != setOf("sessionId", "capabilities", "limits") ||
-                    !stringField(body, "sessionId").isBounded(128) || !validUniqueStrings(body["capabilities"]) || !validLimits(limits)
+                if (sender != Sender.COMPANION || body.keys.any { it !in setOf("sessionId", "capabilities", "limits", "newTaskOptions") } ||
+                    !body.keys.containsAll(setOf("sessionId", "capabilities", "limits")) || !stringField(body, "sessionId").isBounded(128) ||
+                    !validUniqueStrings(body["capabilities"]) || !validLimits(limits) || !validAdvertisedNewTaskOptions(body)
                 ) fail(ProtocolError.INVALID_ENVELOPE)
             }
             MessageType.SNAPSHOT -> if (
@@ -354,6 +355,59 @@ object ProtocolCodec {
             number in 1..maximum
         }
 
+    private fun validAdvertisedNewTaskOptions(welcome: JsonObject): Boolean = runCatching {
+        val capabilities = welcome.getValue("capabilities").jsonArray.map { it.jsonPrimitive.content }
+        val advertised = "new_task_options" in capabilities
+        val rawOptions = welcome["newTaskOptions"] ?: return@runCatching !advertised
+        val options = rawOptions.jsonObject
+        if (options.keys != setOf("models", "permissionModes")) return@runCatching false
+        val models = options.getValue("models").jsonArray.map { it.jsonObject }
+        val permissionModes = options.getValue("permissionModes").jsonArray.map { it.jsonObject }
+        if (!advertised) return@runCatching models.isEmpty() && permissionModes.isEmpty()
+        if (models.size !in 1..32 || permissionModes.size !in 1..8) return@runCatching false
+
+        val modelIds = mutableSetOf<String>()
+        var defaultModels = 0
+        for (model in models) {
+            if (model.keys != setOf("id", "displayName", "isDefault", "defaultReasoningId", "reasoning")) return@runCatching false
+            val id = stringField(model, "id")
+            val displayName = stringField(model, "displayName")
+            val defaultReasoningId = stringField(model, "defaultReasoningId")
+            val isDefault = model["isDefault"]?.jsonPrimitive?.booleanOrNull ?: return@runCatching false
+            if (!id.isSafeOption(128) || !displayName.isSafeOption(128) || !defaultReasoningId.isSafeOption(128) || !modelIds.add(id) ||
+                !validReasoningOptions(model.getValue("reasoning"), defaultReasoningId)
+            ) return@runCatching false
+            if (isDefault) defaultModels++
+        }
+
+        val permissionIds = mutableSetOf<String>()
+        var defaultPermissions = 0
+        for (mode in permissionModes) {
+            if (mode.keys != setOf("id", "displayName", "description", "isDefault")) return@runCatching false
+            val id = stringField(mode, "id")
+            val displayName = stringField(mode, "displayName")
+            val description = stringField(mode, "description")
+            val isDefault = mode["isDefault"]?.jsonPrimitive?.booleanOrNull ?: return@runCatching false
+            if (!id.isSafeOption(128) || !displayName.isSafeOption(128) || !description.isSafeOption(512) || !permissionIds.add(id)) return@runCatching false
+            if (isDefault) defaultPermissions++
+        }
+        defaultModels == 1 && defaultPermissions == 1
+    }.getOrDefault(false)
+
+    private fun validReasoningOptions(value: kotlinx.serialization.json.JsonElement, defaultId: String): Boolean = runCatching {
+        val options = value.jsonArray.map { it.jsonObject }
+        if (options.size !in 1..16) return@runCatching false
+        val ids = mutableSetOf<String>()
+        for (option in options) {
+            if (option.keys != setOf("id", "displayName", "description")) return@runCatching false
+            val id = stringField(option, "id")
+            if (!id.isSafeOption(128) || !stringField(option, "displayName").isSafeOption(128) ||
+                !stringField(option, "description").isSafeOption(512) || !ids.add(id)
+            ) return@runCatching false
+        }
+        defaultId in ids
+    }.getOrDefault(false)
+
     private fun String.isValidId(): Boolean =
         length in 1..128 && all { it.isLetterOrDigit() && it.code < 128 || it in "._:-" }
 
@@ -363,6 +417,9 @@ object ProtocolCodec {
 
     private fun String.isSafeDisplay(maximum: Int): Boolean =
         codePointCount(0, length) in 1..maximum && isNotBlank() && none(Char::isISOControl)
+
+    private fun String.isSafeOption(maximum: Int): Boolean =
+        codePointCount(0, length) in 1..maximum && trim() == this && none(Char::isISOControl)
 
     private fun objectField(objectValue: JsonObject, name: String): JsonObject =
         runCatching { objectValue.getValue(name).jsonObject }.getOrElse { fail(ProtocolError.INVALID_ENVELOPE) }

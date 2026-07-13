@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskoptions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
@@ -90,6 +91,62 @@ func TestColdHelloIncludesOnlyTypedSafeTaskSummaries(t *testing.T) {
 	}
 	if bytes.Contains(sender.messages[1].Body, []byte(`"source"`)) || bytes.Contains(sender.messages[1].Body, []byte(`"raw"`)) {
 		t.Fatalf("snapshot exposed an internal task field: %s", sender.messages[1].Body)
+	}
+}
+
+func TestColdHelloAdvertisesHostProvidedNewTaskOptions(t *testing.T) {
+	source := taskOptionsSource{
+		catalog: taskoptions.Catalog{
+			Models: []taskoptions.Model{{
+				ID: "codex-1", DisplayName: "Codex 1", Default: true, DefaultReasoningID: "medium",
+				Reasoning: []taskoptions.Reasoning{{ID: "medium", DisplayName: "Medium", Description: "Balances speed and depth."}},
+			}},
+			PermissionModes: []taskoptions.PermissionMode{{ID: "workspace-write", DisplayName: "Workspace", Description: "Can change the selected project.", Default: true}},
+		},
+	}
+	handler, sender := newTestHandlerWithTasks(t, source)
+
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-options","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	var welcome struct {
+		Capabilities   []string            `json:"capabilities"`
+		NewTaskOptions taskoptions.Catalog `json:"newTaskOptions"`
+	}
+	if err := json.Unmarshal(sender.messages[0].Body, &welcome); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(welcome.Capabilities, "new_task_options") {
+		t.Fatalf("capabilities = %#v", welcome.Capabilities)
+	}
+	if len(welcome.NewTaskOptions.Models) != 1 || welcome.NewTaskOptions.Models[0].ID != "codex-1" ||
+		welcome.NewTaskOptions.Models[0].DefaultReasoningID != "medium" || len(welcome.NewTaskOptions.PermissionModes) != 1 {
+		t.Fatalf("new task options = %#v", welcome.NewTaskOptions)
+	}
+	if bytes.Contains(sender.messages[0].Body, []byte(`"wireName"`)) {
+		t.Fatalf("welcome exposed an internal wire name: %s", sender.messages[0].Body)
+	}
+}
+
+func TestColdHelloKeepsExistingFeaturesWhenNewTaskOptionsAreUnavailable(t *testing.T) {
+	source := taskOptionsSource{optionErr: errors.New("private model catalog failure")}
+	handler, sender := newTestHandlerWithTasks(t, source)
+
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-options-fail","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.messages) != 2 || sender.messages[0].Type != "welcome" || sender.messages[1].Type != "snapshot" {
+		t.Fatalf("outputs = %#v", sender.messages)
+	}
+	var welcome struct {
+		Capabilities   []string            `json:"capabilities"`
+		NewTaskOptions taskoptions.Catalog `json:"newTaskOptions"`
+	}
+	if err := json.Unmarshal(sender.messages[0].Body, &welcome); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(welcome.Capabilities, "new_task_options") || len(welcome.NewTaskOptions.Models) != 0 || len(welcome.NewTaskOptions.PermissionModes) != 0 {
+		t.Fatalf("welcome = %#v", welcome)
 	}
 }
 
@@ -613,6 +670,19 @@ type taskSourceFunc func(context.Context, int) ([]taskstate.Task, error)
 
 func (source taskSourceFunc) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {
 	return source(ctx, limit)
+}
+
+type taskOptionsSource struct {
+	catalog   taskoptions.Catalog
+	optionErr error
+}
+
+func (source taskOptionsSource) ListRecent(context.Context, int) ([]taskstate.Task, error) {
+	return nil, nil
+}
+
+func (source taskOptionsSource) NewTaskOptions(context.Context) (taskoptions.Catalog, error) {
+	return source.catalog, source.optionErr
 }
 
 type transcriptTaskSource struct {

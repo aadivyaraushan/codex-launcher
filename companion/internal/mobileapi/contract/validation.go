@@ -502,8 +502,9 @@ func validateBody(message Message) error {
 			return ErrInvalidEnvelope
 		}
 	case "welcome":
-		if message.Sender != "companion" || !exactKeys(body, "sessionId", "capabilities", "limits") || !boundedString(body["sessionId"], 128) ||
-			!validateStringArray(body["capabilities"]) || !validateLimits(body["limits"]) {
+		if message.Sender != "companion" || !onlyAllowedKeys(body, "sessionId", "capabilities", "limits", "newTaskOptions") ||
+			body["sessionId"] == nil || body["capabilities"] == nil || body["limits"] == nil || !boundedString(body["sessionId"], 128) ||
+			!validateStringArray(body["capabilities"]) || !validateLimits(body["limits"]) || !validateAdvertisedNewTaskOptions(body["capabilities"], body["newTaskOptions"]) {
 			return ErrInvalidEnvelope
 		}
 	case "snapshot":
@@ -610,6 +611,117 @@ func validateLimits(raw json.RawMessage) bool {
 	return uintInRange(limits["maxJsonBytes"], 1, MaxJSONFrameBytes) && uintInRange(limits["maxAttachmentBytes"], 1, MaxAttachmentBytes) &&
 		uintInRange(limits["maxDeviceUploads"], 1, MaxDeviceUploads) && uintInRange(limits["maxGlobalUploads"], 1, MaxGlobalUploads) &&
 		uintInRange(limits["maxTemporaryBytes"], 1, MaxTemporaryBytes) && uintInRange(limits["uploadExpirySeconds"], 1, UploadExpirySeconds)
+}
+
+func validateAdvertisedNewTaskOptions(rawCapabilities, rawOptions json.RawMessage) bool {
+	var capabilities []string
+	if json.Unmarshal(rawCapabilities, &capabilities) != nil {
+		return false
+	}
+	advertised := false
+	for _, capability := range capabilities {
+		advertised = advertised || capability == "new_task_options"
+	}
+	if rawOptions == nil {
+		return !advertised
+	}
+	var options map[string]json.RawMessage
+	if json.Unmarshal(rawOptions, &options) != nil || !exactKeys(options, "models", "permissionModes") {
+		return false
+	}
+	var models, permissionModes []map[string]json.RawMessage
+	if json.Unmarshal(options["models"], &models) != nil || json.Unmarshal(options["permissionModes"], &permissionModes) != nil {
+		return false
+	}
+	if !advertised {
+		return len(models) == 0 && len(permissionModes) == 0
+	}
+	if len(models) == 0 || len(models) > 32 || len(permissionModes) == 0 || len(permissionModes) > 8 {
+		return false
+	}
+	seenModels := make(map[string]struct{}, len(models))
+	defaultModels := 0
+	for _, model := range models {
+		if !exactKeys(model, "id", "displayName", "isDefault", "defaultReasoningId", "reasoning") ||
+			!safeOptionString(model["id"], 128) || !safeOptionString(model["displayName"], 128) || !safeOptionString(model["defaultReasoningId"], 128) {
+			return false
+		}
+		modelID := stringValue(model["id"])
+		if _, duplicate := seenModels[modelID]; duplicate {
+			return false
+		}
+		seenModels[modelID] = struct{}{}
+		isDefault, okay := boolValueOK(model["isDefault"])
+		if !okay {
+			return false
+		}
+		if isDefault {
+			defaultModels++
+		}
+		if !validateReasoningOptions(model["reasoning"], stringValue(model["defaultReasoningId"])) {
+			return false
+		}
+	}
+	seenPermissions := make(map[string]struct{}, len(permissionModes))
+	defaultPermissions := 0
+	for _, mode := range permissionModes {
+		if !exactKeys(mode, "id", "displayName", "description", "isDefault") || !safeOptionString(mode["id"], 128) ||
+			!safeOptionString(mode["displayName"], 128) || !safeOptionString(mode["description"], 512) {
+			return false
+		}
+		modeID := stringValue(mode["id"])
+		if _, duplicate := seenPermissions[modeID]; duplicate {
+			return false
+		}
+		seenPermissions[modeID] = struct{}{}
+		isDefault, okay := boolValueOK(mode["isDefault"])
+		if !okay {
+			return false
+		}
+		if isDefault {
+			defaultPermissions++
+		}
+	}
+	return defaultModels == 1 && defaultPermissions == 1
+}
+
+func validateReasoningOptions(raw json.RawMessage, defaultID string) bool {
+	var options []map[string]json.RawMessage
+	if json.Unmarshal(raw, &options) != nil || len(options) == 0 || len(options) > 16 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(options))
+	defaultPresent := false
+	for _, option := range options {
+		if !exactKeys(option, "id", "displayName", "description") || !safeOptionString(option["id"], 128) ||
+			!safeOptionString(option["displayName"], 128) || !safeOptionString(option["description"], 512) {
+			return false
+		}
+		id := stringValue(option["id"])
+		if _, duplicate := seen[id]; duplicate {
+			return false
+		}
+		seen[id] = struct{}{}
+		defaultPresent = defaultPresent || id == defaultID
+	}
+	return defaultPresent
+}
+
+func safeOptionString(raw json.RawMessage, maximum int) bool {
+	value := stringValue(raw)
+	length := utf8.RuneCountInString(value)
+	return length >= 1 && length <= maximum && strings.TrimSpace(value) == value && strings.IndexFunc(value, unicode.IsControl) < 0
+}
+
+func boolValueOK(raw json.RawMessage) (bool, bool) {
+	switch string(raw) {
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func validateTasks(raw json.RawMessage) bool {

@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -13,8 +14,16 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
+import app.codexlauncher.task.configuration.NewTaskOptions
+import app.codexlauncher.task.configuration.NewTaskSelection
+import app.codexlauncher.task.configuration.PermissionModeOption
+import app.codexlauncher.task.configuration.ReasoningOption
+import app.codexlauncher.task.configuration.TaskModelOption
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -79,7 +88,7 @@ class HomeScreenTest {
             QuietInstrumentTheme(AppearanceMode.DARK) {
                 HomeScreen(
                     state = onlineState(selectedProjectName = "Codex Launcher"),
-                    onSend = { sentPrompt = it },
+                    onSend = { prompt, _ -> sentPrompt = prompt },
                 )
             }
         }
@@ -88,6 +97,55 @@ class HomeScreenTest {
         compose.onNodeWithContentDescription("Prompt").performClick().performTextInput("Run all tests")
         compose.onNodeWithContentDescription("Send prompt").assertIsEnabled().performClick()
         assertEquals("Run all tests", sentPrompt)
+    }
+
+    @Test
+    fun hostOptionsCanBeChangedAndAreIncludedWithThePrompt() {
+        var sent: Pair<String, NewTaskSelection>? = null
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    newTaskOptions = taskOptions(),
+                    onSend = { prompt, selection -> sent = prompt to requireNotNull(selection) },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Choose model").performClick()
+        compose.onNodeWithText("Model B").performClick()
+        compose.onNodeWithText("Low").assertIsDisplayed()
+
+        compose.onNodeWithContentDescription("Choose permission mode").performClick()
+        compose.onNodeWithText("Full access").performClick()
+        compose.onNodeWithText("Codex can read and change files anywhere your computer account can access. Approvals still apply.").assertIsDisplayed()
+
+        compose.onNodeWithContentDescription("Prompt").performClick().performTextInput("Run tests")
+        compose.onNodeWithContentDescription("Send prompt").performClick()
+
+        assertEquals("Run tests" to NewTaskSelection("model-b", "low", "danger-full-access"), sent)
+    }
+
+    @Test
+    fun aNewAuthenticatedSessionResetsAFullAccessChoiceToTheHostDefault() {
+        var sessionKey by mutableStateOf("session-1")
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    newTaskOptions = taskOptions(),
+                    newTaskOptionsKey = sessionKey,
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Choose permission mode").performClick()
+        compose.onNodeWithText("Full access").performClick()
+        compose.onNodeWithContentDescription("Choose permission mode").assertTextContains("Full access")
+
+        compose.runOnIdle { sessionKey = "session-2" }
+
+        compose.onNodeWithContentDescription("Choose permission mode").assertTextContains("Workspace")
     }
 
     @Test
@@ -234,5 +292,19 @@ class HomeScreenTest {
             mustChooseProject = selectedProjectName == null,
             showAllApps = true,
             showAndroidSettings = true,
+        )
+
+    private fun taskOptions() =
+        NewTaskOptions(
+            models =
+                listOf(
+                    TaskModelOption("model-a", "Model A", true, "high", listOf(ReasoningOption("high", "High", "Deeper."))),
+                    TaskModelOption("model-b", "Model B", false, "low", listOf(ReasoningOption("low", "Low", "Faster."))),
+                ),
+            permissionModes =
+                listOf(
+                    PermissionModeOption("workspace-write", "Workspace", "Can change the selected project.", true),
+                    PermissionModeOption("danger-full-access", "Full access", "Codex can read and change files anywhere your computer account can access. Approvals still apply.", false),
+                ),
         )
 }

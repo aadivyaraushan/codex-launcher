@@ -224,6 +224,24 @@ class ProtocolContractTest {
     }
 
     @Test
+    fun `welcome accepts strict host-provided new task options`() {
+        val frame = """{"version":{"major":1,"minor":0},"messageId":"welcome-options","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":["new_task_options"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Balances speed and depth."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Can change the selected project.","isDefault":true}]}}}"""
+
+        assertEquals("welcome-options", ProtocolCodec.decodeText(frame).messageId)
+    }
+
+    @Test
+    fun `welcome rejects inconsistent new task options`() {
+        listOf(
+            """{"version":{"major":1,"minor":0},"messageId":"bad-options-1","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":["new_task_options"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[],"permissionModes":[]}}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"bad-options-2","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":["new_task_options"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"high","reasoning":[{"id":"medium","displayName":"Medium","description":"Safe."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Safe.","isDefault":true}]}}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"bad-options-3","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":[],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Safe."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Safe.","isDefault":true}]}}}""",
+        ).forEach { frame ->
+            assertError(ProtocolError.INVALID_ENVELOPE) { ProtocolCodec.decodeText(frame) }
+        }
+    }
+
+    @Test
     fun `task management actions require safe exact fields`() {
         listOf(
             """{"version":{"major":1,"minor":0},"messageId":"rename","sender":"phone","type":"action","body":{"actionId":"a-rename","kind":"rename_task","taskId":"thread-1","title":"Launcher follow-up"}}""",

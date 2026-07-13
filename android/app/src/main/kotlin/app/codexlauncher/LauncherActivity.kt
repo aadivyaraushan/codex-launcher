@@ -286,6 +286,8 @@ class LauncherActivity : ComponentActivity() {
                                     projects = sessionUiState.snapshot?.projects ?: emptyList(),
                                     tasks = sessionUiState.snapshot?.tasks?.map { it.toHomeTask() } ?: emptyList(),
                                 ),
+                            newTaskOptions = sessionUiState.newTaskOptions,
+                            newTaskOptionsKey = sessionUiState.newTaskOptionsSessionId,
                             onRetry = {
                                 pairedComputer?.let { sessionViewModel.connect(it, force = true) }
                             },
