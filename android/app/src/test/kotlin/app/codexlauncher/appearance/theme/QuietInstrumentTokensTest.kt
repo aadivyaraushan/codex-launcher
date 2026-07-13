@@ -32,6 +32,13 @@ class QuietInstrumentTokensTest {
     }
 
     @Test
+    fun selectedControlTextMeetsAccessibleContrastAgainstTheSignalColor() {
+        for (palette in listOf(QuietInstrumentTokens.deepCharcoal, QuietInstrumentTokens.warmPaper)) {
+            assertTrue(contrast(palette.onSignal, palette.signal) >= 4.5)
+        }
+    }
+
+    @Test
     fun semanticColorsRemainWordsNotAThirdAppearanceMode() {
         assertEquals("Working", QuietInstrumentTokens.workingLabel)
         assertEquals("Needs your answer", QuietInstrumentTokens.waitingLabel)

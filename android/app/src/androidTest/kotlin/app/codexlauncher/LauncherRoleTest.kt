@@ -2,15 +2,42 @@ package app.codexlauncher
 
 import android.content.Intent
 import android.provider.Settings
+import android.content.pm.ActivityInfo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LauncherRoleTest {
+    @Test
+    fun applicationProvidesAnIconForAndroidsHomePickerAndAppLists() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+
+        assertNotEquals(
+            "Android must have an application icon to show for this Home app",
+            0,
+            context.applicationInfo.icon,
+        )
+    }
+
+    @Test
+    fun launcherActivityReusesOneTaskSoHomeIntentsCanResetItsScreen() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val info = context.packageManager.getActivityInfo(
+            android.content.ComponentName(context, LauncherActivity::class.java),
+            0,
+        )
+
+        assertTrue(
+            "The Home activity must receive later Home intents instead of stacking another launcher",
+            info.launchMode == ActivityInfo.LAUNCH_SINGLE_TASK,
+        )
+    }
+
     @Test
     fun homeIntentResolvesToLauncherActivity() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()

@@ -25,6 +25,7 @@ data class HomeUiState(
     val mustChooseProject: Boolean,
     val showAllApps: Boolean,
     val showAndroidSettings: Boolean,
+    val lastConnectedLabel: String? = null,
 )
 
 object HomeUiPolicy {
@@ -33,6 +34,7 @@ object HomeUiPolicy {
         connection: ConnectionSnapshot,
         projects: List<ProjectChoice>,
         tasks: List<HomeTask>,
+        lastConnectedLabel: String? = null,
     ): HomeUiState {
         val hasCurrentSnapshot =
             connection.canShowComputerContent &&
@@ -56,6 +58,7 @@ object HomeUiPolicy {
             mustChooseProject = hasCurrentSnapshot && selectedProject == null,
             showAllApps = true,
             showAndroidSettings = true,
+            lastConnectedLabel = lastConnectedLabel,
         )
     }
 }
