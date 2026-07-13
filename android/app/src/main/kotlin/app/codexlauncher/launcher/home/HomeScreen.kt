@@ -64,6 +64,9 @@ fun HomeScreen(
     composerState: DraftComposerState = DraftComposerState(phase = DraftComposerPhase.READY),
     onPromptChange: (String) -> Unit = {},
     onSend: (String, NewTaskSelection?) -> Unit = { _, _ -> },
+    newTaskNeedsReview: Boolean = false,
+    newTaskMessage: String? = null,
+    onDismissNewTaskReview: () -> Unit = {},
     onAttach: () -> Unit = {},
     onDictate: () -> Unit = {},
     onConnectionHelp: () -> Unit = {},
@@ -125,6 +128,9 @@ fun HomeScreen(
                     onPromptChange = onPromptChange,
                     onChooseProject = onChooseProject,
                     onSend = onSend,
+                    newTaskNeedsReview = newTaskNeedsReview,
+                    newTaskMessage = newTaskMessage,
+                    onDismissNewTaskReview = onDismissNewTaskReview,
                     onAttach = onAttach,
                     onDictate = onDictate,
                     onOpenTask = onOpenTask,
@@ -220,6 +226,9 @@ private fun OnlineContent(
     onPromptChange: (String) -> Unit,
     onChooseProject: () -> Unit,
     onSend: (String, NewTaskSelection?) -> Unit,
+    newTaskNeedsReview: Boolean,
+    newTaskMessage: String?,
+    onDismissNewTaskReview: () -> Unit,
     onAttach: () -> Unit,
     onDictate: () -> Unit,
     onOpenTask: (String) -> Unit,
@@ -298,6 +307,20 @@ private fun OnlineContent(
                 shape = RoundedCornerShape(6.dp),
             )
             when {
+                newTaskNeedsReview -> {
+                    Text(
+                        "Outcome unknown. Check Codex on your computer before sending again.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = onDismissNewTaskReview) { Text("I checked Codex") }
+                }
+                newTaskMessage != null ->
+                    Text(
+                        newTaskMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 composerState.phase == DraftComposerPhase.UNAVAILABLE ->
                     Text(
                         "Draft storage is unavailable. Reconnect or restart before writing a prompt.",
@@ -332,7 +355,7 @@ private fun OnlineContent(
                 }
                 IconButton(
                     onClick = { onSend(composerState.text, selection) },
-                    enabled = state.canSend && composerState.canEdit && composerState.text.isNotBlank(),
+                    enabled = state.canSend && composerState.canEdit && composerState.text.isNotBlank() && !newTaskNeedsReview,
                     modifier = Modifier.size(48.dp).semantics { contentDescription = "Send prompt" },
                 ) {
                     Text("↑")

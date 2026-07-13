@@ -77,16 +77,16 @@ func (store *MemoryStore) Entry(ctx context.Context, actionID string) (Entry, er
 	return entry, nil
 }
 
-func (store *MemoryStore) NextPending(ctx context.Context, threadID string) (Entry, error) {
-	return store.next(ctx, threadID, func(state State) bool { return state == StatePrepared || state == StateSentUnknown })
+func (store *MemoryStore) NextPending(ctx context.Context, queueKey string) (Entry, error) {
+	return store.next(ctx, queueKey, func(state State) bool { return state == StatePrepared || state == StateSentUnknown })
 }
 
-func (store *MemoryStore) NextPrepared(ctx context.Context, threadID string) (Entry, error) {
-	return store.next(ctx, threadID, func(state State) bool { return state == StatePrepared })
+func (store *MemoryStore) NextPrepared(ctx context.Context, queueKey string) (Entry, error) {
+	return store.next(ctx, queueKey, func(state State) bool { return state == StatePrepared })
 }
 
-func (store *MemoryStore) next(ctx context.Context, threadID string, include func(State) bool) (Entry, error) {
-	entries, err := store.ThreadEntries(ctx, threadID)
+func (store *MemoryStore) next(ctx context.Context, queueKey string, include func(State) bool) (Entry, error) {
+	entries, err := store.ThreadEntries(ctx, queueKey)
 	if err != nil {
 		return Entry{}, err
 	}
@@ -98,7 +98,7 @@ func (store *MemoryStore) next(ctx context.Context, threadID string, include fun
 	return Entry{}, ErrNoPreparedAction
 }
 
-func (store *MemoryStore) ThreadEntries(ctx context.Context, threadID string) ([]Entry, error) {
+func (store *MemoryStore) ThreadEntries(ctx context.Context, queueKey string) ([]Entry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (store *MemoryStore) ThreadEntries(ctx context.Context, threadID string) ([
 	defer store.mu.RUnlock()
 	entries := make([]Entry, 0)
 	for _, entry := range store.entries {
-		if entry.ThreadID == threadID {
+		if entry.QueueKey == queueKey {
 			entries = append(entries, entry)
 		}
 	}

@@ -281,6 +281,30 @@ func TestRuntimeWiresSharedStoresWithoutChangingHostIdentityOrConfirmedResult(t 
 	}
 }
 
+func TestPersistentRuntimeReopensTheSameProductionStores(t *testing.T) {
+	config := Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
+	statePath := filepath.Join(t.TempDir(), "state.sqlite3")
+	first, firstStore, err := openPersistentRuntimeAt(context.Background(), config, PersistentDependencies{Random: rand.Reader}, statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := promptqueue.Entry{ActionID: "action-persistent", ThreadID: "thread-1", ProjectID: "main", Prompt: "hello", CreatedAt: appNow}
+	if err := first.Queue.Enqueue(context.Background(), entry); err != nil {
+		t.Fatal(err)
+	}
+	if err := firstStore.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second, secondStore, err := openPersistentRuntimeAt(context.Background(), config, PersistentDependencies{Random: rand.Reader}, statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = secondStore.Close() })
+	if _, err := second.Queue.DispatchNext(context.Background(), "thread-1", nil, nil, appNow); !errors.Is(err, promptqueue.ErrOutcomeUnknown) {
+		t.Fatalf("reopened queued action error = %v", err)
+	}
+}
+
 func TestRuntimeRejectsMissingStoresAndRandomSource(t *testing.T) {
 	config := Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
 	valid := Dependencies{

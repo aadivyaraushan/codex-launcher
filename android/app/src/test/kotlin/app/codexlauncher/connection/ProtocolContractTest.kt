@@ -85,6 +85,19 @@ class ProtocolContractTest {
     }
 
     @Test
+    fun `codec accepts new task start with host option identifiers`() {
+        val valid =
+            """{"version":{"major":1,"minor":0},"messageId":"new-task","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","projectId":"project-main","text":"Fix the tests","modelId":"gpt-5.4","reasoningId":"high","permissionModeId":"workspace-write"}}"""
+        assertEquals("new-task", ProtocolCodec.decodeText(valid).messageId)
+
+        listOf(
+            """{"version":{"major":1,"minor":0},"messageId":"missing-project","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","text":"Fix the tests","modelId":"gpt-5.4","reasoningId":"high","permissionModeId":"workspace-write"}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"mixed-targets","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","taskId":"task-1","projectId":"project-main","text":"Fix the tests","modelId":"gpt-5.4","reasoningId":"high","permissionModeId":"workspace-write"}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"raw-path","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","projectId":"project-main","projectPath":"/tmp/private","text":"Fix the tests","modelId":"gpt-5.4","reasoningId":"high","permissionModeId":"workspace-write"}}""",
+        ).forEach { frame -> assertError(ProtocolError.INVALID_ACTION) { ProtocolCodec.decodeText(frame) } }
+    }
+
+    @Test
     fun `codec accepts bounded unsequenced transcript pages`() {
         val read = """{"version":{"major":1,"minor":0},"messageId":"read-1","sender":"phone","type":"task_read","body":{"requestId":"request-1","taskId":"thread-1","limit":32,"beforeEntryId":"agent-2"}}"""
         assertEquals("read-1", ProtocolCodec.decodeText(read).messageId)

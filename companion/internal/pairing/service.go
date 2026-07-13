@@ -107,12 +107,6 @@ type RotationConfirmation struct {
 	Signature    []byte
 }
 
-type pendingPairing struct {
-	target    PairingTarget
-	expiresAt time.Time
-	inUse     bool
-}
-
 type sessionReplay struct {
 	deviceID  string
 	expiresAt time.Time
@@ -128,18 +122,17 @@ type Service struct {
 
 	mu             sync.Mutex
 	deviceMu       sync.RWMutex
-	pairings       map[[32]byte]pendingPairing
-	consumed       map[[32]byte]time.Time
 	sessionReplays map[[32]byte]sessionReplay
 	sessions       map[string]map[*Session]struct{}
 }
 
 type Session struct {
-	deviceID  string
-	sessionID string
-	done      chan struct{}
-	onClose   func(*Session)
-	once      sync.Once
+	deviceID   string
+	sessionID  string
+	generation string
+	done       chan struct{}
+	onClose    func(*Session)
+	once       sync.Once
 }
 
 func NewService(ctx context.Context, store Store, random io.Reader) (*Service, error) {
@@ -183,7 +176,7 @@ func NewServiceWithLogger(ctx context.Context, store Store, random io.Reader, lo
 	}
 	fingerprint := base64.RawURLEncoding.EncodeToString(publicKeyInfo)
 	return &Service{store: store, random: random, logger: logger, identity: append(ed25519.PrivateKey(nil), identity...), publicKey: publicKey, fingerprint: fingerprint,
-		pairings: make(map[[32]byte]pendingPairing), consumed: make(map[[32]byte]time.Time), sessionReplays: make(map[[32]byte]sessionReplay), sessions: make(map[string]map[*Session]struct{})}, nil
+		sessionReplays: make(map[[32]byte]sessionReplay), sessions: make(map[string]map[*Session]struct{})}, nil
 }
 
 func (service *Service) BeginPairing(target PairingTarget, now time.Time) (PairingOffer, error) {
@@ -197,10 +190,9 @@ func (service *Service) BeginPairing(target PairingTarget, now time.Time) (Pairi
 	encodedSecret := base64.RawURLEncoding.EncodeToString(secret)
 	expiresAt := now.Add(5 * time.Minute)
 	hash := sha256.Sum256(secret)
-	service.mu.Lock()
-	service.expireLocked(now)
-	service.pairings[hash] = pendingPairing{target: target, expiresAt: expiresAt}
-	service.mu.Unlock()
+	if err := service.store.CreatePairingOffer(context.Background(), PairingOfferRecord{SecretHash: hash[:], Target: target, ExpiresAt: expiresAt}); err != nil {
+		return PairingOffer{}, fmt.Errorf("store pairing code: %w", err)
+	}
 	query := url.Values{}
 	query.Set("host", target.Host)
 	query.Set("port", strconv.Itoa(target.Port))
@@ -218,40 +210,16 @@ func (service *Service) Pair(ctx context.Context, request PairRequest, now time.
 		return DeviceRecord{}, ErrPairingBinding
 	}
 	hash := sha256.Sum256(secret)
-	service.mu.Lock()
-	service.expireLocked(now)
-	if _, used := service.consumed[hash]; used {
-		service.mu.Unlock()
-		return DeviceRecord{}, ErrPairingCodeUsed
+	pending, err := service.store.ClaimPairingOffer(ctx, hash[:], now)
+	if err != nil {
+		return DeviceRecord{}, err
 	}
-	pending, ok := service.pairings[hash]
-	if !ok {
-		service.mu.Unlock()
-		return DeviceRecord{}, ErrPairingCodeExpired
-	}
-	if !now.Before(pending.expiresAt) {
-		delete(service.pairings, hash)
-		service.mu.Unlock()
-		return DeviceRecord{}, ErrPairingCodeExpired
-	}
-	if pending.inUse {
-		service.mu.Unlock()
-		return DeviceRecord{}, ErrPairingCodeUsed
-	}
-	if request.Host != pending.target.Host || request.Port != pending.target.Port || request.Protocol != pending.target.Protocol || request.HostPublicKey != service.fingerprint {
-		service.mu.Unlock()
-		return DeviceRecord{}, ErrPairingBinding
-	}
-	pending.inUse = true
-	service.pairings[hash] = pending
-	service.mu.Unlock()
 	release := func() {
-		service.mu.Lock()
-		if current, exists := service.pairings[hash]; exists {
-			current.inUse = false
-			service.pairings[hash] = current
-		}
-		service.mu.Unlock()
+		_ = service.store.ReleasePairingOffer(context.Background(), hash[:])
+	}
+	if request.Host != pending.Target.Host || request.Port != pending.Target.Port || request.Protocol != pending.Target.Protocol || request.HostPublicKey != service.fingerprint {
+		release()
+		return DeviceRecord{}, ErrPairingBinding
 	}
 	if err := ctx.Err(); err != nil {
 		release()
@@ -282,10 +250,9 @@ func (service *Service) Pair(ctx context.Context, request PairRequest, now time.
 		release()
 		return DeviceRecord{}, fmt.Errorf("commit paired device: %w", err)
 	}
-	service.mu.Lock()
-	delete(service.pairings, hash)
-	service.consumed[hash] = pending.expiresAt.Add(5 * time.Minute)
-	service.mu.Unlock()
+	if err := service.store.ConsumePairingOffer(context.Background(), hash[:]); err != nil {
+		service.logger.Error("[pairing] pairing code consume failed after device commit", "device_id", request.DeviceID, "error_class", fmt.Sprintf("%T", err))
+	}
 	service.logger.Info("[pairing] device paired", "device_id", request.DeviceID)
 	return cloneDevice(record), nil
 }
@@ -355,7 +322,7 @@ func (service *Service) Authenticate(ctx context.Context, proof SessionProof, no
 		service.logger.Warn("[pairing] authenticated session rejected", "device_id", proof.DeviceID, "branch_reason", "session_capacity")
 		return nil, ErrSessionCapacity
 	}
-	session := &Session{deviceID: proof.DeviceID, sessionID: proof.SessionID, done: make(chan struct{})}
+	session := &Session{deviceID: proof.DeviceID, sessionID: proof.SessionID, generation: proof.PairingGeneration, done: make(chan struct{})}
 	session.onClose = service.removeSession
 	service.sessionReplays[replayKey] = sessionReplay{deviceID: proof.DeviceID, expiresAt: proof.ExpiresAt.Add(time.Minute)}
 	if service.sessions[proof.DeviceID] == nil {
@@ -401,6 +368,53 @@ func (service *Service) Revoke(ctx context.Context, deviceID string) error {
 	}
 	service.logger.Info("[pairing] device revoked", "device_id", deviceID, "closed_session_count", len(active))
 	return nil
+}
+
+func (service *Service) RefreshSessions(ctx context.Context) error {
+	service.mu.Lock()
+	active := make([]*Session, 0)
+	for _, sessions := range service.sessions {
+		for session := range sessions {
+			active = append(active, session)
+		}
+	}
+	service.mu.Unlock()
+	for _, session := range active {
+		device, err := service.store.Device(ctx, session.deviceID)
+		if errors.Is(err, ErrDeviceNotFound) || (err == nil && device.PairingGeneration != session.generation) {
+			session.Close()
+			continue
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (service *Service) WatchSession(ctx context.Context, session *Session) {
+	if session == nil {
+		return
+	}
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-session.Done():
+			return
+		case <-ticker.C:
+			device, err := service.store.Device(ctx, session.deviceID)
+			if errors.Is(err, ErrDeviceNotFound) || (err == nil && device.PairingGeneration != session.generation) {
+				session.Close()
+				return
+			}
+			if err != nil {
+				service.logger.Error("[pairing] session revocation check failed", "device_id", session.deviceID, "error_class", fmt.Sprintf("%T", err))
+			}
+		}
+	}
 }
 
 func (service *Service) BeginKeyRotation(ctx context.Context, session *Session, proof RotationProof) error {
@@ -599,16 +613,6 @@ func equalBytes(left, right []byte) bool {
 	return difference == 0
 }
 func (service *Service) expireLocked(now time.Time) {
-	for hash, pairing := range service.pairings {
-		if !now.Before(pairing.expiresAt) && !pairing.inUse {
-			delete(service.pairings, hash)
-		}
-	}
-	for hash, expiresAt := range service.consumed {
-		if !now.Before(expiresAt) {
-			delete(service.consumed, hash)
-		}
-	}
 	for replayKey, replay := range service.sessionReplays {
 		if !now.Before(replay.expiresAt) {
 			delete(service.sessionReplays, replayKey)

@@ -16,6 +16,9 @@ import app.codexlauncher.storage.actions.ActionRecordKind
 import app.codexlauncher.storage.actions.ActionRecordState
 import app.codexlauncher.storage.actions.ActionResultCode
 import app.codexlauncher.storage.secrets.PairingKeyProtection
+import app.codexlauncher.task.configuration.NewTaskSelection
+import app.codexlauncher.task.control.NewTaskSendOutcome
+import app.codexlauncher.task.composer.DraftVersion
 import java.util.Base64
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +34,121 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LauncherSessionViewModelTest {
+    @Test
+    fun newTaskSendUsesSelectedProjectAndClearsDraftAfterDurableConfirmation() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        var draftClears = 0
+        val viewModel =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { ProjectChoice("main", "Main") },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = FakeActionJournal(),
+                clearConfirmedDraft = { version -> assertEquals(DraftVersion(1, 4), version); draftClears += 1; true },
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcomeWithOptions())
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+
+        val pending = async {
+            viewModel.startNewTask("Fix it", NewTaskSelection("codex-1", "medium", "workspace-write"), DraftVersion(1, 4))
+        }
+        val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+        assertEquals("main", action.body.getValue("projectId").jsonPrimitive.content)
+        assertEquals("Fix it", action.body.getValue("text").jsonPrimitive.content)
+        assertEquals(0, draftClears)
+
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"result-2","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed"}}""",
+            ),
+        )
+
+        assertEquals(NewTaskSendOutcome.Complete, pending.await())
+        assertEquals(1, draftClears)
+        assertFalse(connection.hasAcknowledged(2))
+    }
+
+    @Test
+    fun failedNewTaskPublishesAVisibleDraftRetainedMessage() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val viewModel =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { ProjectChoice("main", "Main") },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = FakeActionJournal(),
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcomeWithOptions())
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+
+        val pending = async {
+            viewModel.startNewTask("Keep it", NewTaskSelection("codex-1", "medium", "workspace-write"), DraftVersion(1, 5))
+        }
+        val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"result-2","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"failed","error":{"code":"invalid_action","retryable":false}}}""",
+            ),
+        )
+
+        assertEquals(NewTaskSendOutcome.Failed(ActionErrorCode.INVALID_ACTION), pending.await())
+        assertEquals("The computer could not start this task. Your draft is still here. Try again.", viewModel.state.value.newTaskMessage)
+    }
+
+    @Test
+    fun unresolvedNewTaskIsPublishedAndRequiresExplicitDismissalAfterRecreation() = runBlocking {
+        lateinit var observer: SessionObserver
+        val unknown =
+            ActionRecord(
+                actionId = "unknown-new-task",
+                kind = ActionRecordKind.START_TURN,
+                state = ActionRecordState.SENT_UNKNOWN,
+                createdAtEpochMillis = 1,
+                updatedAtEpochMillis = 2,
+                threadId = null,
+                turnId = null,
+                payloadSha256 = "a".repeat(64),
+                resultCode = null,
+                errorCode = null,
+            )
+        val viewModel =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; FakeSessionConnection() },
+                loadProject = { null },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = FakeActionJournal(initialRecords = listOf(unknown)),
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.connect(pairedComputer())
+        observer.onReady(FakeSessionConnection(), ByteArray(32))
+        observer.onMessage(welcomeWithOptions())
+
+        assertTrue(viewModel.state.value.newTaskNeedsReview)
+        assertTrue(viewModel.dismissUnconfirmedNewTask())
+        assertFalse(viewModel.state.value.newTaskNeedsReview)
+    }
+
     @Test
     fun newTaskOptionsFollowTheAuthenticatedSessionAndClearOnFailure() = runBlocking {
         lateinit var observer: SessionObserver

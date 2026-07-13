@@ -76,7 +76,7 @@ internal fun ActionRecord.isValid(): Boolean {
     if (!actionId.isProtocolId() || createdAtEpochMillis <= 0 || updatedAtEpochMillis < createdAtEpochMillis) return false
     if (threadId != null && !threadId.isProtocolId() || turnId != null && !turnId.isProtocolId()) return false
     if (kind == ActionRecordKind.SET_PROJECT && threadId != null) return false
-    if (kind != ActionRecordKind.SET_PROJECT && threadId == null) return false
+    if (kind !in setOf(ActionRecordKind.SET_PROJECT, ActionRecordKind.START_TURN) && threadId == null) return false
     if (!payloadSha256.matches(Regex("^[0-9a-f]{64}$"))) return false
     return when (state) {
         ActionRecordState.PREPARED,

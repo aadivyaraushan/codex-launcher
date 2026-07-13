@@ -201,7 +201,7 @@ func (server *Server) handlePair(response http.ResponseWriter, request *http.Req
 	}
 	record, err := server.pairing.Pair(request.Context(), pairRequest, server.now())
 	if err != nil {
-		server.logger.Warn("[mobile-transport] pairing request rejected", "branch_reason", "pairing_policy", "error_class", fmt.Sprintf("%T", err))
+		server.logger.Warn("[mobile-transport] pairing request rejected", "branch_reason", "pairing_policy", "error_class", fmt.Sprintf("%T", err), "error", err)
 		http.Error(response, "Pairing failed", http.StatusForbidden)
 		return
 	}
@@ -267,6 +267,9 @@ func (server *Server) handleSession(response http.ResponseWriter, request *http.
 	server.endPreauthentication()
 	preauthenticationHeld = false
 	defer authenticatedSession.Close()
+	watchContext, stopWatching := context.WithCancel(request.Context())
+	defer stopWatching()
+	go server.pairing.WatchSession(watchContext, authenticatedSession)
 	attachmentKeyInput := append(append([]byte(nil), proof.HostSignature...), proof.Signature...)
 	attachmentKey := sha256.Sum256(attachmentKeyInput)
 	protocolSession := contract.NewSessionWithAttachments(attachmentKey[:], server.quota, sessionID, deviceID)

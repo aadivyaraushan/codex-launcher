@@ -155,6 +155,24 @@ func TestContractAcceptsOnlyOpaqueApprovedProjectIdentifiers(t *testing.T) {
 	}
 }
 
+func TestContractAcceptsNewTaskStartWithHostOptionIdentifiers(t *testing.T) {
+	valid := `{"version":{"major":1,"minor":0},"messageId":"new-task","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","projectId":"project-main","text":"Fix the tests","modelId":"gpt-5.4","reasoningId":"high","permissionModeId":"workspace-write"}}`
+	if _, err := DecodeText([]byte(valid)); err != nil {
+		t.Fatalf("valid new-task action was rejected: %v", err)
+	}
+
+	invalid := []string{
+		`{"version":{"major":1,"minor":0},"messageId":"missing-project","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","text":"Fix the tests","modelId":"gpt-5.4","reasoningId":"high","permissionModeId":"workspace-write"}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"mixed-targets","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","taskId":"task-1","projectId":"project-main","text":"Fix the tests","modelId":"gpt-5.4","reasoningId":"high","permissionModeId":"workspace-write"}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"raw-path","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","projectId":"project-main","projectPath":"/tmp/private","text":"Fix the tests","modelId":"gpt-5.4","reasoningId":"high","permissionModeId":"workspace-write"}}`,
+	}
+	for _, frame := range invalid {
+		if _, err := DecodeText([]byte(frame)); !errors.Is(err, ErrInvalidAction) {
+			t.Fatalf("invalid new-task action error = %v, want %v", err, ErrInvalidAction)
+		}
+	}
+}
+
 func TestContractAcceptsOnlyBoundedTaskManagementActions(t *testing.T) {
 	valid := []string{
 		`{"version":{"major":1,"minor":0},"messageId":"rename","sender":"phone","type":"action","body":{"actionId":"a-rename","kind":"rename_task","taskId":"thread-1","title":"Launcher follow-up"}}`,

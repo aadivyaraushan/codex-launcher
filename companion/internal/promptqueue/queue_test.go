@@ -42,6 +42,28 @@ func TestQueuePersistsOrderAndMarksUnknownBeforeSend(t *testing.T) {
 	}
 }
 
+func TestNewTaskQueueUsesAStableQueueKeyAndAcceptsTheCreatedThread(t *testing.T) {
+	store := NewMemoryStore()
+	queue := New(store, nil)
+	entry := Entry{
+		ActionID: "action-1", QueueKey: "new:action-1", ProjectID: "project-1", Prompt: "build it",
+		Model: "gpt-5.4", Effort: "high", PermissionMode: "workspace-write", CreatedAt: queueNow,
+	}
+	if err := queue.Enqueue(context.Background(), entry); err != nil {
+		t.Fatal(err)
+	}
+	want := Result{Code: "accepted", ThreadID: "thread-created", TurnID: "turn-created"}
+	got, err := queue.DispatchNext(context.Background(), entry.QueueKey, func(_ context.Context, stored Entry) (Result, error) {
+		if stored.ThreadID != "" || stored.Model != "gpt-5.4" || stored.Effort != "high" || stored.PermissionMode != "workspace-write" {
+			t.Fatalf("stored new-task settings = %#v", stored)
+		}
+		return want, nil
+	}, nil, queueNow)
+	if err != nil || got != want {
+		t.Fatalf("new-task dispatch = %#v, %v", got, err)
+	}
+}
+
 func TestPreparedWriteFailureIsSafeToRetryWithoutSending(t *testing.T) {
 	store := NewMemoryStore()
 	queue := New(store, nil)
@@ -83,6 +105,44 @@ func TestUnknownSendNeverBlindlyRetries(t *testing.T) {
 	}, queueNow.Add(time.Second))
 	if !errors.Is(err, ErrOutcomeUnknown) || sends != 1 {
 		t.Fatalf("retry dispatch = %v, sends = %d", err, sends)
+	}
+}
+
+func TestDefiniteSendFailureIsDurableTerminalAndClearsPrompt(t *testing.T) {
+	store := NewMemoryStore()
+	queue := New(store, nil)
+	_ = queue.Enqueue(context.Background(), Entry{ActionID: "a-failed", QueueKey: "new:a-failed", ProjectID: "project-1", Prompt: "private prompt", CreatedAt: queueNow})
+
+	_, err := queue.DispatchNext(context.Background(), "new:a-failed", func(context.Context, Entry) (Result, error) {
+		return Result{}, ErrSendNotSent
+	}, nil, queueNow)
+	if !errors.Is(err, ErrSendNotSent) {
+		t.Fatalf("dispatch error = %v", err)
+	}
+	entry, err := queue.Entry(context.Background(), "a-failed")
+	if err != nil || entry.State != StateFailed || entry.Prompt != "" || entry.ErrorCode != "send_not_sent" {
+		t.Fatalf("failed entry = %#v, error = %v", entry, err)
+	}
+	if _, err := New(store, nil).DispatchNext(context.Background(), "new:a-failed", nil, nil, queueNow.Add(time.Second)); !errors.Is(err, ErrNoPreparedAction) {
+		t.Fatalf("restarted dispatch error = %v", err)
+	}
+}
+
+func TestDefiniteFailureCommitErrorRemainsUnknownToThePhone(t *testing.T) {
+	store := NewMemoryStore()
+	queue := New(store, nil)
+	_ = queue.Enqueue(context.Background(), Entry{ActionID: "a-failed", QueueKey: "new:a-failed", ProjectID: "project-1", Prompt: "private prompt", CreatedAt: queueNow})
+	store.FailSaveNumber(2, errors.New("disk unavailable"))
+
+	_, err := queue.DispatchNext(context.Background(), "new:a-failed", func(context.Context, Entry) (Result, error) {
+		return Result{}, ErrSendNotSent
+	}, nil, queueNow)
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("failure commit error = %v", err)
+	}
+	entry, _ := store.Entry(context.Background(), "a-failed")
+	if entry.State != StateSentUnknown {
+		t.Fatalf("state after failed terminal commit = %s", entry.State)
 	}
 }
 

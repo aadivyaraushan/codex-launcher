@@ -2,6 +2,7 @@ package mobilesession
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskoptions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
@@ -18,6 +20,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
+	"github.com/codex-launcher/codex-launcher/companion/internal/promptqueue"
 )
 
 type TaskSource interface {
@@ -30,6 +33,10 @@ type TaskTranscriptSource interface {
 
 type NewTaskOptionsSource interface {
 	NewTaskOptions(context.Context) (taskoptions.Catalog, error)
+}
+
+type NewTaskSource interface {
+	StartNewTask(context.Context, taskadapter.NewTaskRequest) (taskadapter.NewTaskResult, error)
 }
 
 type TaskManagementSource interface {
@@ -61,6 +68,8 @@ type Handler struct {
 	transcriptSource TaskTranscriptSource
 	managementSource TaskManagementSource
 	optionSource     NewTaskOptionsSource
+	newTaskSource    NewTaskSource
+	promptQueue      *promptqueue.Queue
 	nextID           atomic.Uint64
 	publishMu        sync.Mutex
 	mu               sync.Mutex
@@ -108,6 +117,10 @@ func NewWithLogger(ctx context.Context, computerName string, projectService *pro
 }
 
 func NewWithTaskSource(ctx context.Context, computerName string, projectService *projects.Service, journal *eventjournal.Journal, taskSource TaskSource, logger *slog.Logger, now func() time.Time) (*Handler, error) {
+	return NewWithTaskSourceAndQueue(ctx, computerName, projectService, journal, taskSource, nil, logger, now)
+}
+
+func NewWithTaskSourceAndQueue(ctx context.Context, computerName string, projectService *projects.Service, journal *eventjournal.Journal, taskSource TaskSource, promptQueue *promptqueue.Queue, logger *slog.Logger, now func() time.Time) (*Handler, error) {
 	if projectService == nil || journal == nil || computerName == "" {
 		return nil, ErrMissingDependency
 	}
@@ -144,6 +157,8 @@ func NewWithTaskSource(ctx context.Context, computerName string, projectService 
 	handler.transcriptSource, _ = taskSource.(TaskTranscriptSource)
 	handler.managementSource, _ = taskSource.(TaskManagementSource)
 	handler.optionSource, _ = taskSource.(NewTaskOptionsSource)
+	handler.newTaskSource, _ = taskSource.(NewTaskSource)
+	handler.promptQueue = promptQueue
 	handler.activeView.Store([]transport.MessageSender{})
 	handler.snapshotGen.Store(1)
 	go handler.deliverBroadcasts()
@@ -312,11 +327,15 @@ func (handler *Handler) TaskSnapshotGeneration() uint64 {
 
 func (handler *Handler) handleAction(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
 	var action struct {
-		ActionID  string `json:"actionId"`
-		Kind      string `json:"kind"`
-		ProjectID string `json:"projectId"`
-		TaskID    string `json:"taskId"`
-		Title     string `json:"title"`
+		ActionID         string `json:"actionId"`
+		Kind             string `json:"kind"`
+		ProjectID        string `json:"projectId"`
+		TaskID           string `json:"taskId"`
+		Title            string `json:"title"`
+		Text             string `json:"text"`
+		ModelID          string `json:"modelId"`
+		ReasoningID      string `json:"reasoningId"`
+		PermissionModeID string `json:"permissionModeId"`
 	}
 	if err := json.Unmarshal(message.Body, &action); err != nil {
 		return err
@@ -332,6 +351,15 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	result := map[string]any{"actionId": action.ActionID, "state": "confirmed"}
 	refreshTasks := false
 	switch action.Kind {
+	case "start_turn":
+		switch handler.startNewTask(ctx, action.ActionID, action.ProjectID, action.Text, action.ModelID, action.ReasoningID, action.PermissionModeID) {
+		case newTaskConfirmed:
+			refreshTasks = true
+		case newTaskOutcomeUnknown:
+			setActionOutcomeUnknown(result)
+		case newTaskFailed:
+			setActionFailure(result, "invalid_action", false)
+		}
 	case "set_project":
 		if _, err := handler.projects.Resolve(action.ProjectID); err != nil {
 			setActionFailure(result, "invalid_action", false)
@@ -395,6 +423,147 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		handler.queueBroadcast("snapshot", snapshot.BaseSequence, snapshotBody)
 	}
 	return nil
+}
+
+type newTaskOutcome uint8
+
+const (
+	newTaskFailed newTaskOutcome = iota
+	newTaskConfirmed
+	newTaskOutcomeUnknown
+)
+
+func (handler *Handler) startNewTask(ctx context.Context, actionID, projectID, prompt, modelID, reasoningID, permissionModeID string) newTaskOutcome {
+	if handler.newTaskSource == nil || handler.optionSource == nil || handler.promptQueue == nil {
+		return newTaskFailed
+	}
+	requestHash := newTaskRequestHash(projectID, prompt, modelID, reasoningID, permissionModeID)
+	var prepared *promptqueue.Entry
+	stored, storedErr := handler.promptQueue.Entry(ctx, actionID)
+	switch {
+	case storedErr == nil:
+		if stored.RequestHash != requestHash {
+			handler.logger.Warn("[mobile-session] duplicate new task rejected", "action_id", actionID, "branch_reason", "request_hash_mismatch")
+			return newTaskFailed
+		}
+		switch stored.State {
+		case promptqueue.StateConfirmed:
+			return newTaskConfirmed
+		case promptqueue.StateFailed, promptqueue.StateCanceled:
+			return newTaskFailed
+		case promptqueue.StateSentUnknown:
+			return newTaskOutcomeUnknown
+		case promptqueue.StatePrepared:
+			prepared = &stored
+		default:
+			return newTaskFailed
+		}
+	case !errors.Is(storedErr, promptqueue.ErrActionNotFound):
+		handler.logger.Error("[mobile-session] new task lookup failed", "action_id", actionID, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", storedErr))
+		return newTaskFailed
+	}
+	projectPath, err := handler.projects.Resolve(projectID)
+	if err != nil {
+		return newTaskFailed
+	}
+	catalog, err := handler.optionSource.NewTaskOptions(ctx)
+	if err != nil {
+		handler.logger.Error("[mobile-session] new task option reload failed", "action_id", actionID, "branch_reason", "catalog_unavailable", "error_class", fmt.Sprintf("%T", err))
+		return newTaskFailed
+	}
+	model, _, ok := resolveNewTaskOptions(catalog, modelID, reasoningID, permissionModeID)
+	if !ok {
+		handler.logger.Info("[mobile-session] new task rejected", "action_id", actionID, "branch_reason", "stale_or_unknown_option")
+		return newTaskFailed
+	}
+	queueKey := "new:" + actionID
+	entry := promptqueue.Entry{
+		ActionID: actionID, QueueKey: queueKey, ProjectID: projectID, Prompt: prompt, Model: model.WireName,
+		Effort: reasoningID, PermissionMode: permissionModeID,
+		RequestHash: requestHash, CreatedAt: handler.now(),
+	}
+	if prepared != nil {
+		if prepared.Model != entry.Model {
+			_ = handler.promptQueue.CancelThread(ctx, queueKey, "stale_model_mapping", handler.now())
+			return newTaskFailed
+		}
+		entry = *prepared
+	} else {
+		if err := handler.promptQueue.Enqueue(ctx, entry); err != nil {
+			handler.logger.Error("[mobile-session] new task preparation failed", "action_id", actionID, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", err))
+			return newTaskFailed
+		}
+	}
+	_, err = handler.promptQueue.DispatchNext(ctx, queueKey, func(ctx context.Context, queued promptqueue.Entry) (promptqueue.Result, error) {
+		sandbox, mapped := permissionSandbox(queued.PermissionMode)
+		if !mapped {
+			return promptqueue.Result{}, promptqueue.ErrSendNotSent
+		}
+		started, startErr := handler.newTaskSource.StartNewTask(ctx, taskadapter.NewTaskRequest{
+			ProjectPath: projectPath, Prompt: queued.Prompt, Model: queued.Model, Effort: queued.Effort,
+			Sandbox: sandbox, ApprovalPolicy: json.RawMessage(`"on-request"`),
+		})
+		if startErr != nil {
+			var unknown *appserver.OutcomeUnknownError
+			if errors.As(startErr, &unknown) || errors.Is(startErr, taskadapter.ErrPartialNewTask) {
+				return promptqueue.Result{}, promptqueue.ErrSendOutcomeUnknown
+			}
+			return promptqueue.Result{}, promptqueue.ErrSendNotSent
+		}
+		return promptqueue.Result{Code: "accepted", ThreadID: started.ThreadID, TurnID: started.TurnID}, nil
+	}, nil, handler.now())
+	if err != nil {
+		handler.logger.Error("[mobile-session] new task dispatch failed", "action_id", actionID, "project_id", projectID, "error_class", fmt.Sprintf("%T", err))
+		if errors.Is(err, promptqueue.ErrOutcomeUnknown) {
+			return newTaskOutcomeUnknown
+		}
+		return newTaskFailed
+	}
+	return newTaskConfirmed
+}
+
+func newTaskRequestHash(values ...string) string {
+	encoded, _ := json.Marshal(values)
+	return fmt.Sprintf("%x", sha256.Sum256(encoded))
+}
+
+func resolveNewTaskOptions(catalog taskoptions.Catalog, modelID, reasoningID, permissionModeID string) (taskoptions.Model, taskoptions.PermissionMode, bool) {
+	var model taskoptions.Model
+	for _, candidate := range catalog.Models {
+		if candidate.ID == modelID {
+			model = candidate
+			break
+		}
+	}
+	if model.ID == "" {
+		return taskoptions.Model{}, taskoptions.PermissionMode{}, false
+	}
+	reasoningFound := false
+	for _, reasoning := range model.Reasoning {
+		reasoningFound = reasoningFound || reasoning.ID == reasoningID
+	}
+	var permission taskoptions.PermissionMode
+	for _, candidate := range catalog.PermissionModes {
+		if candidate.ID == permissionModeID {
+			permission = candidate
+			break
+		}
+	}
+	_, permissionMapped := permissionSandbox(permission.ID)
+	return model, permission, reasoningFound && permission.ID != "" && permissionMapped && model.WireName != ""
+}
+
+func permissionSandbox(permissionModeID string) (appserver.SandboxMode, bool) {
+	switch permissionModeID {
+	case "read-only":
+		return appserver.SandboxReadOnly, true
+	case "workspace-write":
+		return appserver.SandboxWorkspaceWrite, true
+	case "danger-full-access":
+		return appserver.SandboxDangerFullAccess, true
+	default:
+		return "", false
+	}
 }
 
 func setActionFailure(result map[string]any, code string, retryable bool) {

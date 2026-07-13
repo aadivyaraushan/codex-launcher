@@ -84,9 +84,6 @@ class LauncherActivity : ComponentActivity() {
     private val pairingViewModel: PairingViewModel by viewModels {
         viewModelFactory { initializer { createPairingViewModel() } }
     }
-    private val sessionViewModel: LauncherSessionViewModel by viewModels {
-        viewModelFactory { initializer { createSessionViewModel() } }
-    }
     private val draftComposerViewModel: DraftComposerViewModel by viewModels {
         viewModelFactory {
             initializer {
@@ -96,6 +93,9 @@ class LauncherActivity : ComponentActivity() {
                 )
             }
         }
+    }
+    private val sessionViewModel: LauncherSessionViewModel by viewModels {
+        viewModelFactory { initializer { createSessionViewModel() } }
     }
 
     private fun createPairingViewModel(): PairingViewModel {
@@ -126,6 +126,7 @@ class LauncherActivity : ComponentActivity() {
             saveProject = localState.projectSelections::save,
             clearProject = localState.projectSelections::clear,
             actionJournal = localState.actionJournal,
+            clearConfirmedDraft = draftComposerViewModel::clearAfterConfirmedSend,
         )
     }
     private var homeIntentSequence by mutableLongStateOf(0L)
@@ -309,6 +310,17 @@ class LauncherActivity : ComponentActivity() {
                             newTaskOptionsKey = sessionUiState.newTaskOptionsSessionId,
                             composerState = draftComposerState,
                             onPromptChange = draftComposerViewModel::update,
+                            onSend = { prompt, selection ->
+                                val version = draftComposerState.version
+                                if (selection != null && version != null) {
+                                    scope.launch { sessionViewModel.startNewTask(prompt, selection, version) }
+                                }
+                            },
+                            newTaskNeedsReview = sessionUiState.newTaskNeedsReview,
+                            newTaskMessage = sessionUiState.newTaskMessage,
+                            onDismissNewTaskReview = {
+                                scope.launch { sessionViewModel.dismissUnconfirmedNewTask() }
+                            },
                             onRetry = {
                                 pairedComputer?.let { sessionViewModel.connect(it, force = true) }
                             },

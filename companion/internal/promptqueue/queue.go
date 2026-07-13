@@ -28,19 +28,25 @@ const (
 	StatePrepared    State = "PREPARED"
 	StateSentUnknown State = "SENT_UNKNOWN"
 	StateConfirmed   State = "CONFIRMED"
+	StateFailed      State = "FAILED"
 	StateCanceled    State = "CANCELED"
 )
 
 type Entry struct {
-	ActionID  string
-	ThreadID  string
-	ProjectID string
-	Prompt    string
-	State     State
-	Result    Result
-	ErrorCode string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ActionID       string
+	QueueKey       string
+	ThreadID       string
+	ProjectID      string
+	Prompt         string
+	Model          string
+	Effort         string
+	PermissionMode string
+	RequestHash    string
+	State          State
+	Result         Result
+	ErrorCode      string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type Result struct {
@@ -65,6 +71,9 @@ func New(store Store, logger *slog.Logger) *Queue {
 }
 
 func (queue *Queue) Enqueue(ctx context.Context, entry Entry) error {
+	if entry.QueueKey == "" {
+		entry.QueueKey = entry.ThreadID
+	}
 	if queue == nil || queue.store == nil || !validEntry(entry) {
 		return ErrInvalidEntry
 	}
@@ -73,7 +82,7 @@ func (queue *Queue) Enqueue(ctx context.Context, entry Entry) error {
 	if err := queue.store.Create(ctx, entry); err != nil {
 		return fmt.Errorf("store prepared prompt: %w", err)
 	}
-	queue.logger.Info("[prompt-queue] prompt prepared", "action_id", entry.ActionID, "thread_id", entry.ThreadID, "project_id", entry.ProjectID)
+	queue.logger.Info("[prompt-queue] prompt prepared", "action_id", entry.ActionID, "queue_key", entry.QueueKey, "thread_id", entry.ThreadID, "project_id", entry.ProjectID)
 	return nil
 }
 
@@ -104,10 +113,12 @@ func (queue *Queue) DispatchNext(ctx context.Context, threadID string, sender Se
 	result, sendErr := sender(ctx, entry)
 	if sendErr != nil {
 		if errors.Is(sendErr, ErrSendNotSent) {
-			entry.State = StatePrepared
+			entry.State = StateFailed
+			entry.ErrorCode = "send_not_sent"
+			entry.Prompt = ""
 			entry.UpdatedAt = now
 			if saveErr := queue.store.CompareAndSwap(ctx, StateSentUnknown, entry); saveErr != nil {
-				return Result{}, fmt.Errorf("restore safe prepared state: %w", saveErr)
+				return Result{}, errors.Join(ErrOutcomeUnknown, fmt.Errorf("store definite send failure: %w", saveErr))
 			}
 			return Result{}, sendErr
 		}
@@ -160,6 +171,13 @@ func (queue *Queue) Result(ctx context.Context, actionID string) (Result, error)
 	return entry.Result, nil
 }
 
+func (queue *Queue) Entry(ctx context.Context, actionID string) (Entry, error) {
+	if queue == nil || queue.store == nil || !validID(actionID) {
+		return Entry{}, ErrInvalidEntry
+	}
+	return queue.store.Entry(ctx, actionID)
+}
+
 func (queue *Queue) CancelThread(ctx context.Context, threadID, errorCode string, now time.Time) error {
 	if !validID(threadID) || !validID(errorCode) {
 		return ErrInvalidEntry
@@ -188,12 +206,17 @@ func (queue *Queue) CancelThread(ctx context.Context, threadID, errorCode string
 }
 
 func validEntry(entry Entry) bool {
-	return validID(entry.ActionID) && validID(entry.ThreadID) && validID(entry.ProjectID) && strings.TrimSpace(entry.Prompt) != "" && len(entry.Prompt) <= 128*1024 && !entry.CreatedAt.IsZero()
+	return validID(entry.ActionID) && validID(entry.QueueKey) && (entry.ThreadID == "" || validID(entry.ThreadID)) && validID(entry.ProjectID) &&
+		validOptionalID(entry.Model) && validOptionalID(entry.Effort) && validOptionalID(entry.PermissionMode) &&
+		validOptionalID(entry.RequestHash) &&
+		strings.TrimSpace(entry.Prompt) != "" && len(entry.Prompt) <= 128*1024 && !entry.CreatedAt.IsZero()
 }
 
 func validResult(result Result, threadID string) bool {
-	return validID(result.Code) && result.ThreadID == threadID && validID(result.TurnID)
+	return validID(result.Code) && validID(result.ThreadID) && (threadID == "" || result.ThreadID == threadID) && validID(result.TurnID)
 }
+
+func validOptionalID(value string) bool { return value == "" || validID(value) }
 
 func validID(value string) bool {
 	return strings.TrimSpace(value) != "" && len(value) <= 256

@@ -202,7 +202,19 @@ object ProtocolCodec {
     private fun validateAction(sender: Sender, body: JsonObject) {
         if (sender != Sender.PHONE || !optionalString(body, "actionId").isValidId()) fail(ProtocolError.INVALID_ACTION)
         when (optionalString(body, "kind")) {
-            "start_turn", "steer_turn" -> if (body.keys.any { it !in setOf("actionId", "kind", "taskId", "text", "attachmentIds") } || !optionalString(body, "taskId").isValidId() || !optionalString(body, "text").isBounded(131072) || optionalString(body, "text").isBlank() || !validOptionalIds(body["attachmentIds"])) fail(ProtocolError.INVALID_ACTION)
+            "start_turn" -> {
+                val validText = optionalString(body, "text").isBounded(131072) && optionalString(body, "text").isNotBlank()
+                val existingTask =
+                    body.keys.all { it in setOf("actionId", "kind", "taskId", "text", "attachmentIds") } &&
+                        optionalString(body, "taskId").isValidId() && validText && validOptionalIds(body["attachmentIds"])
+                val newTask =
+                    body.keys.all { it in setOf("actionId", "kind", "projectId", "text", "modelId", "reasoningId", "permissionModeId", "attachmentIds") } &&
+                        optionalString(body, "projectId").isProjectId() && validText &&
+                        optionalString(body, "modelId").isValidId() && optionalString(body, "reasoningId").isValidId() &&
+                        optionalString(body, "permissionModeId").isValidId() && validOptionalIds(body["attachmentIds"])
+                if (!existingTask && !newTask) fail(ProtocolError.INVALID_ACTION)
+            }
+            "steer_turn" -> if (body.keys.any { it !in setOf("actionId", "kind", "taskId", "text", "attachmentIds") } || !optionalString(body, "taskId").isValidId() || !optionalString(body, "text").isBounded(131072) || optionalString(body, "text").isBlank() || !validOptionalIds(body["attachmentIds"])) fail(ProtocolError.INVALID_ACTION)
             "interrupt_turn" -> if (body.keys != setOf("actionId", "kind", "taskId") || !optionalString(body, "taskId").isValidId()) fail(ProtocolError.INVALID_ACTION)
             "approval" -> {
                 val requestKind = optionalString(body, "requestKind")

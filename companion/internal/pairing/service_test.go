@@ -460,6 +460,61 @@ func TestMissingHostIdentityInvalidatesRestoredDeviceRecords(t *testing.T) {
 	}
 }
 
+func TestPairingOfferCreatedByCLIIsAcceptedByASeparateServingService(t *testing.T) {
+	store := NewMemoryStore()
+	creator, err := NewService(context.Background(), store, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, err := creator.BeginPairing(PairingTarget{Host: "mac.tailnet.ts.net", Port: 9443, Protocol: 1}, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serving, err := NewService(context.Background(), store, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := serving.Pair(context.Background(), signedPairRequest(t, offer, "pixel-9"), testNow); err != nil {
+		t.Fatalf("separate serving service rejected offer: %v", err)
+	}
+}
+
+func TestRevocationFromSeparateCLIServiceClosesServingSession(t *testing.T) {
+	store := NewMemoryStore()
+	creator, err := NewService(context.Background(), store, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, err := creator.BeginPairing(PairingTarget{Host: "mac.tailnet.ts.net", Port: 9443, Protocol: 1}, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, key := signedPairRequestWithKey(t, offer, "pixel-9")
+	serving, err := NewService(context.Background(), store, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := serving.Pair(context.Background(), request, testNow); err != nil {
+		t.Fatal(err)
+	}
+	session := authenticatedSession(t, serving, key, offer, "serving-session")
+	revoker, err := NewService(context.Background(), store, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := revoker.Revoke(context.Background(), "pixel-9"); err != nil {
+		t.Fatal(err)
+	}
+	if err := serving.RefreshSessions(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-session.Done():
+	default:
+		t.Fatal("serving session remained open after shared-store revocation")
+	}
+}
+
 type pairingBarrierStore struct {
 	*MemoryStore
 	mu          sync.Mutex

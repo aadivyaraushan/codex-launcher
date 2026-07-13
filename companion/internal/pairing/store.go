@@ -28,6 +28,19 @@ type DeviceInfo struct {
 	PairedAt time.Time `json:"pairedAt"`
 }
 
+type PairingOfferRecord struct {
+	SecretHash []byte
+	Target     PairingTarget
+	ExpiresAt  time.Time
+	State      string
+}
+
+const (
+	PairingOfferPending  = "pending"
+	PairingOfferClaimed  = "claimed"
+	PairingOfferConsumed = "consumed"
+)
+
 type Store interface {
 	HostIdentity(context.Context) (ed25519.PrivateKey, error)
 	SaveHostIdentity(context.Context, ed25519.PrivateKey) error
@@ -36,16 +49,21 @@ type Store interface {
 	SaveDevice(context.Context, DeviceRecord) error
 	DeleteDevice(context.Context, string) error
 	ClearDevices(context.Context) error
+	CreatePairingOffer(context.Context, PairingOfferRecord) error
+	ClaimPairingOffer(context.Context, []byte, time.Time) (PairingOfferRecord, error)
+	ReleasePairingOffer(context.Context, []byte) error
+	ConsumePairingOffer(context.Context, []byte) error
 }
 
 type MemoryStore struct {
 	mu       sync.RWMutex
 	identity ed25519.PrivateKey
 	devices  map[string]DeviceRecord
+	offers   map[string]PairingOfferRecord
 }
 
 func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{devices: make(map[string]DeviceRecord)}
+	return &MemoryStore{devices: make(map[string]DeviceRecord), offers: make(map[string]PairingOfferRecord)}
 }
 
 func (store *MemoryStore) HostIdentity(ctx context.Context) (ed25519.PrivateKey, error) {
@@ -126,6 +144,67 @@ func (store *MemoryStore) ClearDevices(ctx context.Context) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.devices = make(map[string]DeviceRecord)
+	return nil
+}
+
+func (store *MemoryStore) CreatePairingOffer(ctx context.Context, offer PairingOfferRecord) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	offer.SecretHash = append([]byte(nil), offer.SecretHash...)
+	offer.State = PairingOfferPending
+	store.offers[string(offer.SecretHash)] = offer
+	return nil
+}
+
+func (store *MemoryStore) ClaimPairingOffer(ctx context.Context, secretHash []byte, now time.Time) (PairingOfferRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return PairingOfferRecord{}, err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	offer, ok := store.offers[string(secretHash)]
+	if !ok || !now.Before(offer.ExpiresAt) {
+		delete(store.offers, string(secretHash))
+		return PairingOfferRecord{}, ErrPairingCodeExpired
+	}
+	if offer.State != PairingOfferPending {
+		return PairingOfferRecord{}, ErrPairingCodeUsed
+	}
+	offer.State = PairingOfferClaimed
+	store.offers[string(secretHash)] = offer
+	offer.SecretHash = append([]byte(nil), offer.SecretHash...)
+	return offer, nil
+}
+
+func (store *MemoryStore) ReleasePairingOffer(ctx context.Context, secretHash []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	offer, ok := store.offers[string(secretHash)]
+	if ok && offer.State == PairingOfferClaimed {
+		offer.State = PairingOfferPending
+		store.offers[string(secretHash)] = offer
+	}
+	return nil
+}
+
+func (store *MemoryStore) ConsumePairingOffer(ctx context.Context, secretHash []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	offer, ok := store.offers[string(secretHash)]
+	if !ok || offer.State != PairingOfferClaimed {
+		return ErrPairingCodeUsed
+	}
+	offer.State = PairingOfferConsumed
+	store.offers[string(secretHash)] = offer
 	return nil
 }
 

@@ -893,7 +893,18 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 	}
 	kind := stringValue(body["kind"])
 	switch kind {
-	case "start_turn", "steer_turn":
+	case "start_turn":
+		existingTask := onlyAllowedKeys(body, "actionId", "kind", "taskId", "text", "attachmentIds") &&
+			validID(stringValue(body["taskId"])) && boundedString(body["text"], 131072) && strings.TrimSpace(stringValue(body["text"])) != "" &&
+			validateOptionalIDs(body["attachmentIds"])
+		newTask := onlyAllowedKeys(body, "actionId", "kind", "projectId", "text", "modelId", "reasoningId", "permissionModeId", "attachmentIds") &&
+			validProjectID(stringValue(body["projectId"])) && boundedString(body["text"], 131072) && strings.TrimSpace(stringValue(body["text"])) != "" &&
+			validID(stringValue(body["modelId"])) && validID(stringValue(body["reasoningId"])) && validID(stringValue(body["permissionModeId"])) &&
+			validateOptionalIDs(body["attachmentIds"])
+		if !existingTask && !newTask {
+			return ErrInvalidAction
+		}
+	case "steer_turn":
 		if !onlyAllowedKeys(body, "actionId", "kind", "taskId", "text", "attachmentIds") ||
 			!validID(stringValue(body["taskId"])) || !boundedString(body["text"], 131072) || strings.TrimSpace(stringValue(body["text"])) == "" ||
 			!validateOptionalIDs(body["attachmentIds"]) {

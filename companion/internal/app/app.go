@@ -5,10 +5,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/durablestore"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
@@ -26,6 +28,13 @@ type Dependencies struct {
 	Logger       *slog.Logger
 	TaskSource   mobilesession.TaskSource
 	TaskEvents   <-chan taskstate.MobileEvent
+}
+
+type PersistentDependencies struct {
+	Random     io.Reader
+	Logger     *slog.Logger
+	TaskSource mobilesession.TaskSource
+	TaskEvents <-chan taskstate.MobileEvent
 }
 
 type Runtime struct {
@@ -59,7 +68,8 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 		return nil, ErrInvalidConfig
 	}
 	journal := eventjournal.New(dependencies.EventStore, logger)
-	mobileHandler, err := mobilesession.NewWithTaskSource(ctx, config.ComputerName, projectService, journal, dependencies.TaskSource, logger, time.Now)
+	promptQueue := promptqueue.New(dependencies.PromptStore, logger)
+	mobileHandler, err := mobilesession.NewWithTaskSourceAndQueue(ctx, config.ComputerName, projectService, journal, dependencies.TaskSource, promptQueue, logger, time.Now)
 	if err != nil {
 		logger.Error("[app] mobile session startup failed", "error_class", "mobile_session_initialization")
 		return nil, err
@@ -73,7 +83,7 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 		Config:   config,
 		Pairing:  pairingService,
 		Projects: projectService,
-		Queue:    promptqueue.New(dependencies.PromptStore, logger),
+		Queue:    promptQueue,
 		Journal:  journal,
 		Mobile:   mobileServer,
 	}
@@ -82,4 +92,35 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 	}
 	logger.Info("[app] runtime ready", "input_shape", "pairing,projects,queue,journal,mobile_transport", "project_count", len(config.Projects), "listen_port", config.ListenPort)
 	return runtime, nil
+}
+
+func OpenPersistentRuntime(ctx context.Context, config Config, dependencies PersistentDependencies) (*Runtime, io.Closer, error) {
+	root, err := ConfigRoot()
+	if err != nil {
+		return nil, nil, err
+	}
+	return openPersistentRuntimeAt(ctx, config, dependencies, filepath.Join(root, "state.sqlite3"))
+}
+
+func openPersistentRuntimeAt(ctx context.Context, config Config, dependencies PersistentDependencies, statePath string) (*Runtime, io.Closer, error) {
+	logger := dependencies.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Info("[app-storage] opening durable state", "input_shape", "single_sqlite_file", "state_path_source", "config_root")
+	store, err := durablestore.Open(ctx, statePath, eventjournal.Limits{MaxEvents: 2048, MaxBytes: 8 * 1024 * 1024})
+	if err != nil {
+		logger.Error("[app-storage] durable state open failed", "error_class", "sqlite_initialization")
+		return nil, nil, err
+	}
+	runtime, err := NewRuntime(ctx, config, Dependencies{
+		PairingStore: store, PromptStore: store, EventStore: store, Random: dependencies.Random, Logger: logger,
+		TaskSource: dependencies.TaskSource, TaskEvents: dependencies.TaskEvents,
+	})
+	if err != nil {
+		_ = store.Close()
+		return nil, nil, err
+	}
+	logger.Info("[app-storage] durable state ready", "output_shape", "pairing,prompt,event_stores")
+	return runtime, store, nil
 }

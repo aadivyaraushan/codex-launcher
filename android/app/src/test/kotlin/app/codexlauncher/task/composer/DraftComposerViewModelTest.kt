@@ -96,6 +96,79 @@ class DraftComposerViewModelTest {
     }
 
     @Test
+    fun `confirmed send clears visible text only after encrypted storage clears`() = runBlocking {
+        val saved = mutableListOf<String>()
+        val cleared =
+            DraftComposerViewModel(
+                loadDraft = { DraftReadState.Available("sent prompt", Instant.EPOCH) },
+                saveDraft = { text -> saved += text; true },
+                storageDispatcher = Dispatchers.Unconfined,
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        cleared.load()
+		val clearedVersion = requireNotNull(cleared.state.value.version)
+
+        assertTrue(cleared.clearAfterConfirmedSend(clearedVersion))
+        assertEquals(listOf(""), saved)
+        assertEquals("", cleared.state.value.text)
+
+        val retained =
+            DraftComposerViewModel(
+                loadDraft = { DraftReadState.Available("keep prompt", Instant.EPOCH) },
+                saveDraft = { false },
+                storageDispatcher = Dispatchers.Unconfined,
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        retained.load()
+		val retainedVersion = requireNotNull(retained.state.value.version)
+
+        assertFalse(retained.clearAfterConfirmedSend(retainedVersion))
+        assertEquals("keep prompt", retained.state.value.text)
+        assertTrue(retained.state.value.saveFailed)
+    }
+
+    @Test
+    fun `confirmation never clears a newer prompt typed while the send was pending`() = runBlocking {
+        val saves = mutableListOf<String>()
+        val viewModel =
+            DraftComposerViewModel(
+                loadDraft = { DraftReadState.Available("sent prompt", Instant.EPOCH) },
+                saveDraft = { text -> saves += text; true },
+                storageDispatcher = Dispatchers.Unconfined,
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.load()
+		val sentVersion = requireNotNull(viewModel.state.value.version)
+        viewModel.update("next prompt")
+        yield()
+
+        assertTrue(viewModel.clearAfterConfirmedSend(sentVersion))
+        assertEquals("next prompt", viewModel.state.value.text)
+        assertFalse(saves.contains(""))
+    }
+
+    @Test
+    fun `confirmation keeps a newer revision even when its text returns to the sent text`() = runBlocking {
+        val saves = mutableListOf<String>()
+        val viewModel =
+            DraftComposerViewModel(
+                loadDraft = { DraftReadState.Available("sent prompt", Instant.EPOCH) },
+                saveDraft = { text -> saves += text; true },
+                storageDispatcher = Dispatchers.Unconfined,
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.load()
+        val sentRevision = requireNotNull(viewModel.state.value.version)
+        viewModel.update("temporary edit")
+        viewModel.update("sent prompt")
+        yield()
+
+        assertTrue(viewModel.clearAfterConfirmedSend(sentRevision))
+        assertEquals("sent prompt", viewModel.state.value.text)
+        assertFalse(saves.contains(""))
+    }
+
+    @Test
     fun `storage callbacks run on the injected IO dispatcher`() = runBlocking {
         val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "draft-storage-io") }
         val dispatcher = executor.asCoroutineDispatcher()

@@ -150,6 +150,44 @@ class HomeScreenTest {
     }
 
     @Test
+    fun unknownNewTaskShowsAReviewGateAndBlocksAnotherSend() {
+        var dismisses = 0
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    newTaskOptions = taskOptions(),
+                    composerState = DraftComposerState("keep this prompt", DraftComposerPhase.READY),
+                    newTaskNeedsReview = true,
+                    onDismissNewTaskReview = { dismisses += 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Outcome unknown. Check Codex on your computer before sending again.").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Send prompt").assertIsNotEnabled()
+        compose.onNodeWithText("I checked Codex").performClick()
+        assertEquals(1, dismisses)
+    }
+
+    @Test
+    fun failedNewTaskShowsWhyTheDraftWasKept() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    newTaskOptions = taskOptions(),
+                    composerState = DraftComposerState("keep this prompt", DraftComposerPhase.READY),
+                    newTaskMessage = "The computer could not start this task. Your draft is still here. Try again.",
+                )
+            }
+        }
+
+        compose.onNodeWithText("The computer could not start this task. Your draft is still here. Try again.").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Prompt").assertTextContains("keep this prompt")
+    }
+
+    @Test
     fun aNewAuthenticatedSessionResetsAFullAccessChoiceToTheHostDefault() {
         var sessionKey by mutableStateOf("session-1")
         compose.setContent {

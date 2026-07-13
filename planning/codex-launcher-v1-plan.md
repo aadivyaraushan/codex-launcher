@@ -8,8 +8,8 @@
 > config storage, runtime wiring, CLI safety, queue, journal, and mobile
 > transport cores. The transport binds proofs to their exact sockets, limits
 > pre-authentication work, and requires `hello` before actions. Windows ACL
-> storage, SQLite, setup, doctor, serving CLI entry
-> point, and kill/restart integration remain. Task 7 is verified on a Pixel 9 Android 16 emulator:
+> storage, setup, complete doctor checks, background installation, and extended
+> kill/restart integration remain. Task 7 is verified on a Pixel 9 Android 16 emulator:
 > selectable Home role, offline Home, searchable app drawer, Android Settings
 > escape, persisted appearance, bundled fonts, accessibility scans, and large
 > text behavior. Task 8 now also has strict pairing-link parsing, QR/manual
@@ -38,8 +38,13 @@
 > macOS, the app-server-only adapter on Linux, and fails closed on Windows until
 > its verified named-pipe connector exists. It closes both owners on startup
 > failure, cancellation, either owner's exit, or an explicit repeated close.
-> Runnable companion startup still needs durable stores and CLI/main
-> composition; later transcript/action work also remains. The pinned Desktop
+> Runnable companion startup now has a real `codex-launcher serve` entry point.
+> It starts the owned Codex runtime, opens one owner-only SQLite database for
+> pairing, prompt, and replay state, and binds pinned TLS to the configured
+> Tailscale address. Pairing codes and revocation cross the CLI/service process
+> boundary through SQLite, and owned Codex exit closes mobile TLS. Close/reopen,
+> live HTTPS pairing, and complete composition tests pass. Service
+> installation and later transcript/action work remain. The pinned Desktop
 > connector has an explicit owner-close path and exposes its current stop signal,
 > so the runtime does not retain or advertise stale Desktop state. Task 9 now
 > also has the phone's metadata-only action journal: strict
@@ -114,6 +119,14 @@
 > emulator. Composer wiring remains. The unfinished draft is included in the
 > application-owned unpair wipe and was verified with real Android storage and
 > Keystore state on the same emulator.
+> Task 10 has started with a complete new-task send path. Home sends the current
+> opaque project plus host-advertised model, reasoning, and permission IDs
+> through the phone action journal and companion prompt queue. The companion
+> reloads and resolves those options immediately before `thread/start`, then
+> starts the first turn. Confirmed sends clear only the exact sent draft;
+> unknown outcomes survive phone and companion restarts, visibly block another
+> send, and require an explicit desktop check. Existing-task busy routing,
+> redirect, stop, dictation, and attachments remain.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

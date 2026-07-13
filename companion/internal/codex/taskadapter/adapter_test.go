@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 
@@ -39,6 +40,60 @@ func TestRealAdapterSetRequiresBothRuntimeBoundaries(t *testing.T) {
 	}
 	if _, err := New(&desktopipc.Client{}, nil); err == nil {
 		t.Fatal("missing app-server client was accepted")
+	}
+}
+
+func TestStartNewTaskCreatesConfiguredThreadThenStartsItsFirstTurn(t *testing.T) {
+	var steps []string
+	set := Set{
+		startThread: func(_ context.Context, options appserver.ThreadOptions) (json.RawMessage, error) {
+			steps = append(steps, "thread:"+options.CWD+":"+options.Model+":"+string(options.Sandbox)+":"+string(options.ApprovalPolicy))
+			return json.RawMessage(`{"thread":{"id":"thread-created"}}`), nil
+		},
+		startTurn: func(_ context.Context, options appserver.TurnOptions) (json.RawMessage, error) {
+			steps = append(steps, "turn:"+options.ThreadID+":"+options.Text+":"+options.Effort)
+			return json.RawMessage(`{"turn":{"id":"turn-created"}}`), nil
+		},
+	}
+	result, err := set.StartNewTask(context.Background(), NewTaskRequest{
+		ProjectPath: "/work/project", Prompt: "Fix it", Model: "gpt-5.4", Effort: "high",
+		Sandbox: appserver.SandboxWorkspaceWrite, ApprovalPolicy: json.RawMessage(`"on-request"`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ThreadID != "thread-created" || result.TurnID != "turn-created" {
+		t.Fatalf("result = %#v", result)
+	}
+	want := []string{`thread:/work/project:gpt-5.4:workspace-write:"on-request"`, "turn:thread-created:Fix it:high"}
+	if !slices.Equal(steps, want) {
+		t.Fatalf("steps = %#v, want %#v", steps, want)
+	}
+}
+
+func TestStartNewTaskFailsClosedOnMalformedResultsAndPartialCreation(t *testing.T) {
+	turnCalls := 0
+	set := Set{
+		startThread: func(context.Context, appserver.ThreadOptions) (json.RawMessage, error) {
+			return json.RawMessage(`{"thread":{}}`), nil
+		},
+		startTurn: func(context.Context, appserver.TurnOptions) (json.RawMessage, error) {
+			turnCalls++
+			return nil, nil
+		},
+	}
+	if _, err := set.StartNewTask(context.Background(), NewTaskRequest{ProjectPath: "/work", Prompt: "Fix it", Model: "model", Effort: "high", Sandbox: appserver.SandboxReadOnly}); !errors.Is(err, ErrPartialNewTask) || turnCalls != 0 {
+		t.Fatalf("malformed thread result error = %v, want partial task; turn calls = %d", err, turnCalls)
+	}
+
+	set.startThread = func(context.Context, appserver.ThreadOptions) (json.RawMessage, error) {
+		return json.RawMessage(`{"thread":{"id":"thread-created"}}`), nil
+	}
+	set.startTurn = func(context.Context, appserver.TurnOptions) (json.RawMessage, error) {
+		return nil, errors.New("known turn failure")
+	}
+	if _, err := set.StartNewTask(context.Background(), NewTaskRequest{ProjectPath: "/work", Prompt: "Fix it", Model: "model", Effort: "high", Sandbox: appserver.SandboxReadOnly}); !errors.Is(err, ErrPartialNewTask) {
+		t.Fatalf("partial task error = %v, want %v", err, ErrPartialNewTask)
 	}
 }
 

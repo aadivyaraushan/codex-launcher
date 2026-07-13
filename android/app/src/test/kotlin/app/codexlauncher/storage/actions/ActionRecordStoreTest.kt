@@ -86,6 +86,15 @@ class ActionRecordStoreTest {
     }
 
     @Test
+    fun newTaskStartMayBeStoredBeforeCodexAssignsAThreadId() = runBlocking {
+        val store = ActionRecordStore(FakeActionDataStore(), NoOpActionRecordReporter) { HOUR }
+        val newTask = record("new-task").copy(threadId = null)
+
+        assertTrue(store.save(newTask))
+        assertFalse(store.save(newTask.copy(actionId = "archive", kind = ActionRecordKind.ARCHIVE_TASK)))
+    }
+
+    @Test
     fun unknownOrCorruptStoredFieldsFailClosedAndAreNotOverwritten() = runBlocking {
         val unsafe =
             """{"version":1,"records":[{"actionId":"action-1","prompt":"private prompt"}]}"""

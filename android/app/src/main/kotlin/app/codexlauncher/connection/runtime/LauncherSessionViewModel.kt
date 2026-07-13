@@ -23,6 +23,10 @@ import app.codexlauncher.task.management.TaskAction
 import app.codexlauncher.task.management.TaskActionBridge
 import app.codexlauncher.task.management.TaskActionOutcome
 import app.codexlauncher.task.configuration.NewTaskOptions
+import app.codexlauncher.task.configuration.NewTaskSelection
+import app.codexlauncher.task.control.NewTaskSendOutcome
+import app.codexlauncher.task.control.TaskControlViewModel
+import app.codexlauncher.task.composer.DraftVersion
 import app.codexlauncher.task.transcript.TaskTranscriptMapper
 import app.codexlauncher.task.transcript.TaskTranscriptUiState
 import java.util.UUID
@@ -53,6 +57,8 @@ data class LauncherSessionState(
     val taskManagementAvailable: Boolean = false,
     val newTaskOptions: NewTaskOptions? = null,
     val newTaskOptionsSessionId: String? = null,
+    val newTaskNeedsReview: Boolean = false,
+    val newTaskMessage: String? = null,
     val unconfirmedForkTaskIds: Set<String> = emptySet(),
 )
 
@@ -62,6 +68,7 @@ class LauncherSessionViewModel(
     saveProject: suspend (ProjectChoice) -> Boolean,
     clearProject: suspend () -> Boolean,
     private val actionJournal: ActionJournal,
+    private val clearConfirmedDraft: suspend (DraftVersion) -> Boolean = { false },
     private val nextSessionId: () -> String = { UUID.randomUUID().toString() },
     private val retryWait: suspend (attempt: Int) -> Unit = { attempt -> delay(retryDelayMillis(attempt)) },
     workScope: CoroutineScope? = null,
@@ -76,6 +83,7 @@ class LauncherSessionViewModel(
     private var transcriptCapable = false
     private var taskManagementCapable = false
     private var taskActionBridge: TaskActionBridge? = null
+    private var taskControlViewModel: TaskControlViewModel? = null
     private val pendingTaskAcknowledgements = ConcurrentHashMap<String, TaskAcknowledgement>()
     private val retainedUnknownActionIds = ConcurrentHashMap.newKeySet<String>()
     private var pendingTranscript: PendingTranscriptRequest? = null
@@ -179,6 +187,7 @@ class LauncherSessionViewModel(
                     MessageType.ACTION_RESULT -> {
                         projectBridge?.accept(message)
                         taskActionBridge?.accept(message)
+                        taskControlViewModel?.accept(message)
                     }
                     else -> Unit
                 }
@@ -243,6 +252,25 @@ class LauncherSessionViewModel(
             } else {
                 null
             }
+        taskControlViewModel =
+            if (newTaskOptions != null) {
+                TaskControlViewModel(
+                    sendAction = connection::sendAction,
+                    journal = actionJournal,
+                    clearConfirmedDraft = clearConfirmedDraft,
+                    onTerminalReceived = acknowledgementGate::block,
+                    onTerminalStored = { actionId, sequence, requiresSnapshot, retainUnresolved ->
+                        taskActionStored(expectedGeneration, actionId, sequence, requiresSnapshot, retainUnresolved)
+                    },
+                )
+            } else {
+                null
+            }
+        taskControlViewModel?.let { controls ->
+            submissionScope.launch {
+                publishNewTaskReview(expectedGeneration, controls.needsNewTaskReview())
+            }
+        }
         taskActionBridge?.let { bridge ->
             submissionScope.launch {
                 publishUnconfirmedForks(expectedGeneration, bridge.unresolvedForkTaskIds())
@@ -258,6 +286,32 @@ class LauncherSessionViewModel(
 
     suspend fun forkTask(taskId: String): TaskActionOutcome =
         performTaskAction(taskId, TaskAction.Fork)
+
+    suspend fun startNewTask(prompt: String, selection: NewTaskSelection, draftVersion: DraftVersion): NewTaskSendOutcome {
+        val current = mutableState.value
+        val projectId = current.connection.selectedProjectId ?: return NewTaskSendOutcome.Unavailable
+        val options = current.newTaskOptions ?: return NewTaskSendOutcome.Unavailable
+        if (options.normalize(selection) != selection) return NewTaskSendOutcome.Invalid
+        val controls = taskControlViewModel ?: return NewTaskSendOutcome.Unavailable
+        mutableState.value = mutableState.value.copy(newTaskMessage = null)
+        val outcome = controls.startNewTask(projectId, prompt, selection, draftVersion)
+        if (outcome == NewTaskSendOutcome.NeedsReview) publishNewTaskReview(generation.get(), true)
+        mutableState.value = mutableState.value.copy(newTaskMessage = newTaskMessage(outcome))
+        return outcome
+    }
+
+    suspend fun dismissUnconfirmedNewTask(): Boolean {
+        val controls = taskControlViewModel ?: return false
+        if (!controls.dismissUnresolvedNewTasks()) return false
+        return publishNewTaskReview(generation.get(), false)
+    }
+
+    @Synchronized
+    private fun publishNewTaskReview(expectedGeneration: Long, needsReview: Boolean): Boolean {
+        if (generation.get() != expectedGeneration) return false
+        mutableState.value = mutableState.value.copy(newTaskNeedsReview = needsReview)
+        return true
+    }
 
     suspend fun dismissUnconfirmedFork(taskId: String): Boolean {
         val request = currentTaskActionRequest(taskId) ?: return false
@@ -577,6 +631,8 @@ class LauncherSessionViewModel(
                 taskManagementAvailable = taskManagementCapable,
                 newTaskOptions = mutableState.value.newTaskOptions,
                 newTaskOptionsSessionId = mutableState.value.newTaskOptionsSessionId,
+                newTaskNeedsReview = mutableState.value.newTaskNeedsReview,
+                newTaskMessage = mutableState.value.newTaskMessage,
                 unconfirmedForkTaskIds = mutableState.value.unconfirmedForkTaskIds,
             )
         AppLog.info(
@@ -742,6 +798,8 @@ class LauncherSessionViewModel(
         taskManagementCapable = false
         taskActionBridge?.close()
         taskActionBridge = null
+        taskControlViewModel?.close()
+        taskControlViewModel = null
         pendingTaskAcknowledgements.clear()
         retainedUnknownActionIds.clear()
         pendingTranscript = null
@@ -830,6 +888,8 @@ class LauncherSessionViewModel(
         taskManagementCapable = false
         taskActionBridge?.close()
         taskActionBridge = null
+        taskControlViewModel?.close()
+        taskControlViewModel = null
         pendingTaskAcknowledgements.clear()
         retainedUnknownActionIds.clear()
         pendingTranscript = null
@@ -854,6 +914,16 @@ class LauncherSessionViewModel(
         super.onCleared()
     }
 }
+
+private fun newTaskMessage(outcome: NewTaskSendOutcome): String? =
+    when (outcome) {
+        NewTaskSendOutcome.Complete -> null
+        NewTaskSendOutcome.CompleteDraftRetained -> "Task started, but the saved draft could not be cleared."
+        NewTaskSendOutcome.Invalid -> "This prompt or task setup is no longer valid. Review the task options and try again."
+        NewTaskSendOutcome.Unavailable -> "Could not send. Your draft is still here. Check the connection and try again."
+        NewTaskSendOutcome.NeedsReview -> null
+        is NewTaskSendOutcome.Failed -> "The computer could not start this task. Your draft is still here. Try again."
+    }
 
 private data class ProjectAcknowledgement(
     val generation: Long,

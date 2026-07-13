@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskoptions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
+	"github.com/codex-launcher/codex-launcher/companion/internal/promptqueue"
 )
 
 var sessionNow = time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
@@ -438,6 +440,144 @@ func TestTaskManagementActionsUseTheVerifiedAdapterAndRefreshTheSnapshot(t *test
 	}
 }
 
+func TestNewTaskActionReloadsOptionsResolvesProjectAndUsesDurableQueue(t *testing.T) {
+	source := &newTaskSource{catalog: testTaskOptionsCatalog()}
+	promptStore := promptqueue.NewMemoryStore()
+	handler, sender := newTestHandlerWithTaskQueue(t, source, promptStore)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-new","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 2)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"start-new","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","projectId":"main","text":"Fix it","modelId":"public-model","reasoningId":"high","permissionModeId":"workspace-write"}}`)
+
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	snapshot := awaitSentMessage(t, sender.sent)
+	if result.Type != "action_result" || !bytes.Contains(result.Body, []byte(`"state":"confirmed"`)) || snapshot.Type != "snapshot" {
+		t.Fatalf("result = %#v, snapshot = %#v", result, snapshot)
+	}
+	if source.optionCalls != 2 || len(source.starts) != 1 {
+		t.Fatalf("option calls = %d, starts = %#v", source.optionCalls, source.starts)
+	}
+	started := source.starts[0]
+	if started.ProjectPath != sender.projectPath || started.Model != "private-wire-model" || started.Effort != "high" || started.Sandbox != appserver.SandboxWorkspaceWrite || string(started.ApprovalPolicy) != `"on-request"` {
+		t.Fatalf("resolved request = %#v", started)
+	}
+	stored, err := promptStore.Entry(context.Background(), "action-1")
+	if err != nil || stored.State != promptqueue.StateConfirmed || stored.Prompt != "" || stored.Result.ThreadID != "thread-created" {
+		t.Fatalf("durable queue entry = %#v, %v", stored, err)
+	}
+}
+
+func TestNewTaskDuplicateActionIDMustMatchTheOriginalRequest(t *testing.T) {
+	source := &newTaskSource{catalog: testTaskOptionsCatalog()}
+	handler, sender := newTestHandlerWithTaskQueue(t, source, promptqueue.NewMemoryStore())
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-new","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 4)
+	first := decode(t, `{"version":{"major":1,"minor":0},"messageId":"first","sender":"phone","type":"action","body":{"actionId":"same-action","kind":"start_turn","projectId":"main","text":"First prompt","modelId":"public-model","reasoningId":"high","permissionModeId":"workspace-write"}}`)
+	if err := handler.Handle(context.Background(), sender, first); err != nil {
+		t.Fatal(err)
+	}
+	_ = awaitSentMessage(t, sender.sent)
+	_ = awaitSentMessage(t, sender.sent)
+	changed := decode(t, `{"version":{"major":1,"minor":0},"messageId":"changed","sender":"phone","type":"action","body":{"actionId":"same-action","kind":"start_turn","projectId":"main","text":"Different prompt","modelId":"public-model","reasoningId":"high","permissionModeId":"workspace-write"}}`)
+	if err := handler.Handle(context.Background(), sender, changed); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(result.Body, []byte(`"state":"failed"`)) || !bytes.Contains(result.Body, []byte(`"code":"invalid_action"`)) || len(source.starts) != 1 {
+		t.Fatalf("duplicate result = %s, starts = %d", result.Body, len(source.starts))
+	}
+}
+
+func TestConfirmedNewTaskDuplicateReplaysBeforeAChangedCatalogIsRevalidated(t *testing.T) {
+	source := &newTaskSource{catalog: testTaskOptionsCatalog()}
+	handler, sender := newTestHandlerWithTaskQueue(t, source, promptqueue.NewMemoryStore())
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-new","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 4)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"first","sender":"phone","type":"action","body":{"actionId":"stable-action","kind":"start_turn","projectId":"main","text":"Same prompt","modelId":"public-model","reasoningId":"high","permissionModeId":"workspace-write"}}`)
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	_ = awaitSentMessage(t, sender.sent)
+	_ = awaitSentMessage(t, sender.sent)
+	source.catalog.Models[0].WireName = "changed-private-wire-name"
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	replayed := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(replayed.Body, []byte(`"state":"confirmed"`)) || len(source.starts) != 1 {
+		t.Fatalf("replayed result = %s, starts = %d", replayed.Body, len(source.starts))
+	}
+}
+
+func TestNewTaskDefiniteFailureReplaysAsFailedWithoutKeepingPrompt(t *testing.T) {
+	source := &newTaskSource{catalog: testTaskOptionsCatalog(), startErr: errors.New("definite local rejection")}
+	store := promptqueue.NewMemoryStore()
+	handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-new","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 2)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"failed","sender":"phone","type":"action","body":{"actionId":"failed-action","kind":"start_turn","projectId":"main","text":"Private prompt","modelId":"public-model","reasoningId":"high","permissionModeId":"workspace-write"}}`)
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	first := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(first.Body, []byte(`"state":"failed"`)) {
+		t.Fatalf("first result = %s", first.Body)
+	}
+	stored, err := store.Entry(context.Background(), "failed-action")
+	if err != nil || stored.State != promptqueue.StateFailed || stored.Prompt != "" {
+		t.Fatalf("failed stored entry = %#v, error = %v", stored, err)
+	}
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	replayed := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(replayed.Body, []byte(`"state":"failed"`)) || len(source.starts) != 1 {
+		t.Fatalf("replayed result = %s, starts = %d", replayed.Body, len(source.starts))
+	}
+}
+
+func TestNewTaskRejectsStaleHostOptionsBeforeCodexWrite(t *testing.T) {
+	source := &newTaskSource{catalog: testTaskOptionsCatalog(), changeCatalogAfterHello: true}
+	handler, sender := newTestHandlerWithTaskQueue(t, source, promptqueue.NewMemoryStore())
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-new","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 1)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"start-new","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","projectId":"main","text":"Fix it","modelId":"public-model","reasoningId":"high","permissionModeId":"workspace-write"}}`)
+
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(result.Body, []byte(`"state":"failed"`)) || !bytes.Contains(result.Body, []byte(`"code":"invalid_action"`)) || len(source.starts) != 0 {
+		t.Fatalf("result = %s, starts = %#v", result.Body, source.starts)
+	}
+}
+
+func TestNewTaskOptionResolutionFailsClosedOnAnUnmappedPermissionMode(t *testing.T) {
+	catalog := testTaskOptionsCatalog()
+	catalog.PermissionModes = append(catalog.PermissionModes, taskoptions.PermissionMode{ID: "future-write", DisplayName: "Future", Description: "Unknown"})
+	_, _, ok := resolveNewTaskOptions(catalog, "public-model", "high", "future-write")
+	if ok {
+		t.Fatal("unmapped permission mode was accepted")
+	}
+}
+
 func TestTaskManagementFailureReturnsSafeErrorWithoutPublishingStaleSnapshot(t *testing.T) {
 	source := &taskManagementSource{
 		tasks: []taskstate.Task{{ID: "thread-1", Title: "Original", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}},
@@ -666,6 +806,27 @@ func newTestHandlerWithTasks(t *testing.T, taskSource TaskSource) (*Handler, *re
 	return handler, &recordingSender{deviceID: "pixel-9", sessionID: "session-1", connectionID: 1, projectPath: root, store: store}
 }
 
+func newTestHandlerWithTaskQueue(t *testing.T, taskSource TaskSource, promptStore promptqueue.Store) (*Handler, *recordingSender) {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectService, err := projects.New([]projects.Config{{ID: "main", DisplayName: "Main", Path: root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 16, MaxBytes: 64 * 1024})
+	journal := eventjournal.New(store, nil)
+	handler, err := NewWithTaskSourceAndQueue(
+		context.Background(), "Studio Mac", projectService, journal, taskSource, promptqueue.New(promptStore, nil), nil, func() time.Time { return sessionNow },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler, &recordingSender{deviceID: "pixel-9", sessionID: "session-1", connectionID: 1, projectPath: root, store: store}
+}
+
 type taskSourceFunc func(context.Context, int) ([]taskstate.Task, error)
 
 func (source taskSourceFunc) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {
@@ -675,6 +836,54 @@ func (source taskSourceFunc) ListRecent(ctx context.Context, limit int) ([]tasks
 type taskOptionsSource struct {
 	catalog   taskoptions.Catalog
 	optionErr error
+}
+
+type newTaskSource struct {
+	catalog                 taskoptions.Catalog
+	changeCatalogAfterHello bool
+	optionCalls             int
+	starts                  []taskadapter.NewTaskRequest
+	tasks                   []taskstate.Task
+	startErr                error
+}
+
+func (source *newTaskSource) ListRecent(context.Context, int) ([]taskstate.Task, error) {
+	return append([]taskstate.Task(nil), source.tasks...), nil
+}
+
+func (source *newTaskSource) NewTaskOptions(context.Context) (taskoptions.Catalog, error) {
+	source.optionCalls++
+	if source.changeCatalogAfterHello && source.optionCalls > 1 {
+		changed := testTaskOptionsCatalog()
+		changed.Models[0].ID = "replacement-model"
+		return changed, nil
+	}
+	return source.catalog, nil
+}
+
+func (source *newTaskSource) StartNewTask(_ context.Context, request taskadapter.NewTaskRequest) (taskadapter.NewTaskResult, error) {
+	source.starts = append(source.starts, request)
+	if source.startErr != nil {
+		return taskadapter.NewTaskResult{}, source.startErr
+	}
+	source.tasks = append(source.tasks, taskstate.Task{
+		ID: "thread-created", Title: "Fix it", ProjectLabel: "Main", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix(),
+	})
+	return taskadapter.NewTaskResult{ThreadID: "thread-created", TurnID: "turn-created"}, nil
+}
+
+func testTaskOptionsCatalog() taskoptions.Catalog {
+	return taskoptions.Catalog{
+		Models: []taskoptions.Model{{
+			ID: "public-model", WireName: "private-wire-model", DisplayName: "Model", Default: true, DefaultReasoningID: "medium",
+			Reasoning: []taskoptions.Reasoning{{ID: "medium", DisplayName: "Medium", Description: "Balanced"}, {ID: "high", DisplayName: "High", Description: "More reasoning"}},
+		}},
+		PermissionModes: []taskoptions.PermissionMode{
+			{ID: "read-only", DisplayName: "Read only", Description: "Read", Default: false},
+			{ID: "workspace-write", DisplayName: "Workspace", Description: "Write", Default: true},
+			{ID: "danger-full-access", DisplayName: "Full access", Description: "Full", Default: false},
+		},
+	}
 }
 
 func (source taskOptionsSource) ListRecent(context.Context, int) ([]taskstate.Task, error) {

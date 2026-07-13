@@ -2,7 +2,10 @@ package taskadapter
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
@@ -12,13 +15,33 @@ import (
 )
 
 type Set struct {
-	router  *taskstate.AdapterRouter
-	desktop *desktopipc.Client
-	app     *appserver.Client
-	catalog *Catalog
+	router      *taskstate.AdapterRouter
+	desktop     *desktopipc.Client
+	app         *appserver.Client
+	catalog     *Catalog
+	startThread func(context.Context, appserver.ThreadOptions) (json.RawMessage, error)
+	startTurn   func(context.Context, appserver.TurnOptions) (json.RawMessage, error)
 }
 
-var ErrDesktopUnavailable = errors.New("desktop adapter is unavailable")
+var (
+	ErrDesktopUnavailable = errors.New("desktop adapter is unavailable")
+	ErrInvalidNewTask     = errors.New("new task request or result is invalid")
+	ErrPartialNewTask     = errors.New("new task thread exists but its first turn is unconfirmed")
+)
+
+type NewTaskRequest struct {
+	ProjectPath    string
+	Prompt         string
+	Model          string
+	Effort         string
+	Sandbox        appserver.SandboxMode
+	ApprovalPolicy json.RawMessage
+}
+
+type NewTaskResult struct {
+	ThreadID string
+	TurnID   string
+}
 
 func New(desktop *desktopipc.Client, appServer *appserver.Client) (Set, error) {
 	if desktop == nil || appServer == nil {
@@ -32,7 +55,7 @@ func New(desktop *desktopipc.Client, appServer *appserver.Client) (Set, error) {
 	if err != nil {
 		return Set{}, err
 	}
-	return Set{router: &router, desktop: desktop, app: appServer, catalog: catalog}, nil
+	return Set{router: &router, desktop: desktop, app: appServer, catalog: catalog, startThread: appServer.StartThread, startTurn: appServer.StartTurn}, nil
 }
 
 func NewAppServerOnly(appServer *appserver.Client) (Set, error) {
@@ -43,7 +66,46 @@ func NewAppServerOnly(appServer *appserver.Client) (Set, error) {
 	if err != nil {
 		return Set{}, err
 	}
-	return Set{app: appServer, catalog: catalog}, nil
+	return Set{app: appServer, catalog: catalog, startThread: appServer.StartThread, startTurn: appServer.StartTurn}, nil
+}
+
+func (set Set) StartNewTask(ctx context.Context, request NewTaskRequest) (NewTaskResult, error) {
+	if set.startThread == nil || set.startTurn == nil || strings.TrimSpace(request.ProjectPath) == "" || strings.TrimSpace(request.Prompt) == "" || strings.TrimSpace(request.Model) == "" || strings.TrimSpace(request.Effort) == "" {
+		return NewTaskResult{}, ErrInvalidNewTask
+	}
+	threadRaw, err := set.startThread(ctx, appserver.ThreadOptions{
+		CWD: request.ProjectPath, Model: request.Model, ApprovalPolicy: request.ApprovalPolicy, Sandbox: request.Sandbox,
+	})
+	if err != nil {
+		return NewTaskResult{}, err
+	}
+	threadID := nestedResultID(threadRaw, "thread")
+	if threadID == "" {
+		return NewTaskResult{}, ErrPartialNewTask
+	}
+	turnRaw, err := set.startTurn(ctx, appserver.TurnOptions{ThreadID: threadID, Text: request.Prompt, Effort: request.Effort})
+	if err != nil {
+		return NewTaskResult{}, fmt.Errorf("%w: %v", ErrPartialNewTask, err)
+	}
+	turnID := nestedResultID(turnRaw, "turn")
+	if turnID == "" {
+		return NewTaskResult{}, ErrPartialNewTask
+	}
+	return NewTaskResult{ThreadID: threadID, TurnID: turnID}, nil
+}
+
+func nestedResultID(raw json.RawMessage, field string) string {
+	var response map[string]json.RawMessage
+	if json.Unmarshal(raw, &response) != nil {
+		return ""
+	}
+	var value struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(response[field], &value) != nil || strings.TrimSpace(value.ID) != value.ID || value.ID == "" || len(value.ID) > 256 {
+		return ""
+	}
+	return value.ID
 }
 
 func (set Set) ListRecentCandidates(ctx context.Context, limit int) ([]taskstate.Task, error) {
