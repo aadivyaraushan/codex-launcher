@@ -2,6 +2,7 @@ package app.codexlauncher.storage.actions
 
 import app.codexlauncher.diagnostics.AppLog
 import java.security.MessageDigest
+import kotlinx.coroutines.flow.first
 
 interface ActionJournal {
     suspend fun prepare(
@@ -21,6 +22,11 @@ interface ActionJournal {
     ): Boolean
 
     suspend fun acknowledge(actionId: String): Boolean
+
+    suspend fun unresolvedActions(): ActionRecordReadState =
+        ActionRecordReadState.Unavailable(ActionRecordReadFailure.STORAGE_IO)
+
+    suspend fun dismissUnknown(actionId: String): Boolean = false
 }
 
 class StoredActionJournal(
@@ -129,6 +135,12 @@ class StoredActionJournal(
         )
         return removed
     }
+
+    override suspend fun unresolvedActions(): ActionRecordReadState =
+        store.state.first()
+
+    override suspend fun dismissUnknown(actionId: String): Boolean =
+        store.dismissUnknown(actionId)
 
     private fun sha256(encodedPayload: String): String {
         val bytes = MessageDigest.getInstance("SHA-256").digest(encodedPayload.encodeToByteArray())

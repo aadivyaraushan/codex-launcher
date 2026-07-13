@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
@@ -24,6 +25,14 @@ type TaskSource interface {
 
 type TaskTranscriptSource interface {
 	ReadTranscript(context.Context, string, tasktranscript.PageOptions) (tasktranscript.Page, error)
+}
+
+type TaskManagementSource interface {
+	Rename(context.Context, string, string) error
+
+	Archive(context.Context, string) error
+
+	ForkToAppServer(context.Context, string) (taskstate.Task, error)
 }
 
 var (
@@ -45,6 +54,7 @@ type Handler struct {
 	taskCapable      bool
 	taskSource       TaskSource
 	transcriptSource TaskTranscriptSource
+	managementSource TaskManagementSource
 	nextID           atomic.Uint64
 	publishMu        sync.Mutex
 	mu               sync.Mutex
@@ -53,11 +63,13 @@ type Handler struct {
 	snapshotGen      atomic.Uint64
 	broadcasts       chan outboundBroadcast
 	sendTimeout      time.Duration
+	taskRefreshWait  func(context.Context, int) bool
 }
 
 const (
-	broadcastQueueSize = 128
-	defaultSendTimeout = 2 * time.Second
+	broadcastQueueSize     = 128
+	defaultSendTimeout     = 2 * time.Second
+	maxTaskRefreshAttempts = 3
 )
 
 type outboundBroadcast struct {
@@ -121,8 +133,10 @@ func NewWithTaskSource(ctx context.Context, computerName string, projectService 
 		ctx:          ctx,
 		computerName: computerName, projects: projectService, journal: journal, logger: logger, now: now, taskCapable: taskSource != nil, taskSource: taskSource,
 		active: make(map[string]transport.MessageSender), broadcasts: make(chan outboundBroadcast, broadcastQueueSize), sendTimeout: defaultSendTimeout,
+		taskRefreshWait: waitForTaskRefreshRetry,
 	}
 	handler.transcriptSource, _ = taskSource.(TaskTranscriptSource)
+	handler.managementSource, _ = taskSource.(TaskManagementSource)
 	handler.activeView.Store([]transport.MessageSender{})
 	handler.snapshotGen.Store(1)
 	go handler.deliverBroadcasts()
@@ -177,7 +191,7 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 }
 
 func (handler *Handler) handleHello(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
-	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil)); err != nil {
+	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil)); err != nil {
 		return err
 	}
 	var body struct {
@@ -282,20 +296,10 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		ActionID  string `json:"actionId"`
 		Kind      string `json:"kind"`
 		ProjectID string `json:"projectId"`
+		TaskID    string `json:"taskId"`
+		Title     string `json:"title"`
 	}
 	if err := json.Unmarshal(message.Body, &action); err != nil {
-		return err
-	}
-	if action.Kind != "set_project" {
-		return ErrUnsupportedMessage
-	}
-	result := map[string]any{"actionId": action.ActionID, "state": "confirmed"}
-	if _, err := handler.projects.Resolve(action.ProjectID); err != nil {
-		result["state"] = "failed"
-		result["error"] = map[string]any{"code": "invalid_action", "retryable": false}
-	}
-	body, err := json.Marshal(result)
-	if err != nil {
 		return err
 	}
 	handler.publishMu.Lock()
@@ -306,6 +310,45 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	if current == nil || current.ConnectionID() != sender.ConnectionID() {
 		return ErrSessionSuperseded
 	}
+	result := map[string]any{"actionId": action.ActionID, "state": "confirmed"}
+	refreshTasks := false
+	switch action.Kind {
+	case "set_project":
+		if _, err := handler.projects.Resolve(action.ProjectID); err != nil {
+			setActionFailure(result, "invalid_action", false)
+		}
+	case "rename_task", "archive_task", "fork_task":
+		if handler.managementSource == nil {
+			setActionFailure(result, "invalid_action", false)
+			break
+		}
+		var err error
+		switch action.Kind {
+		case "rename_task":
+			err = handler.managementSource.Rename(ctx, action.TaskID, action.Title)
+		case "archive_task":
+			err = handler.managementSource.Archive(ctx, action.TaskID)
+		case "fork_task":
+			_, err = handler.managementSource.ForkToAppServer(ctx, action.TaskID)
+		}
+		if err != nil {
+			handler.logger.Error("[mobile-session] task management action failed", "device_id", sender.DeviceID(), "task_id", action.TaskID, "action_kind", action.Kind, "error_class", fmt.Sprintf("%T", err))
+			var outcomeUnknown *appserver.OutcomeUnknownError
+			if errors.As(err, &outcomeUnknown) {
+				setActionOutcomeUnknown(result)
+			} else {
+				setActionFailure(result, "internal", true)
+			}
+		} else {
+			refreshTasks = true
+		}
+	default:
+		return ErrUnsupportedMessage
+	}
+	body, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
 	event, err := handler.journal.Apply(ctx, "action_result", body, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) {
 		return current, nil
 	})
@@ -313,9 +356,83 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		return err
 	}
 	sequence := event.Sequence
-	handler.logger.Info("[mobile-session] project action resolved", "device_id", sender.DeviceID(), "project_id", action.ProjectID, "result_state", result["state"])
+	handler.logger.Info("[mobile-session] action resolved", "device_id", sender.DeviceID(), "action_kind", action.Kind, "task_id", action.TaskID, "project_id", action.ProjectID, "result_state", result["state"])
 	handler.queueDelivery("action_result", sequence, body, []transport.MessageSender{sender})
+	if refreshTasks {
+		snapshot, refreshErr := handler.refreshTaskSnapshot(ctx)
+		if refreshErr != nil {
+			handler.logger.Error("[mobile-session] confirmed task action snapshot refresh failed", "device_id", sender.DeviceID(), "action_kind", action.Kind, "task_id", action.TaskID, "decision", "schedule_bounded_refresh", "error_class", fmt.Sprintf("%T", refreshErr))
+			handler.scheduleTaskSnapshotRefresh()
+			return nil
+		}
+		var state snapshotState
+		if json.Unmarshal(snapshot.Body, &state) != nil {
+			return ErrInvalidTaskEvent
+		}
+		snapshotBody, validationErr := validatedSnapshotBody(snapshot.BaseSequence, state)
+		if validationErr != nil {
+			return validationErr
+		}
+		handler.queueBroadcast("snapshot", snapshot.BaseSequence, snapshotBody)
+	}
 	return nil
+}
+
+func setActionFailure(result map[string]any, code string, retryable bool) {
+	result["state"] = "failed"
+	result["error"] = map[string]any{"code": code, "retryable": retryable}
+}
+
+func setActionOutcomeUnknown(result map[string]any) {
+	result["state"] = "outcome_unknown"
+	result["error"] = map[string]any{"code": "outcome_unknown", "retryable": false}
+}
+
+func (handler *Handler) scheduleTaskSnapshotRefresh() {
+	go func() {
+		for attempt := 1; attempt <= maxTaskRefreshAttempts; attempt++ {
+			if !handler.taskRefreshWait(handler.ctx, attempt) {
+				return
+			}
+			handler.publishMu.Lock()
+			snapshot, err := handler.refreshTaskSnapshot(handler.ctx)
+			if err == nil {
+				var state snapshotState
+				if json.Unmarshal(snapshot.Body, &state) != nil {
+					err = ErrInvalidTaskEvent
+				} else {
+					var body json.RawMessage
+					body, err = validatedSnapshotBody(snapshot.BaseSequence, state)
+					if err == nil {
+						handler.queueBroadcast("snapshot", snapshot.BaseSequence, body)
+					}
+				}
+			}
+			handler.publishMu.Unlock()
+			if err == nil {
+				handler.logger.Info("[mobile-session] task snapshot refresh recovered", "attempt", attempt, "base_sequence", snapshot.BaseSequence)
+				return
+			}
+			handler.logger.Error("[mobile-session] task snapshot refresh retry failed", "attempt", attempt, "decision", "retry_or_reconnect", "error_class", fmt.Sprintf("%T", err))
+		}
+		recipients, _ := handler.activeView.Load().([]transport.MessageSender)
+		for _, recipient := range recipients {
+			recipient.Close()
+		}
+		handler.logger.Error("[mobile-session] task snapshot refresh retries exhausted", "recipient_count", len(recipients), "decision", "force_fresh_reconnect")
+	}()
+}
+
+func waitForTaskRefreshRetry(ctx context.Context, attempt int) bool {
+	delay := time.Duration(100*(1<<(attempt-1))) * time.Millisecond
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 type taskPageBody struct {
@@ -557,13 +674,16 @@ func (handler *Handler) send(ctx context.Context, sender transport.MessageSender
 	return nil
 }
 
-func welcomeBody(sessionID string, taskCapable, transcriptCapable bool) json.RawMessage {
+func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable bool) json.RawMessage {
 	capabilities := []string{"set_project"}
 	if taskCapable {
 		capabilities = append(capabilities, "desktop_tasks")
 	}
 	if transcriptCapable {
 		capabilities = append(capabilities, "task_transcripts")
+	}
+	if managementCapable {
+		capabilities = append(capabilities, "task_management")
 	}
 	body, _ := json.Marshal(struct {
 		SessionID    string   `json:"sessionId"`

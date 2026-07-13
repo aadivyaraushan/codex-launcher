@@ -320,6 +320,12 @@ class LauncherActivity : ComponentActivity() {
                                     transcriptDetail = TranscriptDetail.File(entry, change)
                                     destination = LauncherDestination.TASK_DETAIL
                                 },
+                                taskActionsAvailable = sessionUiState.taskManagementAvailable,
+                                unresolvedFork = transcript.taskId in sessionUiState.unconfirmedForkTaskIds,
+                                onRenameTask = { title -> sessionViewModel.renameTask(transcript.taskId, title) },
+                                onArchiveTask = { sessionViewModel.archiveTask(transcript.taskId) },
+                                onForkTask = { sessionViewModel.forkTask(transcript.taskId) },
+                                onDismissUnresolvedFork = { sessionViewModel.dismissUnconfirmedFork(transcript.taskId) },
                             )
                         } ?: LauncherLoadingScreen()
                     LauncherDestination.TASK_DETAIL ->

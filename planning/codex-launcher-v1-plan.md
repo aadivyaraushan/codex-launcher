@@ -95,9 +95,18 @@
 > UI tests pass on the Pixel 9 Android 16 emulator. Incomplete plan/file items
 > fall back to content-free activity labels, null transcript arrays are rejected
 > on both sides, and every complete outgoing page is validated before send.
-> Approval/question request
-> routing, task management, new-task options, and live transcript deltas remain
-> unbuilt.
+> Task 9 now also has Rename, Archive, and Fork behind the companion's
+> `task_management` capability. Both protocol validators require exact action
+> fields; the companion rechecks the active phone session before each Codex
+> write, maps uncertain app-server writes to a non-retryable `outcome_unknown`,
+> stores the sequenced result, and refreshes all phones from Codex state. The
+> phone uses the existing durable action boundary and waits for that fresh
+> snapshot before acknowledging a confirmed task change. A Fork left
+> `SENT_UNKNOWN` across disconnect or process recreation durably blocks another
+> Fork for that task and shows a review warning until the user explicitly says
+> they checked desktop Codex. Rename and Archive use the same result/storage
+> path; Archive has a confirmation dialog. Approval/question routing, new-task
+> options, and live transcript deltas remain unbuilt.
 > The encrypted unfinished-draft storage layer is now implemented separately:
 > a distinct non-exportable Android Keystore AES-256-GCM key, authenticated
 > version/time metadata, 128 KiB limit, caller-owned expiry policy, fail-closed

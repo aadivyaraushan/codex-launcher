@@ -31,6 +31,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.codexlauncher.task.management.TaskActionOutcome
+import app.codexlauncher.task.management.TaskActionsMenu
 
 @Composable
 fun TaskScreen(
@@ -40,6 +42,12 @@ fun TaskScreen(
     onLoadEarlier: () -> Unit = {},
     onViewCommandOutput: (TranscriptEntry) -> Unit = {},
     onViewFileChange: (TranscriptEntry, TranscriptFileChange) -> Unit = { _, _ -> },
+    taskActionsAvailable: Boolean = false,
+    unresolvedFork: Boolean = false,
+    onRenameTask: suspend (String) -> TaskActionOutcome = { TaskActionOutcome.Unavailable },
+    onArchiveTask: suspend () -> TaskActionOutcome = { TaskActionOutcome.Unavailable },
+    onForkTask: suspend () -> TaskActionOutcome = { TaskActionOutcome.Unavailable },
+    onDismissUnresolvedFork: suspend () -> Boolean = { false },
 ) {
     Column(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding(),
@@ -62,6 +70,15 @@ fun TaskScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            TaskActionsMenu(
+                currentTitle = state.title,
+                enabled = taskActionsAvailable,
+                unresolvedFork = unresolvedFork,
+                onRename = onRenameTask,
+                onArchive = onArchiveTask,
+                onFork = onForkTask,
+                onDismissUnresolvedFork = onDismissUnresolvedFork,
+            )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         when {

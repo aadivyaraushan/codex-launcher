@@ -5,11 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
@@ -334,6 +337,173 @@ func TestSetProjectReturnsSequencedConfirmedOrFailedResult(t *testing.T) {
 	}
 }
 
+func TestTaskManagementActionsUseTheVerifiedAdapterAndRefreshTheSnapshot(t *testing.T) {
+	for _, test := range []struct {
+		kind string
+		body string
+		want string
+	}{
+		{kind: "rename_task", body: `,"title":"Renamed task"`, want: "rename:thread-1:Renamed task"},
+		{kind: "archive_task", want: "archive:thread-1"},
+		{kind: "fork_task", want: "fork:thread-1"},
+	} {
+		t.Run(test.kind, func(t *testing.T) {
+			source := &taskManagementSource{tasks: []taskstate.Task{{ID: "thread-1", Title: "Original", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}}}
+			handler, sender := newTestHandlerWithTasks(t, source)
+			if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-manage","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+				t.Fatal(err)
+			}
+			var welcome struct {
+				Capabilities []string `json:"capabilities"`
+			}
+			if json.Unmarshal(sender.messages[0].Body, &welcome) != nil || !slices.Contains(welcome.Capabilities, "task_management") {
+				t.Fatalf("capabilities = %#v", welcome.Capabilities)
+			}
+			sender.messages = nil
+			sender.sent = make(chan contract.Message, 2)
+			action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"manage","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"`+test.kind+`","taskId":"thread-1"`+test.body+`}}`)
+
+			if err := handler.Handle(context.Background(), sender, action); err != nil {
+				t.Fatal(err)
+			}
+			result := awaitSentMessage(t, sender.sent)
+			snapshot := awaitSentMessage(t, sender.sent)
+			if result.Type != "action_result" || result.Sequence == nil || *result.Sequence != 3 || !bytes.Contains(result.Body, []byte(`"state":"confirmed"`)) {
+				t.Fatalf("result = %#v", result)
+			}
+			if snapshot.Type != "snapshot" || snapshot.Sequence == nil || *snapshot.Sequence != 4 {
+				t.Fatalf("snapshot = %#v", snapshot)
+			}
+			if len(source.calls) != 1 || source.calls[0] != test.want {
+				t.Fatalf("calls = %#v", source.calls)
+			}
+		})
+	}
+}
+
+func TestTaskManagementFailureReturnsSafeErrorWithoutPublishingStaleSnapshot(t *testing.T) {
+	source := &taskManagementSource{
+		tasks: []taskstate.Task{{ID: "thread-1", Title: "Original", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}},
+		fail:  errors.New("private adapter detail"),
+	}
+	handler, sender := newTestHandlerWithTasks(t, source)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-manage","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 2)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"archive","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"archive_task","taskId":"thread-1"}}`)
+
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if result.Type != "action_result" || !bytes.Contains(result.Body, []byte(`"state":"failed"`)) || !bytes.Contains(result.Body, []byte(`"code":"internal"`)) || bytes.Contains(result.Body, []byte("private adapter detail")) {
+		t.Fatalf("result = %#v", result)
+	}
+	select {
+	case extra := <-sender.sent:
+		t.Fatalf("unexpected stale snapshot = %#v", extra)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestOutcomeUnknownTaskMutationIsNeverReportedAsRetryableFailure(t *testing.T) {
+	source := &taskManagementSource{
+		tasks: []taskstate.Task{{ID: "thread-1", Title: "Original", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}},
+		fail:  fmt.Errorf("wrapped adapter failure: %w", &appserver.OutcomeUnknownError{Method: "thread/fork", Cause: errors.New("response lost")}),
+	}
+	handler, sender := newTestHandlerWithTasks(t, source)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 1)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"fork","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"fork_task","taskId":"thread-1"}}`)
+
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(result.Body, []byte(`"state":"outcome_unknown"`)) || !bytes.Contains(result.Body, []byte(`"code":"outcome_unknown"`)) || !bytes.Contains(result.Body, []byte(`"retryable":false`)) {
+		t.Fatalf("result = %s", result.Body)
+	}
+}
+
+func TestSupersededSessionCannotReachTaskManagementSource(t *testing.T) {
+	source := &taskManagementSource{tasks: []taskstate.Task{{ID: "thread-1", Title: "Original", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}}}
+	handler, first := newTestHandlerWithTasks(t, source)
+	if err := handler.Handle(context.Background(), first, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-1","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	second := &recordingSender{deviceID: first.deviceID, sessionID: "session-2", connectionID: 2, projectPath: first.projectPath, store: first.store}
+	if err := handler.Handle(context.Background(), second, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-2","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"archive","sender":"phone","type":"action","body":{"actionId":"action-old","kind":"archive_task","taskId":"thread-1"}}`)
+
+	if err := handler.Handle(context.Background(), first, action); !errors.Is(err, ErrSessionSuperseded) {
+		t.Fatalf("old session error = %v", err)
+	}
+	if len(source.calls) != 0 {
+		t.Fatalf("superseded session reached task source: %#v", source.calls)
+	}
+}
+
+func TestConfirmedTaskActionSurvivesSnapshotRefreshFailure(t *testing.T) {
+	source := &taskManagementSource{
+		tasks:                 []taskstate.Task{{ID: "thread-1", Title: "Original", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}},
+		listFailuresRemaining: 1,
+		failListAfter:         2,
+	}
+	handler, sender := newTestHandlerWithTasks(t, source)
+	handler.taskRefreshWait = func(context.Context, int) bool { return true }
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-manage","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 2)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"rename","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"rename_task","taskId":"thread-1","title":"Renamed"}}`)
+
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatalf("confirmed task action was turned into a session failure: %v", err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if result.Type != "action_result" || !bytes.Contains(result.Body, []byte(`"state":"confirmed"`)) {
+		t.Fatalf("result = %#v", result)
+	}
+	snapshot := awaitSentMessage(t, sender.sent)
+	if snapshot.Type != "snapshot" || snapshot.Sequence == nil || *snapshot.Sequence != 4 || !bytes.Contains(snapshot.Body, []byte(`"title":"Renamed"`)) {
+		t.Fatalf("recovered snapshot = %#v", snapshot)
+	}
+}
+
+func TestExhaustedTaskRefreshForcesFreshReconnect(t *testing.T) {
+	source := &taskManagementSource{
+		tasks:                 []taskstate.Task{{ID: "thread-1", Title: "Original", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}},
+		listFailuresRemaining: 4,
+		failListAfter:         2,
+	}
+	handler, sender := newTestHandlerWithTasks(t, source)
+	handler.taskRefreshWait = func(context.Context, int) bool { return true }
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.sent = make(chan contract.Message, 2)
+	sender.closedSignal = make(chan struct{})
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"archive","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"archive_task","taskId":"thread-1"}}`)
+
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	_ = awaitSentMessage(t, sender.sent)
+	select {
+	case <-sender.closedSignal:
+	case <-time.After(time.Second):
+		t.Fatal("session was not closed after bounded refresh retries")
+	}
+}
+
 func TestAcknowledgementIsStoredPerAuthenticatedDevice(t *testing.T) {
 	handler, sender := newTestHandler(t)
 	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-1","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
@@ -385,13 +555,22 @@ type recordingSender struct {
 	store        *eventjournal.MemoryStore
 	connectionID uint64
 	closed       bool
+	closedSignal chan struct{}
 	sent         chan contract.Message
 }
 
 func (sender *recordingSender) DeviceID() string     { return sender.deviceID }
 func (sender *recordingSender) SessionID() string    { return sender.sessionID }
 func (sender *recordingSender) ConnectionID() uint64 { return sender.connectionID }
-func (sender *recordingSender) Close()               { sender.closed = true }
+func (sender *recordingSender) Close() {
+	if sender.closed {
+		return
+	}
+	sender.closed = true
+	if sender.closedSignal != nil {
+		close(sender.closedSignal)
+	}
+}
 func (sender *recordingSender) Send(_ context.Context, message contract.Message) error {
 	encoded, err := contract.EncodeText(message)
 	if err != nil {
@@ -439,6 +618,62 @@ func (source taskSourceFunc) ListRecent(ctx context.Context, limit int) ([]tasks
 type transcriptTaskSource struct {
 	list func(context.Context, int) ([]taskstate.Task, error)
 	read func(context.Context, string, tasktranscript.PageOptions) (tasktranscript.Page, error)
+}
+
+type taskManagementSource struct {
+	tasks                 []taskstate.Task
+	calls                 []string
+	fail                  error
+	listCalls             int
+	failListAfter         int
+	listFailuresRemaining int
+}
+
+func (source *taskManagementSource) ListRecent(context.Context, int) ([]taskstate.Task, error) {
+	source.listCalls++
+	if source.failListAfter > 0 && source.listCalls > source.failListAfter && source.listFailuresRemaining > 0 {
+		source.listFailuresRemaining--
+		return nil, errors.New("private list failure")
+	}
+	return append([]taskstate.Task(nil), source.tasks...), nil
+}
+
+func (source *taskManagementSource) Rename(_ context.Context, taskID, title string) error {
+	source.calls = append(source.calls, "rename:"+taskID+":"+title)
+	if source.fail != nil {
+		return source.fail
+	}
+	for index := range source.tasks {
+		if source.tasks[index].ID == taskID {
+			source.tasks[index].Title = title
+		}
+	}
+	return nil
+}
+
+func (source *taskManagementSource) Archive(_ context.Context, taskID string) error {
+	source.calls = append(source.calls, "archive:"+taskID)
+	if source.fail != nil {
+		return source.fail
+	}
+	filtered := source.tasks[:0]
+	for _, task := range source.tasks {
+		if task.ID != taskID {
+			filtered = append(filtered, task)
+		}
+	}
+	source.tasks = filtered
+	return nil
+}
+
+func (source *taskManagementSource) ForkToAppServer(_ context.Context, taskID string) (taskstate.Task, error) {
+	source.calls = append(source.calls, "fork:"+taskID)
+	if source.fail != nil {
+		return taskstate.Task{}, source.fail
+	}
+	fork := taskstate.Task{ID: "fork-1", Title: "Fork", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix() + 1}
+	source.tasks = append(source.tasks, fork)
+	return fork, nil
 }
 
 func (source transcriptTaskSource) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {

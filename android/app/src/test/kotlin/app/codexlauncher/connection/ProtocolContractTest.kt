@@ -224,6 +224,24 @@ class ProtocolContractTest {
     }
 
     @Test
+    fun `task management actions require safe exact fields`() {
+        listOf(
+            """{"version":{"major":1,"minor":0},"messageId":"rename","sender":"phone","type":"action","body":{"actionId":"a-rename","kind":"rename_task","taskId":"thread-1","title":"Launcher follow-up"}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"archive","sender":"phone","type":"action","body":{"actionId":"a-archive","kind":"archive_task","taskId":"thread-1"}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"fork","sender":"phone","type":"action","body":{"actionId":"a-fork","kind":"fork_task","taskId":"thread-1"}}""",
+        ).forEach(ProtocolCodec::decodeText)
+
+        listOf(
+            """{"version":{"major":1,"minor":0},"messageId":"blank","sender":"phone","type":"action","body":{"actionId":"a-rename","kind":"rename_task","taskId":"thread-1","title":"   "}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"control","sender":"phone","type":"action","body":{"actionId":"a-rename","kind":"rename_task","taskId":"thread-1","title":"bad\nname"}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"extra","sender":"phone","type":"action","body":{"actionId":"a-archive","kind":"archive_task","taskId":"thread-1","title":"hidden"}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"bad-task","sender":"phone","type":"action","body":{"actionId":"a-fork","kind":"fork_task","taskId":"bad id!"}}""",
+        ).forEach { frame ->
+            assertTrue(runCatching { ProtocolCodec.decodeText(frame) }.exceptionOrNull() is ProtocolCodec.Exception)
+        }
+    }
+
+    @Test
     fun `expired attachments cannot receive or complete`() {
         val key = "0123456789abcdef0123456789abcdef".encodeToByteArray()
         listOf("receive", "complete").forEach { operation ->

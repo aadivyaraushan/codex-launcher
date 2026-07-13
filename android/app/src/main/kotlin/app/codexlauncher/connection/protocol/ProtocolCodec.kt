@@ -212,6 +212,13 @@ object ProtocolCodec {
                 ) fail(ProtocolError.INVALID_ACTION)
             }
             "set_project" -> if (body.keys != setOf("actionId", "kind", "projectId") || !optionalString(body, "projectId").isProjectId()) fail(ProtocolError.INVALID_ACTION)
+            "rename_task" -> if (
+                body.keys != setOf("actionId", "kind", "taskId", "title") ||
+                !optionalString(body, "taskId").isValidId() || !optionalString(body, "title").isSafeDisplay(256)
+            ) fail(ProtocolError.INVALID_ACTION)
+            "archive_task", "fork_task" -> if (
+                body.keys != setOf("actionId", "kind", "taskId") || !optionalString(body, "taskId").isValidId()
+            ) fail(ProtocolError.INVALID_ACTION)
             else -> fail(ProtocolError.INVALID_ACTION)
         }
     }

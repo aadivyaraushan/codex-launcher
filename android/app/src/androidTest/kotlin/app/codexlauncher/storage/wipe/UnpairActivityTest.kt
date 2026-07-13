@@ -16,7 +16,6 @@ import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.storage.actions.actionRecordDataStore
 import app.codexlauncher.storage.drafts.DraftKeyStore
 import app.codexlauncher.storage.pairing.deviceIdentityDataStore
-import app.codexlauncher.storage.pairing.PairingRecordStore
 import app.codexlauncher.storage.pairing.pairingDataStore
 import app.codexlauncher.storage.projects.projectSelectionDataStore
 import app.codexlauncher.storage.secrets.PairingKeyProtection
@@ -47,10 +46,10 @@ class UnpairActivityTest {
     @Before
     fun seedPairedLauncher() = runBlocking {
         reset()
-        val gate = LocalStateWriteGate()
-        assertTrue(gate.openAfterStartup(pairingPresent = false))
-        pairingKeys.loadOrCreate()
-        assertTrue(PairingRecordStore(context.pairingDataStore, gate).save(pairedComputer()))
+        val owner = (context as LauncherApplication).localState
+        assertEquals(WipeResult.Complete, owner.wiper.wipe())
+        owner.pairingKeys.loadOrCreate()
+        assertTrue(owner.pairingRecords.save(pairedComputer()))
         scenario =
             ActivityScenario.launch(
                 Intent(Intent.ACTION_MAIN)

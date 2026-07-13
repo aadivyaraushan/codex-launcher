@@ -5,6 +5,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.mutableStateOf
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
@@ -14,6 +16,7 @@ import app.codexlauncher.visibleDestination
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
+import app.codexlauncher.task.management.TaskActionOutcome
 
 class TaskScreenTest {
     @get:Rule
@@ -29,6 +32,7 @@ class TaskScreenTest {
             QuietInstrumentTheme(AppearanceMode.DARK) {
                 TaskScreen(
                     state = populatedState(),
+                    taskActionsAvailable = true,
                     onBack = { backs += 1 },
                     onLoadEarlier = { earlierLoads += 1 },
                     onViewCommandOutput = { viewedCommand = it.id },
@@ -67,6 +71,84 @@ class TaskScreenTest {
             state.value = TaskTranscriptUiState(taskId = "thread-1", title = "Task", loading = false, errorCode = "owner_unavailable")
         }
         compose.onNodeWithText("Task unavailable").assertIsDisplayed()
+    }
+
+    @Test
+    fun taskOverflowRenamesArchivesAndForksThroughExplicitControls() {
+        var renamed = ""
+        var archives = 0
+        var forks = 0
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.LIGHT) {
+                TaskScreen(
+                    state = populatedState(),
+                    taskActionsAvailable = true,
+                    onRenameTask = { title -> renamed = title; TaskActionOutcome.Complete },
+                    onArchiveTask = { archives += 1; TaskActionOutcome.Complete },
+                    onForkTask = { forks += 1; TaskActionOutcome.Complete },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Task actions").performClick()
+        compose.onNodeWithText("Rename task").performClick()
+        compose.onNodeWithContentDescription("New task title").performTextClearance()
+        compose.onNodeWithContentDescription("New task title").performTextInput("  Renamed task  ")
+        compose.onNodeWithText("Save").performClick()
+        compose.waitUntil { renamed.isNotEmpty() }
+        assertEquals("Renamed task", renamed)
+
+        compose.onNodeWithContentDescription("Task actions").performClick()
+        compose.onNodeWithText("Archive task").performClick()
+        compose.onNodeWithText("Archive this task?").assertIsDisplayed()
+        compose.onNodeWithText("Archive").performClick()
+        compose.waitUntil { archives == 1 }
+
+        compose.onNodeWithContentDescription("Task actions").performClick()
+        compose.onNodeWithText("Fork task").performClick()
+        compose.waitUntil { forks == 1 }
+    }
+
+    @Test
+    fun unconfirmedTaskActionClosesItsEditorAndWarnsAgainstBlindRetry() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                TaskScreen(
+                    state = populatedState(),
+                    taskActionsAvailable = true,
+                    onRenameTask = { TaskActionOutcome.Unavailable },
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Task actions").performClick()
+        compose.onNodeWithText("Rename task").performClick()
+        compose.onNodeWithText("Save").performClick()
+
+        compose.onNodeWithText("Task action unconfirmed").assertIsDisplayed()
+        compose.onNodeWithText("Check Codex on your computer before trying again.", substring = true).assertIsDisplayed()
+        compose.onNodeWithContentDescription("New task title").assertDoesNotExist()
+    }
+
+    @Test
+    fun unresolvedForkWarningSurvivesScreenCreationAndRequiresExplicitReview() {
+        var dismissals = 0
+        var forks = 0
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                TaskScreen(
+                    state = populatedState(),
+                    taskActionsAvailable = true,
+                    unresolvedFork = true,
+                    onDismissUnresolvedFork = { dismissals += 1; true },
+                    onForkTask = { forks += 1; TaskActionOutcome.Complete },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Previous fork unconfirmed").assertIsDisplayed()
+        compose.onNodeWithText("I checked Codex").performClick()
+        compose.waitUntil { dismissals == 1 }
+        assertEquals(0, forks)
     }
 
     @Test

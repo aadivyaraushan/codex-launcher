@@ -32,6 +32,124 @@ import org.junit.Test
 
 class LauncherSessionViewModelTest {
     @Test
+    fun recreatedSessionLoadsUnconfirmedForkAndBlocksDuplicateUntilReviewed() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val unresolved =
+            ActionRecord(
+                actionId = "fork-1",
+                kind = ActionRecordKind.FORK_TASK,
+                state = ActionRecordState.SENT_UNKNOWN,
+                createdAtEpochMillis = 1,
+                updatedAtEpochMillis = 2,
+                threadId = "thread-1",
+                turnId = null,
+                payloadSha256 = "a".repeat(64),
+                resultCode = null,
+                errorCode = null,
+            )
+        val journal = FakeActionJournal(initialRecords = listOf(unresolved))
+        val recreated =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { null },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = journal,
+                nextSessionId = { "session-after-process-recreation" },
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+
+        recreated.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts", "task_management")))
+        observer.onMessage(snapshotWithTask(1, "Original title"))
+
+        assertEquals(setOf("thread-1"), recreated.state.value.unconfirmedForkTaskIds)
+        assertEquals(app.codexlauncher.task.management.TaskActionOutcome.NeedsReview, recreated.forkTask("thread-1"))
+        assertFalse(connection.sent.any { ProtocolCodec.decodeText(it).body["kind"]?.jsonPrimitive?.content == "fork_task" })
+
+        assertTrue(recreated.dismissUnconfirmedFork("thread-1"))
+        assertTrue(recreated.state.value.unconfirmedForkTaskIds.isEmpty())
+    }
+
+    @Test
+    fun outcomeUnknownForkIsAcknowledgedButRemainsDurablyBlocked() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val journal = FakeActionJournal()
+        val viewModel =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { null },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = journal,
+                nextSessionId = { "session-1" },
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts", "task_management")))
+        observer.onMessage(snapshotWithTask(1, "Original title"))
+
+        val fork = async { viewModel.forkTask("thread-1") }
+        val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"fork-unknown","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"outcome_unknown","error":{"code":"outcome_unknown","retryable":false}}}""",
+            ),
+        )
+
+        assertEquals(app.codexlauncher.task.management.TaskActionOutcome.NeedsReview, fork.await())
+        connection.awaitAcknowledgement(2)
+        assertEquals(setOf("thread-1"), viewModel.state.value.unconfirmedForkTaskIds)
+        assertFalse(actionId in journal.acknowledged)
+        assertEquals(ActionRecordState.SENT_UNKNOWN, journal.record(actionId)?.state)
+    }
+
+    @Test
+    fun confirmedTaskRenameWaitsForFreshSnapshotBeforeAcknowledging() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val journal = FakeActionJournal()
+        val viewModel =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { null },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = journal,
+                nextSessionId = { "session-1" },
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts", "task_management")))
+        observer.onMessage(snapshotWithTask(1, "Original title"))
+
+        val rename = async { viewModel.renameTask("thread-1", "Renamed task") }
+        val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+        assertEquals("rename_task", action.body.getValue("kind").jsonPrimitive.content)
+        assertEquals("Renamed task", action.body.getValue("title").jsonPrimitive.content)
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"rename-result","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed"}}""",
+            ),
+        )
+
+        assertEquals(app.codexlauncher.task.management.TaskActionOutcome.Complete, rename.await())
+        assertFalse(connection.hasAcknowledged(2))
+        observer.onMessage(snapshotWithTask(3, "Renamed task"))
+
+        connection.awaitAcknowledgement(3)
+        assertEquals("Renamed task", viewModel.state.value.snapshot?.tasks?.single()?.title)
+        assertEquals(listOf(actionId), journal.acknowledged)
+    }
+
+    @Test
     fun authenticatedSnapshotAndProjectResultDriveTruthfulLauncherState() = runBlocking {
         lateinit var observer: SessionObserver
         val connection = FakeSessionConnection()
@@ -1250,8 +1368,10 @@ private class FakeActionJournal(
     private val confirmationStarted: CompletableDeferred<Unit>? = null,
     private val releaseConfirmation: CompletableDeferred<Unit>? = null,
     private val confirmationError: Exception? = null,
+    initialRecords: List<ActionRecord> = emptyList(),
 ) : ActionJournal {
     val acknowledged = mutableListOf<String>()
+    private val records = initialRecords.associateByTo(linkedMapOf(), ActionRecord::actionId)
     override suspend fun prepare(
         actionId: String,
         kind: ActionRecordKind,
@@ -1270,10 +1390,10 @@ private class FakeActionJournal(
             payloadSha256 = "a".repeat(64),
             resultCode = null,
             errorCode = null,
-        )
+        ).also { records[actionId] = it }
 
     override suspend fun markSentUnknown(record: ActionRecord): ActionRecord =
-        record.copy(state = ActionRecordState.SENT_UNKNOWN)
+        record.copy(state = ActionRecordState.SENT_UNKNOWN).also { records[record.actionId] = it }
 
     override suspend fun confirm(
         record: ActionRecord,
@@ -1283,6 +1403,7 @@ private class FakeActionJournal(
         confirmationStarted?.complete(Unit)
         releaseConfirmation?.await()
         confirmationError?.let { throw it }
+        records[record.actionId] = record.copy(state = ActionRecordState.CONFIRMED, resultCode = resultCode, errorCode = errorCode)
         return true
     }
 
@@ -1290,4 +1411,12 @@ private class FakeActionJournal(
         acknowledged += actionId
         return true
     }
+
+    override suspend fun unresolvedActions(): app.codexlauncher.storage.actions.ActionRecordReadState =
+        app.codexlauncher.storage.actions.ActionRecordReadState.Available(records.values.toList())
+
+    override suspend fun dismissUnknown(actionId: String): Boolean =
+        records.remove(actionId)?.state == ActionRecordState.SENT_UNKNOWN
+
+    fun record(actionId: String): ActionRecord? = records[actionId]
 }

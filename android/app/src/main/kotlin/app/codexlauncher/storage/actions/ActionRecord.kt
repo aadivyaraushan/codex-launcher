@@ -30,6 +30,9 @@ enum class ActionRecordKind(val wireName: String) {
     INTERRUPT_TURN("interrupt_turn"),
     APPROVAL("approval"),
     SET_PROJECT("set_project"),
+    RENAME_TASK("rename_task"),
+    ARCHIVE_TASK("archive_task"),
+    FORK_TASK("fork_task"),
 }
 
 enum class ActionRecordState {
@@ -45,6 +48,9 @@ enum class ActionResultCode(val wireName: String) {
     PROJECT_SELECTED("project_selected"),
     APPROVED("approved"),
     DECLINED("declined"),
+    TASK_RENAMED("task_renamed"),
+    TASK_ARCHIVED("task_archived"),
+    TASK_FORKED("task_forked"),
 }
 
 enum class ActionErrorCode(val wireName: String) {

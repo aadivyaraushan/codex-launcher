@@ -804,6 +804,15 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 		if !exactKeys(body, "actionId", "kind", "projectId") || !validProjectID(stringValue(body["projectId"])) {
 			return ErrInvalidAction
 		}
+	case "rename_task":
+		if !exactKeys(body, "actionId", "kind", "taskId", "title") || !validID(stringValue(body["taskId"])) ||
+			!safeDisplayString(body["title"], 256) {
+			return ErrInvalidAction
+		}
+	case "archive_task", "fork_task":
+		if !exactKeys(body, "actionId", "kind", "taskId") || !validID(stringValue(body["taskId"])) {
+			return ErrInvalidAction
+		}
 	default:
 		return ErrInvalidAction
 	}

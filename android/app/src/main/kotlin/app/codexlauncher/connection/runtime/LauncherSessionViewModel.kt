@@ -19,11 +19,15 @@ import app.codexlauncher.project.session.ProjectSessionBridge
 import app.codexlauncher.project.session.ProjectSnapshot
 import app.codexlauncher.storage.actions.ActionJournal
 import app.codexlauncher.task.summary.TaskEventReducer
+import app.codexlauncher.task.management.TaskAction
+import app.codexlauncher.task.management.TaskActionBridge
+import app.codexlauncher.task.management.TaskActionOutcome
 import app.codexlauncher.task.transcript.TaskTranscriptMapper
 import app.codexlauncher.task.transcript.TaskTranscriptUiState
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -45,6 +49,8 @@ data class LauncherSessionState(
     val connection: ConnectionSnapshot = ConnectionSnapshot.initial(),
     val snapshot: ProjectSnapshot? = null,
     val transcript: TaskTranscriptUiState? = null,
+    val taskManagementAvailable: Boolean = false,
+    val unconfirmedForkTaskIds: Set<String> = emptySet(),
 )
 
 class LauncherSessionViewModel(
@@ -65,6 +71,10 @@ class LauncherSessionViewModel(
     private var activeConnection: SessionConnection? = null
     private var projectBridge: ProjectSessionBridge? = null
     private var transcriptCapable = false
+    private var taskManagementCapable = false
+    private var taskActionBridge: TaskActionBridge? = null
+    private val pendingTaskAcknowledgements = ConcurrentHashMap<String, TaskAcknowledgement>()
+    private val retainedUnknownActionIds = ConcurrentHashMap.newKeySet<String>()
     private var pendingTranscript: PendingTranscriptRequest? = null
     private val acknowledgementGate = SequenceAcknowledgementGate()
     private val acknowledgementMutex = Mutex()
@@ -163,7 +173,10 @@ class LauncherSessionViewModel(
                     MessageType.SNAPSHOT -> applySnapshot(expectedGeneration, message)
                     MessageType.EVENT -> applyTaskEvent(expectedGeneration, message)
                     MessageType.TASK_PAGE -> applyTaskPage(expectedGeneration, message)
-                    MessageType.ACTION_RESULT -> projectBridge?.accept(message)
+                    MessageType.ACTION_RESULT -> {
+                        projectBridge?.accept(message)
+                        taskActionBridge?.accept(message)
+                    }
                     else -> Unit
                 }
             }
@@ -185,6 +198,7 @@ class LauncherSessionViewModel(
             return
         }
         transcriptCapable = "task_transcripts" in capabilities
+        taskManagementCapable = "task_management" in capabilities
         val connection = activeConnection ?: return
         projectBridge =
             ProjectSessionBridge(
@@ -197,6 +211,69 @@ class LauncherSessionViewModel(
                     pendingProjectAcknowledgement.set(ProjectAcknowledgement(expectedGeneration, actionId, sequence))
                 },
             )
+        taskActionBridge =
+            if (taskManagementCapable) {
+                TaskActionBridge(
+                    sendAction = connection::sendAction,
+                    journal = actionJournal,
+                    onTerminalReceived = acknowledgementGate::block,
+                    onTerminalStored = { actionId, sequence, requiresSnapshot, retainUnresolved ->
+                        taskActionStored(expectedGeneration, actionId, sequence, requiresSnapshot, retainUnresolved)
+                    },
+                )
+            } else {
+                null
+            }
+        taskActionBridge?.let { bridge ->
+            submissionScope.launch {
+                publishUnconfirmedForks(expectedGeneration, bridge.unresolvedForkTaskIds())
+            }
+        }
+    }
+
+    suspend fun renameTask(taskId: String, title: String): TaskActionOutcome =
+        performTaskAction(taskId, TaskAction.Rename(title))
+
+    suspend fun archiveTask(taskId: String): TaskActionOutcome =
+        performTaskAction(taskId, TaskAction.Archive)
+
+    suspend fun forkTask(taskId: String): TaskActionOutcome =
+        performTaskAction(taskId, TaskAction.Fork)
+
+    suspend fun dismissUnconfirmedFork(taskId: String): Boolean {
+        val request = currentTaskActionRequest(taskId) ?: return false
+        if (!request.bridge.dismissUnresolvedFork(taskId)) return false
+        return publishUnconfirmedForks(request.generation, request.bridge.unresolvedForkTaskIds())
+    }
+
+    private suspend fun performTaskAction(taskId: String, action: TaskAction): TaskActionOutcome {
+        val request = currentTaskActionRequest(taskId) ?: return TaskActionOutcome.Unavailable
+        val outcome = request.bridge.perform(taskId, action)
+        if (action == TaskAction.Fork && outcome != TaskActionOutcome.Complete) {
+            publishUnconfirmedForks(request.generation, request.bridge.unresolvedForkTaskIds())
+        }
+        return outcome
+    }
+
+    @Synchronized
+    private fun publishUnconfirmedForks(expectedGeneration: Long, taskIds: Set<String>): Boolean {
+        if (generation.get() != expectedGeneration) return false
+        mutableState.value = mutableState.value.copy(unconfirmedForkTaskIds = taskIds)
+        AppLog.info(
+            feature = "task-management",
+            message = "unconfirmed fork metadata published",
+            fields = mapOf("task_count" to taskIds.size, "output_shape" to "durable_review_gate"),
+        )
+        return true
+    }
+
+    @Synchronized
+    private fun currentTaskActionRequest(taskId: String): TaskActionRequest? {
+        val current = mutableState.value
+        if (!taskManagementCapable || current.connection.phase != app.codexlauncher.connection.state.ConnectionPhase.ONLINE ||
+            current.snapshot?.tasks?.none { it.id == taskId } != false
+        ) return null
+        return taskActionBridge?.let { TaskActionRequest(generation.get(), it) }
     }
 
     @Synchronized
@@ -339,6 +416,7 @@ class LauncherSessionViewModel(
             connection = ConnectionStateMachine.reduce(connection, ConnectionEvent.SnapshotApplied(snapshot.baseSequence))
             val appliedThrough = publishSnapshot(expectedGeneration, snapshotTicket.token, connection, snapshot)
             if (appliedThrough == null) return@launch
+            releaseTaskAcknowledgementsThrough(expectedGeneration, appliedThrough)
             markConnectionStable(expectedGeneration)
             acknowledge(expectedGeneration, appliedThrough)
             AppLog.info(
@@ -467,7 +545,19 @@ class LauncherSessionViewModel(
             }
         publishedProject.set(selectedProject)
         storedProjectBaseline.set(selectedProject)
-        mutableState.value = LauncherSessionState(connection, snapshot.copy(tasks = tasks))
+        val previousTranscript = mutableState.value.transcript
+        val nextTranscript =
+            previousTranscript?.let { transcript ->
+                tasks.singleOrNull { it.id == transcript.taskId }?.let { task -> transcript.copy(title = task.title) }
+            }
+        mutableState.value =
+            LauncherSessionState(
+                connection = connection,
+                snapshot = snapshot.copy(tasks = tasks),
+                transcript = nextTranscript,
+                taskManagementAvailable = taskManagementCapable,
+                unconfirmedForkTaskIds = mutableState.value.unconfirmedForkTaskIds,
+            )
         AppLog.info(
             feature = "connection-runtime",
             message = "snapshot and queued task events published",
@@ -515,7 +605,13 @@ class LauncherSessionViewModel(
         }
         val acknowledgedActionIds = acknowledgementGate.markSent(request.throughSequence)
         acknowledgedActionIds.forEach { actionId ->
-            if (!actionJournal.acknowledge(actionId)) {
+            if (retainedUnknownActionIds.remove(actionId)) {
+                AppLog.info(
+                    feature = "task-management",
+                    message = "uncertain action sequence acknowledged without clearing review gate",
+                    fields = mapOf("action_id" to actionId, "decision" to "retain_sent_unknown"),
+                )
+            } else if (!actionJournal.acknowledge(actionId)) {
                 AppLog.info(
                     feature = "connection-runtime",
                     message = "confirmed action metadata cleanup deferred",
@@ -543,6 +639,52 @@ class LauncherSessionViewModel(
                     ?: return
             sendAcknowledgement(acknowledgement.generation, request)
         }
+    }
+
+    @Synchronized
+    private fun taskActionStored(
+        expectedGeneration: Long,
+        actionId: String,
+        sequence: Long,
+        requiresSnapshot: Boolean,
+        retainUnresolved: Boolean,
+    ) {
+        if (generation.get() != expectedGeneration) return
+        if (retainUnresolved) retainedUnknownActionIds += actionId
+        val acknowledgement = TaskAcknowledgement(expectedGeneration, actionId, sequence)
+        pendingTaskAcknowledgements[actionId] = acknowledgement
+        val publishedThrough = mutableState.value.connection.baseSequence ?: 0L
+        if (!requiresSnapshot || publishedThrough > sequence) {
+            submissionScope.launch {
+                releaseOneTaskAcknowledgement(acknowledgement, maxOf(sequence, publishedThrough))
+            }
+        }
+    }
+
+    private suspend fun releaseOneTaskAcknowledgement(
+        acknowledgement: TaskAcknowledgement,
+        throughSequence: Long,
+    ) {
+        acknowledgementMutex.withLock {
+            if (generation.get() != acknowledgement.generation ||
+                !pendingTaskAcknowledgements.remove(acknowledgement.actionId, acknowledgement)
+            ) return
+            acknowledgementGate.release(acknowledgement.actionId, acknowledgement.sequence)
+            val request = acknowledgementGate.request(throughSequence) ?: return
+            sendAcknowledgement(acknowledgement.generation, request)
+        }
+    }
+
+    private fun releaseTaskAcknowledgementsThrough(expectedGeneration: Long, throughSequence: Long) {
+        if (generation.get() != expectedGeneration) return
+        pendingTaskAcknowledgements.values
+            .filter { it.generation == expectedGeneration && it.sequence < throughSequence }
+            .sortedBy { it.sequence }
+            .forEach { acknowledgement ->
+                if (pendingTaskAcknowledgements.remove(acknowledgement.actionId, acknowledgement)) {
+                    acknowledgementGate.release(acknowledgement.actionId, acknowledgement.sequence)
+                }
+            }
     }
 
     private suspend fun selectProject(projectId: String): Boolean {
@@ -576,6 +718,11 @@ class LauncherSessionViewModel(
         projectBridge?.close()
         projectBridge = null
         transcriptCapable = false
+        taskManagementCapable = false
+        taskActionBridge?.close()
+        taskActionBridge = null
+        pendingTaskAcknowledgements.clear()
+        retainedUnknownActionIds.clear()
         pendingTranscript = null
         acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
@@ -659,6 +806,11 @@ class LauncherSessionViewModel(
         projectBridge?.close()
         projectBridge = null
         transcriptCapable = false
+        taskManagementCapable = false
+        taskActionBridge?.close()
+        taskActionBridge = null
+        pendingTaskAcknowledgements.clear()
+        retainedUnknownActionIds.clear()
         pendingTranscript = null
         acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
@@ -686,6 +838,17 @@ private data class ProjectAcknowledgement(
     val generation: Long,
     val actionId: String,
     val sequence: Long,
+)
+
+private data class TaskAcknowledgement(
+    val generation: Long,
+    val actionId: String,
+    val sequence: Long,
+)
+
+private data class TaskActionRequest(
+    val generation: Long,
+    val bridge: TaskActionBridge,
 )
 
 private data class PendingTranscriptRequest(
