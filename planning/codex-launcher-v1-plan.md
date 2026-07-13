@@ -23,7 +23,11 @@
 > capped automatic reconnect to the same paired computer, while manual
 > disconnect, revoked pairing, and incompatible protocol stop retrying.
 > Reduced-protection confirmation, unpair, and the remaining folder/offline
-> checks are not yet complete.
+> checks are not yet complete. Task 9 has started with a typed, protocol-
+> validated recent-task snapshot path from an injected Codex catalog through
+> the companion and into the existing Android Home rows. Each hello refreshes
+> the list at a new snapshot base; runnable companion startup still needs to
+> provide the real catalog and later transcript/action work remains.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

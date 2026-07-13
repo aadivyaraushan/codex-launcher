@@ -22,6 +22,7 @@ object ProtocolCodec {
     const val MAX_JSON_FRAME_BYTES = 256 * 1024
     const val MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
     const val MAX_ATTACHMENT_FRAME_BYTES = MAX_ATTACHMENT_BYTES + 4096 + 12 + 32
+    const val MAX_SNAPSHOT_TASKS = 20
 
     private val json = Json { isLenient = false }
     private val envelopeKeys = setOf("version", "messageId", "sender", "type", "seq", "body")
@@ -153,7 +154,7 @@ object ProtocolCodec {
                 longField(body, "baseSeq") != sequence || !optionalString(body, "computerName").isSafeDisplay(80) ||
                 !validProjects(body["projects"]) || !validTasks(body["tasks"])
             ) fail(ProtocolError.INVALID_ENVELOPE)
-            MessageType.EVENT -> if (sender != Sender.COMPANION || sequence == null || body.keys != setOf("taskId", "event", "state", "summary") || !optionalString(body, "taskId").isValidId() || optionalString(body, "event") !in eventNames || optionalString(body, "state") !in taskStates || !optionalString(body, "summary").isBounded(512)) fail(ProtocolError.INVALID_ENVELOPE)
+            MessageType.EVENT -> if (sender != Sender.COMPANION || sequence == null || body.keys != setOf("taskId", "event", "state", "summary") || !optionalString(body, "taskId").isValidId() || optionalString(body, "event") !in eventNames || optionalString(body, "state") !in taskStates || !optionalString(body, "summary").isSafeDisplay(512)) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.ACTION_RESULT -> {
                 val state = optionalString(body, "state")
                 if (sender != Sender.COMPANION || sequence == null || body.keys.any { it !in setOf("actionId", "state", "error") } ||
@@ -214,13 +215,17 @@ object ProtocolCodec {
         }.getOrDefault(false)
 
     private fun validTasks(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
-        value?.jsonArray?.all { element ->
+        val tasks = value?.jsonArray ?: return@runCatching false
+        if (tasks.size > MAX_SNAPSHOT_TASKS) return@runCatching false
+        val ids = mutableSetOf<String>()
+        tasks.all { element ->
             val task = element.jsonObject
+            val id = optionalString(task, "taskId")
             task.keys.all { it in setOf("taskId", "title", "projectLabel", "state", "lastActivityAt", "pendingRequest") } &&
-                optionalString(task, "taskId").isValidId() && optionalString(task, "title").isBounded(256) &&
-                optionalString(task, "projectLabel").isBounded(128) && optionalString(task, "state") in taskStates &&
+                id.isValidId() && ids.add(id) && optionalString(task, "title").isSafeDisplay(256) &&
+                optionalString(task, "projectLabel").isSafeDisplay(128) && optionalString(task, "state") in taskStates &&
                 runCatching { Instant.parse(optionalString(task, "lastActivityAt")) }.isSuccess && validPendingRequest(task["pendingRequest"])
-        } == true
+        }
     }.getOrDefault(false)
 
     private fun validProjects(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
@@ -239,7 +244,7 @@ object ProtocolCodec {
         value == null || runCatching {
             val request = value.jsonObject
             request.keys == setOf("requestId", "kind", "summary") && optionalString(request, "requestId").isValidId() &&
-                optionalString(request, "kind") in requestKinds && optionalString(request, "summary").isBounded(512)
+                optionalString(request, "kind") in requestKinds && optionalString(request, "summary").isSafeDisplay(512)
         }.getOrDefault(false)
 
     private fun validOptionalError(value: kotlinx.serialization.json.JsonElement?, required: Boolean): Boolean {

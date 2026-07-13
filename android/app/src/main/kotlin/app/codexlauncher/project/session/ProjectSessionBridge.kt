@@ -5,6 +5,9 @@ import app.codexlauncher.connection.protocol.ProtocolCodec
 import app.codexlauncher.connection.protocol.ProtocolMessage
 import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.project.selection.ProjectChoice
+import app.codexlauncher.task.summary.TaskState
+import app.codexlauncher.task.summary.TaskSummary
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
@@ -20,6 +23,7 @@ data class ProjectSnapshot(
     val baseSequence: Long,
     val computerName: String,
     val projects: List<ProjectChoice>,
+    val tasks: List<TaskSummary>,
 )
 
 class ProjectSessionBridge(
@@ -43,11 +47,27 @@ class ProjectSessionBridge(
                         displayName = project.getValue("displayName").jsonPrimitive.content,
                     )
                 },
+            tasks =
+                body.getValue("tasks").jsonArray.map { element ->
+                    val task = element.jsonObject
+                    TaskSummary(
+                        id = task.getValue("taskId").jsonPrimitive.content,
+                        title = task.getValue("title").jsonPrimitive.content,
+                        projectLabel = task.getValue("projectLabel").jsonPrimitive.content,
+                        state = TaskState.fromWire(task.getValue("state").jsonPrimitive.content),
+                        lastActivityAt = Instant.parse(task.getValue("lastActivityAt").jsonPrimitive.content),
+                    )
+                },
         ).also {
             AppLog.info(
                 feature = "project-session",
                 message = "project snapshot mapped",
-                fields = mapOf("base_sequence" to it.baseSequence, "project_count" to it.projects.size, "output_shape" to "computer,opaque_projects"),
+                fields = mapOf(
+                    "base_sequence" to it.baseSequence,
+                    "project_count" to it.projects.size,
+                    "task_count" to it.tasks.size,
+                    "output_shape" to "computer,opaque_projects,safe_task_summaries",
+                ),
             )
         }
     }

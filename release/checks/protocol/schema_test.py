@@ -17,15 +17,20 @@ def semantic_errors(frame: dict) -> list[str]:
     """Check protocol rules that JSON Schema cannot express by itself."""
     if frame.get("type") != "snapshot":
         return []
+    errors = []
     projects = frame.get("body", {}).get("projects")
-    if not isinstance(projects, list):
-        return []
-    project_ids = [project.get("id") for project in projects if isinstance(project, dict)]
-    if len(project_ids) != len(projects) or not all(isinstance(project_id, str) for project_id in project_ids):
-        return []
-    if len(project_ids) != len(set(project_ids)):
-        return ["snapshot project IDs must be unique"]
-    return []
+    if isinstance(projects, list):
+        project_ids = [project.get("id") for project in projects if isinstance(project, dict)]
+        if len(project_ids) == len(projects) and all(isinstance(project_id, str) for project_id in project_ids):
+            if len(project_ids) != len(set(project_ids)):
+                errors.append("snapshot project IDs must be unique")
+    tasks = frame.get("body", {}).get("tasks")
+    if isinstance(tasks, list):
+        task_ids = [task.get("taskId") for task in tasks if isinstance(task, dict)]
+        if len(task_ids) == len(tasks) and all(isinstance(task_id, str) for task_id in task_ids):
+            if len(task_ids) != len(set(task_ids)):
+                errors.append("snapshot task IDs must be unique")
+    return errors
 
 
 def main() -> None:

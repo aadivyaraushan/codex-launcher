@@ -514,7 +514,7 @@ func validateBody(message Message) error {
 		}
 	case "event":
 		if message.Sender != "companion" || message.Sequence == nil || !exactKeys(body, "taskId", "event", "state", "summary") ||
-			!validID(stringValue(body["taskId"])) || !knownEvent(stringValue(body["event"])) || !knownTaskState(stringValue(body["state"])) || !boundedString(body["summary"], 512) {
+			!validID(stringValue(body["taskId"])) || !knownEvent(stringValue(body["event"])) || !knownTaskState(stringValue(body["state"])) || !safeDisplayString(body["summary"], 512) {
 			return ErrInvalidEnvelope
 		}
 	case "action_result":
@@ -604,19 +604,25 @@ func validateLimits(raw json.RawMessage) bool {
 
 func validateTasks(raw json.RawMessage) bool {
 	var tasks []map[string]json.RawMessage
-	if json.Unmarshal(raw, &tasks) != nil {
+	if json.Unmarshal(raw, &tasks) != nil || len(tasks) > MaxSnapshotTasks {
 		return false
 	}
+	seen := make(map[string]struct{}, len(tasks))
 	for _, task := range tasks {
+		id := stringValue(task["taskId"])
 		if !onlyAllowedKeys(task, "taskId", "title", "projectLabel", "state", "lastActivityAt", "pendingRequest") ||
-			!validID(stringValue(task["taskId"])) || !boundedString(task["title"], 256) || !boundedString(task["projectLabel"], 128) ||
+			!validID(id) || !safeDisplayString(task["title"], 256) || !safeDisplayString(task["projectLabel"], 128) ||
 			!knownTaskState(stringValue(task["state"])) || !validRFC3339(stringValue(task["lastActivityAt"])) {
 			return false
 		}
+		if _, duplicate := seen[id]; duplicate {
+			return false
+		}
+		seen[id] = struct{}{}
 		if pending := task["pendingRequest"]; pending != nil {
 			var request map[string]json.RawMessage
 			if json.Unmarshal(pending, &request) != nil || !exactKeys(request, "requestId", "kind", "summary") ||
-				!validID(stringValue(request["requestId"])) || !knownRequestKind(stringValue(request["kind"])) || !boundedString(request["summary"], 512) {
+				!validID(stringValue(request["requestId"])) || !knownRequestKind(stringValue(request["kind"])) || !safeDisplayString(request["summary"], 512) {
 				return false
 			}
 		}

@@ -2,12 +2,30 @@ package app.codexlauncher.launcher.home
 
 import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
+import app.codexlauncher.appearance.theme.QuietInstrumentTokens
+import app.codexlauncher.task.summary.TaskState
+import app.codexlauncher.task.summary.TaskSummary
 
 data class HomeTask(
     val id: String,
     val title: String,
     val stateLabel: String,
 )
+
+internal fun TaskSummary.toHomeTask(): HomeTask =
+    HomeTask(
+        id = id,
+        title = title,
+        stateLabel =
+            when (state) {
+                TaskState.WORKING -> QuietInstrumentTokens.workingLabel
+                TaskState.WAITING_FOR_APPROVAL -> QuietInstrumentTokens.approvalLabel
+                TaskState.WAITING_FOR_ANSWER -> QuietInstrumentTokens.waitingLabel
+                TaskState.FAILED -> QuietInstrumentTokens.failedLabel
+                TaskState.INTERRUPTED -> QuietInstrumentTokens.interruptedLabel
+                TaskState.IDLE_AFTER_REPLY -> QuietInstrumentTokens.repliedLabel
+            },
+    )
 
 data class HomeUiState(
     val computerName: String,

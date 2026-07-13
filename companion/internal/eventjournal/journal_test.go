@@ -115,6 +115,27 @@ func TestInitialSnapshotReservesNonzeroBaseSequence(t *testing.T) {
 	}
 }
 
+func TestSnapshotReplacementAdvancesBaseAndForcesOlderCursorsToRefresh(t *testing.T) {
+	store := NewMemoryStore(Limits{MaxEvents: 8, MaxBytes: 4096})
+	journal := New(store, nil)
+	initializeTestJournal(t, journal)
+	if _, err := applyTestEvent(journal, context.Background(), "task.delta", json.RawMessage(`{"threadId":"thread-1"}`), journalNow); err != nil {
+		t.Fatal(err)
+	}
+
+	replaced, err := journal.ReplaceSnapshot(context.Background(), json.RawMessage(`{"tasks":[{"id":"thread-2"}]}`), journalNow.Add(time.Second))
+	if err != nil || replaced.BaseSequence != 3 {
+		t.Fatalf("replacement = %#v, %v", replaced, err)
+	}
+	if _, err := journal.ReplayAfter(context.Background(), 2); !errors.Is(err, ErrCursorCompacted) {
+		t.Fatalf("cursor crossing replacement error = %v", err)
+	}
+	current, err := journal.Snapshot(journalNow.Add(2 * time.Second))
+	if err != nil || current.BaseSequence != 3 || string(current.Body) != `{"tasks":[{"id":"thread-2"}]}` {
+		t.Fatalf("current snapshot = %#v, %v", current, err)
+	}
+}
+
 func TestJournalRejectsInvalidOrOversizedEvents(t *testing.T) {
 	journal := New(NewMemoryStore(Limits{MaxEvents: 8, MaxBytes: 64}), nil)
 	initializeTestJournal(t, journal)

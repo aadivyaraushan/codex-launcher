@@ -46,12 +46,13 @@ class LauncherSessionViewModelTest {
         assertTrue(attachmentKey.all { it == 0.toByte() })
         observer.onMessage(
             decode(
-                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":7,"body":{"baseSeq":7,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"},{"id":"research","displayName":"Research"}],"tasks":[]}}""",
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":7,"body":{"baseSeq":7,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"},{"id":"research","displayName":"Research"}],"tasks":[{"taskId":"thread-1","title":"Build launcher","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"}]}}""",
             ),
         )
 
         assertEquals(ConnectionPhase.ONLINE, viewModel.state.value.connection.phase)
         assertEquals("Studio Mac", viewModel.state.value.snapshot?.computerName)
+        assertEquals("thread-1", viewModel.state.value.snapshot?.tasks?.single()?.id)
         assertEquals("main", viewModel.state.value.connection.selectedProjectId)
         assertEquals("main", viewModel.projectSelection.state.value.selectedProjectId)
 

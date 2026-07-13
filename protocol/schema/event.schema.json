@@ -20,8 +20,8 @@
       "required": ["taskId", "title", "projectLabel", "state", "lastActivityAt"],
       "properties": {
         "taskId": { "$ref": "#/$defs/id" },
-        "title": { "type": "string", "minLength": 1, "maxLength": 256 },
-        "projectLabel": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
+        "projectLabel": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
         "state": { "enum": ["working", "waiting_for_approval", "waiting_for_answer", "failed", "interrupted", "idle_after_reply"] },
         "lastActivityAt": { "type": "string", "format": "date-time" },
         "pendingRequest": {
@@ -31,7 +31,7 @@
           "properties": {
             "requestId": { "$ref": "#/$defs/id" },
             "kind": { "enum": ["command", "file", "permissions", "question", "mcp_elicitation"] },
-            "summary": { "type": "string", "minLength": 1, "maxLength": 512 }
+            "summary": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" }
           }
         }
       }
@@ -53,7 +53,7 @@
         "baseSeq": { "type": "integer", "minimum": 1 },
         "computerName": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
         "projects": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/project" } },
-        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } }
+        "tasks": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/task" } }
       }
     },
     "event": {
@@ -64,7 +64,7 @@
         "taskId": { "$ref": "#/$defs/id" },
         "event": { "enum": ["activity", "reply", "approval", "answer", "failure", "interrupted", "metadata"] },
         "state": { "enum": ["working", "waiting_for_approval", "waiting_for_answer", "failed", "interrupted", "idle_after_reply"] },
-        "summary": { "type": "string", "minLength": 1, "maxLength": 512 }
+        "summary": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" }
       }
     },
     "actionResult": {

@@ -2,6 +2,8 @@ package app.codexlauncher.project.session
 
 import app.codexlauncher.connection.protocol.ProtocolCodec
 import app.codexlauncher.connection.protocol.ProtocolMessage
+import app.codexlauncher.task.summary.TaskState
+import java.time.Instant
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
@@ -25,6 +27,24 @@ class ProjectSessionBridgeTest {
         assertEquals("Studio Mac", snapshot.computerName)
         assertEquals("main", snapshot.projects.single().id)
         assertEquals("Main", snapshot.projects.single().displayName)
+    }
+
+    @Test
+    fun mapsValidatedTaskSummariesWithoutRawCodexPayloads() {
+        val bridge = ProjectSessionBridge(send = { true }, nextActionId = { "unused" })
+        val message = decode(
+            """{"version":{"major":1,"minor":0},"messageId":"snapshot-tasks","sender":"companion","type":"snapshot","seq":8,"body":{"baseSeq":8,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[{"taskId":"thread-1","title":"Build launcher","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"},{"taskId":"thread-2","title":"Review tests","projectLabel":"uf-u","state":"idle_after_reply","lastActivityAt":"2026-07-13T10:01:00Z"}]}}""",
+        )
+
+        val tasks = bridge.snapshot(message).tasks
+
+        assertEquals(2, tasks.size)
+        assertEquals("thread-1", tasks[0].id)
+        assertEquals("Build launcher", tasks[0].title)
+        assertEquals("uf-u", tasks[0].projectLabel)
+        assertEquals(TaskState.WORKING, tasks[0].state)
+        assertEquals(Instant.parse("2026-07-13T10:02:00Z"), tasks[0].lastActivityAt)
+        assertEquals(TaskState.IDLE_AFTER_REPLY, tasks[1].state)
     }
 
     @Test

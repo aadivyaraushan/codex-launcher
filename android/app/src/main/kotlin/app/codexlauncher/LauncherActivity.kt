@@ -53,6 +53,7 @@ import app.codexlauncher.launcher.apps.InstalledAppsLoader
 import app.codexlauncher.launcher.apps.InstalledAppsRepository
 import app.codexlauncher.launcher.home.HomeScreen
 import app.codexlauncher.launcher.home.HomeUiPolicy
+import app.codexlauncher.launcher.home.toHomeTask
 import app.codexlauncher.project.selection.ProjectSelector
 import app.codexlauncher.project.selection.ProjectSelectionUiState
 import app.codexlauncher.storage.projects.ProjectSelectionStore
@@ -195,7 +196,7 @@ class LauncherActivity : ComponentActivity() {
                                     computerName = sessionUiState.snapshot?.computerName ?: "Paired computer",
                                     connection = sessionUiState.connection,
                                     projects = sessionUiState.snapshot?.projects ?: emptyList(),
-                                    tasks = emptyList(),
+                                    tasks = sessionUiState.snapshot?.tasks?.map { it.toHomeTask() } ?: emptyList(),
                                 ),
                             onRetry = {
                                 pairedComputer?.let { sessionViewModel.connect(it, force = true) }

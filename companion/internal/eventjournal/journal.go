@@ -109,6 +109,9 @@ func (journal *Journal) ReplayAfter(ctx context.Context, cursor uint64) ([]Event
 			return nil, ErrCursorCompacted
 		}
 	}
+	if uint64(len(events)) != bounds.Latest-cursor {
+		return nil, ErrCursorCompacted
+	}
 	journal.logger.Info("[event-journal] replay prepared", "cursor", cursor, "output_count", len(events))
 	return events, nil
 }
@@ -157,6 +160,26 @@ func (journal *Journal) InitializeSnapshot(ctx context.Context, body json.RawMes
 	journal.stateSequence = baseSequence
 	snapshot := Snapshot{BaseSequence: baseSequence, Body: append(json.RawMessage(nil), body...), CreatedAt: createdAt}
 	journal.logger.Info("[event-journal] snapshot built", "base_sequence", snapshot.BaseSequence)
+	return snapshot, nil
+}
+
+func (journal *Journal) ReplaceSnapshot(ctx context.Context, body json.RawMessage, createdAt time.Time) (Snapshot, error) {
+	if journal == nil || journal.store == nil || !json.Valid(body) || len(body) == 0 || len(body) > 1024*1024 || createdAt.IsZero() {
+		return Snapshot{}, ErrInvalidSnapshot
+	}
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+	if len(journal.state) == 0 {
+		return Snapshot{}, ErrInvalidSnapshot
+	}
+	baseSequence, err := journal.store.ReplaceBase(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	journal.state = append(journal.state[:0], body...)
+	journal.stateSequence = baseSequence
+	snapshot := Snapshot{BaseSequence: baseSequence, Body: append(json.RawMessage(nil), body...), CreatedAt: createdAt}
+	journal.logger.Info("[event-journal] snapshot replaced", "base_sequence", snapshot.BaseSequence, "branch_reason", "fresh_source_state")
 	return snapshot, nil
 }
 

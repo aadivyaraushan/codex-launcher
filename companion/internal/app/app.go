@@ -23,6 +23,7 @@ type Dependencies struct {
 	EventStore   eventjournal.Store
 	Random       io.Reader
 	Logger       *slog.Logger
+	TaskSource   mobilesession.TaskSource
 }
 
 type Runtime struct {
@@ -56,7 +57,7 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 		return nil, ErrInvalidConfig
 	}
 	journal := eventjournal.New(dependencies.EventStore, logger)
-	mobileHandler, err := mobilesession.NewWithLogger(ctx, config.ComputerName, projectService, journal, logger, time.Now)
+	mobileHandler, err := mobilesession.NewWithTaskSource(ctx, config.ComputerName, projectService, journal, dependencies.TaskSource, logger, time.Now)
 	if err != nil {
 		logger.Error("[app] mobile session startup failed", "error_class", "mobile_session_initialization")
 		return nil, err

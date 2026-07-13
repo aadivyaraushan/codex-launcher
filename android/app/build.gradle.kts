@@ -65,3 +65,7 @@ dependencies {
     androidTestImplementation(libs.espresso.intents)
     androidTestImplementation(libs.mockwebserver)
 }
+
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    inputs.dir(rootProject.file("../protocol"))
+}

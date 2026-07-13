@@ -21,6 +21,7 @@ type Store interface {
 	ReplayAfter(context.Context, uint64) ([]Event, error)
 	Bounds(context.Context) (Bounds, error)
 	EnsureBase(context.Context) (uint64, error)
+	ReplaceBase(context.Context) (uint64, error)
 	Acknowledge(context.Context, string, uint64) error
 	Acknowledged(context.Context, string) (uint64, error)
 }
@@ -97,6 +98,18 @@ func (store *MemoryStore) EnsureBase(ctx context.Context) (uint64, error) {
 	if store.nextSequence == 0 {
 		store.nextSequence = 1
 	}
+	return store.nextSequence, nil
+}
+
+func (store *MemoryStore) ReplaceBase(ctx context.Context) (uint64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.nextSequence++
+	store.events = nil
+	store.retained = 0
 	return store.nextSequence, nil
 }
 

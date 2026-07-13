@@ -3,6 +3,9 @@ package app.codexlauncher.launcher.home
 import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
+import app.codexlauncher.task.summary.TaskState
+import app.codexlauncher.task.summary.TaskSummary
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -108,5 +111,23 @@ class HomeUiStateTest {
         assertTrue(state.tasks.isEmpty())
         assertFalse(state.canSend)
         assertEquals(null, state.contentBaseSequence)
+    }
+
+    @Test
+    fun taskStatesUseTheApprovedPlainLanguageLabels() {
+        val expected =
+            mapOf(
+                TaskState.WORKING to "Working",
+                TaskState.WAITING_FOR_APPROVAL to "Approval needed",
+                TaskState.WAITING_FOR_ANSWER to "Needs your answer",
+                TaskState.FAILED to "Failed",
+                TaskState.INTERRUPTED to "Interrupted",
+                TaskState.IDLE_AFTER_REPLY to "Replied",
+            )
+
+        for ((state, label) in expected) {
+            val summary = TaskSummary("task-1", "Task", "Project", state, Instant.EPOCH)
+            assertEquals(label, summary.toHomeTask().stateLabel)
+        }
     }
 }

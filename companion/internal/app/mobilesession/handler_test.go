@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
@@ -43,6 +44,106 @@ func TestColdHelloSendsWelcomeAndSafeProjectSnapshot(t *testing.T) {
 	}
 	if bytes.Contains(sender.messages[1].Body, []byte(sender.projectPath)) {
 		t.Fatal("snapshot exposed a configured path")
+	}
+}
+
+func TestColdHelloIncludesOnlyTypedSafeTaskSummaries(t *testing.T) {
+	handler, sender := newTestHandlerWithTasks(t, taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
+		return []taskstate.Task{{
+			ID: "thread-1", Title: "Build launcher", ProjectLabel: "uf-u", State: taskstate.Working,
+			UpdatedAtUnix: sessionNow.Add(-time.Minute).Unix(), Source: taskstate.SourceDesktop,
+		}}, nil
+	}))
+
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-tasks","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	var welcome struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := json.Unmarshal(sender.messages[0].Body, &welcome); err != nil {
+		t.Fatal(err)
+	}
+	if len(welcome.Capabilities) != 2 || welcome.Capabilities[0] != "set_project" || welcome.Capabilities[1] != "desktop_tasks" {
+		t.Fatalf("capabilities = %#v", welcome.Capabilities)
+	}
+	var snapshot struct {
+		Tasks []struct {
+			TaskID         string `json:"taskId"`
+			Title          string `json:"title"`
+			ProjectLabel   string `json:"projectLabel"`
+			State          string `json:"state"`
+			LastActivityAt string `json:"lastActivityAt"`
+		} `json:"tasks"`
+	}
+	if err := json.Unmarshal(sender.messages[1].Body, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Tasks) != 1 || snapshot.Tasks[0].TaskID != "thread-1" || snapshot.Tasks[0].Title != "Build launcher" ||
+		snapshot.Tasks[0].ProjectLabel != "uf-u" || snapshot.Tasks[0].State != "working" || snapshot.Tasks[0].LastActivityAt != "2026-07-13T11:59:00Z" {
+		t.Fatalf("tasks = %#v", snapshot.Tasks)
+	}
+	if bytes.Contains(sender.messages[1].Body, []byte(`"source"`)) || bytes.Contains(sender.messages[1].Body, []byte(`"raw"`)) {
+		t.Fatalf("snapshot exposed an internal task field: %s", sender.messages[1].Body)
+	}
+}
+
+func TestTaskSnapshotFailsClosedWhenCatalogFailsOrReturnsUnsafeData(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		source TaskSource
+	}{
+		{name: "catalog failure", source: taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) { return nil, errors.New("offline") })},
+		{name: "unsafe id", source: taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
+			return []taskstate.Task{{ID: "thread\n1", Title: "Task", ProjectLabel: "Project", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()}}, nil
+		})},
+		{name: "missing activity time", source: taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
+			return []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "Project", State: taskstate.Working}}, nil
+		})},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			projectService, err := projects.New([]projects.Config{{ID: "main", DisplayName: "Main", Path: root}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			journal := eventjournal.New(eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 16, MaxBytes: 64 * 1024}), nil)
+			if _, err := NewWithTaskSource(context.Background(), "Studio Mac", projectService, journal, test.source, nil, func() time.Time { return sessionNow }); err == nil {
+				t.Fatal("unsafe task source was accepted")
+			}
+		})
+	}
+}
+
+func TestEachHelloRefreshesTasksWithANewSnapshotBase(t *testing.T) {
+	calls := 0
+	source := taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
+		calls++
+		return []taskstate.Task{{
+			ID: "thread-1", Title: "Task version", ProjectLabel: "uf-u", State: taskstate.IdleAfterReply,
+			UpdatedAtUnix: sessionNow.Add(time.Duration(calls) * time.Second).Unix(),
+		}}, nil
+	})
+	handler, first := newTestHandlerWithTasks(t, source)
+	if err := handler.Handle(context.Background(), first, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-first","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	second := &recordingSender{deviceID: first.deviceID, sessionID: "session-2", connectionID: 2, projectPath: first.projectPath, store: first.store}
+	if err := handler.Handle(context.Background(), second, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-second","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 {
+		t.Fatalf("task source calls = %d, want startup plus both hellos", calls)
+	}
+	firstSnapshot, secondSnapshot := first.messages[1], second.messages[1]
+	if firstSnapshot.Sequence == nil || secondSnapshot.Sequence == nil || *secondSnapshot.Sequence <= *firstSnapshot.Sequence {
+		t.Fatalf("snapshot sequences = %v then %v", firstSnapshot.Sequence, secondSnapshot.Sequence)
+	}
+	if bytes.Equal(firstSnapshot.Body, secondSnapshot.Body) {
+		t.Fatal("second hello reused stale task snapshot")
 	}
 }
 
@@ -157,6 +258,10 @@ func (sender *recordingSender) Send(_ context.Context, message contract.Message)
 }
 
 func newTestHandler(t *testing.T) (*Handler, *recordingSender) {
+	return newTestHandlerWithTasks(t, nil)
+}
+
+func newTestHandlerWithTasks(t *testing.T, taskSource TaskSource) (*Handler, *recordingSender) {
 	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -168,11 +273,17 @@ func newTestHandler(t *testing.T) (*Handler, *recordingSender) {
 	}
 	store := eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 16, MaxBytes: 64 * 1024})
 	journal := eventjournal.New(store, nil)
-	handler, err := New(context.Background(), "Studio Mac", projectService, journal, func() time.Time { return sessionNow })
+	handler, err := NewWithTaskSource(context.Background(), "Studio Mac", projectService, journal, taskSource, nil, func() time.Time { return sessionNow })
 	if err != nil {
 		t.Fatal(err)
 	}
 	return handler, &recordingSender{deviceID: "pixel-9", sessionID: "session-1", connectionID: 1, projectPath: root, store: store}
+}
+
+type taskSourceFunc func(context.Context, int) ([]taskstate.Task, error)
+
+func (source taskSourceFunc) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {
+	return source(ctx, limit)
 }
 
 func decode(t *testing.T, frame string) contract.Message {

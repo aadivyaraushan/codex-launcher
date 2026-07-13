@@ -205,7 +205,12 @@ class LauncherSessionViewModel(
             AppLog.info(
                 feature = "connection-runtime",
                 message = "fresh companion snapshot applied",
-                fields = mapOf("base_sequence" to snapshot.baseSequence, "project_count" to snapshot.projects.size, "output_shape" to "online_launcher_state"),
+                fields = mapOf(
+                    "base_sequence" to snapshot.baseSequence,
+                    "project_count" to snapshot.projects.size,
+                    "task_count" to snapshot.tasks.size,
+                    "output_shape" to "online_launcher_state",
+                ),
             )
         }
     }

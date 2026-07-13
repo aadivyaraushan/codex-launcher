@@ -10,11 +10,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
 )
+
+type TaskSource interface {
+	ListRecent(context.Context, int) ([]taskstate.Task, error)
+}
 
 var (
 	ErrMissingDependency  = errors.New("mobile session dependency is missing")
@@ -23,19 +28,30 @@ var (
 )
 
 type Handler struct {
-	projects *projects.Service
-	journal  *eventjournal.Journal
-	logger   *slog.Logger
-	now      func() time.Time
-	nextID   atomic.Uint64
-	mu       sync.Mutex
-	active   map[string]transport.MessageSender
+	computerName string
+	projects     *projects.Service
+	journal      *eventjournal.Journal
+	logger       *slog.Logger
+	now          func() time.Time
+	taskCapable  bool
+	taskSource   TaskSource
+	nextID       atomic.Uint64
+	mu           sync.Mutex
+	active       map[string]transport.MessageSender
 }
 
 type snapshotState struct {
 	ComputerName string            `json:"computerName"`
 	Projects     []projects.Choice `json:"projects"`
-	Tasks        []json.RawMessage `json:"tasks"`
+	Tasks        []snapshotTask    `json:"tasks"`
+}
+
+type snapshotTask struct {
+	TaskID         string `json:"taskId"`
+	Title          string `json:"title"`
+	ProjectLabel   string `json:"projectLabel"`
+	State          string `json:"state"`
+	LastActivityAt string `json:"lastActivityAt"`
 }
 
 func New(ctx context.Context, computerName string, projectService *projects.Service, journal *eventjournal.Journal, now func() time.Time) (*Handler, error) {
@@ -43,6 +59,10 @@ func New(ctx context.Context, computerName string, projectService *projects.Serv
 }
 
 func NewWithLogger(ctx context.Context, computerName string, projectService *projects.Service, journal *eventjournal.Journal, logger *slog.Logger, now func() time.Time) (*Handler, error) {
+	return NewWithTaskSource(ctx, computerName, projectService, journal, nil, logger, now)
+}
+
+func NewWithTaskSource(ctx context.Context, computerName string, projectService *projects.Service, journal *eventjournal.Journal, taskSource TaskSource, logger *slog.Logger, now func() time.Time) (*Handler, error) {
 	if projectService == nil || journal == nil || computerName == "" {
 		return nil, ErrMissingDependency
 	}
@@ -52,14 +72,28 @@ func NewWithLogger(ctx context.Context, computerName string, projectService *pro
 	if now == nil {
 		now = time.Now
 	}
-	state, err := json.Marshal(snapshotState{ComputerName: computerName, Projects: projectService.List(), Tasks: []json.RawMessage{}})
+	tasks, err := loadSnapshotTasks(ctx, taskSource)
+	if err != nil {
+		logger.Error("[mobile-session] task snapshot unavailable", "branch_reason", "unsafe_or_unavailable_catalog", "error_class", fmt.Sprintf("%T", err))
+		return nil, err
+	}
+	initialState := snapshotState{ComputerName: computerName, Projects: projectService.List(), Tasks: tasks}
+	if _, err := validatedSnapshotBody(1, initialState); err != nil {
+		logger.Error("[mobile-session] initial snapshot rejected", "branch_reason", "invalid_safe_projection", "error_class", fmt.Sprintf("%T", err))
+		return nil, err
+	}
+	state, err := json.Marshal(initialState)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := journal.InitializeSnapshot(ctx, state, now()); err != nil {
 		return nil, fmt.Errorf("initialize mobile snapshot: %w", err)
 	}
-	return &Handler{projects: projectService, journal: journal, logger: logger, now: now, active: make(map[string]transport.MessageSender)}, nil
+	logger.Info("[mobile-session] initial task snapshot ready", "task_count", len(tasks), "output_shape", "safe_task_summaries")
+	return &Handler{
+		computerName: computerName, projects: projectService, journal: journal, logger: logger, now: now, taskCapable: taskSource != nil, taskSource: taskSource,
+		active: make(map[string]transport.MessageSender),
+	}, nil
 }
 
 func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
@@ -98,7 +132,10 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 }
 
 func (handler *Handler) handleHello(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
-	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID())); err != nil {
+	if err := handler.refreshTaskSnapshot(ctx); err != nil {
+		return err
+	}
+	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable)); err != nil {
 		return err
 	}
 	var body struct {
@@ -133,17 +170,38 @@ func (handler *Handler) handleHello(ctx context.Context, sender transport.Messag
 	if err := json.Unmarshal(snapshot.Body, &state); err != nil {
 		return err
 	}
-	bodyBytes, err := json.Marshal(struct {
-		BaseSequence uint64            `json:"baseSeq"`
-		ComputerName string            `json:"computerName"`
-		Projects     []projects.Choice `json:"projects"`
-		Tasks        []json.RawMessage `json:"tasks"`
-	}{snapshot.BaseSequence, state.ComputerName, state.Projects, state.Tasks})
+	bodyBytes, err := validatedSnapshotBody(snapshot.BaseSequence, state)
 	if err != nil {
 		return err
 	}
 	sequence := snapshot.BaseSequence
 	return handler.send(ctx, sender, "snapshot", &sequence, bodyBytes)
+}
+
+func (handler *Handler) refreshTaskSnapshot(ctx context.Context) error {
+	if handler.taskSource == nil {
+		return nil
+	}
+	tasks, err := loadSnapshotTasks(ctx, handler.taskSource)
+	if err != nil {
+		handler.logger.Error("[mobile-session] task refresh failed", "branch_reason", "catalog_unavailable", "error_class", fmt.Sprintf("%T", err))
+		return err
+	}
+	state := snapshotState{ComputerName: handler.computerName, Projects: handler.projects.List(), Tasks: tasks}
+	if _, err := validatedSnapshotBody(1, state); err != nil {
+		handler.logger.Error("[mobile-session] task refresh rejected", "branch_reason", "invalid_safe_projection", "error_class", fmt.Sprintf("%T", err))
+		return err
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	snapshot, err := handler.journal.ReplaceSnapshot(ctx, encoded, handler.now())
+	if err != nil {
+		return err
+	}
+	handler.logger.Info("[mobile-session] task snapshot refreshed", "task_count", len(tasks), "base_sequence", snapshot.BaseSequence, "output_shape", "safe_task_summaries")
+	return nil
 }
 
 func (handler *Handler) handleAction(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
@@ -192,14 +250,18 @@ func (handler *Handler) send(ctx context.Context, sender transport.MessageSender
 	return nil
 }
 
-func welcomeBody(sessionID string) json.RawMessage {
+func welcomeBody(sessionID string, taskCapable bool) json.RawMessage {
+	capabilities := []string{"set_project"}
+	if taskCapable {
+		capabilities = append(capabilities, "desktop_tasks")
+	}
 	body, _ := json.Marshal(struct {
 		SessionID    string   `json:"sessionId"`
 		Capabilities []string `json:"capabilities"`
 		Limits       any      `json:"limits"`
 	}{
 		SessionID:    sessionID,
-		Capabilities: []string{"set_project"},
+		Capabilities: capabilities,
 		Limits: struct {
 			MaxJSONBytes       int `json:"maxJsonBytes"`
 			MaxAttachmentBytes int `json:"maxAttachmentBytes"`
@@ -210,6 +272,51 @@ func welcomeBody(sessionID string) json.RawMessage {
 		}{contract.MaxJSONFrameBytes, contract.MaxAttachmentBytes, contract.MaxDeviceUploads, contract.MaxGlobalUploads, contract.MaxTemporaryBytes, contract.UploadExpirySeconds},
 	})
 	return body
+}
+
+func loadSnapshotTasks(ctx context.Context, source TaskSource) ([]snapshotTask, error) {
+	if source == nil {
+		return []snapshotTask{}, nil
+	}
+	tasks, err := source.ListRecent(ctx, contract.MaxSnapshotTasks)
+	if err != nil {
+		return nil, fmt.Errorf("list recent Codex tasks: %w", err)
+	}
+	if len(tasks) > contract.MaxSnapshotTasks {
+		return nil, errors.New("Codex task catalog exceeded its requested limit")
+	}
+	projected := make([]snapshotTask, 0, len(tasks))
+	for _, task := range tasks {
+		if task.UpdatedAtUnix <= 0 {
+			return nil, errors.New("Codex task has no valid activity time")
+		}
+		projected = append(projected, snapshotTask{
+			TaskID: task.ID, Title: task.Title, ProjectLabel: task.ProjectLabel, State: string(task.State),
+			LastActivityAt: time.Unix(task.UpdatedAtUnix, 0).UTC().Format(time.RFC3339),
+		})
+	}
+	return projected, nil
+}
+
+func validatedSnapshotBody(baseSequence uint64, state snapshotState) (json.RawMessage, error) {
+	body, err := json.Marshal(struct {
+		BaseSequence uint64            `json:"baseSeq"`
+		ComputerName string            `json:"computerName"`
+		Projects     []projects.Choice `json:"projects"`
+		Tasks        []snapshotTask    `json:"tasks"`
+	}{baseSequence, state.ComputerName, state.Projects, state.Tasks})
+	if err != nil {
+		return nil, err
+	}
+	sequence := baseSequence
+	message := contract.Message{
+		Version: contract.Version{Major: contract.ProtocolMajor, Minor: contract.ProtocolMinor}, MessageID: "snapshot-validation",
+		Sender: "companion", Type: "snapshot", Sequence: &sequence, Body: body,
+	}
+	if _, err := contract.EncodeText(message); err != nil {
+		return nil, err
+	}
+	return body, nil
 }
 
 func sequenceValue(sequence *uint64) uint64 {
