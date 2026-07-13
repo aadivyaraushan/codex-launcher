@@ -22,4 +22,5 @@ data class TaskSummary(
     val projectLabel: String,
     val state: TaskState,
     val lastActivityAt: Instant,
+    val statusSummary: String? = null,
 )

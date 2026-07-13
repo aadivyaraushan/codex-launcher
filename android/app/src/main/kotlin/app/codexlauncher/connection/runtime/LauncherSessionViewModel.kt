@@ -18,11 +18,15 @@ import app.codexlauncher.project.selection.ProjectSelectionViewModel
 import app.codexlauncher.project.session.ProjectSessionBridge
 import app.codexlauncher.project.session.ProjectSnapshot
 import app.codexlauncher.storage.actions.ActionJournal
+import app.codexlauncher.task.summary.TaskEventReducer
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,12 +57,18 @@ class LauncherSessionViewModel(
     private val mutableState = MutableStateFlow(LauncherSessionState())
     private val generation = AtomicLong()
     private val submissionScope = workScope ?: viewModelScope
+    private var snapshotScope = newSnapshotScope()
     private var activeDeviceId: String? = null
     private var activeConnection: SessionConnection? = null
     private var projectBridge: ProjectSessionBridge? = null
     private val acknowledgementGate = SequenceAcknowledgementGate()
     private val acknowledgementMutex = Mutex()
     private val pendingProjectAcknowledgement = AtomicReference<ProjectAcknowledgement?>()
+    private val publishedProject = AtomicReference<ProjectChoice?>()
+    private val storedProjectBaseline = AtomicReference<ProjectChoice?>()
+    private val pendingTaskEvents = ArrayDeque<ProtocolMessage>()
+    private var nextSnapshotToken = 0L
+    private var pendingSnapshotToken: Long? = null
     private var retryJob: Job? = null
     private var retryComputer: PairedComputer? = null
     private var retryAttempt = 0
@@ -146,6 +156,7 @@ class LauncherSessionViewModel(
                 when (message.type) {
                     MessageType.WELCOME -> acceptCapabilities(expectedGeneration, message)
                     MessageType.SNAPSHOT -> applySnapshot(expectedGeneration, message)
+                    MessageType.EVENT -> applyTaskEvent(expectedGeneration, message)
                     MessageType.ACTION_RESULT -> projectBridge?.accept(message)
                     else -> Unit
                 }
@@ -184,21 +195,35 @@ class LauncherSessionViewModel(
     private fun applySnapshot(expectedGeneration: Long, message: ProtocolMessage) {
         val bridge = projectBridge ?: return
         val snapshot = bridge.snapshot(message)
-        submissionScope.launch {
-            val stored =
+        val snapshotTicket = beginSnapshot(expectedGeneration, snapshot.baseSequence) ?: return
+        snapshotScope.launch {
+            val loadedProject =
                 try {
                     loadProject()
+                } catch (error: CancellationException) {
+                    throw error
                 } catch (error: Exception) {
                     AppLog.error(
                         feature = "connection-runtime",
                         message = "stored project could not be loaded",
                         error = error,
-                        fields = mapOf("decision" to "require_project_selection"),
+                        fields = mapOf(
+                            "snapshot_kind" to if (snapshotTicket.isRefresh) "refresh" else "initial",
+                            "decision" to if (snapshotTicket.retainedProject == null) "require_project_selection" else "keep_published_selection",
+                        ),
                     )
                     null
                 }
-            projectSelection.applySnapshot(snapshot.computerName, snapshot.projects, stored)
-            if (generation.get() != expectedGeneration) return@launch
+            if (!retainLoadedProject(expectedGeneration, snapshotTicket.token, loadedProject)) return@launch
+            val retainedProject = snapshotTicket.retainedProject ?: storedProjectBaseline.get()
+            val stored = retainedProject ?: loadedProject
+            projectSelection.applySnapshot(
+                computerName = snapshot.computerName,
+                choices = snapshot.projects,
+                stored = stored,
+                ensureStoredSelection = snapshotTicket.supersedesSnapshot && retainedProject != null,
+            )
+            if (!isCurrentSnapshot(expectedGeneration, snapshotTicket.token)) return@launch
             var connection = mutableState.value.connection
             val previousProject = connection.selectedProjectId
             val selectedProject = projectSelection.state.value.selectedProjectId
@@ -209,9 +234,10 @@ class LauncherSessionViewModel(
                     else -> connection
                 }
             connection = ConnectionStateMachine.reduce(connection, ConnectionEvent.SnapshotApplied(snapshot.baseSequence))
-            mutableState.value = LauncherSessionState(connection, snapshot)
+            val appliedThrough = publishSnapshot(expectedGeneration, snapshotTicket.token, connection, snapshot)
+            if (appliedThrough == null) return@launch
             markConnectionStable(expectedGeneration)
-            acknowledge(expectedGeneration, snapshot.baseSequence)
+            acknowledge(expectedGeneration, appliedThrough)
             AppLog.info(
                 feature = "connection-runtime",
                 message = "fresh companion snapshot applied",
@@ -223,6 +249,133 @@ class LauncherSessionViewModel(
                 ),
             )
         }
+    }
+
+    @Synchronized
+    private fun applyTaskEvent(expectedGeneration: Long, message: ProtocolMessage) {
+        if (generation.get() != expectedGeneration) return
+        val current = mutableState.value
+        if (pendingSnapshotToken != null || current.connection.phase != app.codexlauncher.connection.state.ConnectionPhase.ONLINE) {
+            if (pendingTaskEvents.size >= MAX_PENDING_TASK_EVENTS) {
+                AppLog.info(
+                    feature = "connection-runtime",
+                    message = "pending live task event limit reached",
+                    fields = mapOf("event_count" to pendingTaskEvents.size, "decision" to "clear_content_and_refresh_snapshot"),
+                )
+                fail(expectedGeneration, SessionFailure.CONNECTION_LOST)
+                return
+            }
+            pendingTaskEvents.addLast(message)
+            AppLog.info(
+                feature = "connection-runtime",
+                message = "live task event queued until snapshot is ready",
+                fields = mapOf(
+                    "sequence" to requireNotNull(message.sequence),
+                    "event_count" to pendingTaskEvents.size,
+                    "output_shape" to "bounded_in_memory_event_queue",
+                ),
+            )
+            return
+        }
+        val snapshot = current.snapshot
+        val updatedTasks = snapshot?.let { TaskEventReducer.apply(it.tasks, message) }
+        if (snapshot == null || updatedTasks == null) {
+            AppLog.info(
+                feature = "connection-runtime",
+                message = "live task event could not be applied",
+                fields = mapOf(
+                    "sequence" to requireNotNull(message.sequence),
+                    "decision" to "clear_content_and_refresh_snapshot",
+                ),
+            )
+            fail(expectedGeneration, SessionFailure.CONNECTION_LOST)
+            return
+        }
+        mutableState.value = current.copy(snapshot = snapshot.copy(tasks = updatedTasks))
+        submissionScope.launch { acknowledge(expectedGeneration, requireNotNull(message.sequence)) }
+    }
+
+    @Synchronized
+    private fun beginSnapshot(expectedGeneration: Long, baseSequence: Long): SnapshotTicket? {
+        if (generation.get() != expectedGeneration) return null
+        val isRefresh = mutableState.value.connection.phase == app.codexlauncher.connection.state.ConnectionPhase.ONLINE
+        val supersedesSnapshot = pendingSnapshotToken != null
+        nextSnapshotToken += 1
+        pendingSnapshotToken = nextSnapshotToken
+        val removed = pendingTaskEvents.count { requireNotNull(it.sequence) <= baseSequence }
+        pendingTaskEvents.removeAll { requireNotNull(it.sequence) <= baseSequence }
+        AppLog.info(
+            feature = "connection-runtime",
+            message = "fresh snapshot became the event ordering barrier",
+            fields = mapOf(
+                "base_sequence" to baseSequence,
+                "snapshot_token" to nextSnapshotToken,
+                "covered_event_count" to removed,
+                "decision" to "queue_later_events_until_publish",
+            ),
+        )
+        return SnapshotTicket(
+            token = nextSnapshotToken,
+            isRefresh = isRefresh,
+            supersedesSnapshot = supersedesSnapshot,
+            retainedProject = publishedProject.get() ?: storedProjectBaseline.get(),
+        )
+    }
+
+    @Synchronized
+    private fun isCurrentSnapshot(expectedGeneration: Long, snapshotToken: Long): Boolean =
+        generation.get() == expectedGeneration && pendingSnapshotToken == snapshotToken
+
+    @Synchronized
+    private fun retainLoadedProject(
+        expectedGeneration: Long,
+        snapshotToken: Long,
+        loadedProject: ProjectChoice?,
+    ): Boolean {
+        if (!isCurrentSnapshot(expectedGeneration, snapshotToken)) return false
+        if (loadedProject != null) storedProjectBaseline.compareAndSet(null, loadedProject)
+        return true
+    }
+
+    @Synchronized
+    private fun publishSnapshot(
+        expectedGeneration: Long,
+        snapshotToken: Long,
+        connection: ConnectionSnapshot,
+        snapshot: ProjectSnapshot,
+    ): Long? {
+        if (!isCurrentSnapshot(expectedGeneration, snapshotToken)) return null
+        var tasks = snapshot.tasks
+        var appliedThrough = snapshot.baseSequence
+        val queuedEvents = pendingTaskEvents.filter { requireNotNull(it.sequence) > snapshot.baseSequence }
+        pendingTaskEvents.clear()
+        queuedEvents.forEach { event ->
+            tasks =
+                TaskEventReducer.apply(tasks, event) ?: run {
+                    fail(expectedGeneration, SessionFailure.CONNECTION_LOST)
+                    return null
+                }
+            appliedThrough = maxOf(appliedThrough, requireNotNull(event.sequence))
+        }
+        pendingSnapshotToken = null
+        val selectedProject =
+            projectSelection.state.value.selectedProjectId?.let { selectedId ->
+                snapshot.projects.singleOrNull { it.id == selectedId }
+            }
+        publishedProject.set(selectedProject)
+        storedProjectBaseline.set(selectedProject)
+        mutableState.value = LauncherSessionState(connection, snapshot.copy(tasks = tasks))
+        AppLog.info(
+            feature = "connection-runtime",
+            message = "snapshot and queued task events published",
+            fields = mapOf(
+                "base_sequence" to snapshot.baseSequence,
+                "applied_through" to appliedThrough,
+                "queued_event_count" to queuedEvents.size,
+                "output_shape" to "online_launcher_state",
+            ),
+        )
+        return appliedThrough
     }
 
     private suspend fun acknowledge(expectedGeneration: Long, throughSequence: Long) {
@@ -290,23 +443,41 @@ class LauncherSessionViewModel(
     }
 
     private suspend fun selectProject(projectId: String): Boolean {
-        val accepted = projectBridge?.selectProject(projectId) == true
-        if (accepted) {
-            mutableState.value = mutableState.value.copy(
-                connection = ConnectionStateMachine.reduce(mutableState.value.connection, ConnectionEvent.ProjectSelected(projectId)),
-            )
-        }
-        return accepted
+        val request = currentProjectActionRequest() ?: return false
+        if (!request.bridge.selectProject(projectId)) return false
+        return publishSelectedProject(request.generation, projectId)
+    }
+
+    @Synchronized
+    private fun currentProjectActionRequest(): ProjectActionRequest? =
+        projectBridge?.let { bridge -> ProjectActionRequest(generation.get(), bridge) }
+
+    @Synchronized
+    private fun publishSelectedProject(expectedGeneration: Long, projectId: String): Boolean {
+        if (generation.get() != expectedGeneration) return false
+        val selectedProject = projectSelection.state.value.choices.singleOrNull { it.id == projectId } ?: return false
+        publishedProject.set(selectedProject)
+        storedProjectBaseline.set(selectedProject)
+        mutableState.value = mutableState.value.copy(
+            connection = ConnectionStateMachine.reduce(mutableState.value.connection, ConnectionEvent.ProjectSelected(projectId)),
+        )
+        return true
     }
 
     @Synchronized
     private fun fail(expectedGeneration: Long, reason: SessionFailure) {
         if (generation.get() != expectedGeneration) return
         generation.incrementAndGet()
+        snapshotScope.cancel()
+        snapshotScope = newSnapshotScope()
         projectBridge?.close()
         projectBridge = null
         acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
+        pendingTaskEvents.clear()
+        pendingSnapshotToken = null
+        publishedProject.set(null)
+        storedProjectBaseline.set(null)
         activeConnection?.close()
         activeConnection = null
         val event =
@@ -378,14 +549,23 @@ class LauncherSessionViewModel(
     @Synchronized
     private fun closeCurrent(invalidate: Boolean) {
         if (invalidate) generation.incrementAndGet()
+        snapshotScope.cancel()
+        snapshotScope = newSnapshotScope()
         projectBridge?.close()
         projectBridge = null
         acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
+        pendingTaskEvents.clear()
+        pendingSnapshotToken = null
+        publishedProject.set(null)
+        storedProjectBaseline.set(null)
         activeConnection?.close()
         activeConnection = null
         activeDeviceId = null
     }
+
+    private fun newSnapshotScope(): CoroutineScope =
+        CoroutineScope(submissionScope.coroutineContext + SupervisorJob(submissionScope.coroutineContext[Job]))
 
     override fun onCleared() {
         cancelRetry(resetAttempts = true)
@@ -400,6 +580,20 @@ private data class ProjectAcknowledgement(
     val actionId: String,
     val sequence: Long,
 )
+
+private data class ProjectActionRequest(
+    val generation: Long,
+    val bridge: ProjectSessionBridge,
+)
+
+private data class SnapshotTicket(
+    val token: Long,
+    val isRefresh: Boolean,
+    val supersedesSnapshot: Boolean,
+    val retainedProject: ProjectChoice?,
+)
+
+private const val MAX_PENDING_TASK_EVENTS = 128
 
 internal fun retryDelayMillis(attempt: Int): Long {
     val exponent = (attempt - 1).coerceIn(0, 5)

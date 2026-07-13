@@ -52,7 +52,17 @@
 > stays conservatively unresolved, and the 128-record cap may evict old
 > definitely-unsent records but never an unknown outcome. The same boundary
 > still needs to be reused by prompt/approval/task actions, and the full unpair
-> wipe owner is not yet built.
+> wipe owner is not yet built. Validated live task events now update the
+> matching Home row's state and short summary in memory. Events arriving while
+> the fresh snapshot/project state loads wait in a bounded 128-item queue,
+> only the newest overlapping snapshot can publish, and later events are
+> acknowledged only after application. A winning snapshot also repairs any
+> stored project change finished by an older snapshot, while generation checks
+> and per-session cancellation stop old load/action work from changing a fresh
+> connection. Unknown tasks or
+> overflow clear content and reconnect for a fresh snapshot; no event body is
+> persisted. The companion-to-Codex live event producer and full transcript
+> contract remain unbuilt.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

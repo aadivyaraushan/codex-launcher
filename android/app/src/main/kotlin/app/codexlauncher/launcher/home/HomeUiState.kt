@@ -16,7 +16,7 @@ internal fun TaskSummary.toHomeTask(): HomeTask =
     HomeTask(
         id = id,
         title = title,
-        stateLabel =
+        stateLabel = statusSummary ?: run {
             when (state) {
                 TaskState.WORKING -> QuietInstrumentTokens.workingLabel
                 TaskState.WAITING_FOR_APPROVAL -> QuietInstrumentTokens.approvalLabel
@@ -24,7 +24,8 @@ internal fun TaskSummary.toHomeTask(): HomeTask =
                 TaskState.FAILED -> QuietInstrumentTokens.failedLabel
                 TaskState.INTERRUPTED -> QuietInstrumentTokens.interruptedLabel
                 TaskState.IDLE_AFTER_REPLY -> QuietInstrumentTokens.repliedLabel
-            },
+            }
+        },
     )
 
 data class HomeUiState(

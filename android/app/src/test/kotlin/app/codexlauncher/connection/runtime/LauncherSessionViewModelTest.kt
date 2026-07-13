@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -141,6 +142,258 @@ class LauncherSessionViewModelTest {
     }
 
     @Test
+    fun removedStoredProjectDoesNotReturnWhenALaterSnapshotListsItAgain() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        var stored: ProjectChoice? = ProjectChoice("main", "Main")
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { stored },
+            saveProject = { choice -> stored = choice; true },
+            clearProject = { stored = null; true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-2","sender":"companion","type":"snapshot","seq":2,"body":{"baseSeq":2,"computerName":"Studio Mac","projects":[],"tasks":[]}}""",
+            ),
+        )
+        connection.awaitAcknowledgement(2)
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-3","sender":"companion","type":"snapshot","seq":3,"body":{"baseSeq":3,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+        connection.awaitAcknowledgement(3)
+
+        assertEquals(null, stored)
+        assertEquals(null, viewModel.projectSelection.state.value.selectedProjectId)
+        assertEquals(null, viewModel.state.value.connection.selectedProjectId)
+    }
+
+    @Test
+    fun oldStoredProjectLoadCannotRepopulateAFreshSessionAfterDisconnect() = runBlocking {
+        val observers = mutableListOf<SessionObserver>()
+        val connections = mutableListOf<FakeSessionConnection>()
+        val oldLoad = CompletableDeferred<ProjectChoice?>()
+        var loadCalls = 0
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, observer ->
+                observers += observer
+                FakeSessionConnection().also(connections::add)
+            },
+            loadProject = {
+                loadCalls += 1
+                if (loadCalls == 1) oldLoad.await() else null
+            },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-${observers.size + 1}" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observers[0].onReady(connections[0], ByteArray(32))
+        observers[0].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[0].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"old-snapshot","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Old Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+
+        viewModel.disconnect()
+        viewModel.connect(pairedComputer())
+        observers[1].onReady(connections[1], ByteArray(32))
+        observers[1].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[1].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"fresh-snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"New Mac","projects":[],"tasks":[]}}""",
+            ),
+        )
+        connections[1].awaitAcknowledgement(1)
+        oldLoad.complete(ProjectChoice("main", "Main"))
+        yield()
+        observers[1].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"fresh-snapshot-2","sender":"companion","type":"snapshot","seq":2,"body":{"baseSeq":2,"computerName":"New Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+        connections[1].awaitAcknowledgement(2)
+
+        assertEquals(null, viewModel.projectSelection.state.value.selectedProjectId)
+        assertEquals(null, viewModel.state.value.connection.selectedProjectId)
+    }
+
+    @Test
+    fun disconnectCancelsOldBlockedProjectClearBeforeFreshSessionPublishes() = runBlocking {
+        val observers = mutableListOf<SessionObserver>()
+        val connections = mutableListOf<FakeSessionConnection>()
+        val clearStarted = CompletableDeferred<Unit>()
+        val releaseClear = CompletableDeferred<Unit>()
+        var stored: ProjectChoice? = ProjectChoice("main", "Main")
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, observer ->
+                observers += observer
+                FakeSessionConnection().also(connections::add)
+            },
+            loadProject = { stored },
+            saveProject = { choice -> stored = choice; true },
+            clearProject = {
+                clearStarted.complete(Unit)
+                releaseClear.await()
+                stored = null
+                true
+            },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-${observers.size + 1}" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observers[0].onReady(connections[0], ByteArray(32))
+        observers[0].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[0].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"old-snapshot","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Old Mac","projects":[],"tasks":[]}}""",
+            ),
+        )
+        clearStarted.await()
+
+        viewModel.disconnect()
+        viewModel.connect(pairedComputer())
+        observers[1].onReady(connections[1], ByteArray(32))
+        observers[1].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[1].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"fresh-snapshot","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"New Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+        releaseClear.complete(Unit)
+        connections[1].awaitAcknowledgement(1)
+
+        assertEquals(ProjectChoice("main", "Main"), stored)
+        assertEquals("main", viewModel.projectSelection.state.value.selectedProjectId)
+        assertEquals("main", viewModel.state.value.connection.selectedProjectId)
+    }
+
+    @Test
+    fun oldConfirmedProjectActionCannotChangeAFreshSessionAfterDisconnect() = runBlocking {
+        val observers = mutableListOf<SessionObserver>()
+        val connections = mutableListOf<FakeSessionConnection>()
+        val confirmationStarted = CompletableDeferred<Unit>()
+        val releaseConfirmation = CompletableDeferred<Unit>()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, observer ->
+                observers += observer
+                FakeSessionConnection().also(connections::add)
+            },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(confirmationStarted, releaseConfirmation),
+            nextSessionId = { "session-${observers.size + 1}" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observers[0].onReady(connections[0], ByteArray(32))
+        observers[0].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[0].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"old-snapshot","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Old Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+        val selection = async { viewModel.projectSelection.selectProject("main") }
+        val action = ProtocolCodec.decodeText(connections[0].awaitType("action"))
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        observers[0].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"old-result","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed"}}""",
+            ),
+        )
+        confirmationStarted.await()
+
+        viewModel.disconnect()
+        viewModel.connect(pairedComputer())
+        observers[1].onReady(connections[1], ByteArray(32))
+        observers[1].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[1].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"fresh-snapshot","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"New Mac","projects":[],"tasks":[]}}""",
+            ),
+        )
+        connections[1].awaitAcknowledgement(1)
+        val freshProjectState = viewModel.projectSelection.state.value
+        releaseConfirmation.complete(Unit)
+        assertFalse(selection.await())
+
+        assertEquals(freshProjectState, viewModel.projectSelection.state.value)
+        assertEquals(null, viewModel.projectSelection.state.value.selectedProjectId)
+        assertEquals(null, viewModel.state.value.connection.selectedProjectId)
+    }
+
+    @Test
+    fun oldProjectActionExceptionCannotChangeAFreshSessionAfterDisconnect() = runBlocking {
+        val observers = mutableListOf<SessionObserver>()
+        val connections = mutableListOf<FakeSessionConnection>()
+        val confirmationStarted = CompletableDeferred<Unit>()
+        val releaseConfirmation = CompletableDeferred<Unit>()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, observer ->
+                observers += observer
+                FakeSessionConnection().also(connections::add)
+            },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(confirmationStarted, releaseConfirmation, IllegalStateException("old session failed")),
+            nextSessionId = { "session-${observers.size + 1}" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observers[0].onReady(connections[0], ByteArray(32))
+        observers[0].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[0].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"old-snapshot","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Old Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+        val selection = async { viewModel.projectSelection.selectProject("main") }
+        val action = ProtocolCodec.decodeText(connections[0].awaitType("action"))
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        observers[0].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"old-result","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed"}}""",
+            ),
+        )
+        confirmationStarted.await()
+
+        viewModel.disconnect()
+        viewModel.connect(pairedComputer())
+        observers[1].onReady(connections[1], ByteArray(32))
+        observers[1].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[1].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"fresh-snapshot","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"New Mac","projects":[],"tasks":[]}}""",
+            ),
+        )
+        connections[1].awaitAcknowledgement(1)
+        val freshProjectState = viewModel.projectSelection.state.value
+        releaseConfirmation.complete(Unit)
+        assertFalse(selection.await())
+
+        assertEquals(freshProjectState, viewModel.projectSelection.state.value)
+    }
+
+    @Test
     fun appliedSnapshotIsAcknowledgedThroughItsSequence() = runBlocking {
         lateinit var observer: SessionObserver
         val connection = FakeSessionConnection()
@@ -165,6 +418,345 @@ class LauncherSessionViewModelTest {
         val acknowledgement = ProtocolCodec.decodeText(connection.sent.single())
         assertEquals("ack", acknowledgement.type.wireName)
         assertEquals("7", acknowledgement.body.getValue("throughSeq").jsonPrimitive.content)
+    }
+
+    @Test
+    fun liveTaskEventUpdatesTheInMemoryRowBeforeAcknowledgement() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[],"tasks":[{"taskId":"thread-1","title":"Build launcher","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"}]}}""",
+            ),
+        )
+
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"event-2","sender":"companion","type":"event","seq":2,"body":{"taskId":"thread-1","event":"reply","state":"idle_after_reply","summary":"Replied · 12 files inspected"}}""",
+            ),
+        )
+
+        connection.awaitAcknowledgement(2)
+        val task = requireNotNull(viewModel.state.value.snapshot).tasks.single()
+        assertEquals(app.codexlauncher.task.summary.TaskState.IDLE_AFTER_REPLY, task.state)
+        assertEquals("Replied · 12 files inspected", task.statusSummary)
+    }
+
+    @Test
+    fun eventWaitsForTheFreshSnapshotWhileStoredProjectLoadingIsBlocked() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val storedProject = CompletableDeferred<ProjectChoice?>()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { storedProject.await() },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[],"tasks":[{"taskId":"thread-1","title":"Build launcher","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"}]}}""",
+            ),
+        )
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"event-2","sender":"companion","type":"event","seq":2,"body":{"taskId":"thread-1","event":"activity","state":"working","summary":"Running integration tests"}}""",
+            ),
+        )
+
+        assertFalse(connection.closed)
+        assertFalse(connection.hasAcknowledged(2))
+        storedProject.complete(null)
+
+        connection.awaitAcknowledgement(2)
+        assertEquals("Running integration tests", viewModel.state.value.snapshot?.tasks?.single()?.statusSummary)
+        assertFalse(connection.hasAcknowledged(1))
+    }
+
+    @Test
+    fun pendingTaskEventQueueIsBoundedWhileSnapshotLoadingIsBlocked() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val storedProject = CompletableDeferred<ProjectChoice?>()
+        val retryStarted = CompletableDeferred<Int>()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { storedProject.await() },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            retryWait = { attempt -> retryStarted.complete(attempt); CompletableDeferred<Unit>().await() },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[],"tasks":[{"taskId":"thread-1","title":"Build launcher","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"}]}}""",
+            ),
+        )
+
+        repeat(129) { index ->
+            observer.onMessage(
+                decode(
+                    """{"version":{"major":1,"minor":0},"messageId":"event-${index + 2}","sender":"companion","type":"event","seq":${index + 2},"body":{"taskId":"thread-1","event":"activity","state":"working","summary":"Update $index"}}""",
+                ),
+            )
+        }
+
+        assertEquals(1, retryStarted.await())
+        assertTrue(connection.closed)
+        assertEquals(ConnectionPhase.DISCONNECTED, viewModel.state.value.connection.phase)
+    }
+
+    @Test
+    fun onlineRefreshQueuesLaterEventUntilTheRefreshedSnapshotPublishes() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val releaseRefresh = CompletableDeferred<ProjectChoice?>()
+        var loadCalls = 0
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = {
+                loadCalls += 1
+                if (loadCalls == 1) null else releaseRefresh.await()
+            },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[],"tasks":[{"taskId":"thread-1","title":"Initial title","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"}]}}""",
+            ),
+        )
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-5","sender":"companion","type":"snapshot","seq":5,"body":{"baseSeq":5,"computerName":"Studio Mac","projects":[],"tasks":[{"taskId":"thread-1","title":"Refreshed title","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:03:00Z"}]}}""",
+            ),
+        )
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"event-6","sender":"companion","type":"event","seq":6,"body":{"taskId":"thread-1","event":"activity","state":"working","summary":"After refresh"}}""",
+            ),
+        )
+
+        assertFalse(connection.hasAcknowledged(6))
+        releaseRefresh.complete(null)
+
+        connection.awaitAcknowledgement(6)
+        val task = requireNotNull(viewModel.state.value.snapshot).tasks.single()
+        assertEquals("Refreshed title", task.title)
+        assertEquals("After refresh", task.statusSummary)
+    }
+
+    @Test
+    fun onlyNewestOverlappingSnapshotCanPublishWhenLoadsCompleteInReverse() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val releaseOlder = CompletableDeferred<ProjectChoice?>()
+        val releaseNewest = CompletableDeferred<ProjectChoice?>()
+        var loadCalls = 0
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = {
+                loadCalls += 1
+                when (loadCalls) {
+                    1 -> null
+                    2 -> releaseOlder.await()
+                    else -> releaseNewest.await()
+                }
+            },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(snapshotWithTask(1, "Initial"))
+        observer.onMessage(snapshotWithTask(5, "Older refresh"))
+        observer.onMessage(snapshotWithTask(7, "Newest refresh"))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"event-8","sender":"companion","type":"event","seq":8,"body":{"taskId":"thread-1","event":"reply","state":"idle_after_reply","summary":"Newest reply"}}""",
+            ),
+        )
+
+        releaseNewest.complete(null)
+        connection.awaitAcknowledgement(8)
+        assertEquals("Newest refresh", viewModel.state.value.snapshot?.tasks?.single()?.title)
+        assertEquals("Newest reply", viewModel.state.value.snapshot?.tasks?.single()?.statusSummary)
+
+        releaseOlder.complete(null)
+        yield()
+        assertEquals("Newest refresh", viewModel.state.value.snapshot?.tasks?.single()?.title)
+        assertFalse(connection.hasAcknowledged(5))
+        assertFalse(connection.hasAcknowledged(7))
+    }
+
+    @Test
+    fun newestRefreshRestoresPublishedProjectAfterSupersededClearFinishes() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val clearStarted = CompletableDeferred<Unit>()
+        val releaseClear = CompletableDeferred<Unit>()
+        val saved = mutableListOf<ProjectChoice>()
+        var clearCalls = 0
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { ProjectChoice("main", "Main") },
+            saveProject = { choice -> saved += choice; true },
+            clearProject = {
+                clearCalls += 1
+                clearStarted.complete(Unit)
+                releaseClear.await()
+                true
+            },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-5","sender":"companion","type":"snapshot","seq":5,"body":{"baseSeq":5,"computerName":"Studio Mac","projects":[],"tasks":[]}}""",
+            ),
+        )
+        clearStarted.await()
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-7","sender":"companion","type":"snapshot","seq":7,"body":{"baseSeq":7,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+
+        releaseClear.complete(Unit)
+        connection.awaitAcknowledgement(7)
+
+        assertEquals(1, clearCalls)
+        assertEquals(listOf(ProjectChoice("main", "Main")), saved)
+        assertEquals("main", viewModel.projectSelection.state.value.selectedProjectId)
+        assertEquals("main", viewModel.state.value.connection.selectedProjectId)
+    }
+
+    @Test
+    fun newestInitialSnapshotRestoresStoredProjectAfterSupersededClearFinishes() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val clearStarted = CompletableDeferred<Unit>()
+        val releaseClear = CompletableDeferred<Unit>()
+        val saved = mutableListOf<ProjectChoice>()
+        var loadCalls = 0
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = {
+                loadCalls += 1
+                if (loadCalls == 1) {
+                    ProjectChoice("main", "Main")
+                } else {
+                    clearStarted.await()
+                    releaseClear.await()
+                    null
+                }
+            },
+            saveProject = { choice -> saved += choice; true },
+            clearProject = {
+                clearStarted.complete(Unit)
+                releaseClear.await()
+                true
+            },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[],"tasks":[]}}""",
+            ),
+        )
+        clearStarted.await()
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-2","sender":"companion","type":"snapshot","seq":2,"body":{"baseSeq":2,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+
+        releaseClear.complete(Unit)
+        connection.awaitAcknowledgement(2)
+
+        assertEquals(listOf(ProjectChoice("main", "Main")), saved)
+        assertEquals("main", viewModel.projectSelection.state.value.selectedProjectId)
+        assertEquals("main", viewModel.state.value.connection.selectedProjectId)
+    }
+
+    @Test
+    fun eventForAnUnknownTaskClearsContentAndReconnectsForAFreshSnapshot() = runBlocking {
+        lateinit var observer: SessionObserver
+        val retryStarted = CompletableDeferred<Int>()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; FakeSessionConnection() },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            retryWait = { attempt -> retryStarted.complete(attempt); CompletableDeferred<Unit>().await() },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        val connection = FakeSessionConnection()
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[],"tasks":[]}}""",
+            ),
+        )
+
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"event-2","sender":"companion","type":"event","seq":2,"body":{"taskId":"new-task","event":"activity","state":"working","summary":"Started elsewhere"}}""",
+            ),
+        )
+
+        assertEquals(1, retryStarted.await())
+        assertEquals(ConnectionPhase.DISCONNECTED, viewModel.state.value.connection.phase)
+        assertEquals(null, viewModel.state.value.snapshot)
     }
 
     @Test
@@ -500,6 +1092,11 @@ class LauncherSessionViewModelTest {
 
     private fun decode(frame: String): ProtocolMessage = ProtocolCodec.decodeText(frame)
 
+    private fun snapshotWithTask(sequence: Long, title: String): ProtocolMessage =
+        decode(
+            """{"version":{"major":1,"minor":0},"messageId":"snapshot-$sequence","sender":"companion","type":"snapshot","seq":$sequence,"body":{"baseSeq":$sequence,"computerName":"Studio Mac","projects":[],"tasks":[{"taskId":"thread-1","title":"$title","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"}]}}""",
+        )
+
     private fun pairedComputer() =
         PairedComputer(
             host = "100.64.0.10",
@@ -570,6 +1167,7 @@ private class FakeSessionConnection : SessionConnection {
 private class FakeActionJournal(
     private val confirmationStarted: CompletableDeferred<Unit>? = null,
     private val releaseConfirmation: CompletableDeferred<Unit>? = null,
+    private val confirmationError: Exception? = null,
 ) : ActionJournal {
     val acknowledged = mutableListOf<String>()
     override suspend fun prepare(
@@ -602,6 +1200,7 @@ private class FakeActionJournal(
     ): Boolean {
         confirmationStarted?.complete(Unit)
         releaseConfirmation?.await()
+        confirmationError?.let { throw it }
         return true
     }
 

@@ -85,9 +85,26 @@ class HomeScreenTest {
         }
 
         compose.onNodeWithText("Codex Launcher").assertIsDisplayed()
-        compose.onNodeWithText("What do you want done?").performTextInput("Run all tests")
+        compose.onNodeWithContentDescription("Prompt").performClick().performTextInput("Run all tests")
         compose.onNodeWithContentDescription("Send prompt").assertIsEnabled().performClick()
         assertEquals("Run all tests", sentPrompt)
+    }
+
+    @Test
+    fun liveTaskSummaryIsVisibleInTheRenderedHomeRow() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state =
+                        onlineState(selectedProjectName = "Codex Launcher").copy(
+                            tasks = listOf(HomeTask("thread-1", "Fix authentication redirect", "Running integration tests")),
+                        ),
+                )
+            }
+        }
+
+        compose.onNodeWithText("Fix authentication redirect").assertIsDisplayed()
+        compose.onNodeWithText("Running integration tests").assertIsDisplayed()
     }
 
     @Test

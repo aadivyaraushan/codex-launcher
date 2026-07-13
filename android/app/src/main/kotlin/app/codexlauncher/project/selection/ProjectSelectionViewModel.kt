@@ -45,7 +45,12 @@ class ProjectSelectionViewModel(
 
     val state: StateFlow<ProjectSelectionUiState> = mutableState.asStateFlow()
 
-    suspend fun applySnapshot(computerName: String, choices: List<ProjectChoice>, stored: ProjectChoice?) {
+    suspend fun applySnapshot(
+        computerName: String,
+        choices: List<ProjectChoice>,
+        stored: ProjectChoice?,
+        ensureStoredSelection: Boolean = false,
+    ) {
         require(computerName.isSafeDisplay(80) && choices.size <= 128 && choices.all(ProjectChoice::isValid) && choices.map { it.id }.distinct().size == choices.size)
         stateMutex.withLock {
             snapshotVersion += 1
@@ -58,7 +63,7 @@ class ProjectSelectionViewModel(
                 progress = if (current == null) ProjectSelectionProgress.IDLE else ProjectSelectionProgress.SELECTED,
             )
             if (stored != null && current == null) clearRemovedSelection()
-            if (current != null && current != stored) {
+            if (current != null && (ensureStoredSelection || current != stored)) {
                 pendingChoice = current
                 savePendingChoice()
             }
@@ -81,6 +86,7 @@ class ProjectSelectionViewModel(
     suspend fun selectProject(projectId: String): Boolean {
         if (!selectionMutex.tryLock()) return false
         var computerResultApplied = false
+        var requestedSnapshotVersion: Long? = null
         return try {
             val request = stateMutex.withLock {
                 val choice = mutableState.value.choices.singleOrNull { it.id == projectId } ?: return@withLock null
@@ -92,23 +98,24 @@ class ProjectSelectionViewModel(
                 mutableState.value = mutableState.value.copy(progress = ProjectSelectionProgress.SELECTING, errorMessage = null)
                 choice to snapshotVersion
             } ?: return false
-            val (choice, requestedSnapshotVersion) = request
+            val (choice, requestVersion) = request
+            requestedSnapshotVersion = requestVersion
             val accepted = withContext(ioDispatcher) { select(choice.id) }
             stateMutex.withLock {
-                if (!accepted) {
+                if (requestVersion != snapshotVersion || mutableState.value.choices.none { it.id == choice.id }) {
+                    AppLog.info(
+                        feature = "project-selection",
+                        message = "stale project confirmation discarded",
+                        fields = mapOf("project_id" to choice.id, "decision" to "keep_newer_snapshot"),
+                    )
+                    false
+                } else if (!accepted) {
                     AppLog.info(
                         feature = "project-selection",
                         message = "computer rejected project selection",
                         fields = mapOf("project_id" to choice.id, "decision" to "keep_previous_selection"),
                     )
                     showUnavailable()
-                    false
-                } else if (requestedSnapshotVersion != snapshotVersion || mutableState.value.choices.none { it.id == choice.id }) {
-                    AppLog.info(
-                        feature = "project-selection",
-                        message = "stale project confirmation discarded",
-                        fields = mapOf("project_id" to choice.id, "decision" to "keep_newer_snapshot"),
-                    )
                     false
                 } else {
                     pendingChoice = choice
@@ -118,14 +125,30 @@ class ProjectSelectionViewModel(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            AppLog.error(
-                feature = "project-selection",
-                message = "project selection failed",
-                error = error,
-                fields = mapOf("project_id" to projectId, "decision" to "keep_previous_selection"),
-            )
-            stateMutex.withLock { showUnavailable() }
-            computerResultApplied = true
+            val stale = stateMutex.withLock {
+                val requested = requestedSnapshotVersion
+                if (requested != null && (requested != snapshotVersion || mutableState.value.choices.none { it.id == projectId })) {
+                    true
+                } else {
+                    showUnavailable()
+                    false
+                }
+            }
+            if (stale) {
+                AppLog.info(
+                    feature = "project-selection",
+                    message = "stale project failure discarded",
+                    fields = mapOf("project_id" to projectId, "decision" to "keep_newer_snapshot"),
+                )
+            } else {
+                AppLog.error(
+                    feature = "project-selection",
+                    message = "project selection failed",
+                    error = error,
+                    fields = mapOf("project_id" to projectId, "decision" to "keep_previous_selection"),
+                )
+                computerResultApplied = true
+            }
             false
         } finally {
             try {

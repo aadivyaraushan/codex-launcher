@@ -130,4 +130,19 @@ class HomeUiStateTest {
             assertEquals(label, summary.toHomeTask().stateLabel)
         }
     }
+
+    @Test
+    fun validatedLiveSummaryReplacesTheGenericStateLabelWithoutChangingTheTitle() {
+        val summary =
+            TaskSummary(
+                id = "task-1",
+                title = "Private title",
+                projectLabel = "Project",
+                state = TaskState.WORKING,
+                lastActivityAt = Instant.EPOCH,
+                statusSummary = "Running integration tests",
+            )
+
+        assertEquals(HomeTask("task-1", "Private title", "Running integration tests"), summary.toHomeTask())
+    }
 }
