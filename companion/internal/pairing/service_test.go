@@ -3,8 +3,11 @@ package pairing
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"errors"
@@ -118,6 +121,42 @@ func TestPairingRejectsGuessedIdentityVersionAndKeySubstitution(t *testing.T) {
 	}
 }
 
+func TestPairingRejectsUnsafeDeviceAndSessionIdentifiers(t *testing.T) {
+	service := newTestService(t)
+	offer, err := service.BeginPairing(PairingTarget{Host: "mac.tailnet.ts.net", Port: 9443, Protocol: 1}, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, deviceID := range []string{"/Users/private", "pixel 9", "pixel-9\nforged=true"} {
+		request := signedPairRequest(t, offer, deviceID)
+		if _, err := service.Pair(context.Background(), request, testNow); !errors.Is(err, ErrInvalidProof) {
+			t.Fatalf("device id %q error = %v, want %v", deviceID, err, ErrInvalidProof)
+		}
+	}
+	request := signedPairRequest(t, offer, "pixel-9")
+	if _, err := service.Pair(context.Background(), request, testNow); err != nil {
+		t.Fatal(err)
+	}
+	for _, sessionID := range []string{"/Users/private", "session 1", "session-1\nforged=true"} {
+		if _, err := service.BeginSession("pixel-9", sessionID, testNow); !errors.Is(err, ErrChallengeBinding) {
+			t.Fatalf("session id %q error = %v, want %v", sessionID, err, ErrChallengeBinding)
+		}
+	}
+}
+
+func TestPairingGenerationAcceptsEveryBase64URLPrefix(t *testing.T) {
+	for _, generation := range []string{"_AAAAAAAAAAAAAAAAAAAAA", "-AAAAAAAAAAAAAAAAAAAAA", "AAAAAAAAAAAAAAAAAAAAAA"} {
+		if !validPairingGeneration(generation) {
+			t.Fatalf("valid pairing generation %q was rejected", generation)
+		}
+	}
+	for _, generation := range []string{"", "too-short", "AAAAAAAAAAAAAAAAAAAAA!"} {
+		if validPairingGeneration(generation) {
+			t.Fatalf("invalid pairing generation %q was accepted", generation)
+		}
+	}
+}
+
 func TestPairingLogsNeverContainSecretNameOrKey(t *testing.T) {
 	var output bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -173,6 +212,40 @@ func TestSessionAuthenticationRejectsSubstitutionStaleAndReplay(t *testing.T) {
 	wrongProof.Signature = ed25519.Sign(privateKey, SessionProofMessage(wrongProof))
 	if _, err := service.Authenticate(context.Background(), wrongProof, testNow); !errors.Is(err, ErrChallengeBinding) {
 		t.Fatalf("substituted session error = %v", err)
+	}
+}
+
+func TestAndroidHardwareBackedP256KeyCanPairAndAuthenticate(t *testing.T) {
+	service := newTestService(t)
+	offer, err := service.BeginPairing(PairingTarget{Host: "mac.tailnet.ts.net", Port: 9443, Protocol: 1}, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := PairRequest{
+		Secret: offer.Secret, Host: offer.Target.Host, Port: offer.Target.Port, Protocol: offer.Target.Protocol,
+		HostPublicKey: offer.HostPublicKey, DeviceID: "pixel-9", DeviceName: "Pixel 9", DevicePublicKey: publicKey,
+	}
+	request.Signature = signP256(t, privateKey, PairingProofMessage(request))
+	if _, err := service.Pair(context.Background(), request, testNow); err != nil {
+		t.Fatalf("pair with Android P-256 key: %v", err)
+	}
+
+	challenge, err := service.BeginSession("pixel-9", "p256-session", testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := proofFromChallenge(challenge)
+	proof.Signature = signP256(t, privateKey, SessionProofMessage(proof))
+	if _, err := service.Authenticate(context.Background(), proof, testNow); err != nil {
+		t.Fatalf("authenticate with Android P-256 key: %v", err)
 	}
 }
 
@@ -323,6 +396,26 @@ func TestTLSCertificateRenewsUnderStableIdentityPin(t *testing.T) {
 	}
 }
 
+func TestPairingIdentityPinMatchesTheTLSSubjectPublicKeyInfo(t *testing.T) {
+	service := newTestService(t)
+	offer, err := service.BeginPairing(PairingTarget{Host: "mac.tailnet.ts.net", Port: 9443, Protocol: 1}, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certificate, err := service.TLSCertificate(testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := x509.ParseCertificate(certificate.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := base64.RawURLEncoding.EncodeToString(leaf.RawSubjectPublicKeyInfo)
+	if offer.HostPublicKey != want {
+		t.Fatalf("pairing identity = %q, TLS SPKI pin = %q", offer.HostPublicKey, want)
+	}
+}
+
 func TestConcurrentPairingCodesCannotEnrollTwoPhones(t *testing.T) {
 	store := &pairingBarrierStore{MemoryStore: NewMemoryStore(), bothEntered: make(chan struct{})}
 	service, err := NewService(context.Background(), store, rand.Reader)
@@ -454,4 +547,14 @@ func authenticateWithKey(service *Service, offer PairingOffer, sessionID string,
 
 func proofFromChallenge(challenge SessionChallenge) SessionProof {
 	return SessionProof{DeviceID: challenge.DeviceID, SessionID: challenge.SessionID, PairingGeneration: challenge.PairingGeneration, Protocol: challenge.Protocol, HostPublicKey: challenge.HostPublicKey, Nonce: challenge.Nonce, ExpiresAt: challenge.ExpiresAt, HostSignature: append([]byte(nil), challenge.HostSignature...)}
+}
+
+func signP256(t *testing.T, privateKey *ecdsa.PrivateKey, message []byte) []byte {
+	t.Helper()
+	digest := sha256.Sum256(message)
+	signature, err := ecdsa.SignASN1(rand.Reader, privateKey, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signature
 }

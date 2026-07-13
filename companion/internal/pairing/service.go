@@ -2,7 +2,9 @@ package pairing
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -66,7 +68,7 @@ type PairRequest struct {
 	HostPublicKey   string
 	DeviceID        string
 	DeviceName      string
-	DevicePublicKey ed25519.PublicKey
+	DevicePublicKey []byte
 	Signature       []byte
 }
 
@@ -95,13 +97,13 @@ type SessionProof struct {
 
 type RotationProof struct {
 	DeviceID     string
-	NewPublicKey ed25519.PublicKey
+	NewPublicKey []byte
 	Signature    []byte
 }
 
 type RotationConfirmation struct {
 	DeviceID     string
-	NewPublicKey ed25519.PublicKey
+	NewPublicKey []byte
 	Signature    []byte
 }
 
@@ -175,7 +177,11 @@ func NewServiceWithLogger(ctx context.Context, store Store, random io.Reader, lo
 		return nil, errors.New("stored host identity is invalid")
 	}
 	publicKey := append(ed25519.PublicKey(nil), identity.Public().(ed25519.PublicKey)...)
-	fingerprint := base64.RawURLEncoding.EncodeToString(publicKey)
+	publicKeyInfo, err := x509.MarshalPKIXPublicKey(publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("encode host identity: %w", err)
+	}
+	fingerprint := base64.RawURLEncoding.EncodeToString(publicKeyInfo)
 	return &Service{store: store, random: random, logger: logger, identity: append(ed25519.PrivateKey(nil), identity...), publicKey: publicKey, fingerprint: fingerprint,
 		pairings: make(map[[32]byte]pendingPairing), consumed: make(map[[32]byte]time.Time), sessionReplays: make(map[[32]byte]sessionReplay), sessions: make(map[string]map[*Session]struct{})}, nil
 }
@@ -251,7 +257,7 @@ func (service *Service) Pair(ctx context.Context, request PairRequest, now time.
 		release()
 		return DeviceRecord{}, err
 	}
-	if !validID(request.DeviceID) || !validName(request.DeviceName) || len(request.DevicePublicKey) != ed25519.PublicKeySize || len(request.Signature) != ed25519.SignatureSize || !ed25519.Verify(request.DevicePublicKey, PairingProofMessage(request), request.Signature) {
+	if !validID(request.DeviceID) || !validName(request.DeviceName) || !validDevicePublicKey(request.DevicePublicKey) || !verifyDeviceSignature(request.DevicePublicKey, PairingProofMessage(request), request.Signature) {
 		release()
 		return DeviceRecord{}, ErrInvalidProof
 	}
@@ -312,7 +318,7 @@ func (service *Service) Authenticate(ctx context.Context, proof SessionProof, no
 	if !now.Before(proof.ExpiresAt) {
 		return nil, ErrChallengeExpired
 	}
-	if !validID(proof.DeviceID) || !validID(proof.SessionID) || !validID(proof.PairingGeneration) || proof.Protocol != ProtocolMajor || proof.HostPublicKey != service.fingerprint || len(proof.Nonce) > 128 || len(proof.HostSignature) != ed25519.SignatureSize || !ed25519.Verify(service.publicKey, SessionChallengeMessage(challenge), proof.HostSignature) {
+	if !validID(proof.DeviceID) || !validID(proof.SessionID) || !validPairingGeneration(proof.PairingGeneration) || proof.Protocol != ProtocolMajor || proof.HostPublicKey != service.fingerprint || len(proof.Nonce) > 128 || len(proof.HostSignature) != ed25519.SignatureSize || !ed25519.Verify(service.publicKey, SessionChallengeMessage(challenge), proof.HostSignature) {
 		return nil, ErrChallengeBinding
 	}
 	service.deviceMu.RLock()
@@ -324,9 +330,9 @@ func (service *Service) Authenticate(ctx context.Context, proof SessionProof, no
 	if device.PairingGeneration != proof.PairingGeneration {
 		return nil, ErrChallengeBinding
 	}
-	valid := len(proof.Signature) == ed25519.SignatureSize && ed25519.Verify(device.CurrentPublicKey, SessionProofMessage(proof), proof.Signature)
-	if !valid && len(device.PendingPublicKey) == ed25519.PublicKeySize {
-		valid = ed25519.Verify(device.PendingPublicKey, SessionProofMessage(proof), proof.Signature)
+	valid := verifyDeviceSignature(device.CurrentPublicKey, SessionProofMessage(proof), proof.Signature)
+	if !valid && validDevicePublicKey(device.PendingPublicKey) {
+		valid = verifyDeviceSignature(device.PendingPublicKey, SessionProofMessage(proof), proof.Signature)
 	}
 	if !valid {
 		return nil, ErrInvalidProof
@@ -398,7 +404,7 @@ func (service *Service) Revoke(ctx context.Context, deviceID string) error {
 }
 
 func (service *Service) BeginKeyRotation(ctx context.Context, session *Session, proof RotationProof) error {
-	if !validSession(session, proof.DeviceID) || len(proof.NewPublicKey) != ed25519.PublicKeySize || len(proof.Signature) != ed25519.SignatureSize {
+	if !validSession(session, proof.DeviceID) || !validDevicePublicKey(proof.NewPublicKey) || len(proof.Signature) == 0 {
 		return ErrSessionClosed
 	}
 	service.deviceMu.Lock()
@@ -407,10 +413,10 @@ func (service *Service) BeginKeyRotation(ctx context.Context, session *Session, 
 	if err != nil {
 		return err
 	}
-	if !ed25519.Verify(device.CurrentPublicKey, RotationProofMessage(proof), proof.Signature) {
+	if !verifyDeviceSignature(device.CurrentPublicKey, RotationProofMessage(proof), proof.Signature) {
 		return ErrInvalidProof
 	}
-	device.PendingPublicKey = append(ed25519.PublicKey(nil), proof.NewPublicKey...)
+	device.PendingPublicKey = append([]byte(nil), proof.NewPublicKey...)
 	if err := service.store.SaveDevice(ctx, device); err != nil {
 		return fmt.Errorf("store pending device key: %w", err)
 	}
@@ -419,7 +425,7 @@ func (service *Service) BeginKeyRotation(ctx context.Context, session *Session, 
 }
 
 func (service *Service) ConfirmKeyRotation(ctx context.Context, session *Session, confirmation RotationConfirmation) error {
-	if !validSession(session, confirmation.DeviceID) || len(confirmation.NewPublicKey) != ed25519.PublicKeySize || len(confirmation.Signature) != ed25519.SignatureSize {
+	if !validSession(session, confirmation.DeviceID) || !validDevicePublicKey(confirmation.NewPublicKey) || len(confirmation.Signature) == 0 {
 		return ErrSessionClosed
 	}
 	service.deviceMu.Lock()
@@ -428,10 +434,10 @@ func (service *Service) ConfirmKeyRotation(ctx context.Context, session *Session
 	if err != nil {
 		return err
 	}
-	if len(device.PendingPublicKey) != ed25519.PublicKeySize || !equalBytes(device.PendingPublicKey, confirmation.NewPublicKey) || !ed25519.Verify(device.PendingPublicKey, RotationConfirmationMessage(confirmation), confirmation.Signature) {
+	if !validDevicePublicKey(device.PendingPublicKey) || !equalBytes(device.PendingPublicKey, confirmation.NewPublicKey) || !verifyDeviceSignature(device.PendingPublicKey, RotationConfirmationMessage(confirmation), confirmation.Signature) {
 		return ErrInvalidProof
 	}
-	device.CurrentPublicKey = append(ed25519.PublicKey(nil), device.PendingPublicKey...)
+	device.CurrentPublicKey = append([]byte(nil), device.PendingPublicKey...)
 	device.PendingPublicKey = nil
 	if err := service.store.SaveDevice(ctx, device); err != nil {
 		return fmt.Errorf("confirm device key rotation: %w", err)
@@ -523,8 +529,54 @@ func validTarget(target PairingTarget) bool {
 	return net.ParseIP(target.Host) != nil || strings.Trim(target.Host, ".-") != ""
 }
 
-func validID(value string) bool   { return strings.TrimSpace(value) != "" && len(value) <= 128 }
+func validID(value string) bool {
+	if len(value) == 0 || len(value) > 128 {
+		return false
+	}
+	for index, character := range []byte(value) {
+		isLetter := character >= 'A' && character <= 'Z' || character >= 'a' && character <= 'z'
+		isDigit := character >= '0' && character <= '9'
+		isSeparator := index > 0 && (character == '.' || character == '_' || character == ':' || character == '-')
+		if !isLetter && !isDigit && !isSeparator {
+			return false
+		}
+	}
+	return true
+}
+func validPairingGeneration(value string) bool {
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	return err == nil && len(decoded) == 16
+}
 func validName(value string) bool { return strings.TrimSpace(value) != "" && len(value) <= 128 }
+
+func validDevicePublicKey(encoded []byte) bool {
+	if len(encoded) == ed25519.PublicKeySize {
+		return true
+	}
+	publicKey, err := x509.ParsePKIXPublicKey(encoded)
+	if err != nil {
+		return false
+	}
+	ecdsaKey, ok := publicKey.(*ecdsa.PublicKey)
+	return ok && ecdsaKey.Curve.Params().Name == elliptic.P256().Params().Name
+}
+
+func verifyDeviceSignature(encoded, message, signature []byte) bool {
+	if len(encoded) == ed25519.PublicKeySize {
+		return len(signature) == ed25519.SignatureSize && ed25519.Verify(ed25519.PublicKey(encoded), message, signature)
+	}
+	publicKey, err := x509.ParsePKIXPublicKey(encoded)
+	if err != nil {
+		return false
+	}
+	ecdsaKey, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok || ecdsaKey.Curve.Params().Name != elliptic.P256().Params().Name {
+		return false
+	}
+	digest := sha256.Sum256(message)
+	return ecdsa.VerifyASN1(ecdsaKey, digest[:], signature)
+}
+
 func validSession(session *Session, deviceID string) bool {
 	if session == nil || session.deviceID != deviceID {
 		return false

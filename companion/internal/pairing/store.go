@@ -17,8 +17,8 @@ type DeviceRecord struct {
 	ID                string
 	Name              string
 	PairingGeneration string
-	CurrentPublicKey  ed25519.PublicKey
-	PendingPublicKey  ed25519.PublicKey
+	CurrentPublicKey  []byte
+	PendingPublicKey  []byte
 	PairedAt          time.Time
 }
 
@@ -130,7 +130,7 @@ func (store *MemoryStore) ClearDevices(ctx context.Context) error {
 }
 
 func cloneDevice(device DeviceRecord) DeviceRecord {
-	device.CurrentPublicKey = append(ed25519.PublicKey(nil), device.CurrentPublicKey...)
-	device.PendingPublicKey = append(ed25519.PublicKey(nil), device.PendingPublicKey...)
+	device.CurrentPublicKey = append([]byte(nil), device.CurrentPublicKey...)
+	device.PendingPublicKey = append([]byte(nil), device.PendingPublicKey...)
 	return device
 }
