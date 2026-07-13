@@ -161,6 +161,26 @@ class ActionRecordStoreTest {
     }
 
     @Test
+    fun capEvictsTheOldestPreparedRecordBeforeRejectingANewPreparedAction() = runBlocking {
+        val prepared =
+            (0 until 128).map { index ->
+                record("prepared-$index").copy(
+                    createdAtEpochMillis = HOUR + index,
+                    updatedAtEpochMillis = HOUR + index,
+                )
+            }
+        val dataStore = FakeActionDataStore(encodedPreferences(prepared))
+        val store = ActionRecordStore(dataStore, NoOpActionRecordReporter) { 2 * HOUR }
+
+        assertTrue(store.save(record("prepared-new").copy(createdAtEpochMillis = 2 * HOUR, updatedAtEpochMillis = 2 * HOUR)))
+
+        val records = availableRecords(store.state.first())
+        assertEquals(128, records.size)
+        assertFalse(records.any { it.actionId == "prepared-0" })
+        assertTrue(records.any { it.actionId == "prepared-new" })
+    }
+
+    @Test
     fun acknowledgementAndExplicitDismissalRemoveOnlyTheirAllowedStates() = runBlocking {
         val confirmed =
             record("confirmed").copy(
@@ -256,7 +276,7 @@ private class RecordingActionRecordReporter : ActionRecordReporter {
     override fun capacityRejected() = Unit
 }
 
-private class FakeActionDataStore(
+internal class FakeActionDataStore(
     initial: Preferences = emptyPreferences(),
     readFailure: Throwable? = null,
     private val writeFailure: Throwable? = null,

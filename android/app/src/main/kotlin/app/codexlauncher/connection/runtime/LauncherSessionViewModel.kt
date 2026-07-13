@@ -17,6 +17,7 @@ import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.project.selection.ProjectSelectionViewModel
 import app.codexlauncher.project.session.ProjectSessionBridge
 import app.codexlauncher.project.session.ProjectSnapshot
+import app.codexlauncher.storage.actions.ActionJournal
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -27,6 +28,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -42,6 +45,7 @@ class LauncherSessionViewModel(
     private val loadProject: suspend () -> ProjectChoice?,
     saveProject: suspend (ProjectChoice) -> Boolean,
     clearProject: suspend () -> Boolean,
+    private val actionJournal: ActionJournal,
     private val nextSessionId: () -> String = { UUID.randomUUID().toString() },
     private val retryWait: suspend (attempt: Int) -> Unit = { attempt -> delay(retryDelayMillis(attempt)) },
     workScope: CoroutineScope? = null,
@@ -52,6 +56,8 @@ class LauncherSessionViewModel(
     private var activeDeviceId: String? = null
     private var activeConnection: SessionConnection? = null
     private var projectBridge: ProjectSessionBridge? = null
+    private val acknowledgementGate = SequenceAcknowledgementGate()
+    private val acknowledgementMutex = Mutex()
     private val pendingProjectAcknowledgement = AtomicReference<ProjectAcknowledgement?>()
     private var retryJob: Job? = null
     private var retryComputer: PairedComputer? = null
@@ -164,9 +170,13 @@ class LauncherSessionViewModel(
         val connection = activeConnection ?: return
         projectBridge =
             ProjectSessionBridge(
-                send = connection::sendText,
-                onTerminalResult = { sequence ->
-                    pendingProjectAcknowledgement.set(ProjectAcknowledgement(expectedGeneration, sequence))
+                sendAction = connection::sendAction,
+                journal = actionJournal,
+                onTerminalReceived = { actionId, sequence ->
+                    acknowledgementGate.block(actionId, sequence)
+                },
+                onTerminalResult = { actionId, sequence ->
+                    pendingProjectAcknowledgement.set(ProjectAcknowledgement(expectedGeneration, actionId, sequence))
                 },
             )
     }
@@ -215,30 +225,67 @@ class LauncherSessionViewModel(
         }
     }
 
-    private fun acknowledge(expectedGeneration: Long, throughSequence: Long) {
-        if (generation.get() != expectedGeneration || throughSequence < 1) return
+    private suspend fun acknowledge(expectedGeneration: Long, throughSequence: Long) {
+        acknowledgementMutex.withLock {
+            if (generation.get() != expectedGeneration) return
+            val request = acknowledgementGate.request(throughSequence) ?: run {
+                AppLog.info(
+                    feature = "connection-runtime",
+                    message = "cumulative acknowledgement deferred",
+                    fields = mapOf("requested_sequence" to throughSequence, "decision" to "wait_for_durable_action_result"),
+                )
+                return
+            }
+            sendAcknowledgement(expectedGeneration, request)
+        }
+    }
+
+    private suspend fun sendAcknowledgement(
+        expectedGeneration: Long,
+        request: AcknowledgementRequest,
+    ) {
+        if (generation.get() != expectedGeneration) return
         val encoded =
             buildJsonObject {
                 put("version", buildJsonObject { put("major", ProtocolCodec.PROTOCOL_MAJOR); put("minor", 0) })
                 put("messageId", UUID.randomUUID().toString())
                 put("sender", "phone")
                 put("type", "ack")
-                put("body", buildJsonObject { put("throughSeq", throughSequence) })
+                put("body", buildJsonObject { put("throughSeq", request.throughSequence) })
             }.toString().also(ProtocolCodec::decodeText)
         if (activeConnection?.sendText(encoded) != true) {
             fail(expectedGeneration, SessionFailure.CONNECTION_LOST)
             return
         }
+        val acknowledgedActionIds = acknowledgementGate.markSent(request.throughSequence)
+        acknowledgedActionIds.forEach { actionId ->
+            if (!actionJournal.acknowledge(actionId)) {
+                AppLog.info(
+                    feature = "connection-runtime",
+                    message = "confirmed action metadata cleanup deferred",
+                    fields = mapOf("action_id" to actionId, "decision" to "retain_until_expiry"),
+                )
+            }
+        }
         AppLog.info(
             feature = "connection-runtime",
             message = "companion sequence acknowledged",
-            fields = mapOf("through_sequence" to throughSequence, "output_shape" to "cumulative_ack"),
+            fields = mapOf(
+                "through_sequence" to request.throughSequence,
+                "confirmed_action_count" to acknowledgedActionIds.size,
+                "output_shape" to "cumulative_ack",
+            ),
         )
     }
 
-    private fun acknowledgeProjectResult() {
-        pendingProjectAcknowledgement.getAndSet(null)?.let { acknowledgement ->
-            acknowledge(acknowledgement.generation, acknowledgement.sequence)
+    private suspend fun acknowledgeProjectResult() {
+        val acknowledgement = pendingProjectAcknowledgement.getAndSet(null) ?: return
+        acknowledgementMutex.withLock {
+            if (generation.get() != acknowledgement.generation) return
+            val request =
+                acknowledgementGate.release(acknowledgement.actionId, acknowledgement.sequence)
+                    ?: return
+            sendAcknowledgement(acknowledgement.generation, request)
         }
     }
 
@@ -258,6 +305,7 @@ class LauncherSessionViewModel(
         generation.incrementAndGet()
         projectBridge?.close()
         projectBridge = null
+        acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
         activeConnection?.close()
         activeConnection = null
@@ -332,6 +380,7 @@ class LauncherSessionViewModel(
         if (invalidate) generation.incrementAndGet()
         projectBridge?.close()
         projectBridge = null
+        acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
         activeConnection?.close()
         activeConnection = null
@@ -346,7 +395,11 @@ class LauncherSessionViewModel(
     }
 }
 
-private data class ProjectAcknowledgement(val generation: Long, val sequence: Long)
+private data class ProjectAcknowledgement(
+    val generation: Long,
+    val actionId: String,
+    val sequence: Long,
+)
 
 internal fun retryDelayMillis(attempt: Int): Long {
     val exponent = (attempt - 1).coerceIn(0, 5)

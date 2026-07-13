@@ -11,12 +11,16 @@ import app.codexlauncher.storage.secrets.PairingPublicKey
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okhttp3.tls.HandshakeCertificates
+import okio.ByteString
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -36,6 +40,45 @@ class CompanionSessionClientTest {
     @After
     fun closeServers() {
         servers.forEach(MockWebServer::close)
+    }
+
+    @Test
+    fun actionBoundaryCompletesBeforeSocketWriteAndAnythingAfterItIsUnknown() = runBlocking {
+        val events = mutableListOf<String>()
+        val socket = RecordingWebSocket(events)
+        val connection = CompanionSessionConnection(OkHttpClient())
+        connection.attach(socket)
+        connection.markReady()
+
+        val sent = connection.sendAction(validAction("action-1")) {
+            events += "journal"
+            true
+        }
+
+        assertEquals(ActionSendResult.SENT_UNKNOWN, sent)
+        assertEquals(listOf("journal", "socket"), events)
+
+        socket.acceptWrites = false
+        val rejectedAfterBoundary = connection.sendAction(validAction("action-2")) { true }
+        assertEquals(ActionSendResult.SENT_UNKNOWN, rejectedAfterBoundary)
+        connection.close()
+    }
+
+    @Test
+    fun actionCannotReachTheSocketBeforeReadinessOrWhenTheJournalWriteFails() = runBlocking {
+        val events = mutableListOf<String>()
+        val socket = RecordingWebSocket(events)
+        val connection = CompanionSessionConnection(OkHttpClient())
+        connection.attach(socket)
+        var boundaryCalls = 0
+
+        assertEquals(ActionSendResult.NOT_SENT, connection.sendAction(validAction("action-1")) { boundaryCalls++; true })
+        assertEquals(0, boundaryCalls)
+        connection.markReady()
+        assertEquals(ActionSendResult.NOT_SENT, connection.sendAction(validAction("action-2")) { boundaryCalls++; false })
+        assertEquals(1, boundaryCalls)
+        assertTrue(events.isEmpty())
+        connection.close()
     }
 
     @Test
@@ -223,6 +266,9 @@ class CompanionSessionClientTest {
             keyProtection = PairingKeyProtection.HARDWARE_BACKED,
         )
 
+    private fun validAction(actionId: String): String =
+        """{"version":{"major":1,"minor":0},"messageId":"$actionId","sender":"phone","type":"action","body":{"actionId":"$actionId","kind":"set_project","projectId":"main"}}"""
+
     private class TestSigner : DevicePairingSigner {
         val keyPair =
             KeyPairGenerator.getInstance("EC").apply {
@@ -239,4 +285,25 @@ class CompanionSessionClientTest {
                 sign()
             }
     }
+}
+
+private class RecordingWebSocket(
+    private val events: MutableList<String>,
+) : WebSocket {
+    var acceptWrites = true
+
+    override fun request(): Request = Request.Builder().url("https://localhost/").build()
+
+    override fun queueSize(): Long = 0
+
+    override fun send(text: String): Boolean {
+        events += "socket"
+        return acceptWrites
+    }
+
+    override fun send(bytes: ByteString): Boolean = acceptWrites
+
+    override fun close(code: Int, reason: String?): Boolean = true
+
+    override fun cancel() = Unit
 }

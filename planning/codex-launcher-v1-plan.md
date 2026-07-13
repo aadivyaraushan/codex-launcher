@@ -41,8 +41,18 @@
 > `PREPARED → SENT_UNKNOWN → CONFIRMED` transitions, a fixed JSON allowlist,
 > explicit unavailable/corrupt read states, 24-hour confirmed retention, a
 > 128-record cap that never evicts unknown outcomes, and an atomic wipe method.
-> It is verified with real DataStore on the API 36 emulator but is not yet wired
-> around the real send path or the full unpair wipe owner.
+> It is verified with real DataStore on the API 36 emulator. Project-selection
+> actions now use its real durable send boundary: `PREPARED` is stored before
+> send preflight, `SENT_UNKNOWN` immediately before `WebSocket.send`, and a
+> terminal result is stored as `CONFIRMED` before the phone acknowledges it.
+> A sequence gate also prevents later snapshots from cumulatively
+> acknowledging past an unsafe result; it releases only after durable
+> confirmation and local application, then removes confirmed metadata only
+> after the socket accepts the acknowledgement. Socket loss after the boundary
+> stays conservatively unresolved, and the 128-record cap may evict old
+> definitely-unsent records but never an unknown outcome. The same boundary
+> still needs to be reused by prompt/approval/task actions, and the full unpair
+> wipe owner is not yet built.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

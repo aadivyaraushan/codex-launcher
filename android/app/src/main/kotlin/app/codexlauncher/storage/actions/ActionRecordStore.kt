@@ -79,8 +79,12 @@ class ActionRecordStore internal constructor(
                     if (next.size >= MAX_ACTION_RECORDS) {
                         val evict =
                             next.withIndex()
-                                .filter { it.value.state == ActionRecordState.CONFIRMED }
-                                .minWithOrNull(compareBy<IndexedValue<ActionRecord>> { it.value.updatedAtEpochMillis }.thenBy { it.value.actionId })
+                                .filter { it.value.state != ActionRecordState.SENT_UNKNOWN }
+                                .minWithOrNull(
+                                    compareBy<IndexedValue<ActionRecord>> { if (it.value.state == ActionRecordState.PREPARED) 0 else 1 }
+                                        .thenBy { it.value.updatedAtEpochMillis }
+                                        .thenBy { it.value.actionId },
+                                )
                                 ?.index ?: throw ActionRecordCapacity
                         next.removeAt(evict)
                     }

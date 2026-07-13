@@ -2,6 +2,12 @@ package app.codexlauncher.project.session
 
 import app.codexlauncher.connection.protocol.ProtocolCodec
 import app.codexlauncher.connection.protocol.ProtocolMessage
+import app.codexlauncher.connection.session.ActionSendResult
+import app.codexlauncher.storage.actions.ActionErrorCode
+import app.codexlauncher.storage.actions.ActionJournal
+import app.codexlauncher.storage.actions.ActionRecord
+import app.codexlauncher.storage.actions.ActionRecordKind
+import app.codexlauncher.storage.actions.ActionResultCode
 import app.codexlauncher.task.summary.TaskState
 import java.time.Instant
 import kotlinx.coroutines.async
@@ -16,7 +22,7 @@ import org.junit.Test
 class ProjectSessionBridgeTest {
     @Test
     fun mapsOnlySafeSnapshotFieldsNeededByProjectSelection() {
-        val bridge = ProjectSessionBridge(send = { true }, nextActionId = { "unused" })
+        val bridge = bridge()
         val message = decode(
             """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":7,"body":{"baseSeq":7,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
         )
@@ -31,7 +37,7 @@ class ProjectSessionBridgeTest {
 
     @Test
     fun mapsValidatedTaskSummariesWithoutRawCodexPayloads() {
-        val bridge = ProjectSessionBridge(send = { true }, nextActionId = { "unused" })
+        val bridge = bridge()
         val message = decode(
             """{"version":{"major":1,"minor":0},"messageId":"snapshot-tasks","sender":"companion","type":"snapshot","seq":8,"body":{"baseSeq":8,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[{"taskId":"thread-1","title":"Build launcher","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"},{"taskId":"thread-2","title":"Review tests","projectLabel":"uf-u","state":"idle_after_reply","lastActivityAt":"2026-07-13T10:01:00Z"}]}}""",
         )
@@ -50,7 +56,20 @@ class ProjectSessionBridgeTest {
     @Test
     fun waitsForTheMatchingConfirmedResultBeforeReportingSelection() = runBlocking {
         var sent = ""
-        val bridge = ProjectSessionBridge(send = { sent = it; true }, nextActionId = { "action-project" })
+        val events = mutableListOf<String>()
+        val journal = RecordingActionJournal(events)
+        val bridge =
+            ProjectSessionBridge(
+                sendAction = { encoded, beforeBoundary ->
+                    sent = encoded
+                    assertTrue(beforeBoundary())
+                    events += "socket"
+                    ActionSendResult.SENT_UNKNOWN
+                },
+                journal = journal,
+                nextActionId = { "action-project" },
+                onTerminalResult = { _, sequence -> events += "ack:$sequence" },
+            )
 
         val selection = async { bridge.selectProject("main") }
         yield()
@@ -78,29 +97,186 @@ class ProjectSessionBridgeTest {
         )
 
         assertTrue(selection.await())
+        assertEquals(listOf("prepared", "sent_unknown", "socket", "confirmed:project_selected", "ack:9"), events)
     }
 
     @Test
-    fun failedSendFailedResultAndClosedSessionAllReturnFalse() = runBlocking {
-        val sendFailure = ProjectSessionBridge(send = { false }, nextActionId = { "send-failed" })
+    fun prepareBoundaryFailureAndClosedSessionRemainTruthful() = runBlocking {
+        val prepareFailureJournal = RecordingActionJournal().apply { allowPrepare = false }
+        var attemptedSend = false
+        val prepareFailure =
+            ProjectSessionBridge(
+                sendAction = { _, _ -> attemptedSend = true; ActionSendResult.SENT_UNKNOWN },
+                journal = prepareFailureJournal,
+                nextActionId = { "prepare-failed" },
+            )
+        assertFalse(prepareFailure.selectProject("main"))
+        assertFalse(attemptedSend)
+
+        val sendFailureJournal = RecordingActionJournal()
+        val sendFailure =
+            ProjectSessionBridge(
+                sendAction = { _, _ -> ActionSendResult.NOT_SENT },
+                journal = sendFailureJournal,
+                nextActionId = { "send-failed" },
+            )
         assertFalse(sendFailure.selectProject("main"))
+        assertEquals(listOf("prepared"), sendFailureJournal.events)
 
-        val failedResult = ProjectSessionBridge(send = { true }, nextActionId = { "result-failed" })
-        val result = async { failedResult.selectProject("main") }
-        yield()
-        failedResult.accept(
-            decode(
-                """{"version":{"major":1,"minor":0},"messageId":"result-2","sender":"companion","type":"action_result","seq":9,"body":{"actionId":"result-failed","state":"failed","error":{"code":"invalid_action","retryable":false}}}""",
-            ),
-        )
-        assertFalse(result.await())
+        val boundaryFailureJournal = RecordingActionJournal().apply { allowSentUnknown = false }
+        var crossedBoundary = false
+        val boundaryFailure =
+            ProjectSessionBridge(
+                sendAction = { _, beforeBoundary ->
+                    crossedBoundary = beforeBoundary()
+                    if (crossedBoundary) ActionSendResult.SENT_UNKNOWN else ActionSendResult.NOT_SENT
+                },
+                journal = boundaryFailureJournal,
+                nextActionId = { "boundary-failed" },
+            )
+        assertFalse(boundaryFailure.selectProject("main"))
+        assertFalse(crossedBoundary)
+        assertEquals(listOf("prepared", "sent_unknown_rejected"), boundaryFailureJournal.events)
 
-        val closed = ProjectSessionBridge(send = { true }, nextActionId = { "closed" })
+        val closedJournal = RecordingActionJournal()
+        val closed =
+            ProjectSessionBridge(
+                sendAction = { _, beforeBoundary ->
+                    assertTrue(beforeBoundary())
+                    ActionSendResult.SENT_UNKNOWN
+                },
+                journal = closedJournal,
+                nextActionId = { "closed" },
+            )
         val pending = async { closed.selectProject("main") }
         yield()
         closed.close()
         assertFalse(pending.await())
+        assertEquals(listOf("prepared", "sent_unknown"), closedJournal.events)
     }
 
+    @Test
+    fun terminalFailuresAreDurablyRecordedBeforeReportingFalse() = runBlocking {
+        val cases =
+            listOf(
+                "failed" to "invalid_action",
+                "outcome_unknown" to "outcome_unknown",
+                "cancelled" to null,
+            )
+        cases.forEachIndexed { index, (state, errorCode) ->
+            val journal = RecordingActionJournal()
+            var terminalSequence: Long? = null
+            val actionId = "terminal-$index"
+            val bridge =
+                ProjectSessionBridge(
+                    sendAction = { _, beforeBoundary ->
+                        assertTrue(beforeBoundary())
+                        ActionSendResult.SENT_UNKNOWN
+                    },
+                    journal = journal,
+                    nextActionId = { actionId },
+                    onTerminalResult = { _, sequence -> terminalSequence = sequence },
+                )
+            val result = async { bridge.selectProject("main") }
+            yield()
+            val error = errorCode?.let { ",\"error\":{\"code\":\"$it\",\"retryable\":false}" }.orEmpty()
+            bridge.accept(
+                decode(
+                    """{"version":{"major":1,"minor":0},"messageId":"result-$index","sender":"companion","type":"action_result","seq":${10 + index},"body":{"actionId":"$actionId","state":"$state"$error}}""",
+                ),
+            )
+
+            assertFalse(result.await())
+            val terminal = if (state == "cancelled") "confirmed:cancelled" else "confirmed:$errorCode"
+            assertEquals(listOf("prepared", "sent_unknown", terminal), journal.events)
+            assertEquals((10 + index).toLong(), terminalSequence)
+        }
+    }
+
+    @Test
+    fun journalConfirmationFailureDoesNotAcknowledgeTheResult() = runBlocking {
+        val journal = RecordingActionJournal().apply { allowConfirm = false }
+        var terminalSequence: Long? = null
+        val bridge =
+            ProjectSessionBridge(
+                sendAction = { _, beforeBoundary ->
+                    assertTrue(beforeBoundary())
+                    ActionSendResult.SENT_UNKNOWN
+                },
+                journal = journal,
+                nextActionId = { "result-failed" },
+                onTerminalResult = { _, sequence -> terminalSequence = sequence },
+            )
+        val result = async { bridge.selectProject("main") }
+        yield()
+        bridge.accept(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"result-2","sender":"companion","type":"action_result","seq":9,"body":{"actionId":"result-failed","state":"confirmed"}}""",
+            ),
+        )
+        assertFalse(result.await())
+        assertEquals(null, terminalSequence)
+        assertEquals(listOf("prepared", "sent_unknown", "confirmed_rejected:project_selected"), journal.events)
+    }
+
+    private fun bridge() =
+        ProjectSessionBridge(
+            sendAction = { _, beforeBoundary ->
+                if (beforeBoundary()) ActionSendResult.SENT_UNKNOWN else ActionSendResult.NOT_SENT
+            },
+            journal = RecordingActionJournal(),
+            nextActionId = { "unused" },
+        )
+
     private fun decode(frame: String): ProtocolMessage = ProtocolCodec.decodeText(frame)
+}
+
+private class RecordingActionJournal(
+    val events: MutableList<String> = mutableListOf(),
+) : ActionJournal {
+    var allowPrepare = true
+    var allowSentUnknown = true
+    var allowConfirm = true
+
+    override suspend fun prepare(
+        actionId: String,
+        kind: ActionRecordKind,
+        encodedPayload: String,
+        threadId: String?,
+        turnId: String?,
+    ): ActionRecord? {
+        events += "prepared"
+        return if (allowPrepare) testRecord(actionId, kind) else null
+    }
+
+    override suspend fun markSentUnknown(record: ActionRecord): ActionRecord? {
+        events += if (allowSentUnknown) "sent_unknown" else "sent_unknown_rejected"
+        return if (allowSentUnknown) record.copy(state = app.codexlauncher.storage.actions.ActionRecordState.SENT_UNKNOWN) else null
+    }
+
+    override suspend fun confirm(
+        record: ActionRecord,
+        resultCode: ActionResultCode?,
+        errorCode: ActionErrorCode?,
+    ): Boolean {
+        val code = resultCode?.wireName ?: errorCode?.wireName ?: "missing"
+        events += if (allowConfirm) "confirmed:$code" else "confirmed_rejected:$code"
+        return allowConfirm
+    }
+
+    override suspend fun acknowledge(actionId: String): Boolean = true
+
+    private fun testRecord(actionId: String, kind: ActionRecordKind) =
+        ActionRecord(
+            actionId = actionId,
+            kind = kind,
+            state = app.codexlauncher.storage.actions.ActionRecordState.PREPARED,
+            createdAtEpochMillis = 1,
+            updatedAtEpochMillis = 1,
+            threadId = null,
+            turnId = null,
+            payloadSha256 = "a".repeat(64),
+            resultCode = null,
+            errorCode = null,
+        )
 }

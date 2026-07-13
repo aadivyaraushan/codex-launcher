@@ -41,6 +41,7 @@ enum class ActionRecordState {
 enum class ActionResultCode(val wireName: String) {
     ACCEPTED("accepted"),
     INTERRUPTED("interrupted"),
+    CANCELLED("cancelled"),
     PROJECT_SELECTED("project_selected"),
     APPROVED("approved"),
     DECLINED("declined"),
@@ -58,6 +59,11 @@ enum class ActionErrorCode(val wireName: String) {
     QUOTA_EXCEEDED("quota_exceeded"),
     ATTACHMENT_INVALID("attachment_invalid"),
     INTERNAL("internal"),
+    ;
+
+    companion object {
+        fun fromWire(wireName: String): ActionErrorCode? = entries.firstOrNull { it.wireName == wireName }
+    }
 }
 
 internal fun ActionRecord.isValid(): Boolean {

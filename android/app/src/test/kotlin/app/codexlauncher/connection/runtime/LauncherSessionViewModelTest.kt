@@ -4,10 +4,17 @@ import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.connection.protocol.ProtocolCodec
 import app.codexlauncher.connection.protocol.ProtocolMessage
 import app.codexlauncher.connection.session.SessionConnection
+import app.codexlauncher.connection.session.ActionSendResult
 import app.codexlauncher.connection.session.SessionFailure
 import app.codexlauncher.connection.session.SessionObserver
 import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.project.selection.ProjectChoice
+import app.codexlauncher.storage.actions.ActionErrorCode
+import app.codexlauncher.storage.actions.ActionJournal
+import app.codexlauncher.storage.actions.ActionRecord
+import app.codexlauncher.storage.actions.ActionRecordKind
+import app.codexlauncher.storage.actions.ActionRecordState
+import app.codexlauncher.storage.actions.ActionResultCode
 import app.codexlauncher.storage.secrets.PairingKeyProtection
 import java.util.Base64
 import kotlinx.coroutines.CompletableDeferred
@@ -34,6 +41,7 @@ class LauncherSessionViewModelTest {
             loadProject = { ProjectChoice("main", "Main") },
             saveProject = { saved += it; true },
             clearProject = { saved.clear(); true },
+            actionJournal = FakeActionJournal(),
             nextSessionId = { "session-1" },
             workScope = CoroutineScope(Dispatchers.Unconfined),
         )
@@ -81,6 +89,7 @@ class LauncherSessionViewModelTest {
             loadProject = { null },
             saveProject = { true },
             clearProject = { true },
+            actionJournal = FakeActionJournal(),
             nextSessionId = { "session-1" },
             workScope = CoroutineScope(Dispatchers.Unconfined),
         )
@@ -111,6 +120,7 @@ class LauncherSessionViewModelTest {
             loadProject = { storedProject.await() },
             saveProject = { true },
             clearProject = { true },
+            actionJournal = FakeActionJournal(),
             nextSessionId = { "session-1" },
             workScope = CoroutineScope(Dispatchers.Unconfined),
         )
@@ -139,6 +149,7 @@ class LauncherSessionViewModelTest {
             loadProject = { null },
             saveProject = { true },
             clearProject = { true },
+            actionJournal = FakeActionJournal(),
             nextSessionId = { "session-1" },
             workScope = CoroutineScope(Dispatchers.Unconfined),
         )
@@ -165,6 +176,7 @@ class LauncherSessionViewModelTest {
             loadProject = { null },
             saveProject = { true },
             clearProject = { true },
+            actionJournal = FakeActionJournal(),
             nextSessionId = { "session-1" },
             workScope = CoroutineScope(Dispatchers.Unconfined),
         )
@@ -192,6 +204,7 @@ class LauncherSessionViewModelTest {
                 true
             },
             clearProject = { true },
+            actionJournal = FakeActionJournal(),
             nextSessionId = { "session-1" },
             workScope = CoroutineScope(Dispatchers.Unconfined),
         )
@@ -222,6 +235,95 @@ class LauncherSessionViewModelTest {
     }
 
     @Test
+    fun laterSnapshotCannotAcknowledgePastAResultUntilItsJournalConfirmationIsDurable() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val confirmationStarted = CompletableDeferred<Unit>()
+        val releaseConfirmation = CompletableDeferred<Unit>()
+        val journal = FakeActionJournal(confirmationStarted, releaseConfirmation)
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = journal,
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+        val selection = async { viewModel.projectSelection.selectProject("main") }
+        val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"result-2","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed"}}""",
+            ),
+        )
+        confirmationStarted.await()
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-3","sender":"companion","type":"snapshot","seq":3,"body":{"baseSeq":3,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+
+        assertFalse(connection.hasAcknowledged(2))
+        assertFalse(connection.hasAcknowledged(3))
+        assertTrue(journal.acknowledged.isEmpty())
+
+        releaseConfirmation.complete(Unit)
+        selection.await()
+        connection.awaitAcknowledgement(3)
+        assertEquals(listOf(actionId), journal.acknowledged)
+    }
+
+    @Test
+    fun rejectedAcknowledgementDoesNotDeleteTheConfirmedActionRecord() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val journal = FakeActionJournal()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = journal,
+            nextSessionId = { "session-1" },
+            retryWait = {},
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+        val selection = async { viewModel.projectSelection.selectProject("main") }
+        val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        connection.rejectedAcknowledgements += 2
+
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"result-2","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed"}}""",
+            ),
+        )
+
+        assertTrue(selection.await())
+        assertTrue(journal.acknowledged.isEmpty())
+        assertTrue(connection.closed)
+    }
+
+    @Test
     fun connectionLossWaitsThenReconnectsTheSamePairedComputer() = runBlocking {
         val observers = mutableListOf<SessionObserver>()
         val connectedDeviceIds = mutableListOf<String>()
@@ -242,6 +344,7 @@ class LauncherSessionViewModelTest {
             loadProject = { null },
             saveProject = { true },
             clearProject = { true },
+            actionJournal = FakeActionJournal(),
             nextSessionId = { "session-${sessionIds.size + 1}" },
             retryWait = { attempt ->
                 retryStarted.complete(attempt)
@@ -273,6 +376,7 @@ class LauncherSessionViewModelTest {
             loadProject = { null },
             saveProject = { true },
             clearProject = { true },
+            actionJournal = FakeActionJournal(),
             nextSessionId = { "session-1" },
             retryWait = { retryCalls += 1 },
             workScope = CoroutineScope(Dispatchers.Unconfined),
@@ -295,6 +399,7 @@ class LauncherSessionViewModelTest {
             loadProject = { null },
             saveProject = { true },
             clearProject = { true },
+            actionJournal = FakeActionJournal(),
             retryWait = { retryCalls += 1 },
             workScope = CoroutineScope(Dispatchers.Unconfined),
         )
@@ -321,6 +426,7 @@ class LauncherSessionViewModelTest {
             loadProject = { null },
             saveProject = { true },
             clearProject = { true },
+            actionJournal = FakeActionJournal(),
             retryWait = {
                 retryStarted.complete(Unit)
                 releaseRetry.await()
@@ -357,6 +463,7 @@ class LauncherSessionViewModelTest {
             loadProject = { null },
             saveProject = { true },
             clearProject = { true },
+            actionJournal = FakeActionJournal(),
             retryWait = { attempt ->
                 attempts.send(attempt)
                 releases.receive()
@@ -408,13 +515,28 @@ class LauncherSessionViewModelTest {
 
 private class FakeSessionConnection : SessionConnection {
     val sent = mutableListOf<String>()
+    val rejectedAcknowledgements = mutableSetOf<Long>()
     var closed = false
     private val sentSignal = Channel<Unit>(Channel.UNLIMITED)
 
     override fun sendText(encoded: String): Boolean {
+        val message = ProtocolCodec.decodeText(encoded)
+        if (
+            message.type.wireName == "ack" &&
+            message.body.getValue("throughSeq").jsonPrimitive.content.toLong() in rejectedAcknowledgements
+        ) return false
         sent += encoded
         sentSignal.trySend(Unit)
         return true
+    }
+
+    override suspend fun sendAction(
+        encoded: String,
+        beforeSocketWrite: suspend () -> Boolean,
+    ): ActionSendResult {
+        if (!beforeSocketWrite()) return ActionSendResult.NOT_SENT
+        sendText(encoded)
+        return ActionSendResult.SENT_UNKNOWN
     }
 
     suspend fun awaitType(type: String): String {
@@ -442,5 +564,49 @@ private class FakeSessionConnection : SessionConnection {
 
     override fun close() {
         closed = true
+    }
+}
+
+private class FakeActionJournal(
+    private val confirmationStarted: CompletableDeferred<Unit>? = null,
+    private val releaseConfirmation: CompletableDeferred<Unit>? = null,
+) : ActionJournal {
+    val acknowledged = mutableListOf<String>()
+    override suspend fun prepare(
+        actionId: String,
+        kind: ActionRecordKind,
+        encodedPayload: String,
+        threadId: String?,
+        turnId: String?,
+    ): ActionRecord =
+        ActionRecord(
+            actionId = actionId,
+            kind = kind,
+            state = ActionRecordState.PREPARED,
+            createdAtEpochMillis = 1,
+            updatedAtEpochMillis = 1,
+            threadId = threadId,
+            turnId = turnId,
+            payloadSha256 = "a".repeat(64),
+            resultCode = null,
+            errorCode = null,
+        )
+
+    override suspend fun markSentUnknown(record: ActionRecord): ActionRecord =
+        record.copy(state = ActionRecordState.SENT_UNKNOWN)
+
+    override suspend fun confirm(
+        record: ActionRecord,
+        resultCode: ActionResultCode?,
+        errorCode: ActionErrorCode?,
+    ): Boolean {
+        confirmationStarted?.complete(Unit)
+        releaseConfirmation?.await()
+        return true
+    }
+
+    override suspend fun acknowledge(actionId: String): Boolean {
+        acknowledged += actionId
+        return true
     }
 }

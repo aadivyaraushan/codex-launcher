@@ -58,6 +58,9 @@ import app.codexlauncher.project.selection.ProjectSelector
 import app.codexlauncher.project.selection.ProjectSelectionUiState
 import app.codexlauncher.storage.projects.ProjectSelectionStore
 import app.codexlauncher.storage.projects.projectSelectionDataStore
+import app.codexlauncher.storage.actions.ActionRecordStore
+import app.codexlauncher.storage.actions.StoredActionJournal
+import app.codexlauncher.storage.actions.actionRecordDataStore
 import app.codexlauncher.storage.pairing.PairingRecordStore
 import app.codexlauncher.storage.pairing.DeviceIdentityStore
 import app.codexlauncher.storage.pairing.deviceIdentityDataStore
@@ -72,6 +75,7 @@ class LauncherActivity : ComponentActivity() {
     private val pairingRecords by lazy { PairingRecordStore(applicationContext.pairingDataStore) }
     private val deviceIdentity by lazy { DeviceIdentityStore(applicationContext.deviceIdentityDataStore) }
     private val projectSelections by lazy { ProjectSelectionStore(applicationContext.projectSelectionDataStore) }
+    private val actionJournal by lazy { StoredActionJournal(ActionRecordStore(applicationContext.actionRecordDataStore)) }
     private val pairingViewModel: PairingViewModel by viewModels {
         viewModelFactory { initializer { createPairingViewModel() } }
     }
@@ -96,6 +100,7 @@ class LauncherActivity : ComponentActivity() {
             loadProject = { projectSelections.selected.first() },
             saveProject = projectSelections::save,
             clearProject = projectSelections::clear,
+            actionJournal = actionJournal,
         )
     }
     private var homeIntentSequence by mutableLongStateOf(0L)

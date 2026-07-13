@@ -18,6 +18,8 @@ import okio.ByteString
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class SessionFailure {
     REVOKED,
@@ -38,7 +40,17 @@ interface SessionObserver {
 interface SessionConnection {
     fun sendText(encoded: String): Boolean
 
+    suspend fun sendAction(
+        encoded: String,
+        beforeSocketWrite: suspend () -> Boolean,
+    ): ActionSendResult
+
     fun close()
+}
+
+enum class ActionSendResult {
+    NOT_SENT,
+    SENT_UNKNOWN,
 }
 
 class CompanionSessionConnection internal constructor(
@@ -47,6 +59,7 @@ class CompanionSessionConnection internal constructor(
     private val socket = AtomicReference<WebSocket?>()
     private val ready = AtomicBoolean(false)
     private val stopped = AtomicBoolean(false)
+    private val actionSendMutex = Mutex()
 
     internal fun attach(webSocket: WebSocket) {
         socket.set(webSocket)
@@ -57,10 +70,66 @@ class CompanionSessionConnection internal constructor(
     }
 
     override fun sendText(encoded: String): Boolean {
-        if (!ready.get() || stopped.get() || encoded.encodeToByteArray().size > ProtocolCodec.MAX_JSON_FRAME_BYTES) return false
-        val message = runCatching { ProtocolCodec.decodeText(encoded) }.getOrNull() ?: return false
-        if (message.sender != Sender.PHONE) return false
+        if (!ready.get() || stopped.get()) return false
+        val message = validatedPhoneMessage(encoded) ?: return false
         return socket.get()?.send(encoded) == true
+    }
+
+    override suspend fun sendAction(
+        encoded: String,
+        beforeSocketWrite: suspend () -> Boolean,
+    ): ActionSendResult =
+        actionSendMutex.withLock {
+            val message = validatedPhoneMessage(encoded)
+            val initialSocket = socket.get()
+            if (!ready.get() || stopped.get() || initialSocket == null || message?.type != MessageType.ACTION) {
+                AppLog.info(
+                    feature = "session-network",
+                    message = "phone action rejected before send boundary",
+                    fields = mapOf("decision" to "not_sent", "input_shape" to "validated_phone_action"),
+                )
+                return@withLock ActionSendResult.NOT_SENT
+            }
+            val boundaryStored =
+                try {
+                    beforeSocketWrite()
+                } catch (error: Exception) {
+                    AppLog.error(
+                        feature = "session-network",
+                        message = "phone action journal boundary failed",
+                        error = error,
+                        fields = mapOf("message_id" to message.messageId, "decision" to "not_sent"),
+                    )
+                    false
+                }
+            if (!boundaryStored) {
+                AppLog.info(
+                    feature = "session-network",
+                    message = "phone action blocked at send boundary",
+                    fields = mapOf("message_id" to message.messageId, "decision" to "not_sent_storage_unavailable"),
+                )
+                return@withLock ActionSendResult.NOT_SENT
+            }
+            val activeSocket = socket.get()
+            val accepted =
+                ready.get() && !stopped.get() && activeSocket === initialSocket &&
+                    activeSocket.send(encoded)
+            AppLog.info(
+                feature = "session-network",
+                message = "phone action crossed durable send boundary",
+                fields = mapOf(
+                    "message_id" to message.messageId,
+                    "socket_accepted" to accepted,
+                    "output_shape" to "sent_unknown_until_companion_result",
+                ),
+            )
+            ActionSendResult.SENT_UNKNOWN
+        }
+
+    private fun validatedPhoneMessage(encoded: String): ProtocolMessage? {
+        if (encoded.encodeToByteArray().size > ProtocolCodec.MAX_JSON_FRAME_BYTES) return null
+        val message = runCatching { ProtocolCodec.decodeText(encoded) }.getOrNull() ?: return null
+        return message.takeIf { it.sender == Sender.PHONE }
     }
 
     override fun close() {
