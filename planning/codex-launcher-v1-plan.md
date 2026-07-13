@@ -14,7 +14,10 @@
 > escape, persisted appearance, bundled fonts, accessibility scans, and large
 > text behavior. Task 8 now also has strict pairing-link parsing, QR/manual
 > setup UI, CameraX/ZXing scanning, an app-private phone ID, and a metadata-only
-> paired-computer store wired into unpaired launcher startup. Project selection,
+> paired-computer store wired into unpaired launcher startup. Its project-
+> selection foundation now includes safe computer/project snapshot fields,
+> approved opaque project choices, phone-side selection storage, save-only
+> retry, and the Compose selector. Live session routing into that selector,
 > reduced-protection confirmation, unpair, and the existing folder/offline-state
 > rules are not yet wired into the launcher UI.
 

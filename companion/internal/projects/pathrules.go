@@ -6,12 +6,18 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 var projectIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 func validConfig(config Config) bool {
-	return projectIDPattern.MatchString(config.ID) && strings.TrimSpace(config.DisplayName) != "" && len(config.DisplayName) <= 128 && filepath.IsAbs(config.Path)
+	return projectIDPattern.MatchString(config.ID) && validDisplayName(config.DisplayName) && filepath.IsAbs(config.Path)
+}
+
+func validDisplayName(name string) bool {
+	return strings.TrimSpace(name) != "" && utf8.RuneCountInString(name) <= 128 && strings.IndexFunc(name, unicode.IsControl) < 0
 }
 
 func inspectProjectPath(path string) (string, os.FileInfo, error) {

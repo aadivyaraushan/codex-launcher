@@ -98,7 +98,7 @@ class CompanionSessionClientTest {
                 expiresAt = System.currentTimeMillis() / 1_000 + 60,
                 helloReceived = CountDownLatch(1),
                 firstCompanionFrame =
-                    """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"tasks":[]}}""",
+                    """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Test computer","projects":[],"tasks":[]}}""",
             ).apply { start() }
         val endpoint = server.url("/v1/session?deviceId=pixel-9&sessionId=session-1").toString().replaceFirst("https://", "wss://")
         val observer =

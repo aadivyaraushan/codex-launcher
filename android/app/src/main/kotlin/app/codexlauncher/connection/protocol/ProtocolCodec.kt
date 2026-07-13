@@ -148,7 +148,11 @@ object ProtocolCodec {
                     !stringField(body, "sessionId").isBounded(128) || !validUniqueStrings(body["capabilities"]) || !validLimits(limits)
                 ) fail(ProtocolError.INVALID_ENVELOPE)
             }
-            MessageType.SNAPSHOT -> if (sender != Sender.COMPANION || sequence == null || body.keys != setOf("baseSeq", "tasks") || longField(body, "baseSeq") != sequence || !validTasks(body["tasks"])) fail(ProtocolError.INVALID_ENVELOPE)
+            MessageType.SNAPSHOT -> if (
+                sender != Sender.COMPANION || sequence == null || body.keys != setOf("baseSeq", "computerName", "projects", "tasks") ||
+                longField(body, "baseSeq") != sequence || !optionalString(body, "computerName").isSafeDisplay(80) ||
+                !validProjects(body["projects"]) || !validTasks(body["tasks"])
+            ) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.EVENT -> if (sender != Sender.COMPANION || sequence == null || body.keys != setOf("taskId", "event", "state", "summary") || !optionalString(body, "taskId").isValidId() || optionalString(body, "event") !in eventNames || optionalString(body, "state") !in taskStates || !optionalString(body, "summary").isBounded(512)) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.ACTION_RESULT -> {
                 val state = optionalString(body, "state")
@@ -196,7 +200,7 @@ object ProtocolCodec {
                     decision !in setOf("accept", "accept_for_session", "decline", "cancel")
                 ) fail(ProtocolError.INVALID_ACTION)
             }
-            "set_project" -> if (body.keys != setOf("actionId", "kind", "projectId") || !optionalString(body, "projectId").isValidId()) fail(ProtocolError.INVALID_ACTION)
+            "set_project" -> if (body.keys != setOf("actionId", "kind", "projectId") || !optionalString(body, "projectId").isProjectId()) fail(ProtocolError.INVALID_ACTION)
             else -> fail(ProtocolError.INVALID_ACTION)
         }
     }
@@ -217,6 +221,18 @@ object ProtocolCodec {
                 optionalString(task, "projectLabel").isBounded(128) && optionalString(task, "state") in taskStates &&
                 runCatching { Instant.parse(optionalString(task, "lastActivityAt")) }.isSuccess && validPendingRequest(task["pendingRequest"])
         } == true
+    }.getOrDefault(false)
+
+    private fun validProjects(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
+        val projects = value?.jsonArray ?: return@runCatching false
+        if (projects.size > 128) return@runCatching false
+        val ids = mutableSetOf<String>()
+        projects.all { element ->
+            val project = element.jsonObject
+            val id = optionalString(project, "id")
+            project.keys == setOf("id", "displayName") && id.isProjectId() && ids.add(id) &&
+                optionalString(project, "displayName").isSafeDisplay(128)
+        }
     }.getOrDefault(false)
 
     private fun validPendingRequest(value: kotlinx.serialization.json.JsonElement?): Boolean =
@@ -275,7 +291,12 @@ object ProtocolCodec {
     private fun String.isValidId(): Boolean =
         length in 1..128 && all { it.isLetterOrDigit() && it.code < 128 || it in "._:-" }
 
+    private fun String.isProjectId(): Boolean = matches(Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"))
+
     private fun String.isBounded(maximum: Int): Boolean = codePointCount(0, length) in 1..maximum
+
+    private fun String.isSafeDisplay(maximum: Int): Boolean =
+        codePointCount(0, length) in 1..maximum && isNotBlank() && none(Char::isISOControl)
 
     private fun objectField(objectValue: JsonObject, name: String): JsonObject =
         runCatching { objectValue.getValue(name).jsonObject }.getOrElse { fail(ProtocolError.INVALID_ENVELOPE) }

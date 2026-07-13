@@ -1,16 +1,12 @@
 package app.codexlauncher.launcher.home
 
 import app.codexlauncher.connection.state.ConnectionSnapshot
+import app.codexlauncher.project.selection.ProjectChoice
 
 data class HomeTask(
     val id: String,
     val title: String,
     val stateLabel: String,
-)
-
-data class ProjectChoice(
-    val id: String,
-    val displayName: String,
 )
 
 data class HomeUiState(

@@ -149,6 +149,31 @@ func TestContractAcceptsOnlyOpaqueApprovedProjectIdentifiers(t *testing.T) {
 	if _, err := DecodeText([]byte(frame)); err != nil {
 		t.Fatalf("opaque project identifier was rejected: %v", err)
 	}
+	invalid := `{"version":{"major":1,"minor":0},"messageId":"m-project-invalid","sender":"phone","type":"action","body":{"actionId":"a-project","kind":"set_project","projectId":"project:main"}}`
+	if _, err := DecodeText([]byte(invalid)); !errors.Is(err, ErrInvalidAction) {
+		t.Fatalf("non-project identifier error = %v, want %v", err, ErrInvalidAction)
+	}
+}
+
+func TestSnapshotCarriesOnlySafeComputerAndOpaqueProjectChoices(t *testing.T) {
+	valid := `{"version":{"major":1,"minor":0},"messageId":"snapshot-projects","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Aadi's Mac","projects":[{"id":"project-main","displayName":"Codex Launcher"}],"tasks":[]}}`
+	if _, err := DecodeText([]byte(valid)); err != nil {
+		t.Fatalf("safe project snapshot was rejected: %v", err)
+	}
+	for name, frame := range map[string]string{
+		"missing choices":   `{"version":{"major":1,"minor":0},"messageId":"missing","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"tasks":[]}}`,
+		"raw path":          `{"version":{"major":1,"minor":0},"messageId":"path","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[{"id":"project-main","displayName":"Main","path":"/private"}],"tasks":[]}}`,
+		"duplicate id":      `{"version":{"major":1,"minor":0},"messageId":"duplicate","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[{"id":"same","displayName":"One"},{"id":"same","displayName":"Two"}],"tasks":[]}}`,
+		"control character": `{"version":{"major":1,"minor":0},"messageId":"control","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[{"id":"project-main","displayName":"Main\nInjected"}],"tasks":[]}}`,
+		"c1 control":        `{"version":{"major":1,"minor":0},"messageId":"c1-control","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[{"id":"project-main","displayName":"Main\u0085Injected"}],"tasks":[]}}`,
+		"non-project id":    `{"version":{"major":1,"minor":0},"messageId":"project-id","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[{"id":"project:main","displayName":"Main"}],"tasks":[]}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := DecodeText([]byte(frame)); !errors.Is(err, ErrInvalidEnvelope) {
+				t.Fatalf("DecodeText() error = %v, want %v", err, ErrInvalidEnvelope)
+			}
+		})
+	}
 }
 
 func TestAttachmentChunksRequireOrderSizeDigestAndAuthentication(t *testing.T) {
@@ -486,7 +511,7 @@ func action(id, actionID string) string {
 	return `{"version":{"major":1,"minor":0},"messageId":"` + id + `","sender":"phone","type":"action","body":{"actionId":"` + actionID + `","kind":"interrupt_turn","taskId":"task-1"}}`
 }
 func snapshot(id string, seq uint64) string {
-	return `{"version":{"major":1,"minor":0},"messageId":"` + id + `","sender":"companion","type":"snapshot","seq":` + uintString(seq) + `,"body":{"baseSeq":` + uintString(seq) + `,"tasks":[]}}`
+	return `{"version":{"major":1,"minor":0},"messageId":"` + id + `","sender":"companion","type":"snapshot","seq":` + uintString(seq) + `,"body":{"baseSeq":` + uintString(seq) + `,"computerName":"Test computer","projects":[],"tasks":[]}}`
 }
 func event(id string, seq uint64) string {
 	return `{"version":{"major":1,"minor":0},"messageId":"` + id + `","sender":"companion","type":"event","seq":` + uintString(seq) + `,"body":{"taskId":"task-1","event":"activity","state":"working","summary":"Working"}}`

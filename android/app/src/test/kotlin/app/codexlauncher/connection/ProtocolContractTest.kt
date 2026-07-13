@@ -80,6 +80,23 @@ class ProtocolContractTest {
     fun `codec accepts only opaque approved project identifiers`() {
         val frame = """{"version":{"major":1,"minor":0},"messageId":"m-project","sender":"phone","type":"action","body":{"actionId":"a-project","kind":"set_project","projectId":"project-main"}}"""
         assertEquals("m-project", ProtocolCodec.decodeText(frame).messageId)
+        val invalid = """{"version":{"major":1,"minor":0},"messageId":"m-project-invalid","sender":"phone","type":"action","body":{"actionId":"a-project","kind":"set_project","projectId":"project:main"}}"""
+        assertError(ProtocolError.INVALID_ACTION) { ProtocolCodec.decodeText(invalid) }
+    }
+
+    @Test
+    fun `snapshot carries only safe computer and opaque project choices`() {
+        val valid = """{"version":{"major":1,"minor":0},"messageId":"snapshot-projects","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Aadi's Mac","projects":[{"id":"project-main","displayName":"Codex Launcher"}],"tasks":[]}}"""
+        assertEquals("snapshot-projects", ProtocolCodec.decodeText(valid).messageId)
+
+        listOf(
+            """{"version":{"major":1,"minor":0},"messageId":"missing","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"tasks":[]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"path","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[{"id":"project-main","displayName":"Main","path":"/private"}],"tasks":[]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"duplicate","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[{"id":"same","displayName":"One"},{"id":"same","displayName":"Two"}],"tasks":[]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"control","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[{"id":"project-main","displayName":"Main\nInjected"}],"tasks":[]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"c1-control","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[{"id":"project-main","displayName":"Main\u0085Injected"}],"tasks":[]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"project-id","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[{"id":"project:main","displayName":"Main"}],"tasks":[]}}""",
+        ).forEach { frame -> assertError(ProtocolError.INVALID_ENVELOPE) { ProtocolCodec.decodeText(frame) } }
     }
 
     @Test
@@ -289,7 +306,7 @@ class ProtocolContractTest {
     }
     private fun welcome(id: String) = """{"version":{"major":1,"minor":0},"messageId":"$id","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":[],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}}"""
     private fun action(id: String, actionId: String) = """{"version":{"major":1,"minor":0},"messageId":"$id","sender":"phone","type":"action","body":{"actionId":"$actionId","kind":"interrupt_turn","taskId":"task-1"}}"""
-    private fun snapshot(id: String, seq: Int) = """{"version":{"major":1,"minor":0},"messageId":"$id","sender":"companion","type":"snapshot","seq":$seq,"body":{"baseSeq":$seq,"tasks":[]}}"""
+    private fun snapshot(id: String, seq: Int) = """{"version":{"major":1,"minor":0},"messageId":"$id","sender":"companion","type":"snapshot","seq":$seq,"body":{"baseSeq":$seq,"computerName":"Test computer","projects":[],"tasks":[]}}"""
     private fun event(id: String, seq: Int) = """{"version":{"major":1,"minor":0},"messageId":"$id","sender":"companion","type":"event","seq":$seq,"body":{"taskId":"task-1","event":"activity","state":"working","summary":"Working"}}"""
     private fun ack(id: String, seq: Int) = """{"version":{"major":1,"minor":0},"messageId":"$id","sender":"phone","type":"ack","body":{"throughSeq":$seq}}"""
     private fun actionResult(id: String, seq: Int, actionId: String, state: String) = """{"version":{"major":1,"minor":0},"messageId":"$id","sender":"companion","type":"action_result","seq":$seq,"body":{"actionId":"$actionId","state":"$state"}}"""

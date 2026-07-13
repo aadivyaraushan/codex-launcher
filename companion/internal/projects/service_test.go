@@ -3,6 +3,7 @@ package projects
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -36,8 +37,9 @@ func TestServiceExposesOnlyOpaqueProjectChoices(t *testing.T) {
 func TestServiceRejectsInvalidDuplicateAndSymlinkedConfiguration(t *testing.T) {
 	root := canonicalTempDir(t)
 	for name, configs := range map[string][]Config{
-		"relative path":  {{ID: "project-main", DisplayName: "Main", Path: "relative"}},
-		"path shaped id": {{ID: "../main", DisplayName: "Main", Path: root}},
+		"relative path":   {{ID: "project-main", DisplayName: "Main", Path: "relative"}},
+		"path shaped id":  {{ID: "../main", DisplayName: "Main", Path: root}},
+		"control in name": {{ID: "project-main", DisplayName: "Main\nInjected", Path: root}},
 		"duplicate id": {
 			{ID: "project-main", DisplayName: "Main", Path: root},
 			{ID: "project-main", DisplayName: "Other", Path: root},
@@ -64,6 +66,20 @@ func TestServiceRejectsInvalidDuplicateAndSymlinkedConfiguration(t *testing.T) {
 	}
 	if _, err := New([]Config{{ID: "project-main", DisplayName: "Main", Path: filepath.Join(link, "child")}}); !errors.Is(err, ErrUnsafeProjectPath) {
 		t.Fatalf("ancestor symlink configuration error = %v", err)
+	}
+}
+
+func TestServiceProjectCountMatchesTheWireLimit(t *testing.T) {
+	root := canonicalTempDir(t)
+	configs := make([]Config, MaxChoices+1)
+	for index := range configs {
+		configs[index] = Config{ID: fmt.Sprintf("project-%03d", index), DisplayName: fmt.Sprintf("Project %d", index), Path: root}
+	}
+	if _, err := New(configs[:MaxChoices]); err != nil {
+		t.Fatalf("%d projects were rejected: %v", MaxChoices, err)
+	}
+	if _, err := New(configs); !errors.Is(err, ErrInvalidProject) {
+		t.Fatalf("%d-project configuration error = %v, want %v", MaxChoices+1, err, ErrInvalidProject)
 	}
 }
 

@@ -13,7 +13,10 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
+
+	approvedprojects "github.com/codex-launcher/codex-launcher/companion/internal/projects"
 )
 
 const (
@@ -26,6 +29,7 @@ const (
 
 var attachmentMagic = [4]byte{'C', 'L', 'A', 'T'}
 var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+var projectIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 func DecodeText(frame []byte) (Message, error) {
 	if len(frame) > MaxJSONFrameBytes {
@@ -489,8 +493,9 @@ func validateBody(message Message) error {
 			return ErrInvalidEnvelope
 		}
 	case "snapshot":
-		if message.Sender != "companion" || message.Sequence == nil || !exactKeys(body, "baseSeq", "tasks") ||
-			uintValue(body["baseSeq"]) != *message.Sequence || !validateTasks(body["tasks"]) {
+		if message.Sender != "companion" || message.Sequence == nil || !exactKeys(body, "baseSeq", "computerName", "projects", "tasks") ||
+			uintValue(body["baseSeq"]) != *message.Sequence || !safeDisplayString(body["computerName"], 80) ||
+			!validateProjects(body["projects"]) || !validateTasks(body["tasks"]) {
 			return ErrInvalidEnvelope
 		}
 	case "event":
@@ -605,6 +610,25 @@ func validateTasks(raw json.RawMessage) bool {
 	return true
 }
 
+func validateProjects(raw json.RawMessage) bool {
+	var projects []map[string]json.RawMessage
+	if json.Unmarshal(raw, &projects) != nil || len(projects) > approvedprojects.MaxChoices {
+		return false
+	}
+	seen := make(map[string]struct{}, len(projects))
+	for _, project := range projects {
+		id := stringValue(project["id"])
+		if !exactKeys(project, "id", "displayName") || !validProjectID(id) || !safeDisplayString(project["displayName"], 128) {
+			return false
+		}
+		if _, duplicate := seen[id]; duplicate {
+			return false
+		}
+		seen[id] = struct{}{}
+	}
+	return true
+}
+
 func validateOptionalError(raw json.RawMessage, required bool) bool {
 	if raw == nil {
 		return !required
@@ -683,7 +707,7 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 			return ErrInvalidAction
 		}
 	case "set_project":
-		if !exactKeys(body, "actionId", "kind", "projectId") || !validID(stringValue(body["projectId"])) {
+		if !exactKeys(body, "actionId", "kind", "projectId") || !validProjectID(stringValue(body["projectId"])) {
 			return ErrInvalidAction
 		}
 	default:
@@ -696,10 +720,20 @@ func validID(value string) bool {
 	return utf8.RuneCountInString(value) >= 1 && utf8.RuneCountInString(value) <= 128 && identifierPattern.MatchString(value)
 }
 
+func validProjectID(value string) bool {
+	return projectIdentifierPattern.MatchString(value)
+}
+
 func boundedString(raw json.RawMessage, maximum int) bool {
 	value := stringValue(raw)
 	length := utf8.RuneCountInString(value)
 	return length >= 1 && length <= maximum
+}
+
+func safeDisplayString(raw json.RawMessage, maximum int) bool {
+	value := stringValue(raw)
+	length := utf8.RuneCountInString(value)
+	return length >= 1 && length <= maximum && strings.TrimSpace(value) != "" && strings.IndexFunc(value, unicode.IsControl) < 0
 }
 
 func validateOptionalIDs(raw json.RawMessage) bool {

@@ -2,6 +2,7 @@ package app.codexlauncher.launcher.home
 
 import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.connection.state.ConnectionSnapshot
+import app.codexlauncher.project.selection.ProjectChoice
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

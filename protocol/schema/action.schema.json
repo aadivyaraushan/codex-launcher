@@ -45,11 +45,12 @@
       "properties": {
         "actionId": { "$ref": "#/$defs/id" },
         "kind": { "const": "set_project" },
-        "projectId": { "$ref": "#/$defs/id" }
+        "projectId": { "$ref": "#/$defs/projectId" }
       }
     }
   ],
   "$defs": {
-    "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9._:-]+$" }
+    "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9._:-]+$" },
+    "projectId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }
   }
 }

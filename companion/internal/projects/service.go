@@ -16,6 +16,8 @@ var (
 	ErrUnsafeProjectPath  = errors.New("project path is unsafe")
 )
 
+const MaxChoices = 128
+
 type Config struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
@@ -46,6 +48,9 @@ func New(configs []Config) (*Service, error) {
 func NewWithLogger(configs []Config, logger *slog.Logger) (*Service, error) {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if len(configs) > MaxChoices {
+		return nil, ErrInvalidProject
 	}
 	service := &Service{projects: make(map[string]project, len(configs)), logger: logger}
 	for _, config := range configs {
