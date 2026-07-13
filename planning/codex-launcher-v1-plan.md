@@ -5,7 +5,9 @@
 > strict Unix config storage, runtime wiring, CLI safety, queue, and journal
 > cores. Windows ACL storage, SQLite, transport, setup, doctor, and the CLI
 > entry point remain. Task 8's folder and offline-state rules are green but are
-> not yet wired into the launcher UI.
+> not yet wired into the launcher UI. Task 7 now has a verified Android 16 Home
+> role, pure Home-content policy, and approved color/size tokens; Compose,
+> persisted appearance, bundled fonts, and the seven rendered screens remain.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
