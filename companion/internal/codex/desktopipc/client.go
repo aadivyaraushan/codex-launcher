@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
@@ -35,6 +36,7 @@ var (
 	ErrUnsafeEndpoint         = errors.New("desktop IPC endpoint is unsafe")
 	ErrWriteNotSent           = errors.New("desktop action was not sent")
 	ErrWriteOutcomeUnknown    = errors.New("desktop action outcome is unknown")
+	errStoppedBeforeWrite     = errors.New("desktop IPC stopped before write")
 )
 
 const PinnedDesktopBuild = "26.707.51957"
@@ -218,6 +220,7 @@ type Client struct {
 	pending         map[string]chan wireMessage
 	done            chan struct{}
 	terminalErr     error
+	closeErr        error
 	buildErr        error
 	pendingActions  map[string]map[string]desktopPendingAction
 	consumedActions map[string]map[string]ActionKind
@@ -315,6 +318,21 @@ func (connector *SessionConnector) Connect(ctx context.Context) (*Client, error)
 	}
 	connector.current = client
 	return client, nil
+}
+
+func (connector *SessionConnector) Close() error {
+	if connector == nil {
+		return nil
+	}
+	connector.mu.Lock()
+	defer connector.mu.Unlock()
+	if connector.current == nil {
+		return nil
+	}
+	err := connector.current.Close()
+	connector.current = nil
+	connector.logger.Info("[desktop-ipc] connector stopped", "decision", "owner_closed")
+	return err
 }
 
 func newClient(connection io.ReadWriteCloser, desktopBuild string, logger *slog.Logger) *Client {
@@ -680,6 +698,14 @@ func validTurnStatus(status string) bool {
 func (client *Client) request(ctx context.Context, message wireMessage, sideEffect bool) (json.RawMessage, error) {
 	client.requestMu.Lock()
 	defer client.requestMu.Unlock()
+	select {
+	case <-client.done:
+		if sideEffect {
+			return nil, client.actionDeliveryError(message.Method, 0, client.terminalError())
+		}
+		return nil, client.terminalError()
+	default:
+	}
 	if client.ClientID() == "" {
 		return nil, errors.New("desktop IPC is not initialized")
 	}
@@ -708,6 +734,14 @@ func (client *Client) request(ctx context.Context, message wireMessage, sideEffe
 	writeResult := make(chan error, 1)
 	go func() {
 		client.writeMu.Lock()
+		select {
+		case <-client.done:
+			client.writeMu.Unlock()
+			writeResult <- errStoppedBeforeWrite
+			return
+		default:
+		}
+		tracker.started.Store(true)
 		writeErr := writeFrame(tracker, message)
 		client.writeMu.Unlock()
 		writeResult <- writeErr
@@ -724,7 +758,17 @@ func (client *Client) request(ctx context.Context, message wireMessage, sideEffe
 		return nil, ctx.Err()
 	case <-client.done:
 		if sideEffect {
-			return nil, client.actionDeliveryError(message.Method, 1, client.terminalError())
+			bytesWritten := 1
+			if !tracker.started.Load() {
+				bytesWritten = 0
+			}
+			return nil, client.actionDeliveryError(message.Method, bytesWritten, client.terminalError())
+		}
+		return nil, client.terminalError()
+	}
+	if errors.Is(err, errStoppedBeforeWrite) {
+		if sideEffect {
+			return nil, client.actionDeliveryError(message.Method, 0, client.terminalError())
 		}
 		return nil, client.terminalError()
 	}
@@ -763,6 +807,7 @@ func (client *Client) request(ctx context.Context, message wireMessage, sideEffe
 type writeTracker struct {
 	writer  io.Writer
 	written int
+	started atomic.Bool
 }
 
 func (tracker *writeTracker) Write(value []byte) (int, error) {
@@ -889,14 +934,35 @@ func (client *Client) responseResult(request wireMessage, response wireMessage) 
 }
 
 func (client *Client) fail(err error) {
+	_ = client.stop(err, false)
+}
+
+func (client *Client) Close() error {
+	if client == nil {
+		return nil
+	}
+	return client.stop(ErrDisconnected, true)
+}
+
+func (client *Client) stop(err error, planned bool) error {
 	client.doneOnce.Do(func() {
 		client.stateMu.Lock()
 		client.terminalErr = err
 		client.stateMu.Unlock()
-		client.logger.Error("[desktop-ipc] connection stopped", "error", err)
-		_ = client.connection.Close()
+		if planned {
+			client.logger.Info("[desktop-ipc] connection stopped", "decision", "owner_closed")
+		} else {
+			client.logger.Error("[desktop-ipc] connection stopped", "error", err)
+		}
+		closeErr := client.connection.Close()
+		client.stateMu.Lock()
+		client.closeErr = closeErr
+		client.stateMu.Unlock()
 		close(client.done)
 	})
+	client.stateMu.RLock()
+	defer client.stateMu.RUnlock()
+	return client.closeErr
 }
 
 func (client *Client) terminalError() error {
@@ -1145,6 +1211,11 @@ func (client *Client) rejectDiscovery(message wireMessage) error {
 	}
 	client.writeMu.Lock()
 	defer client.writeMu.Unlock()
+	select {
+	case <-client.done:
+		return client.terminalError()
+	default:
+	}
 	return writeFrame(client.connection, wireMessage{
 		Type: "client-discovery-response", RequestID: message.RequestID, Response: response,
 	})

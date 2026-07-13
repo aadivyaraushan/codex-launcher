@@ -31,7 +31,10 @@
 > exposes that initialized client to the existing task catalog. Runnable
 > companion startup still needs durable stores, CLI/main composition, and the
 > platform-specific Desktop/app-server adapter choice; later transcript/action
-> work also remains.
+> work also remains. The pinned Desktop connector now has an explicit,
+> repeatable owner-close path that closes its verified socket and clears its
+> cached client, so the future runtime can shut down and restart the hybrid
+> adapter without retaining stale Desktop state.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

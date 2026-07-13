@@ -14,6 +14,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -850,6 +851,211 @@ func TestSessionConnectorReconnectsWithFreshTaskState(t *testing.T) {
 	}
 }
 
+func TestClientCloseIsRepeatableAndReportsPlannedShutdown(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	tracked := &closeTrackingConnection{ReadWriteCloser: clientConn, closed: make(chan struct{})}
+	defer serverConn.Close()
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	client := newClient(tracked, PinnedDesktopBuild, logger)
+	client.clientID = "client-1"
+	client.startReader()
+
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatalf("second close = %v", err)
+	}
+	select {
+	case <-client.done:
+	case <-time.After(time.Second):
+		t.Fatal("closed client did not finish")
+	}
+	select {
+	case <-tracked.closed:
+	case <-time.After(time.Second):
+		t.Fatal("closed client left the Desktop socket open")
+	}
+	if !strings.Contains(logs.String(), "decision=owner_closed") || strings.Contains(logs.String(), "level=ERROR") {
+		t.Fatalf("close logs = %s", logs.String())
+	}
+}
+
+func TestClosedClientReturnsStoredCloseErrorAndNeverWritesAgain(t *testing.T) {
+	closeErr := errors.New("socket close failed")
+	connection := &closeErrorWritableConnection{closeErr: closeErr}
+	client := newClient(connection, PinnedDesktopBuild, nil)
+	client.clientID = "client-1"
+
+	if err := client.Close(); !errors.Is(err, closeErr) {
+		t.Fatalf("first close = %v", err)
+	}
+	if err := client.Close(); !errors.Is(err, closeErr) {
+		t.Fatalf("second close = %v", err)
+	}
+	if _, err := client.StartTurn(context.Background(), "thread-1", "do not send"); !errors.Is(err, ErrWriteNotSent) {
+		t.Fatalf("post-close action = %v", err)
+	}
+	if writes := connection.writeCount(); writes != 0 {
+		t.Fatalf("post-close writes = %d", writes)
+	}
+}
+
+func TestRequestQueuedForSocketWriteStopsBeforeWritingAfterClose(t *testing.T) {
+	closeErr := errors.New("socket close failed")
+	connection := &closeErrorWritableConnection{closeErr: closeErr}
+	client := newClient(connection, PinnedDesktopBuild, nil)
+	client.clientID = "client-1"
+	client.writeMu.Lock()
+	result := make(chan error, 1)
+	go func() {
+		_, err := client.StartTurn(context.Background(), "thread-1", "queued")
+		result <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		client.pendingMu.Lock()
+		pending := len(client.pending)
+		client.pendingMu.Unlock()
+		if pending == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			client.writeMu.Unlock()
+			t.Fatal("request did not queue for the socket write")
+		}
+		runtime.Gosched()
+	}
+	if err := client.Close(); !errors.Is(err, closeErr) {
+		client.writeMu.Unlock()
+		t.Fatalf("close = %v", err)
+	}
+	client.writeMu.Unlock()
+	if err := <-result; !errors.Is(err, ErrWriteNotSent) {
+		t.Fatalf("queued action = %v", err)
+	}
+	if writes := connection.writeCount(); writes != 0 {
+		t.Fatalf("queued post-close writes = %d", writes)
+	}
+}
+
+func TestDiscoveryResponseNeverWritesAfterClose(t *testing.T) {
+	closeErr := errors.New("socket close failed")
+	connection := &closeErrorWritableConnection{closeErr: closeErr}
+	client := newClient(connection, PinnedDesktopBuild, nil)
+	if err := client.Close(); !errors.Is(err, closeErr) {
+		t.Fatal(err)
+	}
+	err := client.rejectDiscovery(wireMessage{RequestID: "discovery-1"})
+	if !errors.Is(err, ErrDisconnected) {
+		t.Fatalf("discovery after close = %v", err)
+	}
+	if writes := connection.writeCount(); writes != 0 {
+		t.Fatalf("discovery post-close writes = %d", writes)
+	}
+}
+
+func TestBlockedRequestWakesWhenOwnerClosesClient(t *testing.T) {
+	connection := newShutdownBlockingConnection()
+	client := newClient(connection, PinnedDesktopBuild, nil)
+	client.clientID = "client-1"
+	result := make(chan error, 1)
+	go func() {
+		_, err := client.StartTurn(context.Background(), "thread-1", "wait")
+		result <- err
+	}()
+	select {
+	case <-connection.writeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("request did not reach the blocked write")
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-result:
+		if !errors.Is(err, ErrWriteOutcomeUnknown) && !errors.Is(err, ErrWriteNotSent) {
+			t.Fatalf("blocked request error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("blocked request did not wake on close")
+	}
+}
+
+func TestConcurrentFailureAndOwnerCloseTearDownExactlyOnce(t *testing.T) {
+	connection := &countingCloseConnection{}
+	client := newClient(connection, PinnedDesktopBuild, nil)
+	client.clientID = "client-1"
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	wait.Add(2)
+	go func() {
+		defer wait.Done()
+		<-start
+		client.fail(errors.New("reader failed"))
+	}()
+	go func() {
+		defer wait.Done()
+		<-start
+		_ = client.Close()
+	}()
+	close(start)
+	wait.Wait()
+	if calls := connection.closeCount(); calls != 1 {
+		t.Fatalf("socket close calls = %d", calls)
+	}
+	select {
+	case <-client.done:
+	default:
+		t.Fatal("concurrent shutdown left client running")
+	}
+}
+
+func TestConnectorCloseForcesTheNextConnectToUseAFreshSession(t *testing.T) {
+	servers := make(chan net.Conn, 2)
+	dials := 0
+	connector := newTestSessionConnector("codex-launcher-test", nil, func(context.Context) (io.ReadWriteCloser, string, error) {
+		dials++
+		clientConn, serverConn := net.Pipe()
+		servers <- serverConn
+		return clientConn, PinnedDesktopBuild, nil
+	})
+	serve := func(server net.Conn) {
+		request, _ := readTestFrame(server)
+		_ = writeTestFrame(server, map[string]any{
+			"type": "response", "requestId": request.RequestID, "resultType": "success",
+			"method": "initialize", "result": map[string]any{"clientId": "client-1"},
+		})
+	}
+	connect := func() *Client {
+		result := make(chan *Client, 1)
+		go func() {
+			client, _ := connector.Connect(context.Background())
+			result <- client
+		}()
+		server := <-servers
+		serve(server)
+		t.Cleanup(func() { _ = server.Close() })
+		return <-result
+	}
+
+	first := connect()
+	if first == nil {
+		t.Fatal("first connection failed")
+	}
+	if err := connector.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second := connect()
+	if second == nil || second == first || dials != 2 {
+		t.Fatalf("second=%p first=%p dials=%d", second, first, dials)
+	}
+	if err := connector.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDarwinProductionConnectorUsesFixedSafetyDialer(t *testing.T) {
 	connector := NewDarwinSessionConnector("codex-launcher-test", nil)
 	if connector == nil || connector.dial == nil {
@@ -1351,6 +1557,70 @@ type closeTrackingConnection struct {
 	io.ReadWriteCloser
 	once   sync.Once
 	closed chan struct{}
+}
+
+type closeErrorWritableConnection struct {
+	mu       sync.Mutex
+	writes   int
+	closeErr error
+}
+
+func (*closeErrorWritableConnection) Read([]byte) (int, error) { return 0, io.EOF }
+func (connection *closeErrorWritableConnection) Write(value []byte) (int, error) {
+	connection.mu.Lock()
+	defer connection.mu.Unlock()
+	connection.writes++
+	return len(value), nil
+}
+func (connection *closeErrorWritableConnection) Close() error { return connection.closeErr }
+func (connection *closeErrorWritableConnection) writeCount() int {
+	connection.mu.Lock()
+	defer connection.mu.Unlock()
+	return connection.writes
+}
+
+type shutdownBlockingConnection struct {
+	writeStarted chan struct{}
+	closed       chan struct{}
+	writeOnce    sync.Once
+	closeOnce    sync.Once
+}
+
+func newShutdownBlockingConnection() *shutdownBlockingConnection {
+	return &shutdownBlockingConnection{writeStarted: make(chan struct{}), closed: make(chan struct{})}
+}
+
+func (connection *shutdownBlockingConnection) Read([]byte) (int, error) {
+	<-connection.closed
+	return 0, io.EOF
+}
+func (connection *shutdownBlockingConnection) Write([]byte) (int, error) {
+	connection.writeOnce.Do(func() { close(connection.writeStarted) })
+	<-connection.closed
+	return 0, io.ErrClosedPipe
+}
+func (connection *shutdownBlockingConnection) Close() error {
+	connection.closeOnce.Do(func() { close(connection.closed) })
+	return nil
+}
+
+type countingCloseConnection struct {
+	mu         sync.Mutex
+	closeCalls int
+}
+
+func (*countingCloseConnection) Read([]byte) (int, error)        { return 0, io.EOF }
+func (*countingCloseConnection) Write(value []byte) (int, error) { return len(value), nil }
+func (connection *countingCloseConnection) Close() error {
+	connection.mu.Lock()
+	defer connection.mu.Unlock()
+	connection.closeCalls++
+	return nil
+}
+func (connection *countingCloseConnection) closeCount() int {
+	connection.mu.Lock()
+	defer connection.mu.Unlock()
+	return connection.closeCalls
 }
 
 func (connection *closeTrackingConnection) Close() error {
