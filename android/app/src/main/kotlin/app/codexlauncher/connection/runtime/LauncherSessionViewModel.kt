@@ -21,6 +21,8 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +43,7 @@ class LauncherSessionViewModel(
     saveProject: suspend (ProjectChoice) -> Boolean,
     clearProject: suspend () -> Boolean,
     private val nextSessionId: () -> String = { UUID.randomUUID().toString() },
+    private val retryWait: suspend (attempt: Int) -> Unit = { attempt -> delay(retryDelayMillis(attempt)) },
     workScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LauncherSessionState())
@@ -50,6 +53,10 @@ class LauncherSessionViewModel(
     private var activeConnection: SessionConnection? = null
     private var projectBridge: ProjectSessionBridge? = null
     private val pendingProjectAcknowledgement = AtomicReference<ProjectAcknowledgement?>()
+    private var retryJob: Job? = null
+    private var retryComputer: PairedComputer? = null
+    private var retryAttempt = 0
+    private var retryToken = 0L
 
     val state: StateFlow<LauncherSessionState> = mutableState.asStateFlow()
     val projectSelection =
@@ -63,6 +70,12 @@ class LauncherSessionViewModel(
 
     @Synchronized
     fun connect(paired: PairedComputer, force: Boolean = false) {
+        cancelRetry(resetAttempts = true)
+        retryComputer = paired
+        startConnection(paired, force)
+    }
+
+    private fun startConnection(paired: PairedComputer, force: Boolean) {
         val current = mutableState.value.connection
         if (!force && activeDeviceId == paired.deviceId && current.phase != app.codexlauncher.connection.state.ConnectionPhase.DISCONNECTED) return
         closeCurrent(invalidate = true)
@@ -92,6 +105,8 @@ class LauncherSessionViewModel(
 
     @Synchronized
     fun disconnect() {
+        cancelRetry(resetAttempts = true)
+        retryComputer = null
         closeCurrent(invalidate = true)
         mutableState.value = LauncherSessionState(ConnectionStateMachine.reduce(mutableState.value.connection, ConnectionEvent.ConnectionLost))
     }
@@ -185,6 +200,7 @@ class LauncherSessionViewModel(
                 }
             connection = ConnectionStateMachine.reduce(connection, ConnectionEvent.SnapshotApplied(snapshot.baseSequence))
             mutableState.value = LauncherSessionState(connection, snapshot)
+            markConnectionStable(expectedGeneration)
             acknowledge(expectedGeneration, snapshot.baseSequence)
             AppLog.info(
                 feature = "connection-runtime",
@@ -252,6 +268,58 @@ class LauncherSessionViewModel(
             message = "companion session ended",
             fields = mapOf("failure_reason" to reason.name.lowercase(), "output_shape" to "content_cleared"),
         )
+        if (reason == SessionFailure.CONNECTION_LOST) {
+            scheduleRetry()
+        } else {
+            cancelRetry(resetAttempts = true)
+            retryComputer = null
+        }
+    }
+
+    @Synchronized
+    private fun markConnectionStable(expectedGeneration: Long) {
+        if (generation.get() != expectedGeneration) return
+        cancelRetry(resetAttempts = true)
+    }
+
+    private fun scheduleRetry() {
+        val paired = retryComputer ?: return
+        retryAttempt += 1
+        val attempt = retryAttempt
+        retryToken += 1
+        val token = retryToken
+        AppLog.info(
+            feature = "connection-runtime",
+            message = "automatic companion reconnect scheduled",
+            fields = mapOf(
+                "attempt" to attempt,
+                "backoff_millis" to retryDelayMillis(attempt),
+                "decision" to "retry_connection_loss",
+            ),
+        )
+        retryJob = submissionScope.launch {
+            retryWait(attempt)
+            retryAfterWait(paired, token, attempt)
+        }
+    }
+
+    @Synchronized
+    private fun retryAfterWait(paired: PairedComputer, token: Long, attempt: Int) {
+        if (token != retryToken || retryComputer?.deviceId != paired.deviceId) return
+        retryJob = null
+        AppLog.info(
+            feature = "connection-runtime",
+            message = "automatic companion reconnect started",
+            fields = mapOf("attempt" to attempt, "decision" to "open_fresh_session"),
+        )
+        startConnection(paired, force = true)
+    }
+
+    private fun cancelRetry(resetAttempts: Boolean) {
+        retryToken += 1
+        retryJob?.cancel()
+        retryJob = null
+        if (resetAttempts) retryAttempt = 0
     }
 
     @Synchronized
@@ -266,9 +334,16 @@ class LauncherSessionViewModel(
     }
 
     override fun onCleared() {
+        cancelRetry(resetAttempts = true)
+        retryComputer = null
         closeCurrent(invalidate = true)
         super.onCleared()
     }
 }
 
 private data class ProjectAcknowledgement(val generation: Long, val sequence: Long)
+
+internal fun retryDelayMillis(attempt: Int): Long {
+    val exponent = (attempt - 1).coerceIn(0, 5)
+    return minOf(30_000L, 1_000L * (1L shl exponent))
+}

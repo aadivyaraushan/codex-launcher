@@ -19,9 +19,11 @@
 > opaque project choices, phone-side selection storage, save-only retry, the
 > Compose selector, companion-owned welcome/snapshot/project-action handling,
 > pinned WebSocket replies, and live launcher routing through truthful
-> connecting/syncing/online/offline states. Reduced-protection confirmation,
-> unpair, automatic reconnect policy, and the remaining folder/offline checks
-> are not yet complete.
+> connecting/syncing/online/offline states. Connection loss now schedules a
+> capped automatic reconnect to the same paired computer, while manual
+> disconnect, revoked pairing, and incompatible protocol stop retrying.
+> Reduced-protection confirmation, unpair, and the remaining folder/offline
+> checks are not yet complete.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 

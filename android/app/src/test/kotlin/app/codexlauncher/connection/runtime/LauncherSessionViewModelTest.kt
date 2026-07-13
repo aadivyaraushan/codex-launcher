@@ -220,6 +220,169 @@ class LauncherSessionViewModelTest {
         Unit
     }
 
+    @Test
+    fun connectionLossWaitsThenReconnectsTheSamePairedComputer() = runBlocking {
+        val observers = mutableListOf<SessionObserver>()
+        val connectedDeviceIds = mutableListOf<String>()
+        val sessionIds = mutableListOf<String>()
+        val retryStarted = CompletableDeferred<Int>()
+        val releaseRetry = CompletableDeferred<Unit>()
+        val secondConnection = CompletableDeferred<Unit>()
+        var connectionCount = 0
+        val viewModel = LauncherSessionViewModel(
+            connect = { paired, sessionId, observer ->
+                observers += observer
+                connectedDeviceIds += paired.deviceId
+                sessionIds += sessionId
+                connectionCount += 1
+                if (connectionCount == 2) secondConnection.complete(Unit)
+                FakeSessionConnection()
+            },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            nextSessionId = { "session-${sessionIds.size + 1}" },
+            retryWait = { attempt ->
+                retryStarted.complete(attempt)
+                releaseRetry.await()
+            },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+
+        observers.single().onFailure(SessionFailure.CONNECTION_LOST)
+
+        assertEquals(1, retryStarted.await())
+        assertEquals(ConnectionPhase.DISCONNECTED, viewModel.state.value.connection.phase)
+        releaseRetry.complete(Unit)
+        secondConnection.await()
+        assertEquals(2, connectionCount)
+        assertEquals(listOf("pixel-9", "pixel-9"), connectedDeviceIds)
+        assertEquals(listOf("session-1", "session-2"), sessionIds)
+        assertEquals(ConnectionPhase.CONNECTING, viewModel.state.value.connection.phase)
+    }
+
+    @Test
+    fun incompatibleCompanionNeverSchedulesAutomaticRetry() = runBlocking {
+        lateinit var observer: SessionObserver
+        var retryCalls = 0
+        val connection = FakeSessionConnection()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            nextSessionId = { "session-1" },
+            retryWait = { retryCalls += 1 },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+
+        observer.onMessage(welcome(capabilities = emptyList()))
+
+        assertEquals(ConnectionPhase.INCOMPATIBLE_VERSION, viewModel.state.value.connection.phase)
+        assertEquals(0, retryCalls)
+    }
+
+    @Test
+    fun revokedPairingNeverSchedulesAutomaticRetry() = runBlocking {
+        lateinit var observer: SessionObserver
+        var retryCalls = 0
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; FakeSessionConnection() },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            retryWait = { retryCalls += 1 },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+
+        observer.onFailure(SessionFailure.REVOKED)
+
+        assertEquals(ConnectionPhase.REVOKED, viewModel.state.value.connection.phase)
+        assertEquals(0, retryCalls)
+    }
+
+    @Test
+    fun manualDisconnectCancelsAPendingAutomaticRetry() = runBlocking {
+        lateinit var observer: SessionObserver
+        val retryStarted = CompletableDeferred<Unit>()
+        val releaseRetry = CompletableDeferred<Unit>()
+        var connectionCount = 0
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver ->
+                observer = nextObserver
+                connectionCount += 1
+                FakeSessionConnection()
+            },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            retryWait = {
+                retryStarted.complete(Unit)
+                releaseRetry.await()
+            },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onFailure(SessionFailure.CONNECTION_LOST)
+        retryStarted.await()
+
+        viewModel.disconnect()
+        releaseRetry.complete(Unit)
+
+        assertEquals(1, connectionCount)
+        assertEquals(ConnectionPhase.DISCONNECTED, viewModel.state.value.connection.phase)
+    }
+
+    @Test
+    fun reconnectDelayGrowsExponentiallyAndStopsAtThirtySeconds() {
+        assertEquals(listOf(1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L), (1..7).map(::retryDelayMillis))
+    }
+
+    @Test
+    fun repeatedFailuresAdvanceAttemptsAndFreshSnapshotResetsThem() = runBlocking {
+        val observers = mutableListOf<SessionObserver>()
+        val connections = mutableListOf<FakeSessionConnection>()
+        val attempts = Channel<Int>(Channel.UNLIMITED)
+        val releases = Channel<Unit>(Channel.UNLIMITED)
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, observer ->
+                observers += observer
+                FakeSessionConnection().also(connections::add)
+            },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            retryWait = { attempt ->
+                attempts.send(attempt)
+                releases.receive()
+            },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+
+        observers[0].onFailure(SessionFailure.CONNECTION_LOST)
+        assertEquals(1, attempts.receive())
+        releases.send(Unit)
+        observers[1].onFailure(SessionFailure.CONNECTION_LOST)
+        assertEquals(2, attempts.receive())
+        releases.send(Unit)
+
+        observers[2].onReady(connections[2], ByteArray(32))
+        observers[2].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[2].onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-reset","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[],"tasks":[]}}""",
+            ),
+        )
+        observers[2].onFailure(SessionFailure.CONNECTION_LOST)
+
+        assertEquals(1, attempts.receive())
+    }
+
     private fun welcome(capabilities: List<String>): ProtocolMessage {
         val encodedCapabilities = capabilities.joinToString(",") { "\"$it\"" }
         return decode(
