@@ -83,8 +83,27 @@ type ServerRequest struct {
 	Method           string
 	Params           json.RawMessage
 	ThreadID         string
+	TurnID           string
+	ItemID           string
+	StartedAtMs      int64
+	Command          string
+	CWD              string
+	Reason           string
+	GrantRoot        string
+	ServerName       string
+	MCPMode          string
+	MCPMessage       string
 	AllowedDecisions []ApprovalDecision
 	Permissions      json.RawMessage
+	Questions        []ServerQuestion
+}
+
+type ServerQuestion struct {
+	ID      string
+	Header  string
+	Prompt  string
+	Options []string
+	Secret  bool
 }
 
 type ApprovalDecision string
@@ -683,13 +702,22 @@ func (client *Client) registerServerRequest(message wireMessage) (ServerRequest,
 		ItemID             string             `json:"itemId"`
 		StartedAtMs        *int64             `json:"startedAtMs"`
 		CWD                string             `json:"cwd"`
+		Command            string             `json:"command"`
+		Reason             string             `json:"reason"`
+		GrantRoot          string             `json:"grantRoot"`
 		ServerName         string             `json:"serverName"`
+		Mode               string             `json:"mode"`
+		Message            string             `json:"message"`
 		AvailableDecisions []ApprovalDecision `json:"availableDecisions"`
 		Permissions        json.RawMessage    `json:"permissions"`
 		Questions          []struct {
 			ID       string `json:"id"`
 			Header   string `json:"header"`
 			Question string `json:"question"`
+			IsSecret bool   `json:"isSecret"`
+			Options  []struct {
+				Label string `json:"label"`
+			} `json:"options"`
 		} `json:"questions"`
 	}
 	if json.Unmarshal(message.Params, &params) != nil || !validID(params.ThreadID) {
@@ -712,7 +740,14 @@ func (client *Client) registerServerRequest(message wireMessage) (ServerRequest,
 	if kind == requestKindPermission && !validBoundedText(params.CWD, 4096) {
 		return ServerRequest{}, ErrInvalidInput
 	}
+	if params.Command != "" && !validBoundedText(params.Command, 4096) || params.CWD != "" && !validBoundedText(params.CWD, 4096) ||
+		params.Reason != "" && !validBoundedText(params.Reason, 4096) || params.GrantRoot != "" && !validBoundedText(params.GrantRoot, 4096) {
+		return ServerRequest{}, ErrInvalidInput
+	}
 	if kind == requestKindMCP && !validBoundedText(params.ServerName, 256) {
+		return ServerRequest{}, ErrInvalidInput
+	}
+	if kind == requestKindMCP && (params.Mode != "form" && params.Mode != "openai/form" && params.Mode != "url" || !validBoundedText(params.Message, 4096)) {
 		return ServerRequest{}, ErrInvalidInput
 	}
 	allowed := make(map[ApprovalDecision]bool)
@@ -735,6 +770,7 @@ func (client *Client) registerServerRequest(message wireMessage) (ServerRequest,
 		}
 	}
 	questionIDs := make(map[string]bool)
+	questions := make([]ServerQuestion, 0, len(params.Questions))
 	if kind == requestKindQuestion {
 		if len(params.Questions) == 0 || len(params.Questions) > 32 {
 			return ServerRequest{}, ErrInvalidInput
@@ -743,7 +779,18 @@ func (client *Client) registerServerRequest(message wireMessage) (ServerRequest,
 			if !validID(question.ID) || !validBoundedText(question.Header, 256) || !validBoundedText(question.Question, 4096) || questionIDs[question.ID] {
 				return ServerRequest{}, ErrInvalidInput
 			}
+			options := make([]string, 0, len(question.Options))
+			if len(question.Options) > 32 {
+				return ServerRequest{}, ErrInvalidInput
+			}
+			for _, option := range question.Options {
+				if !validBoundedText(option.Label, 512) {
+					return ServerRequest{}, ErrInvalidInput
+				}
+				options = append(options, option.Label)
+			}
 			questionIDs[question.ID] = true
+			questions = append(questions, ServerQuestion{ID: question.ID, Header: question.Header, Prompt: question.Question, Options: options, Secret: question.IsSecret})
 		}
 	}
 	key := string(message.ID)
@@ -762,9 +809,15 @@ func (client *Client) registerServerRequest(message wireMessage) (ServerRequest,
 			decisions = append(decisions, decision)
 		}
 	}
+	startedAtMs := int64(0)
+	if params.StartedAtMs != nil {
+		startedAtMs = *params.StartedAtMs
+	}
 	return ServerRequest{
 		ID: append(json.RawMessage(nil), message.ID...), Method: message.Method, Params: append(json.RawMessage(nil), message.Params...),
-		ThreadID: params.ThreadID, AllowedDecisions: decisions, Permissions: append(json.RawMessage(nil), params.Permissions...),
+		ThreadID: params.ThreadID, TurnID: params.TurnID, ItemID: params.ItemID, StartedAtMs: startedAtMs, Command: params.Command, CWD: params.CWD, Reason: params.Reason,
+		GrantRoot: params.GrantRoot, ServerName: params.ServerName, MCPMode: params.Mode, MCPMessage: params.Message,
+		AllowedDecisions: decisions, Permissions: append(json.RawMessage(nil), params.Permissions...), Questions: questions,
 	}, nil
 }
 

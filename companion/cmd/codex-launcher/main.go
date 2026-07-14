@@ -15,8 +15,10 @@ import (
 	companionapp "github.com/codex-launcher/codex-launcher/companion/internal/app"
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	"github.com/codex-launcher/codex-launcher/companion/internal/cli"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	codexruntime "github.com/codex-launcher/codex-launcher/companion/internal/codex/runtime"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
 )
 
 type companionTaskSource = mobilesession.TaskSource
@@ -24,6 +26,9 @@ type companionTaskSource = mobilesession.TaskSource
 type codexOwner interface {
 	TaskSource() companionTaskSource
 	TaskEvents() <-chan taskstate.MobileEvent
+	DecisionOwner() *decisions.AppServerOwner
+	DecisionRequests() <-chan appserver.ServerRequest
+	DesktopDecisionRequests() <-chan appserver.ServerRequest
 	Done() <-chan struct{}
 	Close() error
 }
@@ -33,6 +38,15 @@ type liveCodexOwner struct{ session *codexruntime.Session }
 func (owner liveCodexOwner) TaskSource() companionTaskSource { return owner.session.Tasks() }
 func (owner liveCodexOwner) TaskEvents() <-chan taskstate.MobileEvent {
 	return owner.session.TaskEvents()
+}
+func (owner liveCodexOwner) DecisionOwner() *decisions.AppServerOwner {
+	return owner.session.DecisionOwner()
+}
+func (owner liveCodexOwner) DecisionRequests() <-chan appserver.ServerRequest {
+	return owner.session.DecisionRequests()
+}
+func (owner liveCodexOwner) DesktopDecisionRequests() <-chan appserver.ServerRequest {
+	return owner.session.DesktopDecisionRequests()
 }
 func (owner liveCodexOwner) Done() <-chan struct{} { return owner.session.Done() }
 func (owner liveCodexOwner) Close() error          { return owner.session.Close() }
@@ -54,7 +68,7 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer, rand
 	return runWith(ctx, args, output, errorOutput, liveDependencies{
 		random: random,
 		startCodex: func(ctx context.Context, binary string) (codexOwner, error) {
-			session, err := codexruntime.Start(ctx, codexruntime.Options{Binary: binary})
+			session, err := codexruntime.Start(ctx, codexruntime.Options{Binary: binary, ExperimentalQuestions: true})
 			if err != nil {
 				return nil, err
 			}
@@ -122,7 +136,7 @@ func serve(ctx context.Context, config companionapp.Config, errorOutput io.Write
 		return 1
 	}
 	runtime, state, err := companionapp.OpenPersistentRuntime(serviceContext, config, companionapp.PersistentDependencies{
-		Random: dependencies.random, TaskSource: owner.TaskSource(), TaskEvents: owner.TaskEvents(),
+		Random: dependencies.random, TaskSource: owner.TaskSource(), TaskEvents: owner.TaskEvents(), DecisionOwner: owner.DecisionOwner(), DecisionRequests: owner.DecisionRequests(), DesktopDecisionRequests: owner.DesktopDecisionRequests(),
 	})
 	if err != nil {
 		cancelService()

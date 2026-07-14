@@ -20,6 +20,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskoptions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
+	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
@@ -28,6 +29,40 @@ import (
 )
 
 var sessionNow = time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+
+func TestDecisionReadIsLiveOnlyAndApprovalRoutesToExactPendingRequest(t *testing.T) {
+	handler, sender := newTestHandler(t)
+	responder := &recordingDecisionResponder{}
+	router := decisions.NewRouter(responder, nil)
+	request := decisions.Request{
+		ID: "approval-1", ThreadID: "thread-1", TurnID: "turn-1", ItemID: "item-1", Kind: decisions.KindCommand,
+		ComputerName: "Studio Mac", ProjectLabel: "Main", WorkingDirectory: "/work", Reason: "Run tests", Command: "npm test", CommandUnderstandable: true,
+		AllowedDecisions: []decisions.Decision{decisions.DecisionAcceptOnce, decisions.DecisionDecline}, ExpiresAt: sessionNow.Add(time.Minute),
+	}
+	if err := router.Add(request); err != nil {
+		t.Fatal(err)
+	}
+	handler.EnableDecisions(router)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"read","sender":"phone","type":"decision_read","body":{"requestId":"read-1","taskId":"thread-1"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.messages) != 1 || sender.messages[0].Type != "decision_page" || sender.messages[0].Sequence != nil {
+		t.Fatalf("decision response = %#v", sender.messages)
+	}
+	if events, err := sender.store.ReplayAfter(context.Background(), 1); err != nil || len(events) != 0 {
+		t.Fatalf("decision page entered replay journal: %#v, %v", events, err)
+	}
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"decline","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"approval","taskId":"thread-1","requestId":"approval-1","requestKind":"command","decision":"decline"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(responder.responses) != 1 || responder.responses[0].RequestID != "approval-1" || responder.responses[0].Decision != decisions.DecisionDecline {
+		t.Fatalf("routed responses = %#v", responder.responses)
+	}
+}
 
 func TestColdHelloSendsWelcomeAndSafeProjectSnapshot(t *testing.T) {
 	handler, sender := newTestHandler(t)
@@ -1399,6 +1434,16 @@ type recordingSender struct {
 	closed       bool
 	closedSignal chan struct{}
 	sent         chan contract.Message
+}
+
+type recordingDecisionResponder struct {
+	responses []decisions.Response
+	err       error
+}
+
+func (responder *recordingDecisionResponder) Respond(_ context.Context, response decisions.Response) error {
+	responder.responses = append(responder.responses, response)
+	return responder.err
 }
 
 func (sender *recordingSender) DeviceID() string     { return sender.deviceID }

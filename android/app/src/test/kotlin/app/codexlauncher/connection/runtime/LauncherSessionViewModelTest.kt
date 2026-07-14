@@ -533,6 +533,88 @@ class LauncherSessionViewModelTest {
     }
 
     @Test
+    fun liveDecisionPageOpensForTaskAndExactDeclineCrossesDurableActionBoundary() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val journal = FakeActionJournal()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = journal,
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts", "decisions")))
+        observer.onMessage(snapshotWithTask(1, "Build launcher"))
+
+        assertTrue(viewModel.openTask("thread-1"))
+        val read = ProtocolCodec.decodeText(connection.awaitType("decision_read"))
+        val requestId = read.body.getValue("requestId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"decisions","sender":"companion","type":"decision_page","body":{"requestId":"$requestId","taskId":"thread-1","requests":[{"requestId":"approval-1","turnId":"turn-1","itemId":"item-1","kind":"command","computerName":"Studio Mac","projectLabel":"Main","command":"npm test","commandUnderstandable":true,"allowedDecisions":["decline"],"expiresAt":"2099-07-14T03:00:00Z"}]}}""",
+            ),
+        )
+        assertEquals("approval-1", viewModel.decisions.value.active?.requestId)
+
+        val response = async { viewModel.respondToDecision("decline") }
+        val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        assertEquals("approval-1", action.body.getValue("requestId").jsonPrimitive.content)
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"result","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed","resultCode":"accepted"}}""",
+            ),
+        )
+        assertEquals(app.codexlauncher.decision.approval.DecisionOutcome.Complete, response.await())
+        assertEquals(null, viewModel.decisions.value.active)
+        connection.awaitAcknowledgement(2)
+        assertEquals(listOf(actionId), journal.acknowledged)
+    }
+
+    @Test
+    fun transcriptAndDecisionPagesSurviveEitherArrivalOrder() = runBlocking {
+        for (decisionFirst in listOf(true, false)) {
+            lateinit var observer: SessionObserver
+            val connection = FakeSessionConnection()
+            val viewModel = LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { null },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = FakeActionJournal(),
+                nextSessionId = { "session-1" },
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+            viewModel.connect(pairedComputer())
+            observer.onReady(connection, ByteArray(32))
+            observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts", "decisions")))
+            observer.onMessage(snapshotWithTask(1, "Build launcher"))
+            assertTrue(viewModel.openTask("thread-1"))
+            val transcriptRead = ProtocolCodec.decodeText(connection.sent.first { ProtocolCodec.decodeText(it).type.wireName == "task_read" })
+            val decisionRead = ProtocolCodec.decodeText(connection.sent.first { ProtocolCodec.decodeText(it).type.wireName == "decision_read" })
+            val transcriptPage = decode(
+                """{"version":{"major":1,"minor":0},"messageId":"transcript-page","sender":"companion","type":"task_page","body":{"requestId":"${transcriptRead.body.getValue("requestId").jsonPrimitive.content}","taskId":"thread-1","entries":[],"truncated":false}}""",
+            )
+            val decisionPage = decode(
+                """{"version":{"major":1,"minor":0},"messageId":"decision-page","sender":"companion","type":"decision_page","body":{"requestId":"${decisionRead.body.getValue("requestId").jsonPrimitive.content}","taskId":"thread-1","requests":[{"requestId":"approval-1","turnId":"turn-1","itemId":"item-1","kind":"command","computerName":"Studio Mac","projectLabel":"Main","command":"npm test","commandUnderstandable":true,"allowedDecisions":["decline"],"expiresAt":"2099-07-14T03:00:00Z"}]}}""",
+            )
+            if (decisionFirst) {
+                observer.onMessage(decisionPage)
+                observer.onMessage(transcriptPage)
+            } else {
+                observer.onMessage(transcriptPage)
+                observer.onMessage(decisionPage)
+            }
+            assertEquals("decisionFirst=$decisionFirst", "approval-1", viewModel.decisions.value.active?.requestId)
+        }
+    }
+
+    @Test
     fun followUpDraftStaysOnlyInTheRetainedViewModelAndReturnsWhenTaskReopens() = runBlocking {
         lateinit var observer: SessionObserver
         val connection = FakeSessionConnection()

@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 )
 
@@ -42,8 +43,9 @@ var (
 const PinnedDesktopBuild = "26.707.51957"
 
 const (
-	darwinDesktopExecutable = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"
-	darwinDesktopInfoPlist  = "/Applications/ChatGPT.app/Contents/Info.plist"
+	darwinDesktopExecutable  = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"
+	darwinDesktopInfoPlist   = "/Applications/ChatGPT.app/Contents/Info.plist"
+	desktopDecisionQueueSize = 64
 )
 
 type WriteOutcome string
@@ -209,29 +211,30 @@ type Client struct {
 	connection io.ReadWriteCloser
 	logger     *slog.Logger
 
-	requestMu       sync.Mutex
-	writeMu         sync.Mutex
-	stateMu         sync.RWMutex
-	pendingMu       sync.Mutex
-	readerOnce      sync.Once
-	doneOnce        sync.Once
-	clientID        string
-	streams         map[string]*StreamState
-	pending         map[string]chan wireMessage
-	done            chan struct{}
-	terminalErr     error
-	closeErr        error
-	buildErr        error
-	pendingActions  map[string]map[string]desktopPendingAction
-	consumedActions map[string]map[string]ActionKind
-	mobileEventMu   sync.Mutex
-	mobileEventOnce sync.Once
-	mobileVerified  map[string]bool
-	mobileAuth      map[string]*taskstate.EventAuthorization
-	mobilePending   map[string]taskstate.MobileEvent
-	mobileOrder     []string
-	mobileSignal    chan struct{}
-	mobileEvents    chan taskstate.MobileEvent
+	requestMu        sync.Mutex
+	writeMu          sync.Mutex
+	stateMu          sync.RWMutex
+	pendingMu        sync.Mutex
+	readerOnce       sync.Once
+	doneOnce         sync.Once
+	clientID         string
+	streams          map[string]*StreamState
+	pending          map[string]chan wireMessage
+	done             chan struct{}
+	terminalErr      error
+	closeErr         error
+	buildErr         error
+	pendingActions   map[string]map[string]desktopPendingAction
+	consumedActions  map[string]map[string]ActionKind
+	mobileEventMu    sync.Mutex
+	mobileEventOnce  sync.Once
+	mobileVerified   map[string]bool
+	mobileAuth       map[string]*taskstate.EventAuthorization
+	mobilePending    map[string]taskstate.MobileEvent
+	mobileOrder      []string
+	mobileSignal     chan struct{}
+	mobileEvents     chan taskstate.MobileEvent
+	decisionRequests chan appserver.ServerRequest
 }
 
 type desktopPendingAction struct {
@@ -366,21 +369,31 @@ func newClient(connection io.ReadWriteCloser, desktopBuild string, logger *slog.
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	client := &Client{
-		connection:      connection,
-		logger:          logger,
-		streams:         make(map[string]*StreamState),
-		pending:         make(map[string]chan wireMessage),
-		pendingActions:  make(map[string]map[string]desktopPendingAction),
-		consumedActions: make(map[string]map[string]ActionKind),
-		mobileVerified:  make(map[string]bool),
-		mobileAuth:      make(map[string]*taskstate.EventAuthorization),
-		mobilePending:   make(map[string]taskstate.MobileEvent),
-		mobileSignal:    make(chan struct{}, 1),
-		mobileEvents:    make(chan taskstate.MobileEvent),
-		done:            make(chan struct{}),
-		buildErr:        verifyDesktopBuild(desktopBuild),
+		connection:       connection,
+		logger:           logger,
+		streams:          make(map[string]*StreamState),
+		pending:          make(map[string]chan wireMessage),
+		pendingActions:   make(map[string]map[string]desktopPendingAction),
+		consumedActions:  make(map[string]map[string]ActionKind),
+		mobileVerified:   make(map[string]bool),
+		mobileAuth:       make(map[string]*taskstate.EventAuthorization),
+		mobilePending:    make(map[string]taskstate.MobileEvent),
+		mobileSignal:     make(chan struct{}, 1),
+		mobileEvents:     make(chan taskstate.MobileEvent),
+		decisionRequests: make(chan appserver.ServerRequest, desktopDecisionQueueSize),
+		done:             make(chan struct{}),
+		buildErr:         verifyDesktopBuild(desktopBuild),
 	}
 	return client
+}
+
+func (client *Client) DecisionRequests() <-chan appserver.ServerRequest {
+	if client == nil || client.decisionRequests == nil {
+		closed := make(chan appserver.ServerRequest)
+		close(closed)
+		return closed
+	}
+	return client.decisionRequests
 }
 
 func verifyDesktopBuild(desktopBuild string) error {
@@ -1110,6 +1123,7 @@ func (client *Client) registerPendingState(conversationID string, raw json.RawMe
 		return ErrInvalidFrame
 	}
 	registered := make(map[string]desktopPendingAction)
+	projected := make(map[string]appserver.ServerRequest)
 	seenKinds := make(map[string]ActionKind)
 	for _, request := range state.Requests {
 		requestID, ok := desktopRequestID(request.ID)
@@ -1123,25 +1137,44 @@ func (client *Client) registerPendingState(conversationID string, raw json.RawMe
 		seenKinds[requestID] = kind
 		var params struct {
 			ThreadID           string          `json:"threadId"`
+			TurnID             string          `json:"turnId"`
+			ItemID             string          `json:"itemId"`
+			StartedAtMs        int64           `json:"startedAtMs"`
+			Command            string          `json:"command"`
+			CWD                string          `json:"cwd"`
+			Reason             string          `json:"reason"`
+			GrantRoot          string          `json:"grantRoot"`
+			ServerName         string          `json:"serverName"`
+			Mode               string          `json:"mode"`
+			Message            string          `json:"message"`
 			Permissions        json.RawMessage `json:"permissions"`
 			AvailableDecisions []string        `json:"availableDecisions"`
 			Questions          []struct {
-				ID string `json:"id"`
+				ID       string `json:"id"`
+				Header   string `json:"header"`
+				Question string `json:"question"`
+				IsSecret bool   `json:"isSecret"`
+				Options  []struct {
+					Label string `json:"label"`
+				} `json:"options"`
 			} `json:"questions"`
 		}
 		if json.Unmarshal(request.Params, &params) != nil || params.ThreadID != conversationID {
 			return ErrInvalidFrame
 		}
 		pending := desktopPendingAction{kind: kind, permissions: append(json.RawMessage(nil), params.Permissions...), questionIDs: map[string]bool{}, decisions: map[string]bool{}}
+		projectedRequest := appserver.ServerRequest{ID: append(json.RawMessage(nil), request.ID...), Method: request.Method, Params: append(json.RawMessage(nil), request.Params...), ThreadID: params.ThreadID, TurnID: params.TurnID, ItemID: params.ItemID, StartedAtMs: params.StartedAtMs, Command: params.Command, CWD: params.CWD, Reason: params.Reason, GrantRoot: params.GrantRoot, ServerName: params.ServerName, MCPMode: params.Mode, MCPMessage: params.Message, Permissions: append(json.RawMessage(nil), params.Permissions...)}
 		for _, decision := range params.AvailableDecisions {
 			if !allowedApprovalDecision(decision) {
 				return ErrInvalidFrame
 			}
 			pending.decisions[decision] = true
+			projectedRequest.AllowedDecisions = append(projectedRequest.AllowedDecisions, appserver.ApprovalDecision(decision))
 		}
 		if (kind == ActionCommandApproval || kind == ActionFileApproval) && len(pending.decisions) == 0 {
 			for _, decision := range []string{"accept", "acceptForSession", "decline", "cancel"} {
 				pending.decisions[decision] = true
+				projectedRequest.AllowedDecisions = append(projectedRequest.AllowedDecisions, appserver.ApprovalDecision(decision))
 			}
 		}
 		for _, question := range params.Questions {
@@ -1149,8 +1182,14 @@ func (client *Client) registerPendingState(conversationID string, raw json.RawMe
 				return ErrInvalidFrame
 			}
 			pending.questionIDs[question.ID] = true
+			options := make([]string, 0, len(question.Options))
+			for _, option := range question.Options {
+				options = append(options, option.Label)
+			}
+			projectedRequest.Questions = append(projectedRequest.Questions, appserver.ServerQuestion{ID: question.ID, Header: question.Header, Prompt: question.Question, Options: options, Secret: question.IsSecret})
 		}
 		registered[requestID] = pending
+		projected[requestID] = projectedRequest
 	}
 	client.stateMu.Lock()
 	old := client.pendingActions[conversationID]
@@ -1174,8 +1213,22 @@ func (client *Client) registerPendingState(conversationID string, raw json.RawMe
 			delete(tombstones, requestID)
 		}
 	}
+	newRequests := make([]appserver.ServerRequest, 0)
+	for requestID, pending := range registered {
+		if prior, exists := old[requestID]; !exists || prior.kind != pending.kind {
+			newRequests = append(newRequests, projected[requestID])
+		}
+	}
 	client.pendingActions[conversationID] = registered
 	client.stateMu.Unlock()
+	for _, request := range newRequests {
+		select {
+		case client.decisionRequests <- request:
+			client.logger.Info("[desktop-ipc] decision request", "thread_id", request.ThreadID, "request_method", request.Method, "decision", "publish_safe_typed_fields")
+		default:
+			return fmt.Errorf("%w: desktop decision queue full", ErrInvalidFrame)
+		}
+	}
 	return nil
 }
 

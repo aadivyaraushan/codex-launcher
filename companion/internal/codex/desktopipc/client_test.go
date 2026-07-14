@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 )
 
@@ -470,6 +471,50 @@ func TestStartTurnWithSettingsUpdatesBeforeStarting(t *testing.T) {
 	}
 	if first, second := <-methods, <-methods; first != "thread-follower-update-thread-settings" || second != "thread-follower-start-turn" {
 		t.Fatalf("method order = %q then %q", first, second)
+	}
+}
+
+func TestPendingDesktopRequestIsPublishedOnceWithSafeTypedFields(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() { _ = clientConn.Close(); _ = serverConn.Close() })
+	client := newClient(clientConn, PinnedDesktopBuild, nil)
+	state := json.RawMessage(`{"requests":[{"id":"approval-1","method":"item/commandExecution/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","startedAtMs":17,"command":"API_TOKEN=secret npm test","cwd":"/work","reason":"Run tests","availableDecisions":["accept","decline"]}}]}`)
+
+	if err := client.registerPendingState("thread-1", state); err != nil {
+		t.Fatal(err)
+	}
+	request := <-client.DecisionRequests()
+	if request.Method != "item/commandExecution/requestApproval" || string(request.ID) != `"approval-1"` || request.ThreadID != "thread-1" || request.TurnID != "turn-1" || request.ItemID != "item-1" || request.Command != "API_TOKEN=secret npm test" || request.CWD != "/work" || request.Reason != "Run tests" || !reflect.DeepEqual(request.AllowedDecisions, []appserver.ApprovalDecision{appserver.DecisionAccept, appserver.DecisionDecline}) {
+		t.Fatalf("desktop decision request = %#v", request)
+	}
+	if err := client.registerPendingState("thread-1", state); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case duplicate := <-client.DecisionRequests():
+		t.Fatalf("duplicate desktop decision request = %#v", duplicate)
+	default:
+	}
+}
+
+func TestConsumedDesktopRequestIsNotRepublishedByAnUnchangedSnapshot(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	t.Cleanup(func() { _ = clientConn.Close(); _ = serverConn.Close() })
+	client := newClient(clientConn, PinnedDesktopBuild, nil)
+	state := json.RawMessage(`{"requests":[{"id":"approval-1","method":"item/commandExecution/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","startedAtMs":17,"command":"npm test","availableDecisions":["decline"]}}]}`)
+	if err := client.registerPendingState("thread-1", state); err != nil {
+		t.Fatal(err)
+	}
+	<-client.DecisionRequests()
+	action := FollowerAction{Kind: ActionCommandApproval, ConversationID: "thread-1", RequestID: "approval-1", Decision: "decline"}
+	client.finishPendingAction(action, true)
+	if err := client.registerPendingState("thread-1", state); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case duplicate := <-client.DecisionRequests():
+		t.Fatalf("consumed request was republished: %#v", duplicate)
+	default:
 	}
 }
 

@@ -28,6 +28,8 @@ enum class MessageType(val wireName: String) {
     EVENT("event"),
     TASK_READ("task_read"),
     TASK_PAGE("task_page"),
+    DECISION_READ("decision_read"),
+    DECISION_PAGE("decision_page"),
     ACTION("action"),
     ACTION_RESULT("action_result"),
     ACK("ack"),

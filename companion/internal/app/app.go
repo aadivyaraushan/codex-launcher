@@ -10,7 +10,9 @@ import (
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/durablestore"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
@@ -22,21 +24,27 @@ import (
 var ErrMissingDependency = errors.New("companion runtime dependency is missing")
 
 type Dependencies struct {
-	PairingStore    pairing.Store
-	PromptStore     promptqueue.Store
-	EventStore      eventjournal.Store
-	Random          io.Reader
-	Logger          *slog.Logger
-	TaskSource      mobilesession.TaskSource
-	TaskEvents      <-chan taskstate.MobileEvent
-	AttachmentStore *attachments.Store
+	PairingStore            pairing.Store
+	PromptStore             promptqueue.Store
+	EventStore              eventjournal.Store
+	Random                  io.Reader
+	Logger                  *slog.Logger
+	TaskSource              mobilesession.TaskSource
+	TaskEvents              <-chan taskstate.MobileEvent
+	AttachmentStore         *attachments.Store
+	DecisionOwner           *decisions.AppServerOwner
+	DecisionRequests        <-chan appserver.ServerRequest
+	DesktopDecisionRequests <-chan appserver.ServerRequest
 }
 
 type PersistentDependencies struct {
-	Random     io.Reader
-	Logger     *slog.Logger
-	TaskSource mobilesession.TaskSource
-	TaskEvents <-chan taskstate.MobileEvent
+	Random                  io.Reader
+	Logger                  *slog.Logger
+	TaskSource              mobilesession.TaskSource
+	TaskEvents              <-chan taskstate.MobileEvent
+	DecisionOwner           *decisions.AppServerOwner
+	DecisionRequests        <-chan appserver.ServerRequest
+	DesktopDecisionRequests <-chan appserver.ServerRequest
 }
 
 type Runtime struct {
@@ -76,6 +84,20 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 	if err != nil {
 		logger.Error("[app] mobile session startup failed", "error_class", "mobile_session_initialization")
 		return nil, err
+	}
+	decisionTasks, decisionTasksReady := dependencies.TaskSource.(decisionTaskReader)
+	decisionReady := dependencies.DecisionOwner != nil && dependencies.DecisionRequests != nil && decisionTasksReady
+	decisionPartial := dependencies.DecisionOwner != nil || dependencies.DecisionRequests != nil
+	if decisionPartial && !decisionReady {
+		return nil, ErrMissingDependency
+	}
+	if decisionReady {
+		router := decisions.NewRouter(dependencies.DecisionOwner, logger)
+		mobileHandler.EnableDecisions(router)
+		go pumpDecisionRequests(ctx, dependencies.DecisionRequests, dependencies.DecisionOwner, router, decisionTasks, mobileHandler, config.ComputerName, logger, time.Now, false)
+		if dependencies.DesktopDecisionRequests != nil {
+			go pumpDecisionRequests(ctx, dependencies.DesktopDecisionRequests, dependencies.DecisionOwner, router, decisionTasks, mobileHandler, config.ComputerName, logger, time.Now, true)
+		}
 	}
 	var mobileServer *transport.Server
 	if dependencies.AttachmentStore != nil {
@@ -131,6 +153,7 @@ func openPersistentRuntimeAt(ctx context.Context, config Config, dependencies Pe
 	runtime, err := NewRuntime(ctx, config, Dependencies{
 		PairingStore: store, PromptStore: store, EventStore: store, Random: dependencies.Random, Logger: logger,
 		TaskSource: dependencies.TaskSource, TaskEvents: dependencies.TaskEvents, AttachmentStore: attachmentStore,
+		DecisionOwner: dependencies.DecisionOwner, DecisionRequests: dependencies.DecisionRequests, DesktopDecisionRequests: dependencies.DesktopDecisionRequests,
 	})
 	if err != nil {
 		_ = store.Close()

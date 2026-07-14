@@ -14,6 +14,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
 )
 
 const desktopClientType = "codex-launcher-companion"
@@ -33,12 +34,15 @@ type Options struct {
 }
 
 type Session struct {
-	tasks       taskadapter.Set
-	app         appSession
-	desktop     desktopConnector
-	logger      *slog.Logger
-	taskEvents  chan taskstate.MobileEvent
-	eventCancel context.CancelFunc
+	tasks                   taskadapter.Set
+	app                     appSession
+	desktop                 desktopConnector
+	logger                  *slog.Logger
+	taskEvents              chan taskstate.MobileEvent
+	decisionOwner           *decisions.AppServerOwner
+	decisionRequests        <-chan appserver.ServerRequest
+	desktopDecisionRequests <-chan appserver.ServerRequest
+	eventCancel             context.CancelFunc
 
 	closeOnce   sync.Once
 	closeResult error
@@ -152,9 +156,15 @@ func startWith(ctx context.Context, options Options, deps dependencies) (*Sessio
 	}
 
 	eventContext, eventCancel := context.WithCancel(ctx)
+	decisionOwner := decisions.NewAppServerOwner(app.Client())
+	var desktopDecisionRequests <-chan appserver.ServerRequest
+	if desktopClient != nil {
+		decisionOwner.AttachDesktop(desktopClient)
+		desktopDecisionRequests = desktopClient.DecisionRequests()
+	}
 	session := &Session{
 		tasks: tasks, app: app, desktop: desktop, logger: logger,
-		taskEvents: make(chan taskstate.MobileEvent, taskEventQueueSize), eventCancel: eventCancel,
+		taskEvents: make(chan taskstate.MobileEvent, taskEventQueueSize), decisionOwner: decisionOwner, decisionRequests: app.Client().Requests(), desktopDecisionRequests: desktopDecisionRequests, eventCancel: eventCancel,
 		done: make(chan struct{}), watchDone: make(chan struct{}),
 	}
 	logger.Info("[codex-runtime] ready", "platform", deps.goos, "adapter_mode", adapterMode, "output_shape", "owned_task_session")
@@ -172,6 +182,29 @@ func startWith(ctx context.Context, options Options, deps dependencies) (*Sessio
 	}()
 	go session.watch(ctx)
 	return session, nil
+}
+
+func (session *Session) DecisionOwner() *decisions.AppServerOwner {
+	if session == nil {
+		return nil
+	}
+	return session.decisionOwner
+}
+
+func (session *Session) DecisionRequests() <-chan appserver.ServerRequest {
+	if session == nil || session.decisionRequests == nil {
+		closed := make(chan appserver.ServerRequest)
+		close(closed)
+		return closed
+	}
+	return session.decisionRequests
+}
+
+func (session *Session) DesktopDecisionRequests() <-chan appserver.ServerRequest {
+	if session == nil || session.desktopDecisionRequests == nil {
+		return nil
+	}
+	return session.desktopDecisionRequests
 }
 
 func (session *Session) Tasks() taskadapter.Set {

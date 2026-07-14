@@ -20,7 +20,9 @@ import (
 	"time"
 
 	companionapp "github.com/codex-launcher/codex-launcher/companion/internal/app"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
 )
@@ -241,9 +243,12 @@ func newFakeCodexOwner() *fakeCodexOwner {
 	return &fakeCodexOwner{events: make(chan taskstate.MobileEvent), done: make(chan struct{})}
 }
 
-func (*fakeCodexOwner) TaskSource() companionTaskSource                { return emptyTaskSource{} }
-func (owner *fakeCodexOwner) TaskEvents() <-chan taskstate.MobileEvent { return owner.events }
-func (owner *fakeCodexOwner) Done() <-chan struct{}                    { return owner.done }
+func (*fakeCodexOwner) TaskSource() companionTaskSource                         { return emptyTaskSource{} }
+func (owner *fakeCodexOwner) TaskEvents() <-chan taskstate.MobileEvent          { return owner.events }
+func (*fakeCodexOwner) DecisionOwner() *decisions.AppServerOwner                { return nil }
+func (*fakeCodexOwner) DecisionRequests() <-chan appserver.ServerRequest        { return nil }
+func (*fakeCodexOwner) DesktopDecisionRequests() <-chan appserver.ServerRequest { return nil }
+func (owner *fakeCodexOwner) Done() <-chan struct{}                             { return owner.done }
 func (owner *fakeCodexOwner) Close() error {
 	if !owner.closed {
 		owner.closed = true

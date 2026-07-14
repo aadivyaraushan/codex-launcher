@@ -77,6 +77,61 @@
         "error": { "$ref": "#/$defs/error" }
       },
       "allOf": [{ "if": { "properties": { "state": { "enum": ["failed", "outcome_unknown"] } } }, "then": { "required": ["error"] } }]
+    },
+    "decisionPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestId", "taskId", "requests"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/id" },
+        "taskId": { "$ref": "#/$defs/id" },
+        "requests": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/decisionRequest" } }
+      }
+    },
+    "decisionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestId", "turnId", "itemId", "kind", "computerName", "projectLabel", "expiresAt"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/id" },
+        "turnId": { "$ref": "#/$defs/id" },
+        "itemId": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["command", "file", "permissions", "question", "mcp_elicitation"] },
+        "computerName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "projectLabel": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "workingDirectory": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "access": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "command": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "commandUnderstandable": { "type": "boolean" },
+        "affectedPaths": { "type": "array", "maxItems": 64, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+        "allowedDecisions": { "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": { "enum": ["accept", "accept_for_session", "decline", "cancel"] } },
+        "questions": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/decisionQuestion" } },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "mcp_elicitation" } }, "required": ["kind"] },
+          "then": {
+            "required": ["allowedDecisions"],
+            "properties": {
+              "allowedDecisions": { "type": "array", "minItems": 1, "maxItems": 2, "uniqueItems": true, "items": { "enum": ["decline", "cancel"] } }
+            }
+          }
+        }
+      ]
+    },
+    "decisionQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "header", "prompt", "options", "secret"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "header": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "options": { "type": "array", "maxItems": 32, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
+        "secret": { "type": "boolean" }
+      }
     }
   }
 }

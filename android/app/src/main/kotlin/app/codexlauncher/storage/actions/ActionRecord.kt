@@ -29,6 +29,7 @@ enum class ActionRecordKind(val wireName: String) {
     STEER_TURN("steer_turn"),
     INTERRUPT_TURN("interrupt_turn"),
     APPROVAL("approval"),
+    QUESTION_RESPONSE("question_response"),
     SET_PROJECT("set_project"),
     RENAME_TASK("rename_task"),
     ARCHIVE_TASK("archive_task"),

@@ -17,7 +17,7 @@
     },
     "messageId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9._:-]+$" },
     "sender": { "enum": ["phone", "companion"] },
-    "type": { "enum": ["hello", "welcome", "snapshot", "event", "action", "action_result", "ack", "attachment_offer", "attachment_cancel", "attachment_complete", "attachment_ack", "error"] },
+    "type": { "enum": ["hello", "welcome", "snapshot", "event", "task_read", "task_page", "decision_read", "decision_page", "action", "action_result", "ack", "attachment_offer", "attachment_cancel", "attachment_complete", "attachment_ack", "error"] },
     "seq": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 },
     "body": { "type": "object" }
   },
@@ -112,6 +112,14 @@
     {
       "if": { "properties": { "type": { "const": "ack" } }, "required": ["type"] },
       "then": { "properties": { "sender": { "const": "phone" }, "body": { "type": "object", "additionalProperties": false, "required": ["throughSeq"], "properties": { "throughSeq": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 } } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "decision_read" } }, "required": ["type"] },
+      "then": { "properties": { "sender": { "const": "phone" }, "body": { "type": "object", "additionalProperties": false, "required": ["requestId", "taskId"], "properties": { "requestId": { "$ref": "#/$defs/id" }, "taskId": { "$ref": "#/$defs/id" } } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "decision_page" } }, "required": ["type"] },
+      "then": { "properties": { "sender": { "const": "companion" }, "body": { "$ref": "event.schema.json#/$defs/decisionPage" } } }
     },
     {
       "if": { "properties": { "type": { "const": "error" } }, "required": ["type"] },

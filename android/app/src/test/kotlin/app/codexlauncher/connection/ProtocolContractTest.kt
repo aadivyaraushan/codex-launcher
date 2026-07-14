@@ -14,6 +14,24 @@ import java.io.File
 
 class ProtocolContractTest {
     @Test
+    fun `decision pages and answers match the private unsequenced contract`() {
+        val valid = listOf(
+            """{"version":{"major":1,"minor":0},"messageId":"read-decisions","sender":"phone","type":"decision_read","body":{"requestId":"read-1","taskId":"thread-1"}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"decision-page","sender":"companion","type":"decision_page","body":{"requestId":"read-1","taskId":"thread-1","requests":[{"requestId":"approval-1","turnId":"turn-1","itemId":"item-1","kind":"command","computerName":"Aadi Mac","projectLabel":"Launcher","command":"npm test","commandUnderstandable":true,"allowedDecisions":["accept","decline"],"expiresAt":"2026-07-14T03:00:00Z"}]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"mcp-page","sender":"companion","type":"decision_page","body":{"requestId":"read-2","taskId":"thread-1","requests":[{"requestId":"mcp-1","turnId":"mcp-turn","itemId":"mcp-item","kind":"mcp_elicitation","computerName":"Aadi Mac","projectLabel":"Launcher","reason":"Choose access","access":"MCP server request","allowedDecisions":["decline","cancel"],"expiresAt":"2026-07-14T03:00:00Z"}]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"answer","sender":"phone","type":"action","body":{"actionId":"answer-1","kind":"question_response","taskId":"thread-1","requestId":"question-1","answers":{"scope":["All"]}}}""",
+        )
+        valid.forEach { ProtocolCodec.decodeText(it) }
+
+        val invalid = listOf(
+            """{"version":{"major":1,"minor":0},"messageId":"sequenced","sender":"companion","type":"decision_page","seq":2,"body":{"requestId":"read-1","taskId":"thread-1","requests":[]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"unsafe","sender":"companion","type":"decision_page","body":{"requestId":"read-1","taskId":"thread-1","requests":[{"requestId":"approval-1","turnId":"turn-1","itemId":"item-1","kind":"command","computerName":"Mac","projectLabel":"Launcher","command":"echo ok\nrm -rf /","commandUnderstandable":true,"allowedDecisions":["accept"],"expiresAt":"2026-07-14T03:00:00Z"}]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"unsafe-mcp","sender":"companion","type":"decision_page","body":{"requestId":"read-2","taskId":"thread-1","requests":[{"requestId":"mcp-1","turnId":"mcp-turn","itemId":"mcp-item","kind":"mcp_elicitation","computerName":"Mac","projectLabel":"Launcher","allowedDecisions":["accept"],"expiresAt":"2026-07-14T03:00:00Z"}]}}""",
+        )
+        invalid.forEach { frame -> assertTrue(runCatching { ProtocolCodec.decodeText(frame) }.isFailure) }
+    }
+
+    @Test
     fun `production codec decodes every shared golden frame`() {
         listOf("session.jsonl", "approval.jsonl", "reconnect.jsonl").forEach { name ->
             fixture(name).forEachIndexed { index, line ->

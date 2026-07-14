@@ -713,6 +713,16 @@ Decision rules:
 
 **Verify:** `go test ./companion/internal/decisions ./companion/internal/mobileapi/transport ./companion/integration/decisions -race`; Android UI test for every branch; live destructive commands are not used for verification.
 
+> **Checkpoint — 2026-07-14:** Implemented the immediate decision path for both
+> companion-owned app-server tasks and active ChatGPT Desktop-owned tasks. The
+> phone reads live decision pages, replies through the durable action journal,
+> and the companion routes the exact response back to the owning request. MCP
+> elicitation is phone-deny/cancel only; secret questions remain computer-only.
+> Verification passed with `go test -race ./companion/...`, the complete Android
+> unit suite, and 75/75 instrumentation tests on the Pixel 9 Android 16 emulator.
+> Computer Use could not perform the additional manual screen inspection because
+> macOS was locked; emulator UI tests are the recorded fallback.
+
 ### Task 12: Implement app drawer, Appearance, and foreground connection service
 
 **Objective:** Complete approved screens 4, 6, and 7 and deliver background task-state notifications without Firebase.

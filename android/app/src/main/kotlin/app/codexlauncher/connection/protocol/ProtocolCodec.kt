@@ -166,6 +166,11 @@ object ProtocolCodec {
                 body["beforeEntryId"] != null && !optionalString(body, "beforeEntryId").isValidId()
             ) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.TASK_PAGE -> if (sender != Sender.COMPANION || !validTaskPage(body)) fail(ProtocolError.INVALID_ENVELOPE)
+            MessageType.DECISION_READ -> if (
+                sender != Sender.PHONE || body.keys != setOf("requestId", "taskId") ||
+                !optionalString(body, "requestId").isValidId() || !optionalString(body, "taskId").isValidId()
+            ) fail(ProtocolError.INVALID_ENVELOPE)
+            MessageType.DECISION_PAGE -> if (sender != Sender.COMPANION || !validDecisionPage(body)) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.ACTION_RESULT -> {
                 val state = optionalString(body, "state")
                 if (sender != Sender.COMPANION || sequence == null || body.keys.any { it !in setOf("actionId", "state", "resultCode", "error") } ||
@@ -227,10 +232,14 @@ object ProtocolCodec {
                 val requestKind = optionalString(body, "requestKind")
                 val decision = optionalString(body, "decision")
                 if (body.keys != setOf("actionId", "kind", "taskId", "requestId", "requestKind", "decision") || !optionalString(body, "taskId").isValidId() || !optionalString(body, "requestId").isValidId() ||
-                    requestKind !in setOf("command", "file", "permissions") ||
+                    requestKind !in setOf("command", "file", "permissions", "mcp_elicitation") ||
                     decision !in setOf("accept", "accept_for_session", "decline", "cancel")
                 ) fail(ProtocolError.INVALID_ACTION)
             }
+            "question_response" -> if (
+                body.keys != setOf("actionId", "kind", "taskId", "requestId", "answers") ||
+                !optionalString(body, "taskId").isValidId() || !optionalString(body, "requestId").isValidId() || !validQuestionAnswers(body["answers"])
+            ) fail(ProtocolError.INVALID_ACTION)
             "set_project" -> if (body.keys != setOf("actionId", "kind", "projectId") || !optionalString(body, "projectId").isProjectId()) fail(ProtocolError.INVALID_ACTION)
             "rename_task" -> if (
                 body.keys != setOf("actionId", "kind", "taskId", "title") ||
@@ -250,6 +259,71 @@ object ProtocolCodec {
                 uploadId.isValidId() && (nextChunk.jsonPrimitive.longOrNull ?: -1) in 0..Int.MAX_VALUE.toLong()
             }
         }.getOrDefault(false)
+
+    private fun validDecisionPage(body: JsonObject): Boolean = runCatching {
+        if (body.keys != setOf("requestId", "taskId", "requests") || !optionalString(body, "requestId").isValidId() || !optionalString(body, "taskId").isValidId()) return@runCatching false
+        val requests = body["requests"]?.jsonArray ?: return@runCatching false
+        if (requests.size > 32) return@runCatching false
+        val seen = mutableSetOf<String>()
+        requests.all { element ->
+            val request = element.jsonObject
+            val requestId = optionalString(request, "requestId")
+            val kind = optionalString(request, "kind")
+            val base = request.keys.all { it in setOf("requestId", "turnId", "itemId", "kind", "computerName", "projectLabel", "workingDirectory", "reason", "access", "command", "commandUnderstandable", "affectedPaths", "allowedDecisions", "questions", "expiresAt") } &&
+                requestId.isValidId() && seen.add(requestId) && optionalString(request, "turnId").isValidId() && optionalString(request, "itemId").isValidId() &&
+                optionalString(request, "computerName").isSafeDisplay(80) && optionalString(request, "projectLabel").isSafeDisplay(128) &&
+                runCatching { Instant.parse(optionalString(request, "expiresAt")) }.isSuccess && optionalSafeDisplay(request, "workingDirectory", 4096) &&
+                optionalSafeDisplay(request, "reason", 4096) && optionalSafeDisplay(request, "access", 4096) && validOptionalSafeStrings(request["affectedPaths"], 64, 4096)
+            base && when (kind) {
+                "command" -> optionalString(request, "command").isSafeDisplay(4096) && isJsonBoolean(request["commandUnderstandable"]) && validAllowedDecisions(request["allowedDecisions"]) && request["questions"] == null
+                "file", "permissions" -> validAllowedDecisions(request["allowedDecisions"]) && request["command"] == null && request["commandUnderstandable"] == null && request["questions"] == null
+                "mcp_elicitation" -> validMcpDecisions(request["allowedDecisions"]) && request["command"] == null && request["commandUnderstandable"] == null && request["questions"] == null
+                "question" -> validDecisionQuestions(request["questions"]) && request["allowedDecisions"] == null && request["command"] == null && request["commandUnderstandable"] == null
+                else -> false
+            }
+        }
+    }.getOrDefault(false)
+
+    private fun validDecisionQuestions(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
+        val questions = value?.jsonArray ?: return@runCatching false
+        if (questions.isEmpty() || questions.size > 32) return@runCatching false
+        val seen = mutableSetOf<String>()
+        questions.all { element ->
+            val question = element.jsonObject
+            val id = optionalString(question, "id")
+            question.keys == setOf("id", "header", "prompt", "options", "secret") && id.isValidId() && seen.add(id) &&
+                optionalString(question, "header").isSafeDisplay(128) && optionalString(question, "prompt").isSafeDisplay(4096) &&
+                isJsonBoolean(question["secret"]) && validOptionalSafeStrings(question["options"], 32, 512)
+        }
+    }.getOrDefault(false)
+
+    private fun validQuestionAnswers(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
+        val answers = value?.jsonObject ?: return@runCatching false
+        var total = 0
+        answers.isNotEmpty() && answers.size <= 32 && answers.all { (id, element) ->
+            val values = element.jsonArray.map { it.jsonPrimitive.content }
+            id.isValidId() && values.isNotEmpty() && values.size <= 32 && values.all { answer ->
+                total += answer.encodeToByteArray().size
+                answer.isNotEmpty() && answer.length <= 131072 && '\u0000' !in answer && total <= 131072
+            }
+        }
+    }.getOrDefault(false)
+
+    private fun validAllowedDecisions(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
+        val decisions = value?.jsonArray?.map { it.jsonPrimitive.content } ?: return@runCatching false
+        decisions.isNotEmpty() && decisions.size <= 4 && decisions.distinct().size == decisions.size && decisions.all { it in setOf("accept", "accept_for_session", "decline", "cancel") }
+    }.getOrDefault(false)
+
+    private fun validMcpDecisions(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
+        val decisions = value?.jsonArray?.map { it.jsonPrimitive.content } ?: return@runCatching false
+        decisions.isNotEmpty() && decisions.size <= 2 && decisions.distinct().size == decisions.size && decisions.all { it in setOf("decline", "cancel") }
+    }.getOrDefault(false)
+
+    private fun optionalSafeDisplay(body: JsonObject, key: String, maximum: Int): Boolean = body[key] == null || optionalString(body, key).isSafeDisplay(maximum)
+
+    private fun validOptionalSafeStrings(value: kotlinx.serialization.json.JsonElement?, maximumItems: Int, maximumLength: Int): Boolean = runCatching {
+        value == null || value.jsonArray.size <= maximumItems && value.jsonArray.all { it.jsonPrimitive.content.isSafeDisplay(maximumLength) }
+    }.getOrDefault(false)
 
     private fun validTasks(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
         val tasks = value?.jsonArray ?: return@runCatching false

@@ -562,6 +562,15 @@ func validateBody(message Message) error {
 		if message.Sender != "companion" || !validateTaskPage(body) {
 			return ErrInvalidEnvelope
 		}
+	case "decision_read":
+		if message.Sender != "phone" || !exactKeys(body, "requestId", "taskId") ||
+			!validID(stringValue(body["requestId"])) || !validID(stringValue(body["taskId"])) {
+			return ErrInvalidEnvelope
+		}
+	case "decision_page":
+		if message.Sender != "companion" || !validateDecisionPage(body) {
+			return ErrInvalidEnvelope
+		}
 	case "action_result":
 		state := stringValue(body["state"])
 		if message.Sender != "companion" || message.Sequence == nil || !onlyAllowedKeys(body, "actionId", "state", "resultCode", "error") ||
@@ -975,8 +984,13 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 		requestKind := stringValue(body["requestKind"])
 		if !exactKeys(body, "actionId", "kind", "taskId", "requestId", "requestKind", "decision") ||
 			!validID(stringValue(body["taskId"])) || !validID(stringValue(body["requestId"])) ||
-			(requestKind != "command" && requestKind != "file" && requestKind != "permissions") ||
+			(requestKind != "command" && requestKind != "file" && requestKind != "permissions" && requestKind != "mcp_elicitation") ||
 			(decision != "accept" && decision != "accept_for_session" && decision != "decline" && decision != "cancel") {
+			return ErrInvalidAction
+		}
+	case "question_response":
+		if !exactKeys(body, "actionId", "kind", "taskId", "requestId", "answers") ||
+			!validID(stringValue(body["taskId"])) || !validID(stringValue(body["requestId"])) || !validateQuestionAnswers(body["answers"]) {
 			return ErrInvalidAction
 		}
 	case "set_project":
@@ -996,6 +1010,146 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 		return ErrInvalidAction
 	}
 	return nil
+}
+
+func validateDecisionPage(body map[string]json.RawMessage) bool {
+	if !exactKeys(body, "requestId", "taskId", "requests") || !validID(stringValue(body["requestId"])) || !validID(stringValue(body["taskId"])) {
+		return false
+	}
+	var requests []map[string]json.RawMessage
+	if json.Unmarshal(body["requests"], &requests) != nil || len(requests) > 32 {
+		return false
+	}
+	seen := make(map[string]bool, len(requests))
+	for _, request := range requests {
+		requestID := stringValue(request["requestId"])
+		kind := stringValue(request["kind"])
+		if !onlyAllowedKeys(request, "requestId", "turnId", "itemId", "kind", "computerName", "projectLabel", "workingDirectory", "reason", "access", "command", "commandUnderstandable", "affectedPaths", "allowedDecisions", "questions", "expiresAt") ||
+			!validID(requestID) || seen[requestID] || !validID(stringValue(request["turnId"])) || !validID(stringValue(request["itemId"])) ||
+			!safeDisplayString(request["computerName"], 80) || !safeDisplayString(request["projectLabel"], 128) || !validDecisionExpiry(request["expiresAt"]) ||
+			!optionalSafeDisplay(request["workingDirectory"], 4096) || !optionalSafeDisplay(request["reason"], 4096) || !optionalSafeDisplay(request["access"], 4096) ||
+			!optionalSafeStringArray(request["affectedPaths"], 64, 4096) {
+			return false
+		}
+		seen[requestID] = true
+		switch kind {
+		case "command":
+			if !boundedString(request["command"], 4096) || !safeDisplayString(request["command"], 4096) || boolValue(request["commandUnderstandable"]) == nil ||
+				!validAllowedDecisions(request["allowedDecisions"]) || request["questions"] != nil {
+				return false
+			}
+		case "file", "permissions":
+			if !validAllowedDecisions(request["allowedDecisions"]) || request["command"] != nil || request["commandUnderstandable"] != nil || request["questions"] != nil {
+				return false
+			}
+		case "mcp_elicitation":
+			if !validMCPDecisions(request["allowedDecisions"]) || request["command"] != nil || request["commandUnderstandable"] != nil || request["questions"] != nil {
+				return false
+			}
+		case "question":
+			if !validateDecisionQuestions(request["questions"]) || request["allowedDecisions"] != nil || request["command"] != nil || request["commandUnderstandable"] != nil {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func validateDecisionQuestions(raw json.RawMessage) bool {
+	var questions []map[string]json.RawMessage
+	if json.Unmarshal(raw, &questions) != nil || len(questions) == 0 || len(questions) > 32 {
+		return false
+	}
+	seen := make(map[string]bool, len(questions))
+	for _, question := range questions {
+		id := stringValue(question["id"])
+		if !exactKeys(question, "id", "header", "prompt", "options", "secret") || !validID(id) || seen[id] ||
+			!safeDisplayString(question["header"], 128) || !safeDisplayString(question["prompt"], 4096) || boolValue(question["secret"]) == nil ||
+			!optionalSafeStringArray(question["options"], 32, 512) {
+			return false
+		}
+		seen[id] = true
+	}
+	return true
+}
+
+func validateQuestionAnswers(raw json.RawMessage) bool {
+	var answers map[string][]string
+	if json.Unmarshal(raw, &answers) != nil || len(answers) == 0 || len(answers) > 32 {
+		return false
+	}
+	total := 0
+	for id, values := range answers {
+		if !validID(id) || len(values) == 0 || len(values) > 32 {
+			return false
+		}
+		for _, value := range values {
+			total += len(value)
+			if value == "" || len(value) > 131072 || strings.ContainsAny(value, "\x00") || total > 131072 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validAllowedDecisions(raw json.RawMessage) bool {
+	var values []string
+	if json.Unmarshal(raw, &values) != nil || len(values) == 0 || len(values) > 4 {
+		return false
+	}
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		if seen[value] || value != "accept" && value != "accept_for_session" && value != "decline" && value != "cancel" {
+			return false
+		}
+		seen[value] = true
+	}
+	return true
+}
+
+func validMCPDecisions(raw json.RawMessage) bool {
+	var values []string
+	if json.Unmarshal(raw, &values) != nil || len(values) == 0 || len(values) > 2 {
+		return false
+	}
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		if seen[value] || value != "decline" && value != "cancel" {
+			return false
+		}
+		seen[value] = true
+	}
+	return true
+}
+
+func validDecisionExpiry(raw json.RawMessage) bool {
+	value := stringValue(raw)
+	_, err := time.Parse(time.RFC3339, value)
+	return value != "" && err == nil
+}
+
+func optionalSafeDisplay(raw json.RawMessage, maximum int) bool {
+	return raw == nil || safeDisplayString(raw, maximum)
+}
+
+func optionalSafeStringArray(raw json.RawMessage, maximumItems, maximumLength int) bool {
+	if raw == nil {
+		return true
+	}
+	var values []string
+	if json.Unmarshal(raw, &values) != nil || len(values) > maximumItems {
+		return false
+	}
+	for _, value := range values {
+		encoded, _ := json.Marshal(value)
+		if !safeDisplayString(encoded, maximumLength) {
+			return false
+		}
+	}
+	return true
 }
 
 func validID(value string) bool {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -27,7 +28,7 @@ func TestQuestionResponseUsesCurrentSchemaAndPendingKind(t *testing.T) {
 		_ = encoder.Encode(map[string]any{"id": json.RawMessage(initialize.ID), "result": fakeInitializeResult()})
 		_, _ = reader.ReadBytes('\n')
 		_ = encoder.Encode(map[string]any{"id": "question-1", "method": "item/tool/requestUserInput", "params": map[string]any{
-			"threadId": "thread-1", "turnId": "turn-1", "itemId": "item-1", "questions": []map[string]any{{"id": "choice", "header": "Choice", "question": "Pick one"}},
+			"threadId": "thread-1", "turnId": "turn-1", "itemId": "item-1", "questions": []map[string]any{{"id": "choice", "header": "Choice", "question": "Pick one", "isSecret": false, "options": []map[string]any{{"label": "A", "description": "First"}}}},
 		}})
 		line, _ = reader.ReadBytes('\n')
 		var got map[string]json.RawMessage
@@ -41,7 +42,8 @@ func TestQuestionResponseUsesCurrentSchemaAndPendingKind(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := <-client.Requests()
-	if request.Method != "item/tool/requestUserInput" || request.ThreadID != "thread-1" {
+	if request.Method != "item/tool/requestUserInput" || request.ThreadID != "thread-1" || request.TurnID != "turn-1" || request.ItemID != "item-1" ||
+		!reflect.DeepEqual(request.Questions, []ServerQuestion{{ID: "choice", Header: "Choice", Prompt: "Pick one", Options: []string{"A"}}}) {
 		t.Fatalf("request = %#v", request)
 	}
 	if err := client.RespondCommandApproval(ctx, "thread-1", request.ID, DecisionDecline); !errors.Is(err, ErrRequestMismatch) {
@@ -129,7 +131,8 @@ func TestApprovalRegistryEnforcesOfferedDecisionAndPermissionShape(t *testing.T)
 		t.Fatal(err)
 	}
 	command := <-client.Requests()
-	if command.ThreadID != "thread-1" || len(command.AllowedDecisions) != 1 || command.AllowedDecisions[0] != DecisionDecline {
+	if command.ThreadID != "thread-1" || command.TurnID != "turn-1" || command.ItemID != "item-1" || command.Command != "npm test" || command.CWD != "/work" || command.Reason != "Run tests" ||
+		len(command.AllowedDecisions) != 1 || command.AllowedDecisions[0] != DecisionDecline {
 		t.Fatalf("command request = %#v", command)
 	}
 	if err := client.RespondCommandApproval(ctx, "thread-1", command.ID, DecisionAcceptForSession); !errors.Is(err, ErrDecisionNotOffered) {
@@ -316,7 +319,7 @@ func serveApprovalRequests(conn net.Conn) {
 	_ = encoder.Encode(map[string]any{"id": json.RawMessage(initialize.ID), "result": fakeInitializeResult()})
 	_, _ = reader.ReadBytes('\n')
 	_ = encoder.Encode(map[string]any{"id": "command-1", "method": "item/commandExecution/requestApproval", "params": map[string]any{
-		"threadId": "thread-1", "turnId": "turn-1", "itemId": "item-1", "startedAtMs": 1, "availableDecisions": []string{"decline"},
+		"threadId": "thread-1", "turnId": "turn-1", "itemId": "item-1", "startedAtMs": 1, "availableDecisions": []string{"decline"}, "command": "npm test", "cwd": "/work", "reason": "Run tests",
 	}})
 	_, _ = reader.ReadBytes('\n')
 	_ = encoder.Encode(map[string]any{"id": "permission-1", "method": "item/permissions/requestApproval", "params": map[string]any{

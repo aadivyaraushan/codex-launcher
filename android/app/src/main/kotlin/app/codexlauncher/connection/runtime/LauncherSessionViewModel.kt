@@ -13,6 +13,8 @@ import app.codexlauncher.connection.state.ConnectionEvent
 import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.connection.state.ConnectionStateMachine
 import app.codexlauncher.diagnostics.AppLog
+import app.codexlauncher.decision.approval.ApprovalViewModel
+import app.codexlauncher.decision.approval.DecisionOutcome
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.project.selection.ProjectSelectionViewModel
 import app.codexlauncher.project.session.ProjectSessionBridge
@@ -94,12 +96,14 @@ class LauncherSessionViewModel(
     private var transcriptCapable = false
     private var taskManagementCapable = false
     private var attachmentCapable = false
+    private var decisionCapable = false
     private var maxAttachmentBytes = ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
     private var taskActionBridge: TaskActionBridge? = null
     private var taskControlViewModel: TaskControlViewModel? = null
     private val pendingTaskAcknowledgements = ConcurrentHashMap<String, TaskAcknowledgement>()
     private val retainedUnknownActionIds = ConcurrentHashMap.newKeySet<String>()
     private var pendingTranscript: PendingTranscriptRequest? = null
+    private var pendingDecisionRead: PendingDecisionRequest? = null
     private val acknowledgementGate = SequenceAcknowledgementGate()
     private val acknowledgementMutex = Mutex()
     private val pendingProjectAcknowledgement = AtomicReference<ProjectAcknowledgement?>()
@@ -116,6 +120,16 @@ class LauncherSessionViewModel(
 
     val state: StateFlow<LauncherSessionState> = mutableState.asStateFlow()
     val attachments = attachmentUploader.state
+    private val decisionViewModel =
+        ApprovalViewModel(
+            sendAction = { encoded, beforeBoundary -> activeConnection?.sendAction(encoded, beforeBoundary) ?: app.codexlauncher.connection.session.ActionSendResult.NOT_SENT },
+            journal = actionJournal,
+            onTerminalReceived = acknowledgementGate::block,
+            onTerminalStored = { actionId, sequence, retainUnresolved ->
+                taskActionStored(generation.get(), actionId, sequence, requiresSnapshot = false, retainUnresolved = retainUnresolved)
+            },
+        )
+    val decisions = decisionViewModel.state
     val projectSelection =
         ProjectSelectionViewModel(
             select = ::selectProject,
@@ -201,7 +215,9 @@ class LauncherSessionViewModel(
                     MessageType.SNAPSHOT -> applySnapshot(expectedGeneration, message)
                     MessageType.EVENT -> applyTaskEvent(expectedGeneration, message)
                     MessageType.TASK_PAGE -> applyTaskPage(expectedGeneration, message)
+                    MessageType.DECISION_PAGE -> applyDecisionPage(expectedGeneration, message)
                     MessageType.ACTION_RESULT -> {
+                        decisionViewModel.acceptActionResult(message)
                         projectBridge?.accept(message)
                         taskActionBridge?.accept(message)
                         taskControlViewModel?.accept(message)
@@ -238,6 +254,7 @@ class LauncherSessionViewModel(
         transcriptCapable = "task_transcripts" in capabilities
         taskManagementCapable = "task_management" in capabilities
         attachmentCapable = "attachments" in capabilities
+        decisionCapable = "decisions" in capabilities
         maxAttachmentBytes =
             message.body["limits"]?.jsonObject?.get("maxAttachmentBytes")?.jsonPrimitive?.longOrNull
                 ?.coerceAtMost(ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong())
@@ -488,13 +505,25 @@ class LauncherSessionViewModel(
         val current = mutableState.value
         val task = current.snapshot?.tasks?.singleOrNull { it.id == taskId }
         if (!transcriptCapable || current.connection.phase != app.codexlauncher.connection.state.ConnectionPhase.ONLINE || task == null) return false
+		pendingDecisionRead = null
+		decisionViewModel.clear()
         mutableState.value =
             current.copy(
                 transcript = TaskTranscriptUiState(taskId = taskId, title = task.title),
                 followUpDraft = followUpDrafts[taskId].orEmpty(),
             )
-        return sendTranscriptRead(taskId, beforeEntryId = null, appendEarlier = false)
+        val transcriptRequested = sendTranscriptRead(taskId, beforeEntryId = null, appendEarlier = false)
+        val decisionsRequested = !decisionCapable || sendDecisionRead(taskId)
+        return transcriptRequested && decisionsRequested
     }
+
+    suspend fun respondToDecision(decision: String): DecisionOutcome = decisionViewModel.respond(decision)
+
+    suspend fun answerDecision(answers: Map<String, List<String>>): DecisionOutcome = decisionViewModel.answer(answers)
+
+    fun dismissQuestion(): Boolean = decisionViewModel.dismissQuestion()
+
+    fun reopenQuestion(requestId: String): Boolean = decisionViewModel.reopenQuestion(requestId)
 
     @Synchronized
     fun updateTaskFollowUpDraft(taskId: String, text: String): Boolean {
@@ -534,6 +563,8 @@ class LauncherSessionViewModel(
     @Synchronized
     fun closeTask() {
         pendingTranscript = null
+		pendingDecisionRead = null
+		decisionViewModel.clear()
         mutableState.value = mutableState.value.copy(transcript = null, followUpDraft = "")
     }
 
@@ -564,6 +595,40 @@ class LauncherSessionViewModel(
             fields = mapOf("task_id" to taskId, "has_cursor" to (beforeEntryId != null), "input_limit" to TRANSCRIPT_PAGE_SIZE),
         )
         return true
+    }
+
+    private fun sendDecisionRead(taskId: String): Boolean {
+        val connection = activeConnection ?: return false
+        val requestId = UUID.randomUUID().toString()
+        val encoded =
+            buildJsonObject {
+                put("version", buildJsonObject { put("major", ProtocolCodec.PROTOCOL_MAJOR); put("minor", 0) })
+                put("messageId", UUID.randomUUID().toString())
+                put("sender", "phone")
+                put("type", "decision_read")
+                put("body", buildJsonObject { put("requestId", requestId); put("taskId", taskId) })
+            }.toString().also(ProtocolCodec::decodeText)
+        pendingDecisionRead = PendingDecisionRequest(generation.get(), requestId, taskId)
+        if (!connection.sendText(encoded)) {
+            fail(generation.get(), SessionFailure.CONNECTION_LOST)
+            return false
+        }
+        AppLog.info("decision", "live decisions requested", mapOf("thread_id" to taskId, "storage" to "memory_only"))
+        return true
+    }
+
+    @Synchronized
+    private fun applyDecisionPage(expectedGeneration: Long, message: ProtocolMessage) {
+        if (generation.get() != expectedGeneration) return
+        val pending = pendingDecisionRead ?: return
+        val requestId = message.body.getValue("requestId").jsonPrimitive.content
+        val taskId = message.body.getValue("taskId").jsonPrimitive.content
+        if (pending.generation != expectedGeneration || pending.requestId != requestId || pending.taskId != taskId) {
+            fail(expectedGeneration, SessionFailure.INVALID_PROTOCOL)
+            return
+        }
+        pendingDecisionRead = null
+        decisionViewModel.acceptPage(message)
     }
 
     @Synchronized
@@ -967,6 +1032,7 @@ class LauncherSessionViewModel(
         transcriptCapable = false
         taskManagementCapable = false
         attachmentCapable = false
+        decisionCapable = false
         maxAttachmentBytes = ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
         attachmentUploader.detach()
         taskActionBridge?.close()
@@ -976,6 +1042,8 @@ class LauncherSessionViewModel(
         pendingTaskAcknowledgements.clear()
         retainedUnknownActionIds.clear()
         pendingTranscript = null
+        pendingDecisionRead = null
+        decisionViewModel.clear()
         acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
         pendingTaskEvents.clear()
@@ -1060,6 +1128,7 @@ class LauncherSessionViewModel(
         transcriptCapable = false
         taskManagementCapable = false
         attachmentCapable = false
+        decisionCapable = false
         maxAttachmentBytes = ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
         attachmentUploader.detach()
         taskActionBridge?.close()
@@ -1125,6 +1194,12 @@ private data class PendingTranscriptRequest(
     val requestId: String,
     val taskId: String,
     val appendEarlier: Boolean,
+)
+
+private data class PendingDecisionRequest(
+    val generation: Long,
+    val requestId: String,
+    val taskId: String,
 )
 
 private data class ProjectActionRequest(

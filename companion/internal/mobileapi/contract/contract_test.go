@@ -237,6 +237,30 @@ func TestContractAcceptsBoundedUnsequencedTaskTranscriptPages(t *testing.T) {
 	}
 }
 
+func TestDecisionReadPageAndQuestionResponseAreStrictUnsequencedMessages(t *testing.T) {
+	valid := []string{
+		`{"version":{"major":1,"minor":0},"messageId":"read-decisions","sender":"phone","type":"decision_read","body":{"requestId":"read-1","taskId":"thread-1"}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"decision-page","sender":"companion","type":"decision_page","body":{"requestId":"read-1","taskId":"thread-1","requests":[{"requestId":"approval-1","turnId":"turn-1","itemId":"item-1","kind":"command","computerName":"Aadi Mac","projectLabel":"Launcher","workingDirectory":"/Users/aadi/Launcher","reason":"Run tests","command":"env API_TOKEN=<redacted:secret> npm test","commandUnderstandable":true,"allowedDecisions":["accept","decline"],"expiresAt":"2026-07-14T03:00:00Z"},{"requestId":"question-1","turnId":"turn-1","itemId":"item-2","kind":"question","computerName":"Aadi Mac","projectLabel":"Launcher","questions":[{"id":"scope","header":"Scope","prompt":"Which tests?","options":["All","Unit"],"secret":false}],"expiresAt":"2026-07-14T03:00:00Z"}]}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"mcp-page","sender":"companion","type":"decision_page","body":{"requestId":"read-2","taskId":"thread-1","requests":[{"requestId":"mcp-1","turnId":"mcp-turn","itemId":"mcp-item","kind":"mcp_elicitation","computerName":"Aadi Mac","projectLabel":"Launcher","reason":"Choose access","access":"MCP server request","allowedDecisions":["decline","cancel"],"expiresAt":"2026-07-14T03:00:00Z"}]}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"answer","sender":"phone","type":"action","body":{"actionId":"answer-1","kind":"question_response","taskId":"thread-1","requestId":"question-1","answers":{"scope":["All"]}}}`,
+	}
+	for _, frame := range valid {
+		if _, err := DecodeText([]byte(frame)); err != nil {
+			t.Fatalf("valid decision frame rejected: %v\n%s", err, frame)
+		}
+	}
+	invalid := []string{
+		`{"version":{"major":1,"minor":0},"messageId":"sequenced","sender":"companion","type":"decision_page","seq":2,"body":{"requestId":"read-1","taskId":"thread-1","requests":[]}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"unsafe-command","sender":"companion","type":"decision_page","body":{"requestId":"read-1","taskId":"thread-1","requests":[{"requestId":"approval-1","turnId":"turn-1","itemId":"item-1","kind":"command","computerName":"Mac","projectLabel":"Launcher","command":"echo ok\nrm -rf /","commandUnderstandable":true,"allowedDecisions":["accept"],"expiresAt":"2026-07-14T03:00:00Z"}]}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"unsafe-mcp","sender":"companion","type":"decision_page","body":{"requestId":"read-2","taskId":"thread-1","requests":[{"requestId":"mcp-1","turnId":"mcp-turn","itemId":"mcp-item","kind":"mcp_elicitation","computerName":"Mac","projectLabel":"Launcher","allowedDecisions":["accept"],"expiresAt":"2026-07-14T03:00:00Z"}]}}`,
+	}
+	for _, frame := range invalid {
+		if _, err := DecodeText([]byte(frame)); err == nil {
+			t.Fatalf("invalid decision frame accepted: %s", frame)
+		}
+	}
+}
+
 func TestContractRejectsTranscriptInternalsAndMalformedPages(t *testing.T) {
 	frames := map[string]string{
 		"sequenced page":           `{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"task_page","seq":2,"body":{"requestId":"request-1","taskId":"thread-1","entries":[],"truncated":false}}`,

@@ -19,6 +19,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskoptions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
+	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
@@ -100,6 +101,7 @@ type Handler struct {
 	newTaskSource      NewTaskSource
 	existingTaskSource ExistingTaskSource
 	promptQueue        *promptqueue.Queue
+	decisionRouter     *decisions.Router
 	nextID             atomic.Uint64
 	publishMu          sync.Mutex
 	mu                 sync.Mutex
@@ -316,9 +318,87 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 		return handler.handleAction(ctx, sender, message)
 	case "task_read":
 		return handler.handleTaskRead(ctx, sender, message)
+	case "decision_read":
+		return handler.handleDecisionRead(ctx, sender, message)
 	default:
 		return ErrUnsupportedMessage
 	}
+}
+
+func (handler *Handler) EnableDecisions(router *decisions.Router) {
+	if handler != nil && router != nil {
+		handler.decisionRouter = router
+	}
+}
+
+type decisionPage struct {
+	RequestID string            `json:"requestId"`
+	TaskID    string            `json:"taskId"`
+	Requests  []decisionRequest `json:"requests"`
+}
+
+type decisionRequest struct {
+	RequestID             string               `json:"requestId"`
+	TurnID                string               `json:"turnId"`
+	ItemID                string               `json:"itemId"`
+	Kind                  decisions.Kind       `json:"kind"`
+	ComputerName          string               `json:"computerName"`
+	ProjectLabel          string               `json:"projectLabel"`
+	WorkingDirectory      string               `json:"workingDirectory,omitempty"`
+	Reason                string               `json:"reason,omitempty"`
+	Access                string               `json:"access,omitempty"`
+	Command               string               `json:"command,omitempty"`
+	CommandUnderstandable *bool                `json:"commandUnderstandable,omitempty"`
+	AffectedPaths         []string             `json:"affectedPaths,omitempty"`
+	AllowedDecisions      []decisions.Decision `json:"allowedDecisions,omitempty"`
+	Questions             []decisionQuestion   `json:"questions,omitempty"`
+	ExpiresAt             string               `json:"expiresAt"`
+}
+
+type decisionQuestion struct {
+	ID      string   `json:"id"`
+	Header  string   `json:"header"`
+	Prompt  string   `json:"prompt"`
+	Options []string `json:"options"`
+	Secret  bool     `json:"secret"`
+}
+
+func (handler *Handler) handleDecisionRead(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
+	if handler.decisionRouter == nil {
+		return ErrUnsupportedMessage
+	}
+	var body struct {
+		RequestID string `json:"requestId"`
+		TaskID    string `json:"taskId"`
+	}
+	if err := json.Unmarshal(message.Body, &body); err != nil {
+		return err
+	}
+	handler.decisionRouter.Expire(handler.now())
+	pending := handler.decisionRouter.Pending(body.TaskID)
+	requests := make([]decisionRequest, 0, len(pending))
+	for _, request := range pending {
+		projected := decisionRequest{
+			RequestID: request.ID, TurnID: request.TurnID, ItemID: request.ItemID, Kind: request.Kind, ComputerName: request.ComputerName,
+			ProjectLabel: request.ProjectLabel, WorkingDirectory: request.WorkingDirectory, Reason: request.Reason, Access: request.Access,
+			Command: request.Command, AffectedPaths: append([]string(nil), request.AffectedPaths...), AllowedDecisions: append([]decisions.Decision(nil), request.AllowedDecisions...),
+			ExpiresAt: request.ExpiresAt.UTC().Format(time.RFC3339),
+		}
+		if request.Kind == decisions.KindCommand {
+			understandable := request.CommandUnderstandable
+			projected.CommandUnderstandable = &understandable
+		}
+		for _, question := range request.Questions {
+			projected.Questions = append(projected.Questions, decisionQuestion{ID: question.ID, Header: question.Header, Prompt: question.Prompt, Options: append([]string{}, question.Options...), Secret: question.Secret})
+		}
+		requests = append(requests, projected)
+	}
+	encoded, err := json.Marshal(decisionPage{RequestID: body.RequestID, TaskID: body.TaskID, Requests: requests})
+	if err != nil {
+		return err
+	}
+	handler.logger.Info("[mobile-session] decision page requested", "device_id", sender.DeviceID(), "task_id", body.TaskID, "request_count", len(requests), "output_shape", "live_unsequenced_safe_decisions")
+	return handler.send(ctx, sender, "decision_page", nil, encoded)
 }
 
 func (handler *Handler) EnableAttachments(store *attachments.Store) {
@@ -390,7 +470,7 @@ func (handler *Handler) handleHello(ctx context.Context, sender transport.Messag
 			handler.logger.Info("[mobile-session] new task options ready", "model_count", len(options.Models), "permission_mode_count", len(options.PermissionModes), "output_shape", "safe_option_catalog")
 		}
 	}
-	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, handler.attachmentCapable, options)); err != nil {
+	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, handler.attachmentCapable, handler.decisionRouter != nil, options)); err != nil {
 		return err
 	}
 	var body struct {
@@ -492,17 +572,21 @@ func (handler *Handler) TaskSnapshotGeneration() uint64 {
 
 func (handler *Handler) handleAction(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
 	var action struct {
-		ActionID         string   `json:"actionId"`
-		Kind             string   `json:"kind"`
-		ProjectID        string   `json:"projectId"`
-		TaskID           string   `json:"taskId"`
-		Title            string   `json:"title"`
-		Text             string   `json:"text"`
-		ModelID          string   `json:"modelId"`
-		ReasoningID      string   `json:"reasoningId"`
-		PermissionModeID string   `json:"permissionModeId"`
-		TargetActionID   string   `json:"targetActionId"`
-		AttachmentIDs    []string `json:"attachmentIds"`
+		ActionID         string              `json:"actionId"`
+		Kind             string              `json:"kind"`
+		ProjectID        string              `json:"projectId"`
+		TaskID           string              `json:"taskId"`
+		Title            string              `json:"title"`
+		Text             string              `json:"text"`
+		ModelID          string              `json:"modelId"`
+		ReasoningID      string              `json:"reasoningId"`
+		PermissionModeID string              `json:"permissionModeId"`
+		TargetActionID   string              `json:"targetActionId"`
+		AttachmentIDs    []string            `json:"attachmentIds"`
+		RequestID        string              `json:"requestId"`
+		RequestKind      decisions.Kind      `json:"requestKind"`
+		Decision         decisions.Decision  `json:"decision"`
+		Answers          map[string][]string `json:"answers"`
 	}
 	if err := json.Unmarshal(message.Body, &action); err != nil {
 		return err
@@ -559,6 +643,34 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	case "set_project":
 		if _, err := handler.projects.Resolve(action.ProjectID); err != nil {
 			setActionFailure(result, "invalid_action", false)
+		}
+	case "approval", "question_response":
+		if handler.decisionRouter == nil {
+			setActionFailure(result, "invalid_action", false)
+			break
+		}
+		pending, okay := handler.pendingDecision(action.TaskID, action.RequestID)
+		if !okay || action.Kind == "approval" && pending.Kind != action.RequestKind || action.Kind == "question_response" && pending.Kind != decisions.KindQuestion {
+			setActionFailure(result, "invalid_action", false)
+			break
+		}
+		response := decisions.Response{RequestID: pending.ID, ThreadID: pending.ThreadID, TurnID: pending.TurnID, ItemID: pending.ItemID, Kind: pending.Kind}
+		if action.Kind == "approval" {
+			response.Decision = action.Decision
+		} else {
+			response.Answers = action.Answers
+		}
+		if err := handler.decisionRouter.Respond(ctx, response, handler.now()); err != nil {
+			switch {
+			case errors.Is(err, decisions.ErrResponseOutcomeUnknown):
+				setActionOutcomeUnknown(result)
+			case errors.Is(err, decisions.ErrOwnerUnavailable):
+				setActionFailure(result, "owner_unavailable", true)
+			default:
+				setActionFailure(result, "invalid_action", false)
+			}
+		} else {
+			result["resultCode"] = "accepted"
 		}
 	case "rename_task", "archive_task", "fork_task":
 		if handler.managementSource == nil {
@@ -642,6 +754,18 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		handler.queueBroadcast("snapshot", snapshot.BaseSequence, snapshotBody)
 	}
 	return nil
+}
+
+func (handler *Handler) pendingDecision(taskID, requestID string) (decisions.Request, bool) {
+	if handler == nil || handler.decisionRouter == nil {
+		return decisions.Request{}, false
+	}
+	for _, request := range handler.decisionRouter.Pending(taskID) {
+		if request.ID == requestID {
+			return request, true
+		}
+	}
+	return decisions.Request{}, false
 }
 
 type existingTaskOutcome uint8
@@ -1420,7 +1544,7 @@ func (handler *Handler) send(ctx context.Context, sender transport.MessageSender
 	return nil
 }
 
-func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable, attachmentCapable bool, options taskoptions.Catalog) json.RawMessage {
+func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable, attachmentCapable, decisionCapable bool, options taskoptions.Catalog) json.RawMessage {
 	capabilities := []string{"set_project"}
 	if taskCapable {
 		capabilities = append(capabilities, "desktop_tasks")
@@ -1436,6 +1560,9 @@ func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCap
 	}
 	if attachmentCapable {
 		capabilities = append(capabilities, "attachments")
+	}
+	if decisionCapable {
+		capabilities = append(capabilities, "decisions")
 	}
 	body, _ := json.Marshal(struct {
 		SessionID      string              `json:"sessionId"`

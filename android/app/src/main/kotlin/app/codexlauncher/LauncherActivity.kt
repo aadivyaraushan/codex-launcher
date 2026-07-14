@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.net.Uri
 import android.provider.Settings
+import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
@@ -26,6 +27,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,6 +60,8 @@ import app.codexlauncher.connection.runtime.LauncherSessionViewModel
 import app.codexlauncher.connection.session.CompanionSessionClient
 import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.diagnostics.AppLog
+import app.codexlauncher.decision.approval.ApprovalSheet
+import app.codexlauncher.decision.question.QuestionSheet
 import app.codexlauncher.launcher.apps.AppDrawerScreen
 import app.codexlauncher.launcher.apps.InstalledApp
 import app.codexlauncher.launcher.apps.InstalledAppsLoader
@@ -150,6 +154,7 @@ class LauncherActivity : ComponentActivity() {
             val sessionUiState by sessionViewModel.state.collectAsState()
             val draftComposerState by draftComposerViewModel.state.collectAsState()
             val attachmentUploads by sessionViewModel.attachments.collectAsState()
+            val decisionState by sessionViewModel.decisions.collectAsState()
             val projectUiState by sessionViewModel.projectSelection.state.collectAsState()
             val scope = rememberCoroutineScope()
             val appsRepository = remember { InstalledAppsRepository(applicationContext) }
@@ -291,6 +296,10 @@ class LauncherActivity : ComponentActivity() {
                 if (destination == LauncherDestination.APPS) {
                     installedApps = appsLoader.load()
                 }
+            }
+            DisposableEffect(decisionState.active?.requestId) {
+                if (decisionState.active != null) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
             }
             BackHandler(enabled = destination in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE, LauncherDestination.PROJECT, LauncherDestination.TASK, LauncherDestination.TASK_DETAIL)) {
                 destination =
@@ -485,6 +494,22 @@ class LauncherActivity : ComponentActivity() {
                             }) { Text("File") }
                         },
                     )
+                }
+                decisionState.active?.let { request ->
+                    if (request.kind == "question") {
+                        QuestionSheet(
+                            request = request,
+                            sending = decisionState.sending,
+                            onSubmit = { answers -> scope.launch { sessionViewModel.answerDecision(answers) } },
+                            onNotNow = { sessionViewModel.dismissQuestion() },
+                        )
+                    } else {
+                        ApprovalSheet(
+                            request = request,
+                            sending = decisionState.sending,
+                            onDecision = { decision -> scope.launch { sessionViewModel.respondToDecision(decision) } },
+                        )
+                    }
                 }
                 if (unpairConfirmVisible) {
                     AlertDialog(
