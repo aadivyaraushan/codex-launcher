@@ -59,6 +59,7 @@ fun QuestionSheet(
                                 question.options.forEach { option ->
                                     FilterChip(
                                         selected = answers[question.id] == option,
+                                        enabled = !sending,
                                         onClick = { answers[question.id] = option },
                                         label = { Text(option) },
                                     )

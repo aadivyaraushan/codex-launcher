@@ -314,7 +314,7 @@ class UiScenarioActivityTest {
         compose.onNodeWithText("Answer on computer").assertIsDisplayed()
 
         show(ScenarioId.QUESTION_SENDING)
-        compose.onNodeWithText("Use tests").performClick()
+        compose.onNodeWithText("Use tests").assertIsNotEnabled()
         compose.onNodeWithText("Send answer").assertIsNotEnabled()
         compose.onNodeWithText("Not now").assertIsNotEnabled()
     }
