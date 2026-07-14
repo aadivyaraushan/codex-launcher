@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 import {
   adbTextCommands,
@@ -7,6 +9,7 @@ import {
   controlIsDisabled,
   controlIsSelected,
   findNode,
+  isTransientUiDumpExit,
   parseNodes,
   parseScenarioCatalog,
   sha256,
@@ -93,4 +96,26 @@ test("selected control check follows the selectable parent around its label", ()
 
   const radio = `<node checkable="true" checked="true" bounds="[0,0][100,100]"><node text="Dark" bounds="[0,0][100,100]" /></node>`;
   assert.equal(controlIsSelected(radio, "Dark"), true);
+});
+
+test("audit retries only Android's known transient UI dump termination", () => {
+  assert.equal(isTransientUiDumpExit(137), true);
+  assert.equal(isTransientUiDumpExit(0), false);
+  assert.equal(isTransientUiDumpExit(1), false);
+  assert.equal(isTransientUiDumpExit(null), false);
+});
+
+test("hands-on audit includes an interaction for every synthetic state with a user action", () => {
+  const source = readFileSync(resolve(import.meta.dirname, "android-emulator-ui-audit.mjs"), "utf8");
+  for (const label of [
+    "new-task review, retry, and attachment removal",
+    "project selection and save retry",
+    "transcript detail navigation",
+    "uncertain task controls require explicit review",
+    "full approval actions",
+    "sending question disables actions",
+    "app launch failure and dismissal dialogs",
+  ]) {
+    assert.match(source, new RegExp(`audit\\.check\\("${label}"`));
+  }
 });

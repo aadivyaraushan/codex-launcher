@@ -41,6 +41,8 @@ export function parseNodes(xml) {
 
 export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
+export const isTransientUiDumpExit = (status) => status === 137;
+
 export function adbTextCommands(value, { clear = false } = {}) {
   const typeCommand = ["input", "text", value.replaceAll(" ", "%s")];
   if (!clear) return [typeCommand];
@@ -122,11 +124,15 @@ class EmulatorAudit {
     assert.equal(existsSync(this.adb), true, `adb is missing: ${this.adb}`);
   }
 
-  runAdb(args, options = {}) {
-    const result = spawnSync(this.adb, ["-s", this.serial, ...args], {
+  runAdbResult(args, options = {}) {
+    return spawnSync(this.adb, ["-s", this.serial, ...args], {
       encoding: options.binary ? null : "utf8",
       maxBuffer: 32 * 1024 * 1024,
     });
+  }
+
+  runAdb(args, options = {}) {
+    const result = this.runAdbResult(args, options);
     assert.equal(result.status, 0, `adb ${args.join(" ")} failed: ${result.stderr?.toString() ?? ""}`);
     return result.stdout;
   }
@@ -173,8 +179,16 @@ class EmulatorAudit {
   }
 
   dumpUi() {
-    this.shell("uiautomator", "dump", "/sdcard/codex-launcher-audit.xml");
-    return this.runAdb(["exec-out", "cat", "/sdcard/codex-launcher-audit.xml"]);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const result = this.runAdbResult(["shell", "uiautomator", "dump", "/sdcard/codex-launcher-audit.xml"]);
+      if (result.status === 0) return this.runAdb(["exec-out", "cat", "/sdcard/codex-launcher-audit.xml"]);
+      if (!isTransientUiDumpExit(result.status) || attempt === 3) {
+        assert.fail(`adb shell uiautomator dump failed after ${attempt} attempt(s): ${result.stderr?.toString() ?? ""}`);
+      }
+      console.warn(`[android-ui-audit] uiautomator dump exited ${result.status}; retrying (${attempt}/3)`);
+      wait(600);
+    }
+    throw new Error("unreachable UI dump retry state");
   }
 
   expectText(xml, expected) {
@@ -432,6 +446,28 @@ function runAudit() {
     audit.expectText(audit.tap({ contentDesc: "Send prompt" }), "Sample prompt sent");
   }, "interaction-home-send");
 
+  audit.check("new-task review, retry, and attachment removal", () => {
+    audit.launchScenario("home_new_task_review");
+    audit.expectText(audit.tap({ text: "I checked Codex" }), "Review cleared");
+
+    audit.launchScenario("home_new_task_error");
+    audit.typeInto({ contentDesc: "Prompt" }, "retry sample task");
+    audit.hideKeyboard();
+    audit.expectText(audit.tap({ contentDesc: "Send prompt" }), "Sample prompt sent");
+
+    audit.launchScenario("home_attachments");
+    audit.expectText(audit.tap({ contentDesc: "Remove sample-notes.txt" }), "Sample task");
+    audit.expectNoText(audit.dumpUi(), "sample-notes.txt");
+  }, "interaction-home-review-retry-attachment");
+
+  audit.check("project selection and save retry", () => {
+    audit.launchScenario("project_choices");
+    audit.expectText(audit.tap({ text: "Sample research" }), "Selected Sample research");
+
+    audit.launchScenario("project_save_retry");
+    audit.expectText(audit.tap({ text: "Retry saving" }), "Saving…");
+  }, "interaction-project-selection");
+
   audit.check("offline connection help", () => {
     audit.launchScenario("home_offline");
     audit.expectText(audit.tap({ text: "Connection help" }), "Check that the computer, companion, and Tailscale are online.");
@@ -462,6 +498,14 @@ function runAudit() {
     audit.expectNoText(xml, "sample-follow-up.txt");
   }, "interaction-task-inputs");
 
+  audit.check("transcript detail navigation", () => {
+    audit.launchScenario("task_transcript");
+    audit.expectText(audit.tap({ text: "View output" }), "BUILD SUCCESSFUL");
+    audit.expectText(audit.tap({ contentDesc: "Back to task" }), "Sample task");
+    audit.expectText(audit.tap({ text: "sample.txt" }), "File change");
+    audit.expectText(audit.tap({ contentDesc: "Back to task" }), "Sample task");
+  }, "interaction-transcript-details");
+
   audit.check("task rename, archive, and fork menus", () => {
     audit.launchScenario("task_controls_idle");
     audit.tap({ contentDesc: "Task actions" });
@@ -480,6 +524,16 @@ function runAudit() {
     audit.expectText(audit.tap({ text: "Fork task" }), "Forked");
   }, "interaction-task-actions");
 
+  audit.check("uncertain task controls require explicit review", () => {
+    audit.launchScenario("task_control_unknown");
+    audit.expectText(audit.tap({ text: "I checked Codex" }), "Review cleared");
+
+    audit.launchScenario("task_fork_unknown");
+    audit.expectText(audit.tap({ text: "I checked Codex" }), "Sample task");
+    audit.tap({ contentDesc: "Task actions" });
+    audit.expectText(audit.tap({ text: "Fork task" }), "Forked");
+  }, "interaction-uncertain-task-review");
+
   audit.check("redacted and sending approvals stay fail-closed", () => {
     let xml = audit.launchScenario("approval_redacted");
     assert.equal(controlIsDisabled(xml, "Allow once"), true);
@@ -491,6 +545,14 @@ function runAudit() {
       assert.equal(controlIsDisabled(xml, label), true, `${label} should be disabled while sending`);
     }
   }, "interaction-approval-safety");
+
+  audit.check("full approval actions", () => {
+    audit.launchScenario("approval_full");
+    audit.expectText(audit.tap({ text: "Allow once" }), "Decision: accept");
+
+    audit.launchScenario("approval_full");
+    audit.expectText(audit.tap({ text: "Allow for session" }), "Decision: accept_for_session");
+  }, "interaction-approval-full");
 
   audit.check("free-text, dismiss, and secret question paths", () => {
     audit.launchScenario("question_free_text");
@@ -505,12 +567,33 @@ function runAudit() {
     audit.expectText(audit.tap({ text: "Answer on computer" }), "Answer on computer");
   }, "interaction-question-safety");
 
+  audit.check("sending question disables actions", () => {
+    const xml = audit.launchScenario("question_sending");
+    for (const label of ["Use tests", "Send answer", "Not now"]) {
+      assert.equal(controlIsDisabled(xml, label), true, `${label} should be disabled while sending`);
+    }
+  }, "interaction-question-sending");
+
   audit.check("app search empty state and navigation", () => {
     audit.launchScenario("apps");
     audit.expectText(audit.typeInto({ contentDesc: "Search apps" }, "nothinginstalled"), "No matching apps");
     audit.hideKeyboard();
     audit.expectText(audit.tap({ text: "Android Settings" }), "Android Settings requested");
   }, "interaction-app-search");
+
+  audit.check("app launch failure and dismissal dialogs", () => {
+    audit.launchScenario("apps_launch_error");
+    audit.expectText(audit.tap({ text: "Sample Browser" }), "App could not be opened");
+
+    audit.launchScenario("dialog_background_warning");
+    audit.expectText(audit.tap({ text: "OK" }), "Background warning dismissed");
+
+    audit.launchScenario("dialog_unpair");
+    audit.expectText(audit.tap({ text: "Cancel" }), "Remove canceled");
+
+    audit.launchScenario("dialog_unpair");
+    audit.expectText(audit.tap({ text: "Remove computer" }), "Remove confirmed");
+  }, "interaction-app-error-dialogs");
 
   audit.check("appearance choices", () => {
     audit.launchScenario("appearance");
