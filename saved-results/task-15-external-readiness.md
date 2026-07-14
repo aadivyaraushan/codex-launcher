@@ -14,6 +14,11 @@ Tailscale, physical-device, or model-backed result.
   available through ADB.
 - `command -v tailscale`: no executable was found. The official Tailscale
   client is not installed on this Mac.
+- Attempted `brew install --cask tailscale`: Homebrew downloaded official
+  Tailscale 1.98.8, then stopped before installation because macOS required an
+  interactive administrator password for `sudo installer`. Homebrew removed
+  the staged cask files. After a successful manual install, macOS may also ask
+  the user to approve Tailscale's system extension in Privacy & Security.
 - Codex CLI: `/Users/aadivyar/.local/bin/codex`, version `0.144.1`.
 - ChatGPT Desktop process is running. Its installed build from
   `/Applications/ChatGPT.app/Contents/Info.plist` is `26.707.72221`.
@@ -28,8 +33,9 @@ Tailscale, physical-device, or model-backed result.
 
 ## Safe next checks
 
-1. Install and sign in to official Tailscale on the Mac and Pixel, using the
-   user's own tailnet.
+1. Install official Tailscale on the Mac with an administrator password, approve
+   its system extension if macOS asks, then sign in on the Mac and Pixel using
+   the user's own tailnet.
 2. Connect the physical Pixel 9 by USB and approve USB debugging.
 3. With the Mac unlocked, provide an existing harmless Codex thread ID so the
    read-only Desktop follower probe can compare the installed build's bridge
