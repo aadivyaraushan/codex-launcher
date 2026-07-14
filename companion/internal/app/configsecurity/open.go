@@ -21,7 +21,7 @@ func Open(root, path string, maxBytes int64) (*os.File, error) {
 		return nil, ErrUnsafe
 	}
 	rootInfo, err := os.Lstat(cleanRoot)
-	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 || validateRoot(rootInfo) != nil {
+	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 || validateRoot(cleanRoot, rootInfo) != nil {
 		return nil, ErrUnsafe
 	}
 	pathInfo, err := os.Lstat(cleanPath)
@@ -36,7 +36,7 @@ func Open(root, path string, maxBytes int64) (*os.File, error) {
 		return nil, ErrUnsafe
 	}
 	openedInfo, err := file.Stat()
-	if err != nil || !openedInfo.Mode().IsRegular() || !os.SameFile(pathInfo, openedInfo) || validateFile(openedInfo) != nil {
+	if err != nil || !openedInfo.Mode().IsRegular() || !os.SameFile(pathInfo, openedInfo) || validateFile(cleanPath, openedInfo) != nil {
 		file.Close()
 		return nil, ErrUnsafe
 	}
@@ -82,6 +82,52 @@ func WriteNew(root, path string, encoded []byte, maxBytes int64) error {
 		return ErrUnsafe
 	}
 	if err := publishNew(temporaryPath, cleanPath); err != nil {
+		return err
+	}
+	return syncRoot(cleanRoot)
+}
+
+func Replace(root, path string, encoded []byte, maxBytes int64) error {
+	cleanRoot := filepath.Clean(root)
+	cleanPath := filepath.Clean(path)
+	if !filepath.IsAbs(cleanRoot) || !filepath.IsAbs(cleanPath) || filepath.Dir(cleanPath) != cleanRoot {
+		return ErrUnsafe
+	}
+	if int64(len(encoded)) > maxBytes {
+		return ErrTooLarge
+	}
+	if err := prepareRoot(cleanRoot); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(cleanPath); err == nil {
+		current, openErr := Open(cleanRoot, cleanPath, maxBytes)
+		if openErr != nil {
+			return openErr
+		}
+		if closeErr := current.Close(); closeErr != nil {
+			return ErrUnsafe
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return ErrUnsafe
+	}
+	temporary, err := os.CreateTemp(cleanRoot, ".config-*.tmp")
+	if err != nil {
+		return ErrUnsafe
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := io.Copy(temporary, bytes.NewReader(encoded)); err != nil {
+		_ = temporary.Close()
+		return ErrUnsafe
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return ErrUnsafe
+	}
+	if err := temporary.Close(); err != nil {
+		return ErrUnsafe
+	}
+	if err := publishReplace(temporaryPath, cleanPath); err != nil {
 		return err
 	}
 	return syncRoot(cleanRoot)

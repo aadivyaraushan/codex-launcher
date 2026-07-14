@@ -53,6 +53,14 @@ func WriteConfig(path string, config Config) error {
 	return writeConfigAt(path, root, config)
 }
 
+func UpdateConfig(path string, config Config) error {
+	root, err := ConfigRoot()
+	if err != nil {
+		return ErrInvalidConfig
+	}
+	return updateConfigAt(path, root, config)
+}
+
 func ConfigRoot() (string, error) {
 	root, err := os.UserConfigDir()
 	if err != nil {
@@ -105,6 +113,26 @@ func writeConfigAt(path, root string, config Config) error {
 	switch {
 	case errors.Is(err, configsecurity.ErrExists):
 		return ErrConfigExists
+	case errors.Is(err, configsecurity.ErrTooLarge):
+		return ErrInvalidConfig
+	case err != nil:
+		return ErrUnsafeConfigFile
+	default:
+		return nil
+	}
+}
+
+func updateConfigAt(path, root string, config Config) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	encoded, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return ErrInvalidConfig
+	}
+	encoded = append(encoded, '\n')
+	err = configsecurity.Replace(root, path, encoded, MaxConfigBytes)
+	switch {
 	case errors.Is(err, configsecurity.ErrTooLarge):
 		return ErrInvalidConfig
 	case err != nil:

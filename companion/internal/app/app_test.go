@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ var appNow = time.Date(2026, 7, 13, 4, 0, 0, 0, time.UTC)
 
 func TestLoadConfigAcceptsStrictOwnerOnlyConfiguration(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Windows ACL validation intentionally fails closed until the documented ACL implementation is added")
+		t.Skip("permission-mode assertions are POSIX-specific; Windows ACL behavior has its own native tests")
 	}
 	projectPath := canonicalTempDir(t)
 	path := writeConfig(t, map[string]any{
@@ -46,7 +47,7 @@ func TestLoadConfigAcceptsStrictOwnerOnlyConfiguration(t *testing.T) {
 
 func TestWriteConfigPublishesOwnerOnlyFileOnce(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Windows ACL validation intentionally fails closed until the documented ACL implementation is added")
+		t.Skip("permission-mode assertions are POSIX-specific; Windows ACL behavior has its own native tests")
 	}
 	root := filepath.Join(t.TempDir(), "codex-launcher")
 	path := filepath.Join(root, "config.json")
@@ -103,7 +104,7 @@ func TestWriteConfigPublishesOwnerOnlyFileOnce(t *testing.T) {
 
 func TestWriteConfigValidatesBeforeCreatingFiles(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Windows ACL validation intentionally fails closed until the documented ACL implementation is added")
+		t.Skip("permission-mode assertions are POSIX-specific; Windows ACL behavior has its own native tests")
 	}
 	root := filepath.Join(t.TempDir(), "codex-launcher")
 	path := filepath.Join(root, "config.json")
@@ -116,9 +117,35 @@ func TestWriteConfigValidatesBeforeCreatingFiles(t *testing.T) {
 	}
 }
 
+func TestUpdateConfigAtomicallyChangesTheApprovedProjectFolders(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("runs in the Windows native configsecurity test")
+	}
+	root := filepath.Join(t.TempDir(), "codex-launcher")
+	path := filepath.Join(root, "config.json")
+	firstPath := canonicalTempDir(t)
+	secondPath := canonicalTempDir(t)
+	first := Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, CodexBinary: absoluteCodexPath(), Projects: []projects.Config{{ID: "first", DisplayName: "First", Path: firstPath}}}
+	if err := writeConfigAt(path, root, first); err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.Projects = []projects.Config{{ID: "second", DisplayName: "Second", Path: secondPath}}
+	if err := updateConfigAt(path, root, second); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadConfig(path, root)
+	if err != nil || !reflect.DeepEqual(loaded.Projects, second.Projects) {
+		t.Fatalf("updated config = %#v, error = %v", loaded, err)
+	}
+	if matches, _ := filepath.Glob(filepath.Join(root, ".config-*.tmp")); len(matches) != 0 {
+		t.Fatalf("temporary files remain: %#v", matches)
+	}
+}
+
 func TestLoadConfigRejectsUnknownOversizedSymlinkAndOpenPermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Windows ACL validation intentionally fails closed until the documented ACL implementation is added")
+		t.Skip("permission-mode assertions are POSIX-specific; Windows ACL behavior has its own native tests")
 	}
 	valid := map[string]any{
 		"version": 1, "computerName": "Computer", "listenHost": "100.64.0.10", "listenPort": 9443,
@@ -175,7 +202,7 @@ func TestLoadConfigRejectsUnknownOversizedSymlinkAndOpenPermissions(t *testing.T
 
 func TestLoadConfigRejectsDuplicateAndCaseVariantKeys(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Windows ACL validation intentionally fails closed until the documented ACL implementation is added")
+		t.Skip("permission-mode assertions are POSIX-specific; Windows ACL behavior has its own native tests")
 	}
 	projectPath := canonicalTempDir(t)
 	for name, encoded := range map[string]string{

@@ -779,6 +779,24 @@ Decision rules:
 
 **Verify:** On each OS, run the real Codex CLI/app-server through initialize, start/read a test thread, receive an event, route a safe approval denial, restart/reconcile, confirm credentials remain local, and exercise install/login-start/replace/rollback/uninstall. Use native macOS; Linux ARM VM through QEMU plus GitHub Ubuntu x64; Windows 11 ARM VM through QEMU where licensed media is available plus GitHub Windows x64. Any real model-backed smoke requires the account/cost approval gate. A platform remains `experimental` until its native real-Codex smoke passes.
 
+> **2026-07-14 checkpoint:** The setup/install/status/doctor/replace/rollback/
+> uninstall CLI, transactional manager, read-only identity inspection, safe
+> health record, LaunchAgent, systemd user unit, Task Scheduler backend, and
+> POSIX/PowerShell lifecycle smoke scripts are implemented. The full Go race
+> suite, vet, script contract, shell syntax, and Linux/Windows x64 compile gates
+> pass. Setup can atomically change approved project folders and restore the
+> prior config after a failed restart. Mutations use an owner-only process lock,
+> prepared/activated/healthy interruption journal plus a non-consuming private
+> snapshot, exact-attempt health proof, and a deferred
+> installed-executable helper on Windows. The production manager plus
+> LaunchAgent completed a reproducible real native macOS
+> install/replace/rollback/uninstall cycle against a local test service and left
+> no loaded service, plist, or install root. A real Codex child initialized but
+> the required private Desktop follower was unavailable while macOS was locked;
+> Tailscale is also absent. Linux/Windows native smokes, PowerShell parsing,
+> unlocked real-Codex macOS smoke, and real Tailscale remain open. Evidence:
+> `saved-results/task-13-companion-install-checkpoint.md`.
+
 ### Task 14: CI, reproducible releases, documentation, and first public alpha
 
 **Objective:** Produce installable, checksummed artifacts that another technical user can set up without private help.

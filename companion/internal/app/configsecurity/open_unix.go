@@ -13,7 +13,7 @@ func prepareRoot(root string) error {
 		return ErrUnsafe
 	}
 	info, err := os.Lstat(root)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || validateRoot(info) != nil {
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || validateRoot(root, info) != nil {
 		return ErrUnsafe
 	}
 	return nil
@@ -24,6 +24,13 @@ func publishNew(temporaryPath, path string) error {
 		if errors.Is(err, os.ErrExist) {
 			return ErrExists
 		}
+		return ErrUnsafe
+	}
+	return nil
+}
+
+func publishReplace(temporaryPath, path string) error {
+	if err := os.Rename(temporaryPath, path); err != nil {
 		return ErrUnsafe
 	}
 	return nil
@@ -41,14 +48,14 @@ func syncRoot(root string) error {
 	return nil
 }
 
-func validateRoot(info os.FileInfo) error {
+func validateRoot(_ string, info os.FileInfo) error {
 	if info.Mode().Perm()&0o077 != 0 || !ownedByCurrentUser(info) {
 		return ErrUnsafe
 	}
 	return nil
 }
 
-func validateFile(info os.FileInfo) error {
+func validateFile(_ string, info os.FileInfo) error {
 	if info.Mode().Perm()&0o077 != 0 || !ownedByCurrentUser(info) {
 		return ErrUnsafe
 	}
