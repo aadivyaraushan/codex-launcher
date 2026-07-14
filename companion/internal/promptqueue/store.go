@@ -14,6 +14,7 @@ type Store interface {
 	NextPrepared(context.Context, string) (Entry, error)
 	ThreadEntries(context.Context, string) ([]Entry, error)
 	PendingThreadIDs(context.Context) ([]string, error)
+	PendingEntries(context.Context) ([]Entry, error)
 }
 
 type MemoryStore struct {
@@ -37,7 +38,7 @@ func (store *MemoryStore) Create(ctx context.Context, entry Entry) error {
 	if _, exists := store.entries[entry.ActionID]; exists {
 		return ErrDuplicateAction
 	}
-	store.entries[entry.ActionID] = entry
+	store.entries[entry.ActionID] = cloneEntry(entry)
 	return nil
 }
 
@@ -61,7 +62,7 @@ func (store *MemoryStore) CompareAndSwap(ctx context.Context, expected State, en
 	if current.State != expected {
 		return ErrStateConflict
 	}
-	store.entries[entry.ActionID] = entry
+	store.entries[entry.ActionID] = cloneEntry(entry)
 	return nil
 }
 
@@ -75,7 +76,7 @@ func (store *MemoryStore) Entry(ctx context.Context, actionID string) (Entry, er
 	if !exists {
 		return Entry{}, ErrActionNotFound
 	}
-	return entry, nil
+	return cloneEntry(entry), nil
 }
 
 func (store *MemoryStore) NextPending(ctx context.Context, queueKey string) (Entry, error) {
@@ -108,7 +109,7 @@ func (store *MemoryStore) ThreadEntries(ctx context.Context, queueKey string) ([
 	entries := make([]Entry, 0)
 	for _, entry := range store.entries {
 		if entry.QueueKey == queueKey {
-			entries = append(entries, entry)
+			entries = append(entries, cloneEntry(entry))
 		}
 	}
 	sort.Slice(entries, func(left, right int) bool {
@@ -118,6 +119,11 @@ func (store *MemoryStore) ThreadEntries(ctx context.Context, queueKey string) ([
 		return entries[left].CreatedAt.Before(entries[right].CreatedAt)
 	})
 	return entries, nil
+}
+
+func cloneEntry(entry Entry) Entry {
+	entry.AttachmentIDs = append([]string(nil), entry.AttachmentIDs...)
+	return entry
 }
 
 func (store *MemoryStore) PendingThreadIDs(ctx context.Context) ([]string, error) {
@@ -138,6 +144,22 @@ func (store *MemoryStore) PendingThreadIDs(ctx context.Context) ([]string, error
 	}
 	sort.Strings(ids)
 	return ids, nil
+}
+
+func (store *MemoryStore) PendingEntries(ctx context.Context) ([]Entry, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	entries := make([]Entry, 0)
+	for _, entry := range store.entries {
+		if entry.State == StatePrepared || entry.State == StateSentUnknown {
+			entries = append(entries, cloneEntry(entry))
+		}
+	}
+	sort.Slice(entries, func(left, right int) bool { return entries[left].ActionID < entries[right].ActionID })
+	return entries, nil
 }
 
 func (store *MemoryStore) FailNextSave(err error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -167,9 +168,9 @@ func scanDevice(row rowScanner) (pairing.DeviceRecord, error) {
 
 func (store *Store) Create(ctx context.Context, entry promptqueue.Entry) error {
 	result, err := store.db.ExecContext(ctx, `
-INSERT OR IGNORE INTO prompt_entries(action_id, queue_key, action_kind, owner_source, thread_id, project_id, prompt, model, effort, permission_mode, request_hash, state,
+INSERT OR IGNORE INTO prompt_entries(action_id, queue_key, action_kind, owner_source, thread_id, project_id, prompt, model, effort, permission_mode, request_hash, device_id, attachment_ids, state,
 result_code, result_thread_id, result_turn_id, error_code, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, promptArguments(entry)...)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, promptArguments(entry)...)
 	if err != nil {
 		return err
 	}
@@ -187,7 +188,7 @@ func (store *Store) CompareAndSwap(ctx context.Context, expected promptqueue.Sta
 	arguments := promptArguments(entry)
 	arguments = append(arguments, entry.ActionID, string(expected))
 	result, err := store.db.ExecContext(ctx, `
-UPDATE prompt_entries SET queue_key = ?, action_kind = ?, owner_source = ?, thread_id = ?, project_id = ?, prompt = ?, model = ?, effort = ?, permission_mode = ?, request_hash = ?, state = ?,
+UPDATE prompt_entries SET queue_key = ?, action_kind = ?, owner_source = ?, thread_id = ?, project_id = ?, prompt = ?, model = ?, effort = ?, permission_mode = ?, request_hash = ?, device_id = ?, attachment_ids = ?, state = ?,
 result_code = ?, result_thread_id = ?, result_turn_id = ?, error_code = ?, created_at = ?, updated_at = ?
 WHERE action_id = ? AND state = ?`, arguments[1:]...)
 	if err != nil {
@@ -273,20 +274,42 @@ func (store *Store) PendingThreadIDs(ctx context.Context) ([]string, error) {
 	return ids, rows.Err()
 }
 
-const promptSelect = `SELECT action_id, queue_key, action_kind, owner_source, thread_id, project_id, prompt, model, effort, permission_mode, request_hash, state,
+func (store *Store) PendingEntries(ctx context.Context) ([]promptqueue.Entry, error) {
+	rows, err := store.db.QueryContext(ctx, promptSelect+` WHERE state IN (?, ?) ORDER BY action_id`, promptqueue.StatePrepared, promptqueue.StateSentUnknown)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := make([]promptqueue.Entry, 0)
+	for rows.Next() {
+		entry, scanErr := scanEntry(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+const promptSelect = `SELECT action_id, queue_key, action_kind, owner_source, thread_id, project_id, prompt, model, effort, permission_mode, request_hash, device_id, attachment_ids, state,
 result_code, result_thread_id, result_turn_id, error_code, created_at, updated_at FROM prompt_entries`
 
 func promptArguments(entry promptqueue.Entry) []any {
+	attachmentIDs, _ := json.Marshal(entry.AttachmentIDs)
 	return []any{entry.ActionID, entry.QueueKey, entry.ActionKind, entry.OwnerSource, entry.ThreadID, entry.ProjectID, entry.Prompt, entry.Model, entry.Effort, entry.PermissionMode, entry.RequestHash,
-		entry.State, entry.Result.Code, entry.Result.ThreadID, entry.Result.TurnID, entry.ErrorCode, encodeTime(entry.CreatedAt), encodeTime(entry.UpdatedAt)}
+		entry.DeviceID, string(attachmentIDs), entry.State, entry.Result.Code, entry.Result.ThreadID, entry.Result.TurnID, entry.ErrorCode, encodeTime(entry.CreatedAt), encodeTime(entry.UpdatedAt)}
 }
 
 func scanEntry(row rowScanner) (promptqueue.Entry, error) {
 	var entry promptqueue.Entry
 	var createdAt, updatedAt string
+	var attachmentIDs string
 	err := row.Scan(&entry.ActionID, &entry.QueueKey, &entry.ActionKind, &entry.OwnerSource, &entry.ThreadID, &entry.ProjectID, &entry.Prompt, &entry.Model, &entry.Effort,
-		&entry.PermissionMode, &entry.RequestHash, &entry.State, &entry.Result.Code, &entry.Result.ThreadID, &entry.Result.TurnID, &entry.ErrorCode, &createdAt, &updatedAt)
+		&entry.PermissionMode, &entry.RequestHash, &entry.DeviceID, &attachmentIDs, &entry.State, &entry.Result.Code, &entry.Result.ThreadID, &entry.Result.TurnID, &entry.ErrorCode, &createdAt, &updatedAt)
 	if err != nil {
+		return promptqueue.Entry{}, err
+	}
+	if err := json.Unmarshal([]byte(attachmentIDs), &entry.AttachmentIDs); err != nil {
 		return promptqueue.Entry{}, err
 	}
 	if entry.CreatedAt, err = decodeTime(createdAt); err != nil {

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,23 @@ type Attachment struct {
 	MediaType string
 }
 
+type Retained struct {
+	ID            string
+	DeclaredTotal int64
+	SHA256        string
+	Received      []byte
+	NextChunk     uint32
+	ExpiresAt     time.Time
+	Complete      bool
+	Path          string
+	MediaType     string
+}
+
+type Claim struct {
+	DeviceID  string
+	UploadIDs []string
+}
+
 type record struct {
 	Version        int       `json:"version"`
 	UploadID       string    `json:"uploadId"`
@@ -51,6 +69,7 @@ type record struct {
 	PublishingName string    `json:"publishingName,omitempty"`
 	MetadataName   string    `json:"-"`
 	ExpiresAt      time.Time `json:"expiresAt"`
+	ClaimedBy      string    `json:"claimedBy,omitempty"`
 }
 
 type Store struct {
@@ -213,6 +232,42 @@ func (store *Store) Resume(deviceID, uploadID string, now time.Time) (Progress, 
 	return progressOf(upload), nil
 }
 
+func (store *Store) Retained(deviceID, uploadID string, now time.Time) (Retained, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.cleanupLocked(now)
+	upload := store.records[recordKey(deviceID, uploadID)]
+	if upload == nil || upload.PublishingName != "" {
+		return Retained{}, ErrAttachmentUnavailable
+	}
+	retained := Retained{
+		ID: upload.UploadID, DeclaredTotal: upload.DeclaredTotal, SHA256: upload.SHA256,
+		NextChunk: upload.NextChunk, ExpiresAt: upload.ExpiresAt, Complete: upload.Complete, MediaType: upload.MediaType,
+	}
+	if upload.Complete {
+		retained.Path = filepath.Join(store.completeRoot, upload.DataName)
+		return retained, nil
+	}
+	path := filepath.Join(store.activeRoot, upload.DataName)
+	file, err := os.Open(path)
+	if err != nil {
+		store.logFailure("retained_open", deviceID, uploadID, err, "reject_resume")
+		return Retained{}, ErrStorageUnavailable
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || privatefiles.ValidateFile(path, info) != nil || info.Size() != upload.ReceivedBytes {
+		store.logFailure("retained_validate", deviceID, uploadID, err, "reject_resume")
+		return Retained{}, ErrStorageUnavailable
+	}
+	retained.Received = make([]byte, upload.ReceivedBytes)
+	if _, err := io.ReadFull(file, retained.Received); err != nil {
+		store.logFailure("retained_read", deviceID, uploadID, err, "reject_resume")
+		return Retained{}, ErrStorageUnavailable
+	}
+	return retained, nil
+}
+
 func (store *Store) Complete(deviceID, uploadID string, now time.Time) (Attachment, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
@@ -336,16 +391,118 @@ func (store *Store) Resolve(deviceID string, uploadIDs []string, now time.Time) 
 	return resolved, nil
 }
 
+func (store *Store) Claim(deviceID string, uploadIDs []string, actionID string, now time.Time) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.cleanupLocked(now)
+	uploads, err := store.completedLocked(deviceID, uploadIDs)
+	if err != nil {
+		return err
+	}
+	if !validIdentifier(actionID) || now.IsZero() {
+		return ErrInvalidAttachment
+	}
+	for _, upload := range uploads {
+		if upload.ClaimedBy != "" && upload.ClaimedBy != actionID {
+			return ErrAttachmentClaimed
+		}
+	}
+	type previousClaim struct {
+		claimedBy string
+		expiresAt time.Time
+	}
+	previous := make([]previousClaim, len(uploads))
+	for index, upload := range uploads {
+		previous[index] = previousClaim{claimedBy: upload.ClaimedBy, expiresAt: upload.ExpiresAt}
+		upload.ClaimedBy = actionID
+		upload.ExpiresAt = previous[index].expiresAt
+		if err := store.writeMetadata(store.completeRoot, upload); err != nil {
+			upload.ClaimedBy, upload.ExpiresAt = previous[index].claimedBy, previous[index].expiresAt
+			for rollback := 0; rollback < index; rollback++ {
+				uploads[rollback].ClaimedBy, uploads[rollback].ExpiresAt = previous[rollback].claimedBy, previous[rollback].expiresAt
+				_ = store.writeMetadata(store.completeRoot, uploads[rollback])
+			}
+			store.logFailure("claim_metadata", deviceID, upload.UploadID, err, "retain_or_restore_previous_claim")
+			return ErrStorageUnavailable
+		}
+	}
+	store.logger.Info("[attachments] completed files claimed", "device_id", deviceID, "action_id", actionID, "attachment_count", len(uploadIDs), "decision", "retain_for_durable_action")
+	return nil
+}
+
+func (store *Store) ReconcileClaims(active map[string]Claim) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	for actionID, claim := range active {
+		if !validIdentifier(actionID) || !validIdentifier(claim.DeviceID) || len(claim.UploadIDs) == 0 {
+			return ErrInvalidAttachment
+		}
+		seen := make(map[string]struct{}, len(claim.UploadIDs))
+		for _, uploadID := range claim.UploadIDs {
+			if !validIdentifier(uploadID) {
+				return ErrInvalidAttachment
+			}
+			if _, duplicate := seen[uploadID]; duplicate {
+				return ErrInvalidAttachment
+			}
+			seen[uploadID] = struct{}{}
+		}
+	}
+	for key, upload := range store.records {
+		if upload.ClaimedBy == "" {
+			continue
+		}
+		claim, exists := active[upload.ClaimedBy]
+		matched := exists && claim.DeviceID == upload.DeviceID
+		if matched {
+			matched = slices.Contains(claim.UploadIDs, upload.UploadID)
+		}
+		if matched {
+			continue
+		}
+		if err := store.removeLocked(key); err != nil {
+			store.logFailure("reconcile_orphan_claim", upload.DeviceID, upload.UploadID, err, "retain_quota_reservation")
+			return ErrStorageUnavailable
+		}
+		store.logger.Info("[attachments] orphaned claim removed", "device_id", upload.DeviceID, "upload_id", upload.UploadID, "action_id", upload.ClaimedBy, "decision", "delete_without_queue_owner")
+	}
+	return nil
+}
+
+func (store *Store) ResolveClaimed(deviceID string, uploadIDs []string, actionID string, now time.Time) ([]Attachment, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.cleanupLocked(now)
+	uploads, err := store.completedLocked(deviceID, uploadIDs)
+	if err != nil {
+		return nil, err
+	}
+	if !validIdentifier(actionID) {
+		return nil, ErrInvalidAttachment
+	}
+	resolved := make([]Attachment, 0, len(uploads))
+	for _, upload := range uploads {
+		if upload.ClaimedBy != actionID {
+			return nil, ErrAttachmentClaimed
+		}
+		resolved = append(resolved, attachmentOf(store.completeRoot, upload))
+	}
+	return resolved, nil
+}
+
 func (store *Store) Cancel(deviceID, uploadID string) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	key := recordKey(deviceID, uploadID)
-	if upload := store.records[key]; upload != nil && !upload.Complete {
+	if upload := store.records[key]; upload != nil {
+		if upload.ClaimedBy != "" {
+			return ErrAttachmentClaimed
+		}
 		if err := store.removeLocked(key); err != nil {
 			store.logFailure("cancel_cleanup", deviceID, uploadID, err, "retain_quota_reservation")
 			return ErrStorageUnavailable
 		}
-		store.logger.Info("[attachments] upload cancelled", "device_id", deviceID, "upload_id", uploadID, "decision", "delete_partial")
+		store.logger.Info("[attachments] upload cancelled", "device_id", deviceID, "upload_id", uploadID, "was_complete", upload.Complete, "decision", "delete_unclaimed_file")
 	}
 	return nil
 }
@@ -359,6 +516,9 @@ func (store *Store) Release(deviceID string, uploadIDs []string) error {
 		if upload == nil || !upload.Complete {
 			return ErrAttachmentUnavailable
 		}
+		if upload.ClaimedBy != "" {
+			return ErrAttachmentClaimed
+		}
 	}
 	for _, uploadID := range uploadIDs {
 		if err := store.removeLocked(recordKey(deviceID, uploadID)); err != nil {
@@ -368,6 +528,51 @@ func (store *Store) Release(deviceID string, uploadIDs []string) error {
 	}
 	store.logger.Info("[attachments] completed files released", "device_id", deviceID, "attachment_count", len(uploadIDs), "decision", "delete_after_handoff")
 	return nil
+}
+
+func (store *Store) ReleaseClaimed(deviceID string, uploadIDs []string, actionID string) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	uploads, err := store.completedLocked(deviceID, uploadIDs)
+	if err != nil {
+		return err
+	}
+	if !validIdentifier(actionID) {
+		return ErrInvalidAttachment
+	}
+	for _, upload := range uploads {
+		if upload.ClaimedBy != actionID {
+			return ErrAttachmentClaimed
+		}
+	}
+	for _, upload := range uploads {
+		if err := store.removeLocked(recordKey(deviceID, upload.UploadID)); err != nil {
+			store.logFailure("release_claimed_cleanup", deviceID, upload.UploadID, err, "retain_quota_reservation")
+			return ErrStorageUnavailable
+		}
+	}
+	store.logger.Info("[attachments] claimed files released", "device_id", deviceID, "action_id", actionID, "attachment_count", len(uploadIDs), "decision", "delete_after_handoff")
+	return nil
+}
+
+func (store *Store) completedLocked(deviceID string, uploadIDs []string) ([]*record, error) {
+	if !validIdentifier(deviceID) || len(uploadIDs) == 0 {
+		return nil, ErrAttachmentUnavailable
+	}
+	uploads := make([]*record, 0, len(uploadIDs))
+	seen := make(map[string]struct{}, len(uploadIDs))
+	for _, uploadID := range uploadIDs {
+		if _, duplicate := seen[uploadID]; duplicate {
+			return nil, ErrInvalidAttachment
+		}
+		seen[uploadID] = struct{}{}
+		upload := store.records[recordKey(deviceID, uploadID)]
+		if upload == nil || !upload.Complete {
+			return nil, ErrAttachmentUnavailable
+		}
+		uploads = append(uploads, upload)
+	}
+	return uploads, nil
 }
 
 func (store *Store) restore(now time.Time) error {
@@ -522,13 +727,14 @@ func (store *Store) validRestored(upload *record, root string, now time.Time) bo
 func validRestoredFields(upload *record, now time.Time, limits Limits) bool {
 	return upload.Version == metadataVersion && validIdentifier(upload.DeviceID) && validIdentifier(upload.UploadID) &&
 		upload.DeclaredTotal > 0 && upload.DeclaredTotal <= limits.MaxFileBytes && validSHA(upload.SHA256) &&
-		upload.ReceivedBytes >= 0 && upload.ReceivedBytes <= upload.DeclaredTotal && upload.ExpiresAt.After(now) &&
+		upload.ReceivedBytes >= 0 && upload.ReceivedBytes <= upload.DeclaredTotal && (upload.ClaimedBy != "" || upload.ExpiresAt.After(now)) &&
+		(upload.ClaimedBy == "" || validIdentifier(upload.ClaimedBy)) &&
 		filepath.Base(upload.DataName) == upload.DataName && upload.DataName != "."
 }
 
 func (store *Store) cleanupLocked(now time.Time) {
 	for key, upload := range store.records {
-		if !upload.ExpiresAt.After(now) {
+		if upload.ClaimedBy == "" && !upload.ExpiresAt.After(now) {
 			if err := store.removeLocked(key); err != nil {
 				store.logFailure("expiry_cleanup", upload.DeviceID, upload.UploadID, err, "retain_quota_reservation")
 			}

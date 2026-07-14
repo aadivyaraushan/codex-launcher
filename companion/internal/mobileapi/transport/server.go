@@ -17,6 +17,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
 )
@@ -40,19 +41,33 @@ type MessageSender interface {
 }
 
 type MessageHandler func(context.Context, MessageSender, contract.Message) error
+type AttachmentAcknowledger func(context.Context, MessageSender, AttachmentEvent) error
 
 type Server struct {
-	pairing         *pairing.Service
-	handle          MessageHandler
-	logger          *slog.Logger
-	now             func() time.Time
-	quota           *contract.AttachmentQuota
-	pairReadTimeout time.Duration
-	preauthSlots    chan struct{}
-	nextConnection  atomic.Uint64
+	pairing               *pairing.Service
+	handle                MessageHandler
+	logger                *slog.Logger
+	now                   func() time.Time
+	quota                 *contract.AttachmentQuota
+	attachments           *attachments.Store
+	acknowledgeAttachment AttachmentAcknowledger
+	pairReadTimeout       time.Duration
+	preauthSlots          chan struct{}
+	nextConnection        atomic.Uint64
 }
 
 func NewServer(pairingService *pairing.Service, handler MessageHandler, logger *slog.Logger) (*Server, error) {
+	return newServer(pairingService, handler, nil, nil, logger)
+}
+
+func NewServerWithAttachments(pairingService *pairing.Service, handler MessageHandler, store *attachments.Store, acknowledger AttachmentAcknowledger, logger *slog.Logger) (*Server, error) {
+	if store == nil || acknowledger == nil {
+		return nil, ErrMissingDependency
+	}
+	return newServer(pairingService, handler, store, acknowledger, logger)
+}
+
+func newServer(pairingService *pairing.Service, handler MessageHandler, store *attachments.Store, acknowledger AttachmentAcknowledger, logger *slog.Logger) (*Server, error) {
 	if pairingService == nil || handler == nil {
 		return nil, ErrMissingDependency
 	}
@@ -60,13 +75,15 @@ func NewServer(pairingService *pairing.Service, handler MessageHandler, logger *
 		logger = slog.Default()
 	}
 	return &Server{
-		pairing:         pairingService,
-		handle:          handler,
-		logger:          logger,
-		now:             time.Now,
-		quota:           contract.NewAttachmentQuota(contract.DefaultAttachmentLimits()),
-		pairReadTimeout: pairReadTimeout,
-		preauthSlots:    make(chan struct{}, maxPreauthRequests),
+		pairing:               pairingService,
+		handle:                handler,
+		logger:                logger,
+		now:                   time.Now,
+		quota:                 contract.NewAttachmentQuota(contract.DefaultAttachmentLimits()),
+		attachments:           store,
+		acknowledgeAttachment: acknowledger,
+		pairReadTimeout:       pairReadTimeout,
+		preauthSlots:          make(chan struct{}, maxPreauthRequests),
 	}, nil
 }
 
@@ -273,6 +290,11 @@ func (server *Server) handleSession(response http.ResponseWriter, request *http.
 	attachmentKeyInput := append(append([]byte(nil), proof.HostSignature...), proof.Signature...)
 	attachmentKey := sha256.Sum256(attachmentKeyInput)
 	protocolSession := contract.NewSessionWithAttachments(attachmentKey[:], server.quota, sessionID, deviceID)
+	if server.attachments != nil {
+		protocolSession = contract.NewSessionWithAttachments(attachmentKey[:], contract.NewAttachmentQuota(contract.DefaultAttachmentLimits()), sessionID, deviceID)
+	}
+	defer protocolSession.Close()
+	attachmentState := newAttachmentSession(deviceID, protocolSession, server.attachments, server.now)
 	connection.SetReadLimit(int64(contract.MaxAttachmentFrameBytes))
 	if err := wsjson.Write(request.Context(), connection, authenticatedBody{Type: "authenticated", DeviceID: deviceID, SessionID: sessionID}); err != nil {
 		return
@@ -291,7 +313,7 @@ func (server *Server) handleSession(response http.ResponseWriter, request *http.
 		connection: connection, deviceID: deviceID, sessionID: sessionID,
 		connectionID: server.nextConnection.Add(1),
 	}
-	server.readFrames(request.Context(), connection, protocolSession, sender)
+	server.readFrames(request.Context(), connection, protocolSession, attachmentState, sender)
 	authenticatedSession.Close()
 	<-revoked
 }
@@ -311,7 +333,7 @@ func (server *Server) endPreauthentication() {
 	<-server.preauthSlots
 }
 
-func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn, session *contract.Session, sender MessageSender) {
+func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn, session *contract.Session, attachmentState *attachmentSession, sender MessageSender) {
 	deviceID, sessionID := sender.DeviceID(), sender.SessionID()
 	initialized := false
 	for {
@@ -323,6 +345,7 @@ func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn
 		switch messageType {
 		case websocket.MessageText:
 			message, acceptErr := session.AcceptText(frame)
+			var resumedAttachments []AttachmentEvent
 			branchReason := ""
 			if acceptErr != nil {
 				branchReason = "invalid_text_frame"
@@ -338,11 +361,46 @@ func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn
 			}
 			if message.Type == "hello" {
 				initialized = true
+				if attachmentState != nil {
+					resumedAttachments, acceptErr = attachmentState.restoreRequested()
+					if acceptErr != nil {
+						server.logger.Warn("[mobile-transport] attachment resume rejected", "device_id", deviceID, "session_id", sessionID, "branch_reason", "resume_mismatch", "error_class", fmt.Sprintf("%T", acceptErr))
+						server.closeForPolicy(connection, "attachment_resume")
+						return
+					}
+				}
+			}
+			if attachmentMessage(message.Type) {
+				if attachmentState == nil {
+					server.logger.Warn("[mobile-transport] attachment rejected", "device_id", deviceID, "session_id", sessionID, "branch_reason", "attachment_service_unavailable")
+					server.closeForPolicy(connection, "attachment_service_unavailable")
+					return
+				}
+				event, attachmentErr := attachmentState.acceptText(message)
+				if attachmentErr != nil || event == nil || server.acknowledgeAttachment == nil {
+					server.logger.Warn("[mobile-transport] attachment rejected", "device_id", deviceID, "session_id", sessionID, "branch_reason", "attachment_storage", "error_class", fmt.Sprintf("%T", attachmentErr))
+					server.closeForPolicy(connection, "attachment_storage")
+					return
+				}
+				if ackErr := server.acknowledgeAttachment(ctx, sender, *event); ackErr != nil {
+					server.logger.Error("[mobile-transport] attachment acknowledgement failed", "device_id", deviceID, "session_id", sessionID, "upload_id", event.UploadID, "error_class", fmt.Sprintf("%T", ackErr), "decision", "close_for_retry")
+					_ = connection.Close(websocket.StatusInternalError, "attachment acknowledgement failed")
+					return
+				}
+				continue
 			}
 			if handleErr := server.handle(ctx, sender, message); handleErr != nil {
 				server.logger.Error("[mobile-transport] message handler failed", "device_id", deviceID, "session_id", sessionID, "error_class", fmt.Sprintf("%T", handleErr))
 				_ = connection.Close(websocket.StatusInternalError, "handler failed")
 				return
+			}
+			if message.Type == "hello" && attachmentState != nil {
+				for _, event := range resumedAttachments {
+					if ackErr := server.acknowledgeAttachment(ctx, sender, event); ackErr != nil {
+						_ = connection.Close(websocket.StatusInternalError, "attachment resume acknowledgement failed")
+						return
+					}
+				}
 			}
 		case websocket.MessageBinary:
 			if !initialized {
@@ -350,7 +408,7 @@ func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn
 				server.closeForPolicy(connection, "protocol_order")
 				return
 			}
-			if err := session.AcceptAttachmentFrame(frame); err != nil {
+			if attachmentState == nil || attachmentState.acceptBinary(frame) != nil {
 				server.logger.Warn("[mobile-transport] frame rejected", "device_id", deviceID, "session_id", sessionID, "branch_reason", "invalid_attachment_frame")
 				server.closeForPolicy(connection, "invalid_attachment_frame")
 				return
@@ -360,6 +418,10 @@ func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn
 			return
 		}
 	}
+}
+
+func attachmentMessage(messageType string) bool {
+	return messageType == "attachment_offer" || messageType == "attachment_cancel" || messageType == "attachment_complete"
 }
 
 type websocketMessageSender struct {

@@ -23,6 +23,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskQueueState
+import app.codexlauncher.task.attachments.AttachmentRows
+import app.codexlauncher.task.attachments.AttachmentUploadState
 import kotlinx.coroutines.launch
 
 @Composable
@@ -38,6 +40,10 @@ fun TaskControls(
     onRequestDictation: ((((PromptDictationResult) -> Unit) -> Unit))? = null,
     composerText: String? = null,
     onComposerTextChange: ((String) -> Unit)? = null,
+    attachments: List<AttachmentUploadState> = emptyList(),
+    attachmentMessage: String? = null,
+    onAttach: () -> Unit = {},
+    onRemoveAttachment: (String) -> Unit = {},
 ) {
     val active = taskState in setOf(TaskState.WORKING, TaskState.WAITING_FOR_APPROVAL, TaskState.WAITING_FOR_ANSWER)
     var localText by remember { mutableStateOf("") }
@@ -96,7 +102,10 @@ fun TaskControls(
             minLines = 1,
             maxLines = 4,
         )
+        if (attachments.isNotEmpty()) AttachmentRows(attachments, onRemoveAttachment)
+        attachmentMessage?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onAttach, enabled = !sending && !followUpsBlocked && attachments.size < 2) { Text("Attach") }
             Button(
                 enabled = !sending && !followUpsBlocked && text.isNotBlank(),
                 onClick = {

@@ -82,6 +82,22 @@ class CompanionSessionClientTest {
     }
 
     @Test
+    fun attachmentBinaryFramesOnlyReachTheCurrentReadySocket() {
+        val events = mutableListOf<String>()
+        val socket = RecordingWebSocket(events)
+        val connection = CompanionSessionConnection(OkHttpClient())
+        connection.attach(socket)
+        assertFalse(connection.sendBinary(byteArrayOf(1, 2, 3)))
+        connection.markReady()
+        assertTrue(connection.sendBinary(byteArrayOf(1, 2, 3)))
+        assertEquals(listOf("binary:3"), events)
+        socket.acceptWrites = false
+        assertFalse(connection.sendBinary(byteArrayOf(4)))
+        connection.close()
+        assertFalse(connection.sendBinary(byteArrayOf(5)))
+    }
+
+    @Test
     fun completesThePinnedSocketProofSendsColdHelloAndValidatesCompanionFrames() {
         val hostKey = TestHostCertificate.keyPair()
         val signer = TestSigner()
@@ -301,7 +317,10 @@ private class RecordingWebSocket(
         return acceptWrites
     }
 
-    override fun send(bytes: ByteString): Boolean = acceptWrites
+    override fun send(bytes: ByteString): Boolean {
+        events += "binary:${bytes.size}"
+        return acceptWrites
+    }
 
     override fun close(code: Int, reason: String?): Boolean = true
 

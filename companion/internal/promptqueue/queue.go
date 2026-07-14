@@ -45,6 +45,8 @@ type Entry struct {
 	Effort         string
 	PermissionMode string
 	RequestHash    string
+	DeviceID       string
+	AttachmentIDs  []string
 	State          State
 	Result         Result
 	ErrorCode      string
@@ -71,6 +73,11 @@ type QueueStatus string
 type PendingThread struct {
 	ID          string
 	OwnerSource string
+}
+
+type AttachmentClaim struct {
+	DeviceID      string
+	AttachmentIDs []string
 }
 
 const (
@@ -206,6 +213,13 @@ func (queue *Queue) Entry(ctx context.Context, actionID string) (Entry, error) {
 	return queue.store.Entry(ctx, actionID)
 }
 
+func (queue *Queue) Entries(ctx context.Context, queueKey string) ([]Entry, error) {
+	if queue == nil || queue.store == nil || !validID(queueKey) {
+		return nil, ErrInvalidEntry
+	}
+	return queue.store.ThreadEntries(ctx, queueKey)
+}
+
 func (queue *Queue) Status(ctx context.Context, queueKey string) (QueueStatus, error) {
 	if queue == nil || queue.store == nil || !validID(queueKey) {
 		return QueueEmpty, ErrInvalidEntry
@@ -242,6 +256,27 @@ func (queue *Queue) PendingThreadIDs(ctx context.Context) ([]string, error) {
 	return ids, nil
 }
 
+func (queue *Queue) AttachmentClaims(ctx context.Context) (map[string]AttachmentClaim, error) {
+	if queue == nil || queue.store == nil {
+		return nil, ErrInvalidEntry
+	}
+	entries, err := queue.store.PendingEntries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	claims := make(map[string]AttachmentClaim)
+	for _, entry := range entries {
+		if len(entry.AttachmentIDs) == 0 {
+			continue
+		}
+		if !validAttachmentOwnership(entry.ActionKind, entry.DeviceID, entry.AttachmentIDs) {
+			return nil, ErrInvalidEntry
+		}
+		claims[entry.ActionID] = AttachmentClaim{DeviceID: entry.DeviceID, AttachmentIDs: append([]string(nil), entry.AttachmentIDs...)}
+	}
+	return claims, nil
+}
+
 func (queue *Queue) PendingThreads(ctx context.Context) ([]PendingThread, error) {
 	ids, err := queue.PendingThreadIDs(ctx)
 	if err != nil {
@@ -270,19 +305,23 @@ func (queue *Queue) PendingThreads(ctx context.Context) ([]PendingThread, error)
 	return threads, nil
 }
 
-func (queue *Queue) DismissUnknown(ctx context.Context, actionID, threadID string, now time.Time) error {
-	if queue == nil || queue.store == nil || !validID(actionID) || !validID(threadID) || now.IsZero() {
-		return ErrInvalidEntry
+func (queue *Queue) DismissUnknown(ctx context.Context, actionID, threadID, deviceID string, now time.Time) (Entry, error) {
+	if queue == nil || queue.store == nil || !validID(actionID) || threadID != "" && !validID(threadID) || !validID(deviceID) || now.IsZero() {
+		return Entry{}, ErrInvalidEntry
 	}
 	entry, err := queue.store.Entry(ctx, actionID)
 	if errors.Is(err, ErrActionNotFound) {
-		return nil
+		return Entry{}, nil
 	}
 	if err != nil {
-		return err
+		return Entry{}, err
 	}
-	if entry.ThreadID != threadID || entry.ActionKind != "start_turn" && entry.ActionKind != "steer_turn" && entry.ActionKind != "interrupt_turn" {
-		return ErrInvalidEntry
+	validOwner := entry.ThreadID == threadID
+	if threadID == "" {
+		validOwner = entry.ThreadID == "" && entry.QueueKey == "new:"+entry.ActionID
+	}
+	if !validOwner || entry.DeviceID != "" && entry.DeviceID != deviceID || entry.ActionKind != "start_turn" && entry.ActionKind != "steer_turn" && entry.ActionKind != "interrupt_turn" {
+		return Entry{}, ErrInvalidEntry
 	}
 	switch entry.State {
 	case StatePrepared, StateSentUnknown:
@@ -292,14 +331,14 @@ func (queue *Queue) DismissUnknown(ctx context.Context, actionID, threadID strin
 		entry.ErrorCode = "user_reviewed"
 		entry.UpdatedAt = now
 		if err := queue.store.CompareAndSwap(ctx, previous, entry); err != nil {
-			return err
+			return Entry{}, err
 		}
 		queue.logger.Info("[prompt-queue] unknown action review cleared", "action_id", actionID, "thread_id", threadID, "decision", "cancel_without_retry")
-		return nil
+		return entry, nil
 	case StateConfirmed, StateFailed, StateCanceled:
-		return nil
+		return entry, nil
 	default:
-		return ErrInvalidEntry
+		return Entry{}, ErrInvalidEntry
 	}
 }
 
@@ -344,7 +383,28 @@ func validEntry(entry Entry) bool {
 		((entry.ThreadID == "" && validID(entry.ProjectID)) || (entry.ThreadID != "" && validOptionalID(entry.ProjectID))) &&
 		validOptionalID(entry.Model) && validOptionalID(entry.Effort) && validOptionalID(entry.PermissionMode) &&
 		validOptionalID(entry.RequestHash) && validOwnerSource(entry.OwnerSource) &&
+		validAttachmentOwnership(entry.ActionKind, entry.DeviceID, entry.AttachmentIDs) &&
 		validActionPayload(entry.ActionKind, entry.Prompt) && !entry.CreatedAt.IsZero()
+}
+
+func validAttachmentOwnership(kind, deviceID string, attachmentIDs []string) bool {
+	if len(attachmentIDs) == 0 {
+		return deviceID == ""
+	}
+	if kind == "interrupt_turn" || !validID(deviceID) || len(attachmentIDs) > 16 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(attachmentIDs))
+	for _, id := range attachmentIDs {
+		if !validID(id) {
+			return false
+		}
+		if _, duplicate := seen[id]; duplicate {
+			return false
+		}
+		seen[id] = struct{}{}
+	}
+	return true
 }
 
 func validOwnerSource(source string) bool {

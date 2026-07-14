@@ -3,6 +3,7 @@ package mobilesession
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
@@ -20,6 +22,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
+	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
 	"github.com/codex-launcher/codex-launcher/companion/internal/promptqueue"
 )
@@ -53,6 +56,217 @@ func TestColdHelloSendsWelcomeAndSafeProjectSnapshot(t *testing.T) {
 	}
 	if bytes.Contains(sender.messages[1].Body, []byte(sender.projectPath)) {
 		t.Fatal("snapshot exposed a configured path")
+	}
+}
+
+func TestAttachmentCapabilityAndAcknowledgementUseDurableSequence(t *testing.T) {
+	handler, sender := newTestHandler(t)
+	handler.EnableAttachments(openAttachmentStore(t))
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-attachments","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	var welcome struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := json.Unmarshal(sender.messages[0].Body, &welcome); err != nil || !slices.Contains(welcome.Capabilities, "attachments") {
+		t.Fatalf("attachment welcome = %#v, %v", welcome, err)
+	}
+
+	sender.sent = make(chan contract.Message, 1)
+	event := transport.AttachmentEvent{
+		UploadID: "upload-1", State: "accepted", ReceivedBytes: 4,
+		SHA256: strings.Repeat("a", 64), NextChunk: 1,
+	}
+	if err := handler.PublishAttachmentAck(context.Background(), sender, event); err != nil {
+		t.Fatal(err)
+	}
+	message := awaitSentMessage(t, sender.sent)
+	if message.Type != "attachment_ack" || message.Sequence == nil || *message.Sequence != 2 {
+		t.Fatalf("attachment ack envelope = %#v", message)
+	}
+	var body transport.AttachmentEvent
+	if err := json.Unmarshal(message.Body, &body); err != nil || body != event {
+		t.Fatalf("attachment ack body = %#v, %v", body, err)
+	}
+	events, err := sender.store.ReplayAfter(context.Background(), 1)
+	if err != nil || len(events) != 1 || events[0].Name != "attachment_ack" || events[0].Sequence != 2 {
+		t.Fatalf("durable attachment events = %#v, %v", events, err)
+	}
+}
+
+func TestBusyAttachmentActionSurvivesQueueAndReleasesOnlyAfterCodexHandoff(t *testing.T) {
+	attachmentStore := openAttachmentStore(t)
+	completeAttachment(t, attachmentStore, "pixel-9", "upload-1", []byte("private notes"))
+	source := &existingTaskSource{task: taskstate.Task{
+		ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.Working, ActiveTurnID: "turn-active", CanRedirect: true, UpdatedAtUnix: sessionNow.Unix(),
+	}}
+	promptStore := promptqueue.NewMemoryStore()
+	handler, sender := newTestHandlerWithTaskQueue(t, source, promptStore)
+	handler.EnableAttachments(attachmentStore)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 4)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"with-file","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","taskId":"thread-1","text":"Inspect this","attachmentIds":["upload-1"]}}`)
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(result.Body, []byte(`"resultCode":"queued"`)) {
+		t.Fatalf("queued result = %s", result.Body)
+	}
+	entry, err := promptStore.Entry(context.Background(), "action-1")
+	if err != nil || entry.DeviceID != "pixel-9" || !slices.Equal(entry.AttachmentIDs, []string{"upload-1"}) {
+		t.Fatalf("queued attachment entry = %#v, %v", entry, err)
+	}
+	if _, err := attachmentStore.ResolveClaimed("pixel-9", []string{"upload-1"}, "action-1", sessionNow.Add(2*time.Minute)); err != nil {
+		t.Fatalf("queued claim did not outlive upload expiry: %v", err)
+	}
+
+	source.task.State = taskstate.IdleAfterReply
+	source.task.ActiveTurnID = ""
+	source.task.CanRedirect = false
+	if err := handler.PublishTaskEvent(context.Background(), taskstate.MobileEvent{TaskID: "thread-1", Kind: "reply", State: taskstate.IdleAfterReply, Summary: "Codex replied"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(source.attachments) != 1 || source.attachments[0].ID != "upload-1" || source.attachments[0].Path == "" || source.attachments[0].MediaType == "" {
+		t.Fatalf("Codex attachment handoff = %#v", source.attachments)
+	}
+	if _, err := attachmentStore.ResolveClaimed("pixel-9", []string{"upload-1"}, "action-1", sessionNow); !errors.Is(err, attachments.ErrAttachmentUnavailable) {
+		t.Fatalf("confirmed handoff retained attachment: %v", err)
+	}
+}
+
+func TestAttachmentActionFailsBeforeQueueWhenUploadIsMissing(t *testing.T) {
+	source := &existingTaskSource{task: taskstate.Task{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}}
+	promptStore := promptqueue.NewMemoryStore()
+	handler, sender := newTestHandlerWithTaskQueue(t, source, promptStore)
+	handler.EnableAttachments(openAttachmentStore(t))
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.sent = make(chan contract.Message, 2)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"missing","sender":"phone","type":"action","body":{"actionId":"action-missing","kind":"start_turn","taskId":"thread-1","text":"Inspect","attachmentIds":["missing"]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if !bytes.Contains(result.Body, []byte(`"state":"failed"`)) || len(source.calls) != 0 {
+		t.Fatalf("missing attachment result = %s, calls = %#v", result.Body, source.calls)
+	}
+	if _, err := promptStore.Entry(context.Background(), "action-missing"); !errors.Is(err, promptqueue.ErrActionNotFound) {
+		t.Fatalf("missing attachment reached durable queue: %v", err)
+	}
+}
+
+func TestStartupReconcilesAttachmentClaimsAgainstDurableQueueBeforeRecovery(t *testing.T) {
+	attachmentStore := openAttachmentStore(t)
+	for _, uploadID := range []string{"active-upload", "orphan-upload"} {
+		completeAttachment(t, attachmentStore, "pixel-9", uploadID, []byte(uploadID))
+		if err := attachmentStore.Claim("pixel-9", []string{uploadID}, strings.TrimSuffix(uploadID, "-upload")+"-action", sessionNow); err != nil {
+			t.Fatal(err)
+		}
+	}
+	promptStore := promptqueue.NewMemoryStore()
+	queue := promptqueue.New(promptStore, nil)
+	if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		ActionID: "active-action", QueueKey: "thread-1", ThreadID: "thread-1", Prompt: "inspect", DeviceID: "pixel-9", AttachmentIDs: []string{"active-upload"}, CreatedAt: sessionNow,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectService, err := projects.New([]projects.Config{{ID: "main", DisplayName: "Main", Path: root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal := eventjournal.New(eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 16, MaxBytes: 64 * 1024}), nil)
+	source := &existingTaskSource{task: taskstate.Task{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.Working, ActiveTurnID: "turn-1", UpdatedAtUnix: sessionNow.Unix()}}
+	if _, err := NewWithTaskSourceQueueAndAttachments(
+		context.Background(), "Studio Mac", projectService, journal, source, queue, attachmentStore, nil, func() time.Time { return sessionNow },
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := attachmentStore.ResolveClaimed("pixel-9", []string{"active-upload"}, "active-action", sessionNow.Add(365*24*time.Hour)); err != nil {
+		t.Fatalf("active startup claim was lost: %v", err)
+	}
+	if _, err := attachmentStore.ResolveClaimed("pixel-9", []string{"orphan-upload"}, "orphan-action", sessionNow); !errors.Is(err, attachments.ErrAttachmentUnavailable) {
+		t.Fatalf("orphan startup claim remains: %v", err)
+	}
+}
+
+func TestUnknownNewTaskAttachmentCanBeDismissedWithoutAThreadID(t *testing.T) {
+	attachmentStore := openAttachmentStore(t)
+	completeAttachment(t, attachmentStore, "pixel-9", "upload-new", []byte("new task file"))
+	source := &newTaskSource{
+		catalog:  testTaskOptionsCatalog(),
+		startErr: &appserver.OutcomeUnknownError{Method: "turn/start", Cause: errors.New("connection lost")},
+	}
+	promptStore := promptqueue.NewMemoryStore()
+	handler, sender := newTestHandlerWithTaskQueue(t, source, promptStore)
+	handler.EnableAttachments(attachmentStore)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.sent = make(chan contract.Message, 3)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"new","sender":"phone","type":"action","body":{"actionId":"unknown-new","kind":"start_turn","projectId":"main","text":"Inspect","modelId":"public-model","reasoningId":"high","permissionModeId":"workspace-write","attachmentIds":["upload-new"]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if result := awaitSentMessage(t, sender.sent); !bytes.Contains(result.Body, []byte(`"state":"outcome_unknown"`)) {
+		t.Fatalf("new task result = %s", result.Body)
+	}
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"dismiss","sender":"phone","type":"action","body":{"actionId":"dismiss-new","kind":"dismiss_unknown_control","targetActionId":"unknown-new"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if result := awaitSentMessage(t, sender.sent); !bytes.Contains(result.Body, []byte(`"resultCode":"accepted"`)) {
+		t.Fatalf("dismiss result = %s", result.Body)
+	}
+	entry, err := promptStore.Entry(context.Background(), "unknown-new")
+	if err != nil || entry.State != promptqueue.StateCanceled {
+		t.Fatalf("dismissed new task = %#v, %v", entry, err)
+	}
+	if _, err := attachmentStore.ResolveClaimed("pixel-9", []string{"upload-new"}, "unknown-new", sessionNow); !errors.Is(err, attachments.ErrAttachmentUnavailable) {
+		t.Fatalf("dismissed new-task claim remains: %v", err)
+	}
+}
+
+func TestDeviceCannotDismissAnotherDevicesUnknownAttachmentAction(t *testing.T) {
+	attachmentStore := openAttachmentStore(t)
+	completeAttachment(t, attachmentStore, "other-phone", "upload-other", []byte("private file"))
+	if err := attachmentStore.Claim("other-phone", []string{"upload-other"}, "unknown-other", sessionNow); err != nil {
+		t.Fatal(err)
+	}
+	promptStore := promptqueue.NewMemoryStore()
+	queue := promptqueue.New(promptStore, nil)
+	if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		ActionID: "unknown-other", QueueKey: "thread-1", ThreadID: "thread-1", DeviceID: "other-phone",
+		AttachmentIDs: []string{"upload-other"}, Prompt: "Private", CreatedAt: sessionNow,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = queue.DispatchNext(context.Background(), "thread-1", func(context.Context, promptqueue.Entry) (promptqueue.Result, error) {
+		return promptqueue.Result{}, promptqueue.ErrSendOutcomeUnknown
+	}, nil, sessionNow.Add(time.Second))
+	handler, sender := newTestHandlerWithTaskQueue(t, nil, promptStore)
+	handler.EnableAttachments(attachmentStore)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.sent = make(chan contract.Message, 1)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"dismiss","sender":"phone","type":"action","body":{"actionId":"dismiss-other","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-other"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if result := awaitSentMessage(t, sender.sent); !bytes.Contains(result.Body, []byte(`"state":"failed"`)) {
+		t.Fatalf("cross-device dismissal result = %s", result.Body)
+	}
+	entry, err := promptStore.Entry(context.Background(), "unknown-other")
+	if err != nil || entry.State != promptqueue.StateSentUnknown {
+		t.Fatalf("other device entry changed = %#v, %v", entry, err)
+	}
+	if _, err := attachmentStore.ResolveClaimed("other-phone", []string{"upload-other"}, "unknown-other", sessionNow); err != nil {
+		t.Fatalf("other device claim was released: %v", err)
 	}
 }
 
@@ -909,14 +1123,25 @@ func TestArchivingTaskCancelsEveryQueuedPromptAndClearsItsText(t *testing.T) {
 	source := &taskManagementSource{tasks: []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "Main", State: taskstate.Working, ActiveTurnID: "turn-1", UpdatedAtUnix: sessionNow.Unix()}}}
 	store := promptqueue.NewMemoryStore()
 	queue := promptqueue.New(store, nil)
+	attachmentStore := openAttachmentStore(t)
+	completeAttachment(t, attachmentStore, "pixel-9", "upload-archive", []byte("archive me"))
+	if err := attachmentStore.Claim("pixel-9", []string{"upload-archive"}, "queued-0", sessionNow); err != nil {
+		t.Fatal(err)
+	}
 	for index, prompt := range []string{"Private first", "Private second"} {
-		if err := queue.Enqueue(context.Background(), promptqueue.Entry{
+		entry := promptqueue.Entry{
 			ActionID: fmt.Sprintf("queued-%d", index), QueueKey: "thread-1", ThreadID: "thread-1", Prompt: prompt, CreatedAt: sessionNow.Add(time.Duration(index) * time.Second),
-		}); err != nil {
+		}
+		if index == 0 {
+			entry.DeviceID = "pixel-9"
+			entry.AttachmentIDs = []string{"upload-archive"}
+		}
+		if err := queue.Enqueue(context.Background(), entry); err != nil {
 			t.Fatal(err)
 		}
 	}
 	handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+	handler.EnableAttachments(attachmentStore)
 	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -930,6 +1155,9 @@ func TestArchivingTaskCancelsEveryQueuedPromptAndClearsItsText(t *testing.T) {
 		if err != nil || entry.State != promptqueue.StateCanceled || entry.Prompt != "" || entry.ErrorCode != "task_archived" {
 			t.Fatalf("archived queue entry %d = %#v, %v", index, entry, err)
 		}
+	}
+	if _, err := attachmentStore.ResolveClaimed("pixel-9", []string{"upload-archive"}, "queued-0", sessionNow); !errors.Is(err, attachments.ErrAttachmentUnavailable) {
+		t.Fatalf("archived queue retained claimed attachment: %v", err)
 	}
 }
 
@@ -1265,10 +1493,11 @@ type newTaskSource struct {
 }
 
 type existingTaskSource struct {
-	task    taskstate.Task
-	calls   []string
-	err     error
-	started chan struct{}
+	task        taskstate.Task
+	calls       []string
+	attachments []taskadapter.AttachmentInput
+	err         error
+	started     chan struct{}
 }
 
 type recoveryTaskSource struct {
@@ -1373,12 +1602,22 @@ func (source *existingTaskSource) StartExistingTurn(_ context.Context, _ string,
 	return taskadapter.ExistingTaskResult{ThreadID: source.task.ID, TurnID: "turn-started"}, nil
 }
 
+func (source *existingTaskSource) StartExistingTurnWithAttachments(ctx context.Context, taskID, text string, values []taskadapter.AttachmentInput) (taskadapter.ExistingTaskResult, error) {
+	source.attachments = append([]taskadapter.AttachmentInput(nil), values...)
+	return source.StartExistingTurn(ctx, taskID, text)
+}
+
 func (source *existingTaskSource) RedirectExistingTurn(_ context.Context, _ string, text string) (taskadapter.ExistingTaskResult, error) {
 	source.calls = append(source.calls, "redirect:"+text)
 	if source.err != nil {
 		return taskadapter.ExistingTaskResult{}, source.err
 	}
 	return taskadapter.ExistingTaskResult{ThreadID: source.task.ID, TurnID: source.task.ActiveTurnID}, nil
+}
+
+func (source *existingTaskSource) RedirectExistingTurnWithAttachments(ctx context.Context, taskID, text string, values []taskadapter.AttachmentInput) (taskadapter.ExistingTaskResult, error) {
+	source.attachments = append([]taskadapter.AttachmentInput(nil), values...)
+	return source.RedirectExistingTurn(ctx, taskID, text)
 }
 
 func (source *existingTaskSource) InterruptExistingTurn(context.Context, string) (taskadapter.ExistingTaskResult, error) {
@@ -1428,6 +1667,33 @@ func testTaskOptionsCatalog() taskoptions.Catalog {
 			{ID: "workspace-write", DisplayName: "Workspace", Description: "Write", Default: true},
 			{ID: "danger-full-access", DisplayName: "Full access", Description: "Full", Default: false},
 		},
+	}
+}
+
+func openAttachmentStore(t *testing.T) *attachments.Store {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := attachments.Open(root, attachments.DefaultLimits(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+func completeAttachment(t *testing.T, store *attachments.Store, deviceID, uploadID string, payload []byte) {
+	t.Helper()
+	digest := fmt.Sprintf("%x", sha256.Sum256(payload))
+	if _, err := store.Begin(deviceID, uploadID, int64(len(payload)), digest, sessionNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Append(deviceID, uploadID, 0, 0, true, payload, sessionNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Complete(deviceID, uploadID, sessionNow); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -181,6 +181,41 @@ created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`)
 	}
 }
 
+func TestPromptStoreMigratesAndRoundTripsAttachmentOwnership(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.sqlite3")
+	legacy, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = legacy.Exec(`CREATE TABLE prompt_entries (
+action_id TEXT PRIMARY KEY, queue_key TEXT NOT NULL, action_kind TEXT NOT NULL DEFAULT 'start_turn', owner_source TEXT NOT NULL DEFAULT '',
+thread_id TEXT NOT NULL, project_id TEXT NOT NULL, prompt TEXT NOT NULL, model TEXT NOT NULL, effort TEXT NOT NULL,
+permission_mode TEXT NOT NULL, request_hash TEXT NOT NULL, state TEXT NOT NULL, result_code TEXT NOT NULL,
+result_thread_id TEXT NOT NULL, result_turn_id TEXT NOT NULL, error_code TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(context.Background(), path, eventjournal.Limits{MaxEvents: 8, MaxBytes: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	want := promptqueue.Entry{
+		ActionID: "with-files", QueueKey: "thread-1", ThreadID: "thread-1", Prompt: "inspect", DeviceID: "phone-1",
+		AttachmentIDs: []string{"upload-1", "upload-2"}, State: promptqueue.StatePrepared, CreatedAt: storeNow, UpdatedAt: storeNow,
+	}
+	if err := store.Create(context.Background(), want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.Entry(context.Background(), want.ActionID)
+	if err != nil || got.DeviceID != want.DeviceID || !slices.Equal(got.AttachmentIDs, want.AttachmentIDs) {
+		t.Fatalf("round-tripped attachment ownership = %#v, %v", got, err)
+	}
+}
+
 func TestStoreCompactsEventsWithoutReusingSequenceNumbers(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "state.sqlite3")

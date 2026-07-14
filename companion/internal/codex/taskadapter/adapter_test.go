@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -68,6 +69,68 @@ func TestStartNewTaskCreatesConfiguredThreadThenStartsItsFirstTurn(t *testing.T)
 	want := []string{`thread:/work/project:gpt-5.4:workspace-write:"on-request"`, "turn:thread-created:Fix it:high"}
 	if !slices.Equal(steps, want) {
 		t.Fatalf("steps = %#v, want %#v", steps, want)
+	}
+}
+
+func TestStartNewTaskPassesAttachmentsToTheFirstCodexTurn(t *testing.T) {
+	var got appserver.TurnOptions
+	set := Set{
+		startThread: func(context.Context, appserver.ThreadOptions) (json.RawMessage, error) {
+			return json.RawMessage(`{"thread":{"id":"thread-created"}}`), nil
+		},
+		startTurn: func(_ context.Context, options appserver.TurnOptions) (json.RawMessage, error) {
+			got = options
+			return json.RawMessage(`{"turn":{"id":"turn-created"}}`), nil
+		},
+	}
+	attachments := []AttachmentInput{{ID: "photo-1", Path: "/tmp/photo.png", MediaType: "image/png"}, {ID: "notes-2", Path: "/tmp/notes.pdf", MediaType: "application/pdf"}}
+	if _, err := set.StartNewTask(context.Background(), NewTaskRequest{
+		ProjectPath: "/work", Prompt: "Inspect", Model: "model", Effort: "high", Sandbox: appserver.SandboxReadOnly, Attachments: attachments,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := []appserver.AttachmentInput{{ID: "photo-1", Path: "/tmp/photo.png", MediaType: "image/png"}, {ID: "notes-2", Path: "/tmp/notes.pdf", MediaType: "application/pdf"}}
+	if !reflect.DeepEqual(got.Attachments, want) {
+		t.Fatalf("turn attachments = %#v, want %#v", got.Attachments, want)
+	}
+}
+
+func TestExistingTaskStartAndRedirectPassAttachmentsToTheOwnedAdapter(t *testing.T) {
+	attachments := []AttachmentInput{{ID: "notes-1", Path: "/tmp/notes.txt", MediaType: "text/plain"}}
+	states := []taskstate.Task{
+		{ID: "thread-1", State: taskstate.IdleAfterReply, Source: taskstate.SourceDesktop},
+		{ID: "thread-1", State: taskstate.Working, Source: taskstate.SourceDesktop, ActiveTurnID: "turn-1", CanRedirect: true},
+	}
+	var calls []string
+	set := Set{
+		currentTask: func(context.Context, string) (taskstate.Task, error) {
+			task := states[0]
+			states = states[1:]
+			return task, nil
+		},
+		startExistingTurnWithAttachments: func(_ context.Context, task taskstate.Task, text string, got []AttachmentInput) (string, error) {
+			if !reflect.DeepEqual(got, attachments) {
+				t.Fatalf("start attachments = %#v", got)
+			}
+			calls = append(calls, "start:"+text)
+			return "turn-started", nil
+		},
+		redirectExistingTurnWithAttachments: func(_ context.Context, task taskstate.Task, text string, got []AttachmentInput) (string, error) {
+			if !reflect.DeepEqual(got, attachments) {
+				t.Fatalf("redirect attachments = %#v", got)
+			}
+			calls = append(calls, "redirect:"+text)
+			return task.ActiveTurnID, nil
+		},
+	}
+	if _, err := set.StartExistingTurnWithAttachments(context.Background(), "thread-1", "inspect", attachments); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := set.RedirectExistingTurnWithAttachments(context.Background(), "thread-1", "more", attachments); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(calls, []string{"start:inspect", "redirect:more"}) {
+		t.Fatalf("calls = %#v", calls)
 	}
 }
 

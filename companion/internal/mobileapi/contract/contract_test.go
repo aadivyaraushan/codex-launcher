@@ -199,12 +199,16 @@ func TestContractAcceptsOnlyBoundedTaskManagementActions(t *testing.T) {
 }
 
 func TestContractAcceptsOnlyExactUnknownControlDismissal(t *testing.T) {
-	valid := `{"version":{"major":1,"minor":0},"messageId":"dismiss","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-1"}}`
-	if _, err := DecodeText([]byte(valid)); err != nil {
-		t.Fatalf("valid dismissal was rejected: %v", err)
+	for _, valid := range []string{
+		`{"version":{"major":1,"minor":0},"messageId":"dismiss","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-1"}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"dismiss-new","sender":"phone","type":"action","body":{"actionId":"dismiss-2","kind":"dismiss_unknown_control","targetActionId":"unknown-new"}}`,
+	} {
+		if _, err := DecodeText([]byte(valid)); err != nil {
+			t.Fatalf("valid dismissal was rejected: %v", err)
+		}
 	}
 	invalid := []string{
-		`{"version":{"major":1,"minor":0},"messageId":"missing","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1"}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"missing","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control"}}`,
 		`{"version":{"major":1,"minor":0},"messageId":"extra","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-1","text":"hidden"}}`,
 	}
 	for _, frame := range invalid {
@@ -398,6 +402,7 @@ func TestProductionValidationRejectsFieldsOutsideSchema(t *testing.T) {
 		`{"version":{"major":1,"minor":0},"messageId":"m-9","sender":"phone","type":"ack","seq":1,"body":{"throughSeq":1}}`,
 		`{"version":{"major":1,"minor":0},"messageId":"m-10","sender":"companion","type":"snapshot","seq":0,"body":{"baseSeq":0,"tasks":[]}}`,
 		`{"version":{"major":1,"minor":0},"messageId":"m-11","sender":"phone","type":"ack","body":{"throughSeq":0}}`,
+		`{"version":{"major":1,"minor":0},"messageId":"m-12","sender":"phone","type":"action","body":{"actionId":"a-12","kind":"start_turn","taskId":"task-1","text":"go","attachmentIds":["u01","u02","u03","u04","u05","u06","u07","u08","u09","u10","u11","u12","u13","u14","u15","u16","u17"]}}`,
 	}
 	for _, frame := range frames {
 		if _, err := DecodeText([]byte(frame)); err == nil {
@@ -538,6 +543,49 @@ func TestAttachmentCompleteMessageEnforcesDigestAndReleasesQuota(t *testing.T) {
 	ack, okay := session.CompletedAttachment("upload-1")
 	if !okay || ack.ReceivedBytes != 1 || ack.SHA256 != offer.SHA256 {
 		t.Fatalf("completed attachment = %#v, found=%v", ack, okay)
+	}
+}
+
+func TestAttachmentSessionReturnsAcceptedChunkAndRestoresCompletedRetry(t *testing.T) {
+	key := []byte("0123456789abcdef0123456789abcdef")
+	offer := AttachmentOffer{UploadID: "upload-1", DeclaredTotal: 1, SHA256: "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"}
+	session := NewSessionWithAttachments(key, nil, "session-1", "phone-1")
+	if err := session.OfferAttachment(offer); err != nil {
+		t.Fatal(err)
+	}
+	frame, err := EncodeAttachmentFrame(AttachmentChunk{SessionID: "session-1", UploadID: "upload-1", DeclaredTotal: 1, Final: true, Payload: []byte("x")}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk, err := session.AcceptAttachmentFrameChunk(frame)
+	if err != nil || chunk.UploadID != "upload-1" || string(chunk.Payload) != "x" || !chunk.Final {
+		t.Fatalf("accepted chunk = %#v, %v", chunk, err)
+	}
+	ack, err := session.CompleteAttachment("upload-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewSessionWithAttachments(key, nil, "session-2", "phone-1")
+	restarted.RestoreCompletedAttachment(ack)
+	retried, err := restarted.CompleteAttachment("upload-1")
+	if err != nil || retried != ack {
+		t.Fatalf("restored completion = %#v, %v; want %#v", retried, err, ack)
+	}
+}
+
+func TestClosingAttachmentSessionReleasesAllLiveQuota(t *testing.T) {
+	limits := DefaultAttachmentLimits()
+	limits.MaxDeviceUploads = 1
+	quota := NewAttachmentQuota(limits)
+	first := NewSessionWithAttachments(nil, quota, "session-1", "phone-1")
+	if err := first.OfferAttachment(AttachmentOffer{UploadID: "upload-1", DeclaredTotal: 1, SHA256: strings.Repeat("a", 64)}); err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+	second := NewSessionWithAttachments(nil, quota, "session-2", "phone-1")
+	if err := second.OfferAttachment(AttachmentOffer{UploadID: "upload-2", DeclaredTotal: 1, SHA256: strings.Repeat("b", 64)}); err != nil {
+		t.Fatalf("closed session retained quota: %v", err)
 	}
 }
 

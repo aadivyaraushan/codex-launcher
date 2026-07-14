@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -1536,6 +1537,78 @@ func TestBuildFollowerActionAllowsOnlyPinnedShapes(t *testing.T) {
 		if _, err := buildFollowerAction(action); !errors.Is(err, ErrInvalidAction) {
 			t.Fatalf("buildFollowerAction(%#v) error = %v", action, err)
 		}
+	}
+}
+
+func TestBuildFollowerActionUsesCurrentCodexAttachmentInputShapes(t *testing.T) {
+	attachments := []AttachmentInput{
+		{ID: "photo-1", Path: "/private/tmp/photo.png", MediaType: "image/png"},
+		{ID: "notes-2", Path: "/private/tmp/notes.pdf", MediaType: "application/pdf"},
+	}
+	for _, test := range []struct {
+		name   string
+		action FollowerAction
+		field  string
+	}{
+		{name: "start", action: FollowerAction{Kind: ActionStartTurn, ConversationID: "thread-1", Text: "inspect these", Attachments: attachments}, field: "turnStartParams"},
+		{name: "steer", action: FollowerAction{Kind: ActionSteerTurn, ConversationID: "thread-1", Text: "also inspect these", Attachments: attachments}, field: "input"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			message, err := buildFollowerAction(test.action)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var params map[string]json.RawMessage
+			if err := json.Unmarshal(message.Params, &params); err != nil {
+				t.Fatal(err)
+			}
+			encoded := params[test.field]
+			if test.action.Kind == ActionStartTurn {
+				var nested map[string]json.RawMessage
+				if err := json.Unmarshal(encoded, &nested); err != nil {
+					t.Fatal(err)
+				}
+				encoded = nested["input"]
+			}
+			var got []map[string]string
+			if err := json.Unmarshal(encoded, &got); err != nil {
+				t.Fatal(err)
+			}
+			want := []map[string]string{
+				{"type": "text", "text": test.action.Text},
+				{"type": "localImage", "path": "/private/tmp/photo.png"},
+				{"type": "mention", "name": "notes-2", "path": "/private/tmp/notes.pdf"},
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("input = %#v, want %#v", got, want)
+			}
+		})
+	}
+}
+
+func TestBuildFollowerActionRejectsInvalidAttachments(t *testing.T) {
+	tooMany := make([]AttachmentInput, 17)
+	for index := range tooMany {
+		tooMany[index] = AttachmentInput{ID: fmt.Sprintf("file-%d", index), Path: fmt.Sprintf("/tmp/file-%d.txt", index), MediaType: "text/plain"}
+	}
+	for _, attachments := range [][]AttachmentInput{
+		{{ID: "file-1", Path: "relative.txt", MediaType: "text/plain"}},
+		{{ID: "file-1", Path: "/tmp/../tmp/file.txt", MediaType: "text/plain"}},
+		{{ID: "bad id", Path: "/tmp/file.txt", MediaType: "text/plain"}},
+		{{ID: "file-1", Path: "/tmp/file.txt", MediaType: "not a media type"}},
+		{{ID: "file-1", Path: "/tmp/a.txt", MediaType: "text/plain"}, {ID: "file-1", Path: "/tmp/b.txt", MediaType: "text/plain"}},
+		tooMany,
+	} {
+		for _, kind := range []ActionKind{ActionStartTurn, ActionSteerTurn} {
+			_, err := buildFollowerAction(FollowerAction{Kind: kind, ConversationID: "thread-1", Text: "inspect", Attachments: attachments})
+			if !errors.Is(err, ErrInvalidAction) {
+				t.Fatalf("buildFollowerAction(%s, %#v) error = %v", kind, attachments, err)
+			}
+		}
+	}
+	_, err := buildFollowerAction(FollowerAction{Kind: ActionInterruptTurn, ConversationID: "thread-1", Attachments: []AttachmentInput{{ID: "file-1", Path: "/tmp/file.txt", MediaType: "text/plain"}}})
+	if !errors.Is(err, ErrInvalidAction) {
+		t.Fatalf("interrupt attachment error = %v", err)
 	}
 }
 

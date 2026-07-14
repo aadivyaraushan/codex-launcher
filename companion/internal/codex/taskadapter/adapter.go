@@ -15,18 +15,20 @@ import (
 )
 
 type Set struct {
-	router                *taskstate.AdapterRouter
-	desktop               *desktopipc.Client
-	app                   *appserver.Client
-	catalog               *Catalog
-	startThread           func(context.Context, appserver.ThreadOptions) (json.RawMessage, error)
-	startTurn             func(context.Context, appserver.TurnOptions) (json.RawMessage, error)
-	currentTask           func(context.Context, string) (taskstate.Task, error)
-	startExistingTurn     func(context.Context, taskstate.Task, string) (string, error)
-	redirectExistingTurn  func(context.Context, taskstate.Task, string) (string, error)
-	interruptExistingTurn func(context.Context, taskstate.Task) (string, error)
-	readAppTask           func(context.Context, string) (json.RawMessage, error)
-	readDesktopTask       func(context.Context, string) (json.RawMessage, error)
+	router                              *taskstate.AdapterRouter
+	desktop                             *desktopipc.Client
+	app                                 *appserver.Client
+	catalog                             *Catalog
+	startThread                         func(context.Context, appserver.ThreadOptions) (json.RawMessage, error)
+	startTurn                           func(context.Context, appserver.TurnOptions) (json.RawMessage, error)
+	currentTask                         func(context.Context, string) (taskstate.Task, error)
+	startExistingTurn                   func(context.Context, taskstate.Task, string) (string, error)
+	redirectExistingTurn                func(context.Context, taskstate.Task, string) (string, error)
+	startExistingTurnWithAttachments    func(context.Context, taskstate.Task, string, []AttachmentInput) (string, error)
+	redirectExistingTurnWithAttachments func(context.Context, taskstate.Task, string, []AttachmentInput) (string, error)
+	interruptExistingTurn               func(context.Context, taskstate.Task) (string, error)
+	readAppTask                         func(context.Context, string) (json.RawMessage, error)
+	readDesktopTask                     func(context.Context, string) (json.RawMessage, error)
 }
 
 var (
@@ -48,6 +50,13 @@ type NewTaskRequest struct {
 	Effort         string
 	Sandbox        appserver.SandboxMode
 	ApprovalPolicy json.RawMessage
+	Attachments    []AttachmentInput
+}
+
+type AttachmentInput struct {
+	ID        string
+	Path      string
+	MediaType string
 }
 
 type NewTaskResult struct {
@@ -115,17 +124,17 @@ func (set *Set) configureExistingTaskControls() {
 			return append(json.RawMessage(nil), materialized...), nil
 		}
 	}
-	set.startExistingTurn = func(ctx context.Context, task taskstate.Task, text string) (string, error) {
+	set.startExistingTurnWithAttachments = func(ctx context.Context, task taskstate.Task, text string, attachments []AttachmentInput) (string, error) {
 		var raw json.RawMessage
 		var err error
 		switch task.Source {
 		case taskstate.SourceDesktop:
-			raw, err = set.desktop.StartTurn(ctx, task.ID, text)
+			raw, err = set.desktop.StartTurnWithAttachments(ctx, task.ID, text, desktopAttachments(attachments))
 			if err == nil {
 				return nestedNestedResultID(raw, "result", "turn"), nil
 			}
 		case taskstate.SourceAppServer:
-			raw, err = set.app.StartTurn(ctx, appserver.TurnOptions{ThreadID: task.ID, Text: text})
+			raw, err = set.app.StartTurn(ctx, appserver.TurnOptions{ThreadID: task.ID, Text: text, Attachments: appServerAttachments(attachments)})
 			if err == nil {
 				return nestedResultID(raw, "turn"), nil
 			}
@@ -134,17 +143,20 @@ func (set *Set) configureExistingTaskControls() {
 		}
 		return "", err
 	}
-	set.redirectExistingTurn = func(ctx context.Context, task taskstate.Task, text string) (string, error) {
+	set.startExistingTurn = func(ctx context.Context, task taskstate.Task, text string) (string, error) {
+		return set.startExistingTurnWithAttachments(ctx, task, text, nil)
+	}
+	set.redirectExistingTurnWithAttachments = func(ctx context.Context, task taskstate.Task, text string, attachments []AttachmentInput) (string, error) {
 		var raw json.RawMessage
 		var err error
 		switch task.Source {
 		case taskstate.SourceDesktop:
-			raw, err = set.desktop.SteerTurn(ctx, task.ID, text)
+			raw, err = set.desktop.SteerTurnWithAttachments(ctx, task.ID, text, desktopAttachments(attachments))
 			if err == nil {
 				return nestedNestedString(raw, "result", "turnId"), nil
 			}
 		case taskstate.SourceAppServer:
-			raw, err = set.app.SteerTurn(ctx, task.ID, task.ActiveTurnID, text)
+			raw, err = set.app.SteerTurnWithAttachments(ctx, task.ID, task.ActiveTurnID, text, appServerAttachments(attachments))
 			if err == nil {
 				return topLevelString(raw, "turnId"), nil
 			}
@@ -152,6 +164,9 @@ func (set *Set) configureExistingTaskControls() {
 			return "", taskstate.ErrUnresolvedTaskSource
 		}
 		return "", err
+	}
+	set.redirectExistingTurn = func(ctx context.Context, task taskstate.Task, text string) (string, error) {
+		return set.redirectExistingTurnWithAttachments(ctx, task, text, nil)
 	}
 	set.interruptExistingTurn = func(ctx context.Context, task taskstate.Task) (string, error) {
 		switch task.Source {
@@ -241,6 +256,17 @@ func (set Set) StartExistingTurn(ctx context.Context, taskID, text string) (Exis
 	return set.startExistingTurnForTask(ctx, task, text)
 }
 
+func (set Set) StartExistingTurnWithAttachments(ctx context.Context, taskID, text string, attachments []AttachmentInput) (ExistingTaskResult, error) {
+	if set.currentTask == nil || set.startExistingTurnWithAttachments == nil || strings.TrimSpace(taskID) != taskID || taskID == "" || strings.TrimSpace(text) == "" {
+		return ExistingTaskResult{}, ErrInvalidTaskControl
+	}
+	task, err := set.currentTask(ctx, taskID)
+	if err != nil {
+		return ExistingTaskResult{}, err
+	}
+	return set.startExistingTurnForTaskWithAttachments(ctx, task, text, attachments)
+}
+
 func (set Set) StartExistingTurnFromSource(ctx context.Context, taskID, text string, source taskstate.Source) (ExistingTaskResult, error) {
 	if set.startExistingTurn == nil || strings.TrimSpace(taskID) != taskID || taskID == "" || strings.TrimSpace(text) == "" {
 		return ExistingTaskResult{}, ErrInvalidTaskControl
@@ -255,11 +281,39 @@ func (set Set) StartExistingTurnFromSource(ctx context.Context, taskID, text str
 	return set.startExistingTurnForTask(ctx, task, text)
 }
 
+func (set Set) StartExistingTurnFromSourceWithAttachments(ctx context.Context, taskID, text string, source taskstate.Source, attachments []AttachmentInput) (ExistingTaskResult, error) {
+	if set.startExistingTurnWithAttachments == nil || strings.TrimSpace(taskID) != taskID || taskID == "" || strings.TrimSpace(text) == "" {
+		return ExistingTaskResult{}, ErrInvalidTaskControl
+	}
+	task, err := set.CurrentTaskFromSource(ctx, taskID, source)
+	if err != nil {
+		if errors.Is(err, ErrTaskUnavailable) {
+			return ExistingTaskResult{}, err
+		}
+		return ExistingTaskResult{}, fmt.Errorf("%w: %T", ErrTaskLookupTransient, err)
+	}
+	return set.startExistingTurnForTaskWithAttachments(ctx, task, text, attachments)
+}
+
 func (set Set) startExistingTurnForTask(ctx context.Context, task taskstate.Task, text string) (ExistingTaskResult, error) {
 	if task.State == taskstate.Working || task.State == taskstate.WaitingForApproval || task.State == taskstate.WaitingForAnswer {
 		return ExistingTaskResult{}, ErrTaskBusy
 	}
 	turnID, err := set.startExistingTurn(ctx, task, text)
+	if err != nil {
+		return ExistingTaskResult{}, err
+	}
+	if strings.TrimSpace(turnID) == "" {
+		return ExistingTaskResult{}, ErrPartialNewTask
+	}
+	return ExistingTaskResult{ThreadID: task.ID, TurnID: turnID}, nil
+}
+
+func (set Set) startExistingTurnForTaskWithAttachments(ctx context.Context, task taskstate.Task, text string, attachments []AttachmentInput) (ExistingTaskResult, error) {
+	if task.State == taskstate.Working || task.State == taskstate.WaitingForApproval || task.State == taskstate.WaitingForAnswer {
+		return ExistingTaskResult{}, ErrTaskBusy
+	}
+	turnID, err := set.startExistingTurnWithAttachments(ctx, task, text, attachments)
 	if err != nil {
 		return ExistingTaskResult{}, err
 	}
@@ -284,6 +338,30 @@ func (set Set) RedirectExistingTurn(ctx context.Context, taskID, text string) (E
 		return ExistingTaskResult{}, ErrRedirectUnsupported
 	}
 	turnID, err := set.redirectExistingTurn(ctx, task, text)
+	if err != nil {
+		return ExistingTaskResult{}, err
+	}
+	if strings.TrimSpace(turnID) == "" {
+		return ExistingTaskResult{}, ErrPartialNewTask
+	}
+	return ExistingTaskResult{ThreadID: taskID, TurnID: turnID}, nil
+}
+
+func (set Set) RedirectExistingTurnWithAttachments(ctx context.Context, taskID, text string, attachments []AttachmentInput) (ExistingTaskResult, error) {
+	if set.currentTask == nil || set.redirectExistingTurnWithAttachments == nil || strings.TrimSpace(taskID) != taskID || taskID == "" || strings.TrimSpace(text) == "" {
+		return ExistingTaskResult{}, ErrInvalidTaskControl
+	}
+	task, err := set.currentTask(ctx, taskID)
+	if err != nil {
+		return ExistingTaskResult{}, err
+	}
+	if task.State != taskstate.Working {
+		return ExistingTaskResult{}, ErrTaskNotBusy
+	}
+	if !task.CanRedirect || task.ActiveTurnID == "" {
+		return ExistingTaskResult{}, ErrRedirectUnsupported
+	}
+	turnID, err := set.redirectExistingTurnWithAttachments(ctx, task, text, attachments)
 	if err != nil {
 		return ExistingTaskResult{}, err
 	}
@@ -332,7 +410,7 @@ func (set Set) StartNewTask(ctx context.Context, request NewTaskRequest) (NewTas
 	if threadID == "" {
 		return NewTaskResult{}, ErrPartialNewTask
 	}
-	turnRaw, err := set.startTurn(ctx, appserver.TurnOptions{ThreadID: threadID, Text: request.Prompt, Effort: request.Effort})
+	turnRaw, err := set.startTurn(ctx, appserver.TurnOptions{ThreadID: threadID, Text: request.Prompt, Effort: request.Effort, Attachments: appServerAttachments(request.Attachments)})
 	if err != nil {
 		return NewTaskResult{}, fmt.Errorf("%w: %v", ErrPartialNewTask, err)
 	}
@@ -341,6 +419,22 @@ func (set Set) StartNewTask(ctx context.Context, request NewTaskRequest) (NewTas
 		return NewTaskResult{}, ErrPartialNewTask
 	}
 	return NewTaskResult{ThreadID: threadID, TurnID: turnID}, nil
+}
+
+func appServerAttachments(attachments []AttachmentInput) []appserver.AttachmentInput {
+	result := make([]appserver.AttachmentInput, len(attachments))
+	for index, attachment := range attachments {
+		result[index] = appserver.AttachmentInput{ID: attachment.ID, Path: attachment.Path, MediaType: attachment.MediaType}
+	}
+	return result
+}
+
+func desktopAttachments(attachments []AttachmentInput) []desktopipc.AttachmentInput {
+	result := make([]desktopipc.AttachmentInput, len(attachments))
+	for index, attachment := range attachments {
+		result[index] = desktopipc.AttachmentInput{ID: attachment.ID, Path: attachment.Path, MediaType: attachment.MediaType}
+	}
+	return result
 }
 
 func nestedResultID(raw json.RawMessage, field string) string {

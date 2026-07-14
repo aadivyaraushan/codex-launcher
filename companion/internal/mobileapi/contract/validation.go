@@ -112,7 +112,7 @@ func (session *Session) AcceptText(frame []byte) (message Message, err error) {
 	}
 	defer func() {
 		if err != nil {
-			session.closed = true
+			session.Close()
 		}
 	}()
 	message, err = DecodeText(frame)
@@ -247,6 +247,14 @@ func (session *Session) AcceptedResumeChunk(uploadID string) (uint32, bool) {
 	return retained.next, true
 }
 
+func (session *Session) RequestedUploads() map[string]uint32 {
+	requested := make(map[string]uint32, len(session.requestedUploads))
+	for uploadID, nextChunk := range session.requestedUploads {
+		requested[uploadID] = nextChunk
+	}
+	return requested
+}
+
 func (session *Session) RestoreAttachment(retained RetainedAttachment) error {
 	offer := retained.Offer
 	if !validID(offer.UploadID) || offer.DeclaredTotal <= 0 || int64(len(retained.Received)) >= offer.DeclaredTotal ||
@@ -301,33 +309,41 @@ func (session *Session) ExpireAttachments(now time.Time) {
 }
 
 func (session *Session) AcceptAttachmentFrame(frame []byte) error {
+	_, err := session.AcceptAttachmentFrameChunk(frame)
+	return err
+}
+
+func (session *Session) AcceptAttachmentFrameChunk(frame []byte) (AttachmentChunk, error) {
 	session.ExpireAttachments(time.Now())
 	chunk, err := DecodeAttachmentFrame(frame, session.attachmentKey)
 	if err != nil {
-		return err
+		return AttachmentChunk{}, err
 	}
 	if session.expectedSessionID == "" || chunk.SessionID != session.expectedSessionID {
-		return ErrInvalidAttachment
+		return AttachmentChunk{}, ErrInvalidAttachment
 	}
 	upload := session.uploads[chunk.UploadID]
 	payloadLength := int64(len(chunk.Payload))
 	if upload == nil || upload.final || chunk.Chunk != upload.next || chunk.Offset != upload.received ||
 		chunk.DeclaredTotal != upload.offer.DeclaredTotal || upload.received > upload.offer.DeclaredTotal ||
 		payloadLength > upload.offer.DeclaredTotal-upload.received {
-		return ErrInvalidAttachment
+		return AttachmentChunk{}, ErrInvalidAttachment
 	}
 	if chunk.Final && payloadLength != upload.offer.DeclaredTotal-upload.received {
-		return ErrInvalidAttachment
+		return AttachmentChunk{}, ErrInvalidAttachment
 	}
 	_, _ = upload.hash.Write(chunk.Payload)
 	upload.received += int64(len(chunk.Payload))
 	upload.next++
 	upload.final = chunk.Final
-	return nil
+	return chunk, nil
 }
 
 func (session *Session) CompleteAttachment(uploadID string) (AttachmentAck, error) {
 	session.ExpireAttachments(time.Now())
+	if ack, okay := session.completedUploads[uploadID]; okay {
+		return ack, nil
+	}
 	upload := session.uploads[uploadID]
 	if upload == nil || !upload.final || upload.received != upload.offer.DeclaredTotal {
 		return AttachmentAck{}, ErrInvalidAttachment
@@ -340,6 +356,24 @@ func (session *Session) CompleteAttachment(uploadID string) (AttachmentAck, erro
 	ack := AttachmentAck{UploadID: uploadID, ReceivedBytes: upload.received, SHA256: digest}
 	session.releaseAttachment(uploadID)
 	return ack, nil
+}
+
+func (session *Session) RestoreCompletedAttachment(ack AttachmentAck) error {
+	if !validID(ack.UploadID) || ack.ReceivedBytes <= 0 || ack.ReceivedBytes > MaxAttachmentBytes || !isSHA256(ack.SHA256) {
+		return ErrInvalidAttachment
+	}
+	session.completedUploads[ack.UploadID] = ack
+	return nil
+}
+
+func (session *Session) Close() {
+	if session == nil || session.closed {
+		return
+	}
+	session.closed = true
+	for uploadID := range session.uploads {
+		session.releaseAttachment(uploadID)
+	}
 }
 
 func (session *Session) CancelAttachment(uploadID string) {
@@ -931,7 +965,9 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 			return ErrInvalidAction
 		}
 	case "dismiss_unknown_control":
-		if !exactKeys(body, "actionId", "kind", "taskId", "targetActionId") || !validID(stringValue(body["taskId"])) || !validID(stringValue(body["targetActionId"])) {
+		existing := exactKeys(body, "actionId", "kind", "taskId", "targetActionId") && validID(stringValue(body["taskId"]))
+		newTask := exactKeys(body, "actionId", "kind", "targetActionId")
+		if (!existing && !newTask) || !validID(stringValue(body["targetActionId"])) {
 			return ErrInvalidAction
 		}
 	case "approval":
@@ -988,6 +1024,9 @@ func validateOptionalIDs(raw json.RawMessage) bool {
 	}
 	var values []string
 	if json.Unmarshal(raw, &values) != nil {
+		return false
+	}
+	if len(values) > 16 {
 		return false
 	}
 	seen := make(map[string]struct{}, len(values))

@@ -35,6 +35,7 @@ import app.codexlauncher.task.management.TaskActionOutcome
 import app.codexlauncher.task.management.TaskActionsMenu
 import app.codexlauncher.task.control.ExistingTaskControlOutcome
 import app.codexlauncher.task.control.TaskControls
+import app.codexlauncher.task.attachments.AttachmentUploadState
 import app.codexlauncher.task.control.PromptDictationResult
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskQueueState
@@ -63,6 +64,10 @@ fun TaskScreen(
     onRequestDictation: ((((PromptDictationResult) -> Unit) -> Unit))? = null,
     followUpText: String? = null,
     onFollowUpTextChange: ((String) -> Unit)? = null,
+    attachments: List<AttachmentUploadState> = emptyList(),
+    attachmentMessage: String? = null,
+    onAttach: () -> Unit = {},
+    onRemoveAttachment: (String) -> Unit = {},
 ) {
     Column(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding(),
@@ -175,6 +180,10 @@ fun TaskScreen(
                 onRequestDictation = onRequestDictation,
                 composerText = followUpText,
                 onComposerTextChange = onFollowUpTextChange,
+                attachments = attachments,
+                attachmentMessage = attachmentMessage,
+                onAttach = onAttach,
+                onRemoveAttachment = onRemoveAttachment,
             )
         }
     }

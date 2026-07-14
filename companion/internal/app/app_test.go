@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -292,6 +294,18 @@ func TestPersistentRuntimeReopensTheSameProductionStores(t *testing.T) {
 	if err := first.Queue.Enqueue(context.Background(), entry); err != nil {
 		t.Fatal(err)
 	}
+	payload := []byte("partial attachment")
+	digest := sha256.Sum256(payload)
+	attachmentNow := time.Unix(1_800_000_000, 0)
+	if first.Attachments == nil {
+		t.Fatal("persistent runtime did not wire attachment storage")
+	}
+	if _, err := first.Attachments.Begin("phone-1", "upload-1", int64(len(payload)), fmt.Sprintf("%x", digest[:]), attachmentNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.Attachments.Append("phone-1", "upload-1", 0, 0, false, payload[:4], attachmentNow); err != nil {
+		t.Fatal(err)
+	}
 	if err := firstStore.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -302,6 +316,10 @@ func TestPersistentRuntimeReopensTheSameProductionStores(t *testing.T) {
 	t.Cleanup(func() { _ = secondStore.Close() })
 	if _, err := second.Queue.DispatchNext(context.Background(), "thread-1", nil, nil, appNow); !errors.Is(err, promptqueue.ErrOutcomeUnknown) {
 		t.Fatalf("reopened queued action error = %v", err)
+	}
+	retained, err := second.Attachments.Retained("phone-1", "upload-1", attachmentNow)
+	if err != nil || retained.NextChunk != 1 || string(retained.Received) != string(payload[:4]) {
+		t.Fatalf("reopened attachment = %#v, %v", retained, err)
 	}
 }
 

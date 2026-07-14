@@ -100,9 +100,11 @@ class ProtocolContractTest {
     @Test
     fun `codec accepts only exact unknown control dismissal`() {
         val valid = """{"version":{"major":1,"minor":0},"messageId":"dismiss","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-1"}}"""
+        val validNewTask = """{"version":{"major":1,"minor":0},"messageId":"dismiss-new","sender":"phone","type":"action","body":{"actionId":"dismiss-2","kind":"dismiss_unknown_control","targetActionId":"unknown-new"}}"""
         assertEquals("dismiss", ProtocolCodec.decodeText(valid).messageId)
+        assertEquals("dismiss-new", ProtocolCodec.decodeText(validNewTask).messageId)
         listOf(
-            """{"version":{"major":1,"minor":0},"messageId":"missing","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1"}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"missing","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control"}}""",
             """{"version":{"major":1,"minor":0},"messageId":"extra","sender":"phone","type":"action","body":{"actionId":"dismiss-1","kind":"dismiss_unknown_control","taskId":"thread-1","targetActionId":"unknown-1","text":"hidden"}}""",
         ).forEach { frame -> assertError(ProtocolError.INVALID_ACTION) { ProtocolCodec.decodeText(frame) } }
     }
@@ -235,6 +237,7 @@ class ProtocolContractTest {
             """{"version":{"major":1,"minor":0},"messageId":"m-3","sender":"phone","type":"ack","body":{"throughSeq":1}} {}""",
             """{"version":{"major":1,"minor":0},"messageId":"bad id!","sender":"phone","type":"ack","body":{"throughSeq":1}}""",
             """{"version":{"major":1,"minor":0},"messageId":"m-5","sender":"phone","type":"action","body":{"actionId":"a-5","kind":"start_turn","taskId":"task-1","text":"go","attachmentIds":["valid","bad id!"]}}""",
+            """{"version":{"major":1,"minor":0},"messageId":"m-many","sender":"phone","type":"action","body":{"actionId":"a-many","kind":"start_turn","taskId":"task-1","text":"go","attachmentIds":["u01","u02","u03","u04","u05","u06","u07","u08","u09","u10","u11","u12","u13","u14","u15","u16","u17"]}}""",
             """{"version":{"major":1,"minor":0},"messageId":"m-6","sender":"companion","type":"welcome","body":{"sessionId":"s","capabilities":["same","same"],"limits":{"maxJsonBytes":262145,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}}""",
             """{"version":{"major":1,"minor":0},"messageId":"m-7","sender":"companion","type":"event","seq":1,"body":{"taskId":"task-1","event":"invented","state":"working","summary":"Working"}}""",
             """{"version":{"major":1,"minor":0},"messageId":"m-8","sender":"phone","type":"hello","body":{"clientInstanceId":"phone-1","supportedMajors":[1],"resume":{"mode":"warm","uploads":[{"uploadId":"u-1","nextChunk":"two"}]}}}""",

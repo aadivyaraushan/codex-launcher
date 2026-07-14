@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,6 +58,20 @@ type TurnOptions struct {
 	ThreadID, Text, CWD, Model, Effort string
 	ApprovalPolicy                     json.RawMessage
 	SandboxPolicy                      json.RawMessage
+	Attachments                        []AttachmentInput
+}
+
+type AttachmentInput struct {
+	ID        string
+	Path      string
+	MediaType string
+}
+
+type userInput struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+	Name string `json:"name,omitempty"`
+	Path string `json:"path,omitempty"`
 }
 
 type Notification struct {
@@ -294,7 +310,11 @@ func (client *Client) StartTurn(ctx context.Context, options TurnOptions) (json.
 		!validOptional(options.CWD, 4096) || !validOptional(options.Model, 256) || !validApprovalPolicy(options.ApprovalPolicy) || !validSandboxPolicy(options.SandboxPolicy) {
 		return nil, ErrInvalidInput
 	}
-	params := map[string]any{"threadId": options.ThreadID, "input": textInput(options.Text)}
+	input, err := turnInput(options.Text, options.Attachments)
+	if err != nil {
+		return nil, err
+	}
+	params := map[string]any{"threadId": options.ThreadID, "input": input}
 	putString(params, "cwd", options.CWD)
 	putString(params, "model", options.Model)
 	putString(params, "effort", options.Effort)
@@ -305,10 +325,18 @@ func (client *Client) StartTurn(ctx context.Context, options TurnOptions) (json.
 	return client.call(ctx, "turn/start", params, false)
 }
 func (client *Client) SteerTurn(ctx context.Context, threadID, expectedTurnID, text string) (json.RawMessage, error) {
+	return client.SteerTurnWithAttachments(ctx, threadID, expectedTurnID, text, nil)
+}
+
+func (client *Client) SteerTurnWithAttachments(ctx context.Context, threadID, expectedTurnID, text string, attachments []AttachmentInput) (json.RawMessage, error) {
 	if !validID(threadID) || !validID(expectedTurnID) || !validText(text) {
 		return nil, ErrInvalidInput
 	}
-	return client.call(ctx, "turn/steer", map[string]any{"threadId": threadID, "expectedTurnId": expectedTurnID, "input": textInput(text)}, false)
+	input, err := turnInput(text, attachments)
+	if err != nil {
+		return nil, err
+	}
+	return client.call(ctx, "turn/steer", map[string]any{"threadId": threadID, "expectedTurnId": expectedTurnID, "input": input}, false)
 }
 func (client *Client) InterruptTurn(ctx context.Context, threadID, turnID string) (json.RawMessage, error) {
 	if !validID(threadID) || !validID(turnID) {
@@ -850,8 +878,32 @@ func threadParams(options ThreadOptions) map[string]any {
 	}
 	return params
 }
-func textInput(text string) []map[string]string {
-	return []map[string]string{{"type": "text", "text": text}}
+
+var attachmentIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,256}$`)
+
+func turnInput(text string, attachments []AttachmentInput) ([]userInput, error) {
+	if !validText(text) || len(attachments) > 16 {
+		return nil, ErrInvalidInput
+	}
+	input := make([]userInput, 0, len(attachments)+1)
+	input = append(input, userInput{Type: "text", Text: text})
+	seen := make(map[string]struct{}, len(attachments))
+	for _, attachment := range attachments {
+		mediaType, _, err := mime.ParseMediaType(attachment.MediaType)
+		if err != nil || !attachmentIDPattern.MatchString(attachment.ID) || !filepath.IsAbs(attachment.Path) || filepath.Clean(attachment.Path) != attachment.Path || len(attachment.Path) > 4096 {
+			return nil, ErrInvalidInput
+		}
+		if _, duplicate := seen[attachment.ID]; duplicate {
+			return nil, ErrInvalidInput
+		}
+		seen[attachment.ID] = struct{}{}
+		if strings.HasPrefix(strings.ToLower(mediaType), "image/") {
+			input = append(input, userInput{Type: "localImage", Path: attachment.Path})
+		} else {
+			input = append(input, userInput{Type: "mention", Name: attachment.ID, Path: attachment.Path})
+		}
+	}
+	return input, nil
 }
 func putString(values map[string]any, key, value string) {
 	if value != "" {

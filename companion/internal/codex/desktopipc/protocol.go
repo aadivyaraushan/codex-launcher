@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -490,6 +493,7 @@ type FollowerAction struct {
 	RequestID                     string
 	Decision                      string
 	Text                          string
+	Attachments                   []AttachmentInput
 	TurnID                        string
 	AgentMode                     string
 	ServiceTier                   string
@@ -500,9 +504,17 @@ type FollowerAction struct {
 	MCPResponse                   *MCPResponse
 }
 
-type textInput struct {
+type AttachmentInput struct {
+	ID        string
+	Path      string
+	MediaType string
+}
+
+type followerInput struct {
 	Type string `json:"type"`
-	Text string `json:"text"`
+	Text string `json:"text,omitempty"`
+	Name string `json:"name,omitempty"`
+	Path string `json:"path,omitempty"`
 }
 
 func buildFollowerAction(action FollowerAction) (wireMessage, error) {
@@ -516,14 +528,22 @@ func buildFollowerAction(action FollowerAction) (wireMessage, error) {
 		if !validActionText(action.Text) || action.hasFieldsExceptText() {
 			return wireMessage{}, fmt.Errorf("%w: start text is required", ErrInvalidAction)
 		}
+		input, err := followerInputItems(action.Text, action.Attachments)
+		if err != nil {
+			return wireMessage{}, err
+		}
 		method = "thread-follower-start-turn"
-		params["turnStartParams"] = map[string]any{"input": []textInput{{Type: "text", Text: action.Text}}}
+		params["turnStartParams"] = map[string]any{"input": input}
 	case ActionSteerTurn:
 		if !validActionText(action.Text) || action.hasFieldsExceptText() {
 			return wireMessage{}, fmt.Errorf("%w: steer text is required", ErrInvalidAction)
 		}
+		input, err := followerInputItems(action.Text, action.Attachments)
+		if err != nil {
+			return wireMessage{}, err
+		}
 		method = "thread-follower-steer-turn"
-		params["input"] = []textInput{{Type: "text", Text: action.Text}}
+		params["input"] = input
 	case ActionInterruptTurn:
 		if action.hasPayloadFields() {
 			return wireMessage{}, fmt.Errorf("%w: interrupt has unexpected fields", ErrInvalidAction)
@@ -597,7 +617,7 @@ func buildFollowerAction(action FollowerAction) (wireMessage, error) {
 
 func (action FollowerAction) hasPayloadFields() bool {
 	return action.RequestID != "" || action.Decision != "" || action.Text != "" || action.TurnID != "" || action.AgentMode != "" || action.ServiceTier != "" ||
-		action.ShouldSendPermissionOverrides || action.Settings != nil || action.PermissionResponse != nil || action.UserInputResponse != nil || action.MCPResponse != nil
+		len(action.Attachments) != 0 || action.ShouldSendPermissionOverrides || action.Settings != nil || action.PermissionResponse != nil || action.UserInputResponse != nil || action.MCPResponse != nil
 }
 
 func (action FollowerAction) hasFieldsExceptSettings() bool {
@@ -609,7 +629,35 @@ func (action FollowerAction) hasFieldsExceptSettings() bool {
 func (action FollowerAction) hasFieldsExceptText() bool {
 	copy := action
 	copy.Text = ""
+	copy.Attachments = nil
 	return copy.hasPayloadFields()
+}
+
+var followerAttachmentIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,256}$`)
+
+func followerInputItems(text string, attachments []AttachmentInput) ([]followerInput, error) {
+	if len(attachments) > 16 {
+		return nil, fmt.Errorf("%w: too many attachments", ErrInvalidAction)
+	}
+	input := make([]followerInput, 0, len(attachments)+1)
+	input = append(input, followerInput{Type: "text", Text: text})
+	seen := make(map[string]struct{}, len(attachments))
+	for _, attachment := range attachments {
+		mediaType, _, err := mime.ParseMediaType(attachment.MediaType)
+		if err != nil || !followerAttachmentIDPattern.MatchString(attachment.ID) || !filepath.IsAbs(attachment.Path) || filepath.Clean(attachment.Path) != attachment.Path || len(attachment.Path) > 4096 {
+			return nil, fmt.Errorf("%w: invalid attachment", ErrInvalidAction)
+		}
+		if _, duplicate := seen[attachment.ID]; duplicate {
+			return nil, fmt.Errorf("%w: duplicate attachment", ErrInvalidAction)
+		}
+		seen[attachment.ID] = struct{}{}
+		if strings.HasPrefix(strings.ToLower(mediaType), "image/") {
+			input = append(input, followerInput{Type: "localImage", Path: attachment.Path})
+		} else {
+			input = append(input, followerInput{Type: "mention", Name: attachment.ID, Path: attachment.Path})
+		}
+	}
+	return input, nil
 }
 
 func (action FollowerAction) hasFieldsExceptApproval() bool {

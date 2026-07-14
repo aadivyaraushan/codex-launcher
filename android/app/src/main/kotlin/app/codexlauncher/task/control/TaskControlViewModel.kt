@@ -20,7 +20,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -78,6 +80,7 @@ class TaskControlViewModel(
         prompt: String,
         selection: NewTaskSelection,
         draftVersion: DraftVersion,
+        attachmentIds: List<String> = emptyList(),
     ): NewTaskSendOutcome {
         if (!sending.compareAndSet(false, true)) return NewTaskSendOutcome.Unavailable
         return try {
@@ -86,28 +89,34 @@ class TaskControlViewModel(
                 true -> return NewTaskSendOutcome.NeedsReview
                 false -> Unit
             }
-            startNewTaskOnce(projectId, prompt, selection, draftVersion)
+            startNewTaskOnce(projectId, prompt, selection, draftVersion, attachmentIds)
         } finally {
             sending.set(false)
         }
     }
 
-    suspend fun sendToTask(taskId: String, prompt: String, mode: ExistingTaskSendMode): ExistingTaskControlOutcome {
+    suspend fun sendToTask(
+        taskId: String,
+        prompt: String,
+        mode: ExistingTaskSendMode,
+        attachmentIds: List<String> = emptyList(),
+    ): ExistingTaskControlOutcome {
         val kind = if (mode == ExistingTaskSendMode.REDIRECT) ActionRecordKind.STEER_TURN else ActionRecordKind.START_TURN
-        return sendExistingControl(taskId, prompt, kind)
+        return sendExistingControl(taskId, prompt, kind, attachmentIds)
     }
 
     suspend fun stopTask(taskId: String): ExistingTaskControlOutcome =
-        sendExistingControl(taskId, null, ActionRecordKind.INTERRUPT_TURN)
+        sendExistingControl(taskId, null, ActionRecordKind.INTERRUPT_TURN, emptyList())
 
     private suspend fun sendExistingControl(
         taskId: String,
         prompt: String?,
         kind: ActionRecordKind,
+        attachmentIds: List<String>,
     ): ExistingTaskControlOutcome {
         if (!sending.compareAndSet(false, true)) return ExistingTaskControlOutcome.Unavailable
         return try {
-            if (!taskId.matches(protocolIdPattern) || kind != ActionRecordKind.INTERRUPT_TURN &&
+            if (!validAttachmentIds(attachmentIds) || !taskId.matches(protocolIdPattern) || kind != ActionRecordKind.INTERRUPT_TURN &&
                 (prompt.isNullOrBlank() || prompt.encodeToByteArray().size > MAX_PROMPT_BYTES)
             ) return ExistingTaskControlOutcome.Invalid
             when (val unresolved = unresolvedExistingTaskRecords()) {
@@ -118,7 +127,7 @@ class TaskControlViewModel(
             if (!actionId.matches(protocolIdPattern)) return ExistingTaskControlOutcome.Invalid
             val terminal = CompletableDeferred<TerminalNewTaskResult?>()
             if (pending.putIfAbsent(actionId, terminal) != null) return ExistingTaskControlOutcome.Unavailable
-            val encoded = encodeExisting(actionId, taskId, prompt, kind)
+            val encoded = encodeExisting(actionId, taskId, prompt, kind, attachmentIds)
             val prepared = journal.prepare(actionId, kind, encoded, taskId, null)
                 ?: run {
                     pending.remove(actionId, terminal)
@@ -174,16 +183,17 @@ class TaskControlViewModel(
         prompt: String,
         selection: NewTaskSelection,
         draftVersion: DraftVersion,
+        attachmentIds: List<String>,
     ): NewTaskSendOutcome {
         if (!projectId.matches(projectIdPattern) || prompt.isBlank() || prompt.encodeToByteArray().size > MAX_PROMPT_BYTES ||
             !selection.modelId.matches(protocolIdPattern) || !selection.reasoningId.matches(protocolIdPattern) ||
-            !selection.permissionModeId.matches(protocolIdPattern)
+            !selection.permissionModeId.matches(protocolIdPattern) || !validAttachmentIds(attachmentIds)
         ) return NewTaskSendOutcome.Invalid
         val actionId = nextActionId()
         if (!actionId.matches(protocolIdPattern)) return NewTaskSendOutcome.Invalid
         val terminal = CompletableDeferred<TerminalNewTaskResult?>()
         if (pending.putIfAbsent(actionId, terminal) != null) return NewTaskSendOutcome.Unavailable
-        val encoded = encode(actionId, projectId, prompt, selection)
+        val encoded = encode(actionId, projectId, prompt, selection, attachmentIds)
         val prepared = journal.prepare(actionId, ActionRecordKind.START_TURN, encoded, null, null)
         if (prepared == null) {
             pending.remove(actionId, terminal)
@@ -258,8 +268,29 @@ class TaskControlViewModel(
     suspend fun needsNewTaskReview(): Boolean = hasUnresolvedNewTask() == true
 
     suspend fun dismissUnresolvedNewTasks(): Boolean {
-        val records = unresolvedNewTaskRecords() ?: return false
-        return records.all { journal.dismissUnknown(it.actionId) }
+        if (!sending.compareAndSet(false, true)) return false
+        return try {
+            val records = unresolvedNewTaskRecords() ?: return false
+            for (record in records) {
+                val dismissalActionId = nextActionId()
+                if (!dismissalActionId.matches(protocolIdPattern)) return false
+                val terminal = CompletableDeferred<TerminalNewTaskResult?>()
+                if (pending.putIfAbsent(dismissalActionId, terminal) != null) return false
+                try {
+                    val encoded = encodeUnknownNewTaskDismissal(dismissalActionId, record.actionId)
+                    if (sendAction(encoded) { true } == ActionSendResult.NOT_SENT) return false
+                    val result = terminal.await() ?: return false
+                    if (result.state != "confirmed" || result.resultCode != ActionResultCode.ACCEPTED.wireName) return false
+                    if (!journal.dismissUnknown(record.actionId)) return false
+                    onTerminalStored(dismissalActionId, result.sequence, false, false)
+                } finally {
+                    pending.remove(dismissalActionId, terminal)
+                }
+            }
+            true
+        } finally {
+            sending.set(false)
+        }
     }
 
     suspend fun unresolvedExistingTaskIds(): Set<String> =
@@ -327,7 +358,13 @@ class TaskControlViewModel(
             }
         }
 
-    private fun encode(actionId: String, projectId: String, prompt: String, selection: NewTaskSelection): String {
+    private fun encode(
+        actionId: String,
+        projectId: String,
+        prompt: String,
+        selection: NewTaskSelection,
+        attachmentIds: List<String>,
+    ): String {
         val envelope =
             buildJsonObject {
                 put("version", buildJsonObject { put("major", ProtocolCodec.PROTOCOL_MAJOR); put("minor", 0) })
@@ -344,13 +381,20 @@ class TaskControlViewModel(
                         put("modelId", selection.modelId)
                         put("reasoningId", selection.reasoningId)
                         put("permissionModeId", selection.permissionModeId)
+                        if (attachmentIds.isNotEmpty()) put("attachmentIds", buildJsonArray { attachmentIds.forEach { add(JsonPrimitive(it)) } })
                     },
                 )
             }
         return Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), envelope).also(ProtocolCodec::decodeText)
     }
 
-    private fun encodeExisting(actionId: String, taskId: String, prompt: String?, kind: ActionRecordKind): String {
+    private fun encodeExisting(
+        actionId: String,
+        taskId: String,
+        prompt: String?,
+        kind: ActionRecordKind,
+        attachmentIds: List<String>,
+    ): String {
         val envelope =
             buildJsonObject {
                 put("version", buildJsonObject { put("major", ProtocolCodec.PROTOCOL_MAJOR); put("minor", 0) })
@@ -364,11 +408,15 @@ class TaskControlViewModel(
                         put("kind", kind.wireName)
                         put("taskId", taskId)
                         prompt?.let { put("text", it) }
+                        if (attachmentIds.isNotEmpty()) put("attachmentIds", buildJsonArray { attachmentIds.forEach { add(JsonPrimitive(it)) } })
                     },
                 )
             }
         return Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), envelope).also(ProtocolCodec::decodeText)
     }
+
+    private fun validAttachmentIds(ids: List<String>): Boolean =
+        ids.size <= 2 && ids.distinct().size == ids.size && ids.all { it.matches(protocolIdPattern) }
 
     private fun encodeUnknownControlDismissal(actionId: String, taskId: String, targetActionId: String): String {
         val envelope =
@@ -383,6 +431,25 @@ class TaskControlViewModel(
                         put("actionId", actionId)
                         put("kind", "dismiss_unknown_control")
                         put("taskId", taskId)
+                        put("targetActionId", targetActionId)
+                    },
+                )
+            }
+        return Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), envelope).also(ProtocolCodec::decodeText)
+    }
+
+    private fun encodeUnknownNewTaskDismissal(actionId: String, targetActionId: String): String {
+        val envelope =
+            buildJsonObject {
+                put("version", buildJsonObject { put("major", ProtocolCodec.PROTOCOL_MAJOR); put("minor", 0) })
+                put("messageId", actionId)
+                put("sender", "phone")
+                put("type", "action")
+                put(
+                    "body",
+                    buildJsonObject {
+                        put("actionId", actionId)
+                        put("kind", "dismiss_unknown_control")
                         put("targetActionId", targetActionId)
                     },
                 )

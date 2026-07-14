@@ -15,6 +15,48 @@ import (
 
 var queueNow = time.Date(2026, 7, 13, 2, 0, 0, 0, time.UTC)
 
+func TestQueuePreservesAttachmentOwnershipUntilTerminalHandoff(t *testing.T) {
+	store := NewMemoryStore()
+	queue := New(store, nil)
+	want := Entry{
+		ActionID: "a-attachments", QueueKey: "thread-1", ThreadID: "thread-1", Prompt: "inspect", DeviceID: "phone-1",
+		AttachmentIDs: []string{"upload-1", "upload-2"}, CreatedAt: queueNow,
+	}
+	if err := queue.Enqueue(context.Background(), want); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := queue.Entry(context.Background(), want.ActionID)
+	if err != nil || stored.DeviceID != want.DeviceID || !slices.Equal(stored.AttachmentIDs, want.AttachmentIDs) {
+		t.Fatalf("stored attachment ownership = %#v, %v", stored, err)
+	}
+	stored.AttachmentIDs[0] = "mutated"
+	again, err := queue.Entry(context.Background(), want.ActionID)
+	if err != nil || !slices.Equal(again.AttachmentIDs, want.AttachmentIDs) {
+		t.Fatalf("caller mutated stored attachment IDs: %#v, %v", again, err)
+	}
+}
+
+func TestQueueReportsOnlyActiveAttachmentClaimsForStartupReconciliation(t *testing.T) {
+	store := NewMemoryStore()
+	queue := New(store, nil)
+	for _, entry := range []Entry{
+		{ActionID: "prepared", QueueKey: "thread-1", ThreadID: "thread-1", Prompt: "one", DeviceID: "phone-1", AttachmentIDs: []string{"upload-1"}, CreatedAt: queueNow},
+		{ActionID: "unknown", QueueKey: "thread-2", ThreadID: "thread-2", Prompt: "two", DeviceID: "phone-1", AttachmentIDs: []string{"upload-2"}, CreatedAt: queueNow.Add(time.Second)},
+		{ActionID: "plain", QueueKey: "thread-3", ThreadID: "thread-3", Prompt: "three", CreatedAt: queueNow.Add(2 * time.Second)},
+	} {
+		if err := queue.Enqueue(context.Background(), entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, _ = queue.DispatchNext(context.Background(), "thread-2", func(context.Context, Entry) (Result, error) {
+		return Result{}, ErrSendOutcomeUnknown
+	}, nil, queueNow.Add(3*time.Second))
+	claims, err := queue.AttachmentClaims(context.Background())
+	if err != nil || len(claims) != 2 || claims["prepared"].DeviceID != "phone-1" || !slices.Equal(claims["unknown"].AttachmentIDs, []string{"upload-2"}) {
+		t.Fatalf("active attachment claims = %#v, %v", claims, err)
+	}
+}
+
 func TestQueuePersistsOrderAndMarksUnknownBeforeSend(t *testing.T) {
 	store := NewMemoryStore()
 	queue := New(store, nil)
@@ -333,20 +375,24 @@ func TestUserReviewCanClearOnlyTheMatchingUnknownExistingTaskAction(t *testing.T
 		return Result{}, ErrSendOutcomeUnknown
 	}, nil, queueNow.Add(time.Second))
 
-	if err := queue.DismissUnknown(context.Background(), "unknown-1", "thread-2", queueNow.Add(2*time.Second)); !errors.Is(err, ErrInvalidEntry) {
+	if _, err := queue.DismissUnknown(context.Background(), "unknown-1", "thread-2", "pixel-9", queueNow.Add(2*time.Second)); !errors.Is(err, ErrInvalidEntry) {
 		t.Fatalf("cross-task dismissal error = %v", err)
 	}
-	if err := queue.DismissUnknown(context.Background(), "unknown-1", "thread-1", queueNow.Add(2*time.Second)); err != nil {
+	dismissed, err := queue.DismissUnknown(context.Background(), "unknown-1", "thread-1", "pixel-9", queueNow.Add(2*time.Second))
+	if err != nil {
 		t.Fatal(err)
+	}
+	if dismissed.ActionID != "unknown-1" || dismissed.State != StateCanceled {
+		t.Fatalf("returned dismissed entry = %#v", dismissed)
 	}
 	stored, err := store.Entry(context.Background(), "unknown-1")
 	if err != nil || stored.State != StateCanceled || stored.Prompt != "" || stored.ErrorCode != "user_reviewed" {
 		t.Fatalf("dismissed entry = %#v, %v", stored, err)
 	}
-	if err := queue.DismissUnknown(context.Background(), "unknown-1", "thread-1", queueNow.Add(3*time.Second)); err != nil {
+	if _, err := queue.DismissUnknown(context.Background(), "unknown-1", "thread-1", "pixel-9", queueNow.Add(3*time.Second)); err != nil {
 		t.Fatalf("idempotent dismissal = %v", err)
 	}
-	if err := queue.DismissUnknown(context.Background(), "never-received", "thread-1", queueNow.Add(3*time.Second)); err != nil {
+	if _, err := queue.DismissUnknown(context.Background(), "never-received", "thread-1", "pixel-9", queueNow.Add(3*time.Second)); err != nil {
 		t.Fatalf("missing action dismissal = %v", err)
 	}
 }

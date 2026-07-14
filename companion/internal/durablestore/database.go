@@ -106,6 +106,8 @@ CREATE TABLE IF NOT EXISTS prompt_entries (
     effort TEXT NOT NULL,
     permission_mode TEXT NOT NULL,
     request_hash TEXT NOT NULL,
+    device_id TEXT NOT NULL DEFAULT '',
+    attachment_ids TEXT NOT NULL DEFAULT '[]',
     state TEXT NOT NULL,
     result_code TEXT NOT NULL,
     result_thread_id TEXT NOT NULL,
@@ -165,6 +167,16 @@ func ensurePromptColumns(ctx context.Context, database *sql.DB) error {
 	if !found["owner_source"] {
 		if _, err := database.ExecContext(ctx, `ALTER TABLE prompt_entries ADD COLUMN owner_source TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("add prompt owner source: %w", err)
+		}
+	}
+	if !found["device_id"] {
+		if _, err := database.ExecContext(ctx, `ALTER TABLE prompt_entries ADD COLUMN device_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add prompt device ID: %w", err)
+		}
+	}
+	if !found["attachment_ids"] {
+		if _, err := database.ExecContext(ctx, `ALTER TABLE prompt_entries ADD COLUMN attachment_ids TEXT NOT NULL DEFAULT '[]'`); err != nil {
+			return fmt.Errorf("add prompt attachment IDs: %w", err)
 		}
 	}
 	return nil

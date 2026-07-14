@@ -50,6 +50,8 @@ import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
 import app.codexlauncher.task.composer.DraftComposerPhase
 import app.codexlauncher.task.composer.DraftComposerState
+import app.codexlauncher.task.attachments.AttachmentUploadState
+import app.codexlauncher.task.attachments.AttachmentRows
 
 @Composable
 fun HomeScreen(
@@ -67,6 +69,9 @@ fun HomeScreen(
     newTaskNeedsReview: Boolean = false,
     newTaskMessage: String? = null,
     onDismissNewTaskReview: () -> Unit = {},
+    attachments: List<AttachmentUploadState> = emptyList(),
+    attachmentMessage: String? = null,
+    onRemoveAttachment: (String) -> Unit = {},
     onAttach: () -> Unit = {},
     onDictate: () -> Unit = {},
     onConnectionHelp: () -> Unit = {},
@@ -131,6 +136,9 @@ fun HomeScreen(
                     newTaskNeedsReview = newTaskNeedsReview,
                     newTaskMessage = newTaskMessage,
                     onDismissNewTaskReview = onDismissNewTaskReview,
+                    attachments = attachments,
+                    attachmentMessage = attachmentMessage,
+                    onRemoveAttachment = onRemoveAttachment,
                     onAttach = onAttach,
                     onDictate = onDictate,
                     onOpenTask = onOpenTask,
@@ -229,6 +237,9 @@ private fun OnlineContent(
     newTaskNeedsReview: Boolean,
     newTaskMessage: String?,
     onDismissNewTaskReview: () -> Unit,
+    attachments: List<AttachmentUploadState>,
+    attachmentMessage: String?,
+    onRemoveAttachment: (String) -> Unit,
     onAttach: () -> Unit,
     onDictate: () -> Unit,
     onOpenTask: (String) -> Unit,
@@ -306,6 +317,12 @@ private fun OnlineContent(
                 maxLines = 5,
                 shape = RoundedCornerShape(6.dp),
             )
+            if (attachments.isNotEmpty()) {
+                AttachmentRows(attachments, onRemoveAttachment)
+            }
+            attachmentMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            }
             when {
                 newTaskNeedsReview -> {
                     Text(

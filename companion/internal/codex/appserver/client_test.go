@@ -178,6 +178,34 @@ func TestClientRejectsUnsafeInputsAndUnsupportedApprovalDecisions(t *testing.T) 
 	}
 }
 
+func TestTurnInputUsesCurrentCodexLocalImageAndMentionShapes(t *testing.T) {
+	inputs, err := turnInput("inspect these", []AttachmentInput{
+		{ID: "image-1", Path: "/private/attachment-1", MediaType: "image/png"},
+		{ID: "document-1", Path: "/private/attachment-2", MediaType: "application/pdf"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[{"type":"text","text":"inspect these"},{"type":"localImage","path":"/private/attachment-1"},{"type":"mention","name":"document-1","path":"/private/attachment-2"}]`
+	if string(encoded) != want {
+		t.Fatalf("turn input = %s, want %s", encoded, want)
+	}
+	for _, invalid := range [][]AttachmentInput{
+		{{ID: "bad id!", Path: "/private/file", MediaType: "image/png"}},
+		{{ID: "image-1", Path: "relative/file", MediaType: "image/png"}},
+		{{ID: "image-1", Path: "/private/file", MediaType: ""}},
+		{{ID: "same", Path: "/private/one", MediaType: "image/png"}, {ID: "same", Path: "/private/two", MediaType: "image/png"}},
+	} {
+		if _, err := turnInput("inspect", invalid); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("invalid attachments %#v error = %v", invalid, err)
+		}
+	}
+}
+
 func TestThreadNotLoadedClassificationIsExactAndSurvivesWrapping(t *testing.T) {
 	threadID := "00000000-0000-4000-8000-000000000000"
 	err := fmt.Errorf("read task: %w", &rpcError{Code: -32600, Message: "thread not loaded: " + threadID})

@@ -16,6 +16,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -47,6 +48,7 @@ class TaskControlViewModelTest {
                 prompt = "Fix it",
                 selection = NewTaskSelection("public-model", "high", "workspace-write"),
                 draftVersion = DraftVersion(1, 7),
+                attachmentIds = listOf("upload-1", "upload-2"),
             )
         }
         yield()
@@ -56,6 +58,7 @@ class TaskControlViewModelTest {
         assertEquals("public-model", action.body.getValue("modelId").jsonPrimitive.content)
         assertEquals("high", action.body.getValue("reasoningId").jsonPrimitive.content)
         assertEquals("workspace-write", action.body.getValue("permissionModeId").jsonPrimitive.content)
+        assertEquals(listOf("upload-1", "upload-2"), action.body.getValue("attachmentIds").jsonArray.map { it.jsonPrimitive.content })
         assertNull(action.body["taskId"])
         assertFalse(events.any { it.startsWith("clear_draft:") })
 
@@ -136,10 +139,12 @@ class TaskControlViewModelTest {
     fun `unknown new task blocks retry across recreation until explicitly dismissed`() = runBlocking {
         val journal = ControlRecordingJournal()
         var sends = 0
+		var lastPayload = ""
         fun controls() =
             TaskControlViewModel(
-                sendAction = { _, beforeBoundary ->
+                sendAction = { payload, beforeBoundary ->
                     assertTrue(beforeBoundary())
+					lastPayload = payload
                     sends += 1
                     ActionSendResult.SENT_UNKNOWN
                 },
@@ -161,7 +166,18 @@ class TaskControlViewModelTest {
 
         assertEquals(NewTaskSendOutcome.NeedsReview, controls().startNewTask("project-main", "Retry", selection, DraftVersion(1, 2)))
         assertEquals(1, sends)
-        assertTrue(controls().dismissUnresolvedNewTasks())
+		val recreated = controls()
+		val dismissed = async { recreated.dismissUnresolvedNewTasks() }
+		yield()
+		val dismissal = ProtocolCodec.decodeText(lastPayload)
+		assertEquals("dismiss_unknown_control", dismissal.body.getValue("kind").jsonPrimitive.content)
+		assertFalse("taskId" in dismissal.body)
+		recreated.accept(
+			ProtocolCodec.decodeText(
+				"""{"version":{"major":1,"minor":0},"messageId":"dismissed","sender":"companion","type":"action_result","seq":10,"body":{"actionId":"action-2","state":"confirmed","resultCode":"accepted"}}""",
+			),
+		)
+		assertTrue(dismissed.await())
     }
 
     @Test
@@ -197,7 +213,7 @@ class TaskControlViewModelTest {
 
         assertEquals(
             ExistingTaskControlOutcome.Queued,
-            complete(async { controls.sendToTask("thread-1", "After that", ExistingTaskSendMode.QUEUE) }, "existing-1", "queued"),
+            complete(async { controls.sendToTask("thread-1", "After that", ExistingTaskSendMode.QUEUE, listOf("upload-1")) }, "existing-1", "queued"),
         )
         assertEquals(
             ExistingTaskControlOutcome.Redirected,
@@ -213,6 +229,7 @@ class TaskControlViewModelTest {
         val stop = ProtocolCodec.decodeText(payloads[2])
         assertEquals("start_turn", queue.body.getValue("kind").jsonPrimitive.content)
         assertEquals("thread-1", queue.body.getValue("taskId").jsonPrimitive.content)
+        assertEquals(listOf("upload-1"), queue.body.getValue("attachmentIds").jsonArray.map { it.jsonPrimitive.content })
         assertEquals("steer_turn", redirect.body.getValue("kind").jsonPrimitive.content)
         assertEquals("interrupt_turn", stop.body.getValue("kind").jsonPrimitive.content)
         assertEquals(

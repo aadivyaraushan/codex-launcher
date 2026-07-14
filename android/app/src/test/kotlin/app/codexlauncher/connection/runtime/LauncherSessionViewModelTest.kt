@@ -8,6 +8,8 @@ import app.codexlauncher.connection.session.ActionSendResult
 import app.codexlauncher.connection.session.SessionFailure
 import app.codexlauncher.connection.session.SessionObserver
 import app.codexlauncher.connection.state.ConnectionPhase
+import app.codexlauncher.task.attachments.AttachmentSelection
+import app.codexlauncher.task.attachments.AttachmentUploader
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.storage.actions.ActionErrorCode
 import app.codexlauncher.storage.actions.ActionJournal
@@ -20,6 +22,7 @@ import app.codexlauncher.task.configuration.NewTaskSelection
 import app.codexlauncher.task.control.NewTaskSendOutcome
 import app.codexlauncher.task.composer.DraftVersion
 import java.util.Base64
+import java.security.MessageDigest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +37,43 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LauncherSessionViewModelTest {
+	@Test
+	fun `authenticated attachment uploader receives acknowledgements and returns verified ids`() = runBlocking {
+		lateinit var observer: SessionObserver
+		val connection = FakeSessionConnection()
+		val uploader = AttachmentUploader(uploadId = { "upload-1" }, messageId = { "attachment-message" })
+		val viewModel = LauncherSessionViewModel(
+			connect = { _, _, nextObserver -> observer = nextObserver; connection },
+			loadProject = { null }, saveProject = { true }, clearProject = { true },
+			actionJournal = FakeActionJournal(), nextSessionId = { "session-1" },
+			attachmentUploader = uploader, workScope = CoroutineScope(Dispatchers.Unconfined),
+		)
+		viewModel.connect(pairedComputer())
+		observer.onReady(connection, ByteArray(32) { 5 })
+		observer.onMessage(welcome(capabilities = listOf("set_project", "attachments")))
+		observer.onMessage(
+			decode(
+				"""{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[],"tasks":[]}}""",
+			),
+		)
+		val payload = "private notes".encodeToByteArray()
+		assertEquals(AttachmentSelection.Accepted("upload-1"), viewModel.addAttachment("notes.txt", "text/plain", payload))
+		val prepared = async { viewModel.prepareAttachments() }
+		connection.awaitType("attachment_offer")
+		val sha = MessageDigest.getInstance("SHA-256").digest(payload).joinToString("") { "%02x".format(it) }
+		observer.onMessage(
+			decode(
+				"""{"version":{"major":1,"minor":0},"messageId":"accepted","sender":"companion","type":"attachment_ack","seq":2,"body":{"uploadId":"upload-1","state":"accepted","receivedBytes":0,"sha256":"$sha","nextChunk":0}}""",
+			),
+		)
+		connection.awaitBinary()
+		observer.onMessage(
+			decode(
+				"""{"version":{"major":1,"minor":0},"messageId":"complete","sender":"companion","type":"attachment_ack","seq":3,"body":{"uploadId":"upload-1","state":"complete","receivedBytes":${payload.size},"sha256":"$sha","nextChunk":1}}""",
+			),
+		)
+		assertEquals(listOf("upload-1"), prepared.await())
+	}
     @Test
     fun newTaskSendUsesSelectedProjectAndClearsDraftAfterDurableConfirmation() = runBlocking {
         lateinit var observer: SessionObserver
@@ -118,6 +158,7 @@ class LauncherSessionViewModelTest {
     @Test
     fun unresolvedNewTaskIsPublishedAndRequiresExplicitDismissalAfterRecreation() = runBlocking {
         lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
         val unknown =
             ActionRecord(
                 actionId = "unknown-new-task",
@@ -133,7 +174,7 @@ class LauncherSessionViewModelTest {
             )
         val viewModel =
             LauncherSessionViewModel(
-                connect = { _, _, nextObserver -> observer = nextObserver; FakeSessionConnection() },
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
                 loadProject = { null },
                 saveProject = { true },
                 clearProject = { true },
@@ -141,11 +182,20 @@ class LauncherSessionViewModelTest {
                 workScope = CoroutineScope(Dispatchers.Unconfined),
             )
         viewModel.connect(pairedComputer())
-        observer.onReady(FakeSessionConnection(), ByteArray(32))
+        observer.onReady(connection, ByteArray(32))
         observer.onMessage(welcomeWithOptions())
 
         assertTrue(viewModel.state.value.newTaskNeedsReview)
-        assertTrue(viewModel.dismissUnconfirmedNewTask())
+        val dismissal = async { viewModel.dismissUnconfirmedNewTask() }
+        val dismissAction = ProtocolCodec.decodeText(connection.awaitType("action"))
+        assertEquals("dismiss_unknown_control", dismissAction.body.getValue("kind").jsonPrimitive.content)
+        val dismissActionId = dismissAction.body.getValue("actionId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"dismiss-new-result","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$dismissActionId","state":"confirmed","resultCode":"accepted"}}""",
+            ),
+        )
+        assertTrue(dismissal.await())
         assertFalse(viewModel.state.value.newTaskNeedsReview)
     }
 
@@ -1554,6 +1604,8 @@ private class FakeSessionConnection : SessionConnection {
     val rejectedAcknowledgements = mutableSetOf<Long>()
     var closed = false
     private val sentSignal = Channel<Unit>(Channel.UNLIMITED)
+	private val binarySignal = Channel<Unit>(Channel.UNLIMITED)
+	val binary = mutableListOf<ByteArray>()
 
     override fun sendText(encoded: String): Boolean {
         val message = ProtocolCodec.decodeText(encoded)
@@ -1574,6 +1626,17 @@ private class FakeSessionConnection : SessionConnection {
         sendText(encoded)
         return ActionSendResult.SENT_UNKNOWN
     }
+
+	override fun sendBinary(frame: ByteArray): Boolean {
+		binary += frame.copyOf()
+		binarySignal.trySend(Unit)
+		return true
+	}
+
+	suspend fun awaitBinary(): ByteArray {
+		while (binary.isEmpty()) binarySignal.receive()
+		return binary.first()
+	}
 
     suspend fun awaitType(type: String): String {
         while (true) {

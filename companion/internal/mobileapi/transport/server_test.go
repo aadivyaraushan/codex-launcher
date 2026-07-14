@@ -13,20 +13,121 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
 )
+
+func TestAttachmentSessionPersistsCompletesResumesAndCancels(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	key := []byte("0123456789abcdef0123456789abcdef")
+	payload := []byte("attachment")
+	digest := sha256.Sum256(payload)
+	digestHex := fmt.Sprintf("%x", digest[:])
+	store, err := attachments.Open(filepath.Join(t.TempDir(), "attachments"), attachments.DefaultLimits(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	firstProtocol := contract.NewSessionWithAttachments(key, nil, "session-1", "phone-1")
+	first := newAttachmentSession("phone-1", firstProtocol, store, func() time.Time { return now })
+	offer := phoneAttachmentMessage(t, firstProtocol, "offer-1", "attachment_offer", fmt.Sprintf(`{"uploadId":"upload-1","declaredTotal":%d,"sha256":"%s"}`, len(payload), digestHex))
+	event, err := first.acceptText(offer)
+	if err != nil || event.State != "accepted" || event.NextChunk != 0 || event.ReceivedBytes != 0 {
+		t.Fatalf("offer event = %#v, %v", event, err)
+	}
+	frame, err := contract.EncodeAttachmentFrame(contract.AttachmentChunk{
+		SessionID: "session-1", UploadID: "upload-1", Chunk: 0, Offset: 0, DeclaredTotal: int64(len(payload)), Payload: payload[:4],
+	}, key)
+	if err != nil || first.acceptBinary(frame) != nil {
+		t.Fatalf("first chunk error = %v", err)
+	}
+	firstProtocol.Close()
+
+	secondProtocol := contract.NewSessionWithAttachments(key, nil, "session-2", "phone-1")
+	phoneAttachmentMessage(t, secondProtocol, "hello-2", "hello", `{"clientInstanceId":"phone-1","supportedMajors":[1],"resume":{"mode":"warm","lastAck":1,"uploads":{"upload-1":1}}}`)
+	second := newAttachmentSession("phone-1", secondProtocol, store, func() time.Time { return now.Add(time.Second) })
+	events, err := second.restoreRequested()
+	if err != nil || len(events) != 1 || events[0].NextChunk != 1 || events[0].ReceivedBytes != 4 {
+		t.Fatalf("resume events = %#v, %v", events, err)
+	}
+	frame, err = contract.EncodeAttachmentFrame(contract.AttachmentChunk{
+		SessionID: "session-2", UploadID: "upload-1", Chunk: 1, Offset: 4, DeclaredTotal: int64(len(payload)), Final: true, Payload: payload[4:],
+	}, key)
+	if err != nil || second.acceptBinary(frame) != nil {
+		t.Fatalf("resumed chunk error = %v", err)
+	}
+	complete := phoneAttachmentMessage(t, secondProtocol, "complete-1", "attachment_complete", `{"uploadId":"upload-1"}`)
+	event, err = second.acceptText(complete)
+	if err != nil || event.State != "complete" || event.ReceivedBytes != int64(len(payload)) || event.NextChunk != 2 {
+		t.Fatalf("complete event = %#v, %v", event, err)
+	}
+	if resolved, err := store.Resolve("phone-1", []string{"upload-1"}, now); err != nil || len(resolved) != 1 {
+		t.Fatalf("completed store state = %#v, %v", resolved, err)
+	}
+
+	cancelProtocol := contract.NewSessionWithAttachments(key, nil, "session-3", "phone-1")
+	cancelSession := newAttachmentSession("phone-1", cancelProtocol, store, func() time.Time { return now })
+	cancelOffer := phoneAttachmentMessage(t, cancelProtocol, "offer-2", "attachment_offer", fmt.Sprintf(`{"uploadId":"upload-2","declaredTotal":%d,"sha256":"%s"}`, len(payload), digestHex))
+	if _, err := cancelSession.acceptText(cancelOffer); err != nil {
+		t.Fatal(err)
+	}
+	cancel := phoneAttachmentMessage(t, cancelProtocol, "cancel-2", "attachment_cancel", `{"uploadId":"upload-2"}`)
+	event, err = cancelSession.acceptText(cancel)
+	if err != nil || event.State != "cancelled" || event.SHA256 != digestHex {
+		t.Fatalf("cancel event = %#v, %v", event, err)
+	}
+	if _, err := store.Resume("phone-1", "upload-2", now); !errors.Is(err, attachments.ErrAttachmentUnavailable) {
+		t.Fatalf("cancelled store state error = %v", err)
+	}
+}
+
+func TestAttachmentSessionRejectsFalseResumeClaim(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	key := []byte("0123456789abcdef0123456789abcdef")
+	payload := []byte("attachment")
+	digest := sha256.Sum256(payload)
+	store, err := attachments.Open(filepath.Join(t.TempDir(), "attachments"), attachments.DefaultLimits(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Begin("phone-1", "upload-1", int64(len(payload)), fmt.Sprintf("%x", digest[:]), now); err != nil {
+		t.Fatal(err)
+	}
+	protocol := contract.NewSessionWithAttachments(key, nil, "session-2", "phone-1")
+	phoneAttachmentMessage(t, protocol, "hello-2", "hello", `{"clientInstanceId":"phone-1","supportedMajors":[1],"resume":{"mode":"warm","lastAck":1,"uploads":{"upload-1":2}}}`)
+	session := newAttachmentSession("phone-1", protocol, store, func() time.Time { return now })
+	if _, err := session.restoreRequested(); !errors.Is(err, contract.ErrInvalidAttachment) {
+		t.Fatalf("false resume claim error = %v", err)
+	}
+}
+
+func phoneAttachmentMessage(t *testing.T, session *contract.Session, id, messageType, body string) contract.Message {
+	t.Helper()
+	frame := []byte(fmt.Sprintf(`{"version":{"major":1,"minor":0},"messageId":"%s","sender":"phone","type":"%s","body":%s}`, id, messageType, body))
+	if _, err := contract.DecodeText(frame); err != nil {
+		t.Fatalf("decode %s: %v; frame=%s", messageType, err, frame)
+	}
+	message, err := session.AcceptText(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return message
+}
 
 func TestPinnedTLSServerPairsAuthenticatesAndClosesARevokedPhone(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -40,7 +141,12 @@ func TestPinnedTLSServerPairsAuthenticatesAndClosesARevokedPhone(t *testing.T) {
 		t.Fatal(err)
 	}
 	messages := make(chan contract.Message, 1)
-	server, err := NewServer(pairingService, func(ctx context.Context, sender MessageSender, message contract.Message) error {
+	attachmentStore, err := attachments.Open(filepath.Join(t.TempDir(), "attachments"), attachments.DefaultLimits(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var attachmentSequence atomic.Uint64
+	server, err := NewServerWithAttachments(pairingService, func(ctx context.Context, sender MessageSender, message contract.Message) error {
 		messages <- message
 		if message.Type == "hello" {
 			return sender.Send(ctx, contract.Message{
@@ -49,6 +155,18 @@ func TestPinnedTLSServerPairsAuthenticatesAndClosesARevokedPhone(t *testing.T) {
 			})
 		}
 		return nil
+	}, attachmentStore, func(ctx context.Context, sender MessageSender, event AttachmentEvent) error {
+		body, err := json.Marshal(map[string]any{
+			"uploadId": event.UploadID, "state": event.State, "receivedBytes": event.ReceivedBytes,
+			"sha256": event.SHA256, "nextChunk": event.NextChunk,
+		})
+		if err != nil {
+			return err
+		}
+		sequence := attachmentSequence.Add(1)
+		return sender.Send(ctx, contract.Message{
+			Version: contract.Version{Major: 1}, MessageID: fmt.Sprintf("attachment-ack-%d", sequence), Sender: "companion", Type: "attachment_ack", Sequence: &sequence, Body: body,
+		})
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -224,6 +342,37 @@ func TestPinnedTLSServerPairsAuthenticatesAndClosesARevokedPhone(t *testing.T) {
 		t.Fatalf("outbound welcome = %#v, error = %v", welcome, err)
 	}
 
+	attachmentPayload := []byte("from the phone")
+	attachmentDigest := sha256.Sum256(attachmentPayload)
+	offerFrame := fmt.Sprintf(`{"version":{"major":1,"minor":0},"messageId":"offer-live","sender":"phone","type":"attachment_offer","body":{"uploadId":"upload-live","declaredTotal":%d,"sha256":"%x"}}`, len(attachmentPayload), attachmentDigest)
+	if err := connection.Write(ctx, websocket.MessageText, []byte(offerFrame)); err != nil {
+		t.Fatal(err)
+	}
+	accepted := readAttachmentAck(t, ctx, connection)
+	if accepted.State != "accepted" || accepted.NextChunk != 0 || accepted.ReceivedBytes != 0 {
+		t.Fatalf("accepted ack = %#v", accepted)
+	}
+	attachmentKeyInput := append(append([]byte(nil), proof.HostSignature...), proof.Signature...)
+	attachmentKey := sha256.Sum256(attachmentKeyInput)
+	binaryFrame, err := contract.EncodeAttachmentFrame(contract.AttachmentChunk{
+		SessionID: "session-1", UploadID: "upload-live", DeclaredTotal: int64(len(attachmentPayload)), Final: true, Payload: attachmentPayload,
+	}, attachmentKey[:])
+	if err != nil || connection.Write(ctx, websocket.MessageBinary, binaryFrame) != nil {
+		t.Fatalf("binary attachment send = %v", err)
+	}
+	completeFrame := []byte(`{"version":{"major":1,"minor":0},"messageId":"complete-live","sender":"phone","type":"attachment_complete","body":{"uploadId":"upload-live"}}`)
+	if err := connection.Write(ctx, websocket.MessageText, completeFrame); err != nil {
+		t.Fatal(err)
+	}
+	completed := readAttachmentAck(t, ctx, connection)
+	if completed.State != "complete" || completed.ReceivedBytes != int64(len(attachmentPayload)) || completed.SHA256 != fmt.Sprintf("%x", attachmentDigest) {
+		t.Fatalf("completed ack = %#v", completed)
+	}
+	resolved, err := attachmentStore.Resolve("pixel-9", []string{"upload-live"}, testNow)
+	if err != nil || len(resolved) != 1 {
+		t.Fatalf("durable attachment = %#v, %v", resolved, err)
+	}
+
 	if err := pairingService.Revoke(ctx, "pixel-9"); err != nil {
 		t.Fatal(err)
 	}
@@ -232,6 +381,23 @@ func TestPinnedTLSServerPairsAuthenticatesAndClosesARevokedPhone(t *testing.T) {
 	if _, _, err := connection.Read(readContext); err == nil {
 		t.Fatal("revoked phone socket remained open")
 	}
+}
+
+func readAttachmentAck(t *testing.T, ctx context.Context, connection *websocket.Conn) AttachmentEvent {
+	t.Helper()
+	messageType, frame, err := connection.Read(ctx)
+	if err != nil || messageType != websocket.MessageText {
+		t.Fatalf("attachment ack frame type = %v, error = %v", messageType, err)
+	}
+	message, err := contract.DecodeText(frame)
+	if err != nil || message.Type != "attachment_ack" {
+		t.Fatalf("attachment ack message = %#v, %v", message, err)
+	}
+	var event AttachmentEvent
+	if err := json.Unmarshal(message.Body, &event); err != nil {
+		t.Fatal(err)
+	}
+	return event
 }
 
 func TestServerRejectsPlaintextAndAnUnknownDevice(t *testing.T) {

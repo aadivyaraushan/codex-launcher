@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.content.Intent
 import android.os.Bundle
+import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
@@ -74,9 +75,14 @@ import app.codexlauncher.task.transcript.TaskScreen
 import app.codexlauncher.task.transcript.TranscriptDetail
 import app.codexlauncher.task.transcript.TranscriptDetailScreen
 import app.codexlauncher.task.composer.DraftComposerViewModel
+import app.codexlauncher.task.attachments.AttachmentDocumentReader
+import app.codexlauncher.task.attachments.AttachmentSelection
+import androidx.activity.result.PickVisualMediaRequest
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class LauncherActivity : ComponentActivity() {
     private val themePreferences by lazy { ThemePreferenceStore(applicationContext.themeDataStore) }
@@ -143,6 +149,7 @@ class LauncherActivity : ComponentActivity() {
             val pairingUiState by pairingViewModel.state.collectAsState()
             val sessionUiState by sessionViewModel.state.collectAsState()
             val draftComposerState by draftComposerViewModel.state.collectAsState()
+            val attachmentUploads by sessionViewModel.attachments.collectAsState()
             val projectUiState by sessionViewModel.projectSelection.state.collectAsState()
             val scope = rememberCoroutineScope()
             val appsRepository = remember { InstalledAppsRepository(applicationContext) }
@@ -155,6 +162,35 @@ class LauncherActivity : ComponentActivity() {
             var connectionHelpVisible by rememberSaveable { mutableStateOf(false) }
             var unpairConfirmVisible by rememberSaveable { mutableStateOf(false) }
             var transcriptDetail by remember { mutableStateOf<TranscriptDetail?>(null) }
+            var attachmentChoiceVisible by rememberSaveable { mutableStateOf(false) }
+            var attachmentMessage by remember { mutableStateOf<String?>(null) }
+            val attachmentReader = remember { AttachmentDocumentReader(contentResolver) }
+            val acceptPickedAttachment: (Uri?) -> Unit = { uri ->
+                if (uri != null) {
+                    scope.launch {
+                        val limit = sessionViewModel.attachmentLimitBytes()
+                        val picked = withContext(Dispatchers.IO) { attachmentReader.read(uri, limit) }
+                        attachmentMessage =
+                            if (picked == null) {
+                                "Could not attach that file. It may be too large or unavailable."
+                            } else {
+                                val result = sessionViewModel.addAttachment(picked.displayName, picked.mediaType, picked.bytes)
+                                picked.bytes.fill(0)
+                                when (result) {
+                                    is AttachmentSelection.Accepted -> null
+                                    AttachmentSelection.TooLarge -> "That file is too large."
+                                    AttachmentSelection.TooMany -> "You can attach up to two files."
+                                    AttachmentSelection.UnsupportedType -> "Audio and video files are not supported."
+                                    AttachmentSelection.Invalid -> "That file cannot be attached."
+                                }
+                            }
+                    }
+                }
+            }
+            val photoPicker =
+                rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia(), acceptPickedAttachment)
+            val documentPicker =
+                rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument(), acceptPickedAttachment)
             var cameraPermissionGranted by remember {
                 mutableStateOf(
                     ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
@@ -321,6 +357,13 @@ class LauncherActivity : ComponentActivity() {
                             onDismissNewTaskReview = {
                                 scope.launch { sessionViewModel.dismissUnconfirmedNewTask() }
                             },
+                            attachments = attachmentUploads,
+                            attachmentMessage = attachmentMessage,
+                            onRemoveAttachment = { uploadId ->
+                                sessionViewModel.removeAttachment(uploadId)
+                                attachmentMessage = null
+                            },
+                            onAttach = { attachmentChoiceVisible = true },
                             onRetry = {
                                 pairedComputer?.let { sessionViewModel.connect(it, force = true) }
                             },
@@ -371,6 +414,13 @@ class LauncherActivity : ComponentActivity() {
                                 onDismissUnresolvedControl = { sessionViewModel.dismissUnconfirmedTaskControl(transcript.taskId) },
                                 followUpText = sessionUiState.followUpDraft,
                                 onFollowUpTextChange = { text -> sessionViewModel.updateTaskFollowUpDraft(transcript.taskId, text) },
+                                attachments = attachmentUploads,
+                                attachmentMessage = attachmentMessage,
+                                onAttach = { attachmentChoiceVisible = true },
+                                onRemoveAttachment = { uploadId ->
+                                    sessionViewModel.removeAttachment(uploadId)
+                                    attachmentMessage = null
+                                },
                             )
                         } ?: LauncherLoadingScreen()
                     LauncherDestination.TASK_DETAIL ->
@@ -406,6 +456,25 @@ class LauncherActivity : ComponentActivity() {
                             onModeSelected = { mode -> scope.launch { themePreferences.setMode(mode) } },
                             onBack = { destination = LauncherDestination.APPS },
                         )
+                }
+                if (attachmentChoiceVisible) {
+                    AlertDialog(
+                        onDismissRequest = { attachmentChoiceVisible = false },
+                        title = { Text("Attach") },
+                        text = { Text("Choose a photo or a file. Files stay private and are sent only to your paired computer.") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                attachmentChoiceVisible = false
+                                photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }) { Text("Photo") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                attachmentChoiceVisible = false
+                                documentPicker.launch(arrayOf("image/*", "text/*", "application/pdf", "application/json", "application/zip"))
+                            }) { Text("File") }
+                        },
+                    )
                 }
                 if (unpairConfirmVisible) {
                     AlertDialog(

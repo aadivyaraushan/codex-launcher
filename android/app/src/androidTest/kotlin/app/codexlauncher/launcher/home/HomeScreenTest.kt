@@ -26,6 +26,7 @@ import app.codexlauncher.task.configuration.ReasoningOption
 import app.codexlauncher.task.configuration.TaskModelOption
 import app.codexlauncher.task.composer.DraftComposerPhase
 import app.codexlauncher.task.composer.DraftComposerState
+import app.codexlauncher.task.attachments.AttachmentUploadState
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -36,6 +37,24 @@ import org.junit.Test
 class HomeScreenTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun selectedAttachmentIsVisibleAndCanBeRemovedBeforeSend() {
+        var removed = ""
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    attachments = listOf(AttachmentUploadState("upload-1", "notes.txt", "text/plain", 12)),
+                    onRemoveAttachment = { removed = it },
+                )
+            }
+        }
+
+        compose.onNodeWithText("notes.txt").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Remove notes.txt").performClick()
+        assertEquals("upload-1", removed)
+    }
 
     @Test
     fun offlineSurfaceHidesTasksAndKeepsEveryEscapeRouteUsable() {

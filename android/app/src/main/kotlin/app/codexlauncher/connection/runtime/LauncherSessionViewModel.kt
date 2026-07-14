@@ -30,6 +30,8 @@ import app.codexlauncher.task.control.TaskControlViewModel
 import app.codexlauncher.task.control.ExistingTaskControlOutcome
 import app.codexlauncher.task.control.ExistingTaskSendMode
 import app.codexlauncher.task.composer.DraftVersion
+import app.codexlauncher.task.attachments.AttachmentSelection
+import app.codexlauncher.task.attachments.AttachmentUploader
 import app.codexlauncher.task.transcript.TaskTranscriptMapper
 import app.codexlauncher.task.transcript.TaskTranscriptUiState
 import java.util.UUID
@@ -50,7 +52,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
 data class LauncherSessionState(
@@ -77,6 +81,7 @@ class LauncherSessionViewModel(
     private val clearConfirmedDraft: suspend (DraftVersion) -> Boolean = { false },
     private val nextSessionId: () -> String = { UUID.randomUUID().toString() },
     private val retryWait: suspend (attempt: Int) -> Unit = { attempt -> delay(retryDelayMillis(attempt)) },
+    private val attachmentUploader: AttachmentUploader = AttachmentUploader(),
     workScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LauncherSessionState())
@@ -88,6 +93,8 @@ class LauncherSessionViewModel(
     private var projectBridge: ProjectSessionBridge? = null
     private var transcriptCapable = false
     private var taskManagementCapable = false
+    private var attachmentCapable = false
+    private var maxAttachmentBytes = ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
     private var taskActionBridge: TaskActionBridge? = null
     private var taskControlViewModel: TaskControlViewModel? = null
     private val pendingTaskAcknowledgements = ConcurrentHashMap<String, TaskAcknowledgement>()
@@ -108,6 +115,7 @@ class LauncherSessionViewModel(
     private var retryToken = 0L
 
     val state: StateFlow<LauncherSessionState> = mutableState.asStateFlow()
+    val attachments = attachmentUploader.state
     val projectSelection =
         ProjectSelectionViewModel(
             select = ::selectProject,
@@ -131,8 +139,8 @@ class LauncherSessionViewModel(
         activeDeviceId = paired.deviceId
         mutableState.value = LauncherSessionState(ConnectionStateMachine.reduce(ConnectionSnapshot.initial(), ConnectionEvent.ConnectRequested))
         val currentGeneration = generation.get()
-        val observer = observer(currentGeneration)
         val sessionId = nextSessionId()
+        val observer = observer(currentGeneration, sessionId)
         AppLog.info(
             feature = "connection-runtime",
             message = "companion connection requested",
@@ -160,7 +168,7 @@ class LauncherSessionViewModel(
         mutableState.value = LauncherSessionState(ConnectionStateMachine.reduce(mutableState.value.connection, ConnectionEvent.ConnectionLost))
     }
 
-    private fun observer(expectedGeneration: Long) =
+    private fun observer(expectedGeneration: Long, sessionId: String) =
         object : SessionObserver {
             override fun onReady(connection: SessionConnection, attachmentKey: ByteArray) {
                 try {
@@ -169,6 +177,7 @@ class LauncherSessionViewModel(
                         return
                     }
                     activeConnection = connection
+                    attachmentUploader.attach(sessionId, attachmentKey, connection)
                     projectBridge?.close()
                     projectBridge = null
                     mutableState.value = mutableState.value.copy(
@@ -196,6 +205,15 @@ class LauncherSessionViewModel(
                         taskActionBridge?.accept(message)
                         taskControlViewModel?.accept(message)
                     }
+                    MessageType.ATTACHMENT_ACK -> {
+                        attachmentUploader.accept(message)
+                        val sequence = message.sequence
+                        if (sequence == null) {
+                            fail(expectedGeneration, SessionFailure.INVALID_PROTOCOL)
+                        } else {
+                            submissionScope.launch { acknowledge(expectedGeneration, sequence) }
+                        }
+                    }
                     else -> Unit
                 }
             }
@@ -218,6 +236,11 @@ class LauncherSessionViewModel(
         }
         transcriptCapable = "task_transcripts" in capabilities
         taskManagementCapable = "task_management" in capabilities
+        attachmentCapable = "attachments" in capabilities
+        maxAttachmentBytes =
+            message.body["limits"]?.jsonObject?.get("maxAttachmentBytes")?.jsonPrimitive?.longOrNull
+                ?.coerceAtMost(ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong())
+                ?: ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
         val taskControlsCapable = "desktop_tasks" in capabilities
         val newTaskOptions =
             if ("new_task_options" in capabilities) NewTaskOptions.fromWelcome(message.body) else null
@@ -297,31 +320,76 @@ class LauncherSessionViewModel(
     suspend fun forkTask(taskId: String): TaskActionOutcome =
         performTaskAction(taskId, TaskAction.Fork)
 
+    fun addAttachment(displayName: String, mediaType: String, bytes: ByteArray): AttachmentSelection {
+        if (!attachmentCapable) return AttachmentSelection.Invalid
+        return attachmentUploader.select(displayName, mediaType, bytes, maxAttachmentBytes)
+    }
+
+    fun removeAttachment(uploadId: String): Boolean = attachmentUploader.remove(uploadId)
+
+    @Synchronized
+    fun attachmentLimitBytes(): Long = if (attachmentCapable) maxAttachmentBytes else 0
+
+    suspend fun prepareAttachments(): List<String>? {
+        if (!attachmentCapable) return if (attachments.value.isEmpty()) emptyList() else null
+        for (attachment in attachments.value) {
+            if (attachment.phase != app.codexlauncher.task.attachments.AttachmentPhase.COMPLETE &&
+                !attachmentUploader.upload(attachment.id)
+            ) return null
+        }
+        return attachmentUploader.completedIds()
+    }
+
     suspend fun startNewTask(prompt: String, selection: NewTaskSelection, draftVersion: DraftVersion): NewTaskSendOutcome {
         val current = mutableState.value
         val projectId = current.connection.selectedProjectId ?: return NewTaskSendOutcome.Unavailable
         val options = current.newTaskOptions ?: return NewTaskSendOutcome.Unavailable
         if (options.normalize(selection) != selection) return NewTaskSendOutcome.Invalid
         val controls = taskControlViewModel ?: return NewTaskSendOutcome.Unavailable
+        val attachmentIds = prepareAttachments() ?: return NewTaskSendOutcome.Unavailable
         mutableState.value = mutableState.value.copy(newTaskMessage = null)
-        val outcome = controls.startNewTask(projectId, prompt, selection, draftVersion)
+        val outcome = controls.startNewTask(projectId, prompt, selection, draftVersion, attachmentIds)
+        finishNewTaskAttachments(attachmentIds, outcome)
         if (outcome == NewTaskSendOutcome.NeedsReview) publishNewTaskReview(generation.get(), true)
         mutableState.value = mutableState.value.copy(newTaskMessage = newTaskMessage(outcome))
         return outcome
     }
 
     suspend fun queueTaskFollowUp(taskId: String, prompt: String): ExistingTaskControlOutcome {
-        val outcome = taskControlViewModel?.sendToTask(taskId, prompt, ExistingTaskSendMode.QUEUE) ?: ExistingTaskControlOutcome.Unavailable
+        val attachmentIds = prepareAttachments() ?: return ExistingTaskControlOutcome.Unavailable
+        val outcome = taskControlViewModel?.sendToTask(taskId, prompt, ExistingTaskSendMode.QUEUE, attachmentIds) ?: ExistingTaskControlOutcome.Unavailable
+        finishExistingTaskAttachments(attachmentIds, outcome)
         if (outcome == ExistingTaskControlOutcome.Queued) publishTaskQueueState(taskId, TaskQueueState.QUEUED)
         if (outcome == ExistingTaskControlOutcome.NeedsReview) publishTaskQueueState(taskId, TaskQueueState.OUTCOME_UNKNOWN)
         return outcome
     }
 
     suspend fun redirectTask(taskId: String, prompt: String): ExistingTaskControlOutcome {
-        val outcome = taskControlViewModel?.sendToTask(taskId, prompt, ExistingTaskSendMode.REDIRECT) ?: ExistingTaskControlOutcome.Unavailable
+        val attachmentIds = prepareAttachments() ?: return ExistingTaskControlOutcome.Unavailable
+        val outcome = taskControlViewModel?.sendToTask(taskId, prompt, ExistingTaskSendMode.REDIRECT, attachmentIds) ?: ExistingTaskControlOutcome.Unavailable
+        finishExistingTaskAttachments(attachmentIds, outcome)
         if (outcome == ExistingTaskControlOutcome.Queued) publishTaskQueueState(taskId, TaskQueueState.QUEUED)
         if (outcome == ExistingTaskControlOutcome.NeedsReview) publishTaskQueueState(taskId, TaskQueueState.OUTCOME_UNKNOWN)
         return outcome
+    }
+
+    private fun finishNewTaskAttachments(ids: List<String>, outcome: NewTaskSendOutcome) {
+        when (outcome) {
+            NewTaskSendOutcome.Complete, NewTaskSendOutcome.CompleteDraftRetained, NewTaskSendOutcome.NeedsReview ->
+                ids.forEach(attachmentUploader::remove)
+            is NewTaskSendOutcome.Failed -> attachmentUploader.retryAfterActionFailure(ids)
+            NewTaskSendOutcome.Invalid, NewTaskSendOutcome.Unavailable -> Unit
+        }
+    }
+
+    private fun finishExistingTaskAttachments(ids: List<String>, outcome: ExistingTaskControlOutcome) {
+        when (outcome) {
+            ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued,
+            ExistingTaskControlOutcome.Redirected, ExistingTaskControlOutcome.NeedsReview -> ids.forEach(attachmentUploader::remove)
+            is ExistingTaskControlOutcome.Failed -> attachmentUploader.retryAfterActionFailure(ids)
+            ExistingTaskControlOutcome.Interrupted, ExistingTaskControlOutcome.Invalid,
+            ExistingTaskControlOutcome.Unavailable -> Unit
+        }
     }
 
     suspend fun stopTask(taskId: String): ExistingTaskControlOutcome {
@@ -895,6 +963,9 @@ class LauncherSessionViewModel(
         projectBridge = null
         transcriptCapable = false
         taskManagementCapable = false
+        attachmentCapable = false
+        maxAttachmentBytes = ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
+        attachmentUploader.detach()
         taskActionBridge?.close()
         taskActionBridge = null
         taskControlViewModel?.close()
@@ -985,6 +1056,9 @@ class LauncherSessionViewModel(
         projectBridge = null
         transcriptCapable = false
         taskManagementCapable = false
+        attachmentCapable = false
+        maxAttachmentBytes = ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
+        attachmentUploader.detach()
         taskActionBridge?.close()
         taskActionBridge = null
         taskControlViewModel?.close()

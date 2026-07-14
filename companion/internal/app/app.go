@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
+	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/durablestore"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
@@ -21,13 +22,14 @@ import (
 var ErrMissingDependency = errors.New("companion runtime dependency is missing")
 
 type Dependencies struct {
-	PairingStore pairing.Store
-	PromptStore  promptqueue.Store
-	EventStore   eventjournal.Store
-	Random       io.Reader
-	Logger       *slog.Logger
-	TaskSource   mobilesession.TaskSource
-	TaskEvents   <-chan taskstate.MobileEvent
+	PairingStore    pairing.Store
+	PromptStore     promptqueue.Store
+	EventStore      eventjournal.Store
+	Random          io.Reader
+	Logger          *slog.Logger
+	TaskSource      mobilesession.TaskSource
+	TaskEvents      <-chan taskstate.MobileEvent
+	AttachmentStore *attachments.Store
 }
 
 type PersistentDependencies struct {
@@ -38,12 +40,13 @@ type PersistentDependencies struct {
 }
 
 type Runtime struct {
-	Config   Config
-	Pairing  *pairing.Service
-	Projects *projects.Service
-	Queue    *promptqueue.Queue
-	Journal  *eventjournal.Journal
-	Mobile   *transport.Server
+	Config      Config
+	Pairing     *pairing.Service
+	Projects    *projects.Service
+	Queue       *promptqueue.Queue
+	Journal     *eventjournal.Journal
+	Mobile      *transport.Server
+	Attachments *attachments.Store
 }
 
 func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (*Runtime, error) {
@@ -69,23 +72,29 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 	}
 	journal := eventjournal.New(dependencies.EventStore, logger)
 	promptQueue := promptqueue.New(dependencies.PromptStore, logger)
-	mobileHandler, err := mobilesession.NewWithTaskSourceAndQueue(ctx, config.ComputerName, projectService, journal, dependencies.TaskSource, promptQueue, logger, time.Now)
+	mobileHandler, err := mobilesession.NewWithTaskSourceQueueAndAttachments(ctx, config.ComputerName, projectService, journal, dependencies.TaskSource, promptQueue, dependencies.AttachmentStore, logger, time.Now)
 	if err != nil {
 		logger.Error("[app] mobile session startup failed", "error_class", "mobile_session_initialization")
 		return nil, err
 	}
-	mobileServer, err := transport.NewServer(pairingService, mobileHandler.Handle, logger)
+	var mobileServer *transport.Server
+	if dependencies.AttachmentStore != nil {
+		mobileServer, err = transport.NewServerWithAttachments(pairingService, mobileHandler.Handle, dependencies.AttachmentStore, mobileHandler.PublishAttachmentAck, logger)
+	} else {
+		mobileServer, err = transport.NewServer(pairingService, mobileHandler.Handle, logger)
+	}
 	if err != nil {
 		logger.Error("[app] mobile transport startup failed", "error_class", "mobile_transport_initialization")
 		return nil, err
 	}
 	runtime := &Runtime{
-		Config:   config,
-		Pairing:  pairingService,
-		Projects: projectService,
-		Queue:    promptQueue,
-		Journal:  journal,
-		Mobile:   mobileServer,
+		Config:      config,
+		Pairing:     pairingService,
+		Projects:    projectService,
+		Queue:       promptQueue,
+		Journal:     journal,
+		Mobile:      mobileServer,
+		Attachments: dependencies.AttachmentStore,
 	}
 	if dependencies.TaskEvents != nil {
 		go pumpTaskEvents(ctx, dependencies.TaskEvents, mobileHandler, logger)
@@ -113,9 +122,15 @@ func openPersistentRuntimeAt(ctx context.Context, config Config, dependencies Pe
 		logger.Error("[app-storage] durable state open failed", "error_class", "sqlite_initialization")
 		return nil, nil, err
 	}
+	attachmentStore, err := attachments.Open(filepath.Join(filepath.Dir(statePath), "attachments"), attachments.DefaultLimits(), logger)
+	if err != nil {
+		_ = store.Close()
+		logger.Error("[app-storage] attachment state open failed", "error_class", "attachment_initialization")
+		return nil, nil, err
+	}
 	runtime, err := NewRuntime(ctx, config, Dependencies{
 		PairingStore: store, PromptStore: store, EventStore: store, Random: dependencies.Random, Logger: logger,
-		TaskSource: dependencies.TaskSource, TaskEvents: dependencies.TaskEvents,
+		TaskSource: dependencies.TaskSource, TaskEvents: dependencies.TaskEvents, AttachmentStore: attachmentStore,
 	})
 	if err != nil {
 		_ = store.Close()

@@ -576,7 +576,11 @@ func (client *Client) RouteApprovalDecision(ctx context.Context, conversationID,
 }
 
 func (client *Client) StartTurn(ctx context.Context, conversationID, text string) (json.RawMessage, error) {
-	return client.executeFollowerAction(ctx, FollowerAction{Kind: ActionStartTurn, ConversationID: conversationID, Text: text})
+	return client.StartTurnWithAttachments(ctx, conversationID, text, nil)
+}
+
+func (client *Client) StartTurnWithAttachments(ctx context.Context, conversationID, text string, attachments []AttachmentInput) (json.RawMessage, error) {
+	return client.executeFollowerAction(ctx, FollowerAction{Kind: ActionStartTurn, ConversationID: conversationID, Text: text, Attachments: attachments})
 }
 
 func (client *Client) StartTurnWithSettings(ctx context.Context, conversationID, text string, settings ThreadSettings) (json.RawMessage, error) {
@@ -587,7 +591,11 @@ func (client *Client) StartTurnWithSettings(ctx context.Context, conversationID,
 }
 
 func (client *Client) SteerTurn(ctx context.Context, conversationID, text string) (json.RawMessage, error) {
-	return client.executeFollowerAction(ctx, FollowerAction{Kind: ActionSteerTurn, ConversationID: conversationID, Text: text})
+	return client.SteerTurnWithAttachments(ctx, conversationID, text, nil)
+}
+
+func (client *Client) SteerTurnWithAttachments(ctx context.Context, conversationID, text string, attachments []AttachmentInput) (json.RawMessage, error) {
+	return client.executeFollowerAction(ctx, FollowerAction{Kind: ActionSteerTurn, ConversationID: conversationID, Text: text, Attachments: attachments})
 }
 
 func (client *Client) InterruptTurn(ctx context.Context, conversationID string) (json.RawMessage, error) {

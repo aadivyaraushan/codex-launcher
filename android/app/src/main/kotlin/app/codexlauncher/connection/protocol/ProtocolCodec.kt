@@ -218,10 +218,11 @@ object ProtocolCodec {
             }
             "steer_turn" -> if (body.keys.any { it !in setOf("actionId", "kind", "taskId", "text", "attachmentIds") } || !optionalString(body, "taskId").isValidId() || !optionalString(body, "text").isBounded(131072) || optionalString(body, "text").isBlank() || !validOptionalIds(body["attachmentIds"])) fail(ProtocolError.INVALID_ACTION)
             "interrupt_turn" -> if (body.keys != setOf("actionId", "kind", "taskId") || !optionalString(body, "taskId").isValidId()) fail(ProtocolError.INVALID_ACTION)
-            "dismiss_unknown_control" -> if (
-                body.keys != setOf("actionId", "kind", "taskId", "targetActionId") ||
-                !optionalString(body, "taskId").isValidId() || !optionalString(body, "targetActionId").isValidId()
-            ) fail(ProtocolError.INVALID_ACTION)
+            "dismiss_unknown_control" -> {
+                val existing = body.keys == setOf("actionId", "kind", "taskId", "targetActionId") && optionalString(body, "taskId").isValidId()
+                val newTask = body.keys == setOf("actionId", "kind", "targetActionId")
+                if ((!existing && !newTask) || !optionalString(body, "targetActionId").isValidId()) fail(ProtocolError.INVALID_ACTION)
+            }
             "approval" -> {
                 val requestKind = optionalString(body, "requestKind")
                 val decision = optionalString(body, "decision")
@@ -345,7 +346,7 @@ object ProtocolCodec {
                 if (!it.jsonPrimitive.isString) return@runCatching false
                 it.jsonPrimitive.content
             }
-            ids.all { it.isValidId() } && ids.distinct().size == ids.size
+            ids.size <= 16 && ids.all { it.isValidId() } && ids.distinct().size == ids.size
         }.getOrDefault(false)
 
     private fun isJsonBoolean(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {

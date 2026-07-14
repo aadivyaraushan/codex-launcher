@@ -15,6 +15,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
+import okio.ByteString.Companion.toByteString
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -39,6 +40,8 @@ interface SessionObserver {
 
 interface SessionConnection {
     fun sendText(encoded: String): Boolean
+
+    fun sendBinary(frame: ByteArray): Boolean = false
 
     suspend fun sendAction(
         encoded: String,
@@ -73,6 +76,11 @@ class CompanionSessionConnection internal constructor(
         if (!ready.get() || stopped.get()) return false
         val message = validatedPhoneMessage(encoded) ?: return false
         return socket.get()?.send(encoded) == true
+    }
+
+    override fun sendBinary(frame: ByteArray): Boolean {
+        if (!ready.get() || stopped.get() || frame.isEmpty() || frame.size > ProtocolCodec.MAX_ATTACHMENT_FRAME_BYTES) return false
+        return socket.get()?.send(frame.toByteString()) == true
     }
 
     override suspend fun sendAction(

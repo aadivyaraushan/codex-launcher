@@ -171,6 +171,41 @@ func TestStoreResumesAcrossRestartAndCleansExpiredAndOrphanFiles(t *testing.T) {
 	}
 }
 
+func TestStoreReturnsAuthenticatedStateForProtocolResume(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	payload := []byte("resume me")
+	store := openTestStore(t, t.TempDir(), testLimits())
+	mustBegin(t, store, "phone-1", "upload-1", payload, now)
+	if _, err := store.Append("phone-1", "upload-1", 0, 0, false, payload[:4], now); err != nil {
+		t.Fatal(err)
+	}
+	retained, err := store.Retained("phone-1", "upload-1", now)
+	if err != nil || retained.ID != "upload-1" || retained.DeclaredTotal != int64(len(payload)) || retained.SHA256 != digest(payload) ||
+		string(retained.Received) != string(payload[:4]) || retained.NextChunk != 1 || retained.Complete {
+		t.Fatalf("Retained() = %#v, %v", retained, err)
+	}
+	retained.Received[0] = 'X'
+	again, err := store.Retained("phone-1", "upload-1", now)
+	if err != nil || string(again.Received) != string(payload[:4]) {
+		t.Fatalf("caller mutated retained storage: %#v, %v", again, err)
+	}
+
+	if _, err := store.Append("phone-1", "upload-1", 1, 4, true, payload[4:], now); err != nil {
+		t.Fatal(err)
+	}
+	completed, err := store.Complete("phone-1", "upload-1", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained, err = store.Retained("phone-1", "upload-1", now)
+	if err != nil || !retained.Complete || retained.Path != completed.Path || len(retained.Received) != 0 || retained.NextChunk != 2 {
+		t.Fatalf("completed Retained() = %#v, %v", retained, err)
+	}
+	if _, err := store.Retained("phone-2", "upload-1", now); !errors.Is(err, ErrAttachmentUnavailable) {
+		t.Fatalf("other device retained state error = %v", err)
+	}
+}
+
 func TestStoreCancelAndDiskFailureRemoveOrRollBackPartialState(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	payload := []byte("abcdef")
@@ -181,6 +216,20 @@ func TestStoreCancelAndDiskFailureRemoveOrRollBackPartialState(t *testing.T) {
 	}
 	if _, err := store.Resume("phone-1", "cancelled", now); !errors.Is(err, ErrAttachmentUnavailable) {
 		t.Fatalf("cancelled upload remained: %v", err)
+	}
+	mustBegin(t, store, "phone-1", "completed-cancel", payload, now)
+	if _, err := store.Append("phone-1", "completed-cancel", 0, 0, true, payload, now); err != nil {
+		t.Fatal(err)
+	}
+	completed, err := store.Complete("phone-1", "completed-cancel", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Cancel("phone-1", "completed-cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(completed.Path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cancelled completed file remains: %v", err)
 	}
 
 	mustBegin(t, store, "phone-1", "disk-full", payload, now)
@@ -382,6 +431,78 @@ func TestStoreReleaseDeletesCompletedFilesAndRejectsDuplicateIds(t *testing.T) {
 	}
 	if _, err := os.Stat(completed.Path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("released attachment file remains: %v", err)
+	}
+}
+
+func TestStoreClaimsCompletedFilesForOneDurableActionAcrossRestart(t *testing.T) {
+	root := t.TempDir()
+	now := time.Unix(1_800_000_000, 0)
+	payload := []byte("queued attachment")
+	store := openTestStore(t, root, testLimits())
+	mustBegin(t, store, "phone-1", "upload-1", payload, now)
+	if _, err := store.Append("phone-1", "upload-1", 0, 0, true, payload, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Complete("phone-1", "upload-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Claim("phone-1", []string{"upload-1"}, "action-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Claim("phone-1", []string{"upload-1"}, "action-1", now.Add(time.Second)); err != nil {
+		t.Fatalf("idempotent Claim() error = %v", err)
+	}
+	if err := store.Claim("phone-1", []string{"upload-1"}, "action-2", now); !errors.Is(err, ErrAttachmentClaimed) {
+		t.Fatalf("other action Claim() error = %v", err)
+	}
+	if err := store.Cancel("phone-1", "upload-1"); !errors.Is(err, ErrAttachmentClaimed) {
+		t.Fatalf("claimed Cancel() error = %v", err)
+	}
+
+	restarted := openTestStore(t, root, testLimits())
+	resolved, err := restarted.ResolveClaimed("phone-1", []string{"upload-1"}, "action-1", now.Add(2*time.Minute))
+	if err != nil || len(resolved) != 1 || resolved[0].ID != "upload-1" {
+		t.Fatalf("ResolveClaimed() after upload expiry = %#v, %v", resolved, err)
+	}
+	if _, err := restarted.ResolveClaimed("phone-1", []string{"upload-1"}, "action-2", now); !errors.Is(err, ErrAttachmentClaimed) {
+		t.Fatalf("other action ResolveClaimed() error = %v", err)
+	}
+	if err := restarted.ReleaseClaimed("phone-1", []string{"upload-1"}, "action-2"); !errors.Is(err, ErrAttachmentClaimed) {
+		t.Fatalf("other action ReleaseClaimed() error = %v", err)
+	}
+	if err := restarted.ReleaseClaimed("phone-1", []string{"upload-1"}, "action-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.ResolveClaimed("phone-1", []string{"upload-1"}, "action-1", now); !errors.Is(err, ErrAttachmentUnavailable) {
+		t.Fatalf("released claim remains: %v", err)
+	}
+}
+
+func TestStoreReconciliationKeepsActiveClaimsWithoutTimeExpiryAndDeletesOrphans(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	payload := []byte("durable attachment")
+	store := openTestStore(t, t.TempDir(), testLimits())
+	mustBegin(t, store, "phone-1", "upload-1", payload, now)
+	if _, err := store.Append("phone-1", "upload-1", 0, 0, true, payload, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Complete("phone-1", "upload-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Claim("phone-1", []string{"upload-1"}, "action-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReconcileClaims(map[string]Claim{"action-1": {DeviceID: "phone-1", UploadIDs: []string{"upload-1"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ResolveClaimed("phone-1", []string{"upload-1"}, "action-1", now.Add(365*24*time.Hour)); err != nil {
+		t.Fatalf("active durable claim expired: %v", err)
+	}
+	if err := store.ReconcileClaims(nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ResolveClaimed("phone-1", []string{"upload-1"}, "action-1", now); !errors.Is(err, ErrAttachmentUnavailable) {
+		t.Fatalf("orphaned action claim remains: %v", err)
 	}
 }
 

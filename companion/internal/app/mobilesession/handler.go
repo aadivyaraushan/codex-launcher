@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
@@ -55,6 +57,15 @@ type ExistingTaskRecoveryControlSource interface {
 	StartExistingTurnFromSource(context.Context, string, string, taskstate.Source) (taskadapter.ExistingTaskResult, error)
 }
 
+type ExistingTaskAttachmentSource interface {
+	StartExistingTurnWithAttachments(context.Context, string, string, []taskadapter.AttachmentInput) (taskadapter.ExistingTaskResult, error)
+	RedirectExistingTurnWithAttachments(context.Context, string, string, []taskadapter.AttachmentInput) (taskadapter.ExistingTaskResult, error)
+}
+
+type ExistingTaskRecoveryAttachmentSource interface {
+	StartExistingTurnFromSourceWithAttachments(context.Context, string, string, taskstate.Source, []taskadapter.AttachmentInput) (taskadapter.ExistingTaskResult, error)
+}
+
 type TaskManagementSource interface {
 	Rename(context.Context, string, string) error
 
@@ -80,6 +91,8 @@ type Handler struct {
 	logger             *slog.Logger
 	now                func() time.Time
 	taskCapable        bool
+	attachmentCapable  bool
+	attachmentStore    *attachments.Store
 	taskSource         TaskSource
 	transcriptSource   TaskTranscriptSource
 	managementSource   TaskManagementSource
@@ -141,6 +154,20 @@ func NewWithTaskSource(ctx context.Context, computerName string, projectService 
 }
 
 func NewWithTaskSourceAndQueue(ctx context.Context, computerName string, projectService *projects.Service, journal *eventjournal.Journal, taskSource TaskSource, promptQueue *promptqueue.Queue, logger *slog.Logger, now func() time.Time) (*Handler, error) {
+	return NewWithTaskSourceQueueAndAttachments(ctx, computerName, projectService, journal, taskSource, promptQueue, nil, logger, now)
+}
+
+func NewWithTaskSourceQueueAndAttachments(
+	ctx context.Context,
+	computerName string,
+	projectService *projects.Service,
+	journal *eventjournal.Journal,
+	taskSource TaskSource,
+	promptQueue *promptqueue.Queue,
+	attachmentStore *attachments.Store,
+	logger *slog.Logger,
+	now func() time.Time,
+) (*Handler, error) {
 	if projectService == nil || journal == nil || computerName == "" {
 		return nil, ErrMissingDependency
 	}
@@ -180,6 +207,23 @@ func NewWithTaskSourceAndQueue(ctx context.Context, computerName string, project
 	handler.newTaskSource, _ = taskSource.(NewTaskSource)
 	handler.existingTaskSource, _ = taskSource.(ExistingTaskSource)
 	handler.promptQueue = promptQueue
+	if attachmentStore != nil {
+		claims := map[string]attachments.Claim{}
+		if promptQueue != nil {
+			active, claimErr := promptQueue.AttachmentClaims(ctx)
+			if claimErr != nil {
+				return nil, fmt.Errorf("load durable attachment claims: %w", claimErr)
+			}
+			for actionID, claim := range active {
+				claims[actionID] = attachments.Claim{DeviceID: claim.DeviceID, UploadIDs: claim.AttachmentIDs}
+			}
+		}
+		if err := attachmentStore.ReconcileClaims(claims); err != nil {
+			return nil, fmt.Errorf("reconcile durable attachment claims: %w", err)
+		}
+		handler.attachmentCapable = true
+		handler.attachmentStore = attachmentStore
+	}
 	handler.activeView.Store([]transport.MessageSender{})
 	handler.snapshotGen.Store(1)
 	go handler.deliverBroadcasts()
@@ -208,9 +252,11 @@ func (handler *Handler) recoverQueuedPrompts() {
 			task, taskErr = handler.existingTaskSource.CurrentTask(handler.ctx, pending.ID)
 		}
 		if errors.Is(taskErr, taskadapter.ErrTaskUnavailable) {
+			entries, _ := handler.promptQueue.Entries(handler.ctx, pending.ID)
 			if cancelErr := handler.promptQueue.CancelUnavailableThread(handler.ctx, pending.ID, "task_unavailable", handler.now()); cancelErr != nil {
 				handler.logger.Error("[mobile-session] unavailable task queue cleanup failed", "thread_id", pending.ID, "decision", "retain_durable_queue", "error_class", fmt.Sprintf("%T", cancelErr))
 			} else {
+				handler.releaseCanceledAttachments(entries, true)
 				handler.logger.Info("[mobile-session] unavailable task queue cancelled", "thread_id", pending.ID, "decision", "clear_prompt_content")
 			}
 			continue
@@ -275,6 +321,62 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 	}
 }
 
+func (handler *Handler) EnableAttachments(store *attachments.Store) {
+	if handler != nil && store != nil {
+		claims := map[string]attachments.Claim{}
+		if handler.promptQueue != nil {
+			active, err := handler.promptQueue.AttachmentClaims(handler.ctx)
+			if err != nil {
+				handler.logger.Error("[mobile-session] attachment claim lookup failed", "decision", "disable_attachments", "error_class", fmt.Sprintf("%T", err))
+				return
+			}
+			for actionID, claim := range active {
+				claims[actionID] = attachments.Claim{DeviceID: claim.DeviceID, UploadIDs: claim.AttachmentIDs}
+			}
+		}
+		if err := store.ReconcileClaims(claims); err != nil {
+			handler.logger.Error("[mobile-session] attachment claim reconciliation failed", "decision", "disable_attachments", "error_class", fmt.Sprintf("%T", err))
+			return
+		}
+		handler.attachmentCapable = true
+		handler.attachmentStore = store
+	}
+}
+
+func (handler *Handler) PublishAttachmentAck(ctx context.Context, sender transport.MessageSender, ack transport.AttachmentEvent) error {
+	if handler == nil || sender == nil || !handler.attachmentCapable {
+		return ErrMissingDependency
+	}
+	handler.mu.Lock()
+	current := handler.active[sender.DeviceID()]
+	handler.mu.Unlock()
+	if current == nil || current.ConnectionID() != sender.ConnectionID() {
+		return ErrSessionSuperseded
+	}
+	body, err := json.Marshal(ack)
+	if err != nil {
+		return err
+	}
+	validationSequence := uint64(1)
+	if _, err := contract.EncodeText(contract.Message{
+		Version: contract.Version{Major: contract.ProtocolMajor, Minor: contract.ProtocolMinor}, MessageID: "attachment-validation",
+		Sender: "companion", Type: "attachment_ack", Sequence: &validationSequence, Body: body,
+	}); err != nil {
+		return err
+	}
+	handler.publishMu.Lock()
+	defer handler.publishMu.Unlock()
+	event, err := handler.journal.Apply(ctx, "attachment_ack", body, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) {
+		return current, nil
+	})
+	if err != nil {
+		return err
+	}
+	handler.queueDelivery("attachment_ack", event.Sequence, body, []transport.MessageSender{sender})
+	handler.logger.Info("[mobile-session] attachment acknowledged", "device_id", sender.DeviceID(), "upload_id", ack.UploadID, "state", ack.State, "received_bytes", ack.ReceivedBytes, "next_chunk", ack.NextChunk)
+	return nil
+}
+
 func (handler *Handler) handleHello(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
 	options := taskoptions.Catalog{Models: []taskoptions.Model{}, PermissionModes: []taskoptions.PermissionMode{}}
 	optionsCapable := false
@@ -288,7 +390,7 @@ func (handler *Handler) handleHello(ctx context.Context, sender transport.Messag
 			handler.logger.Info("[mobile-session] new task options ready", "model_count", len(options.Models), "permission_mode_count", len(options.PermissionModes), "output_shape", "safe_option_catalog")
 		}
 	}
-	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, options)); err != nil {
+	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, handler.attachmentCapable, options)); err != nil {
 		return err
 	}
 	var body struct {
@@ -390,16 +492,17 @@ func (handler *Handler) TaskSnapshotGeneration() uint64 {
 
 func (handler *Handler) handleAction(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
 	var action struct {
-		ActionID         string `json:"actionId"`
-		Kind             string `json:"kind"`
-		ProjectID        string `json:"projectId"`
-		TaskID           string `json:"taskId"`
-		Title            string `json:"title"`
-		Text             string `json:"text"`
-		ModelID          string `json:"modelId"`
-		ReasoningID      string `json:"reasoningId"`
-		PermissionModeID string `json:"permissionModeId"`
-		TargetActionID   string `json:"targetActionId"`
+		ActionID         string   `json:"actionId"`
+		Kind             string   `json:"kind"`
+		ProjectID        string   `json:"projectId"`
+		TaskID           string   `json:"taskId"`
+		Title            string   `json:"title"`
+		Text             string   `json:"text"`
+		ModelID          string   `json:"modelId"`
+		ReasoningID      string   `json:"reasoningId"`
+		PermissionModeID string   `json:"permissionModeId"`
+		TargetActionID   string   `json:"targetActionId"`
+		AttachmentIDs    []string `json:"attachmentIds"`
 	}
 	if err := json.Unmarshal(message.Body, &action); err != nil {
 		return err
@@ -417,12 +520,12 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	switch action.Kind {
 	case "start_turn":
 		if action.TaskID != "" {
-			outcome, resultCode := handler.startExistingTask(ctx, action.ActionID, action.TaskID, action.Text, false)
+			outcome, resultCode := handler.startExistingTask(ctx, sender.DeviceID(), action.ActionID, action.TaskID, action.Text, action.AttachmentIDs, false)
 			applyExistingTaskOutcome(result, outcome, resultCode)
 			refreshTasks = outcome == existingTaskAccepted && resultCode != "queued"
 			break
 		}
-		switch handler.startNewTask(ctx, action.ActionID, action.ProjectID, action.Text, action.ModelID, action.ReasoningID, action.PermissionModeID) {
+		switch handler.startNewTask(ctx, sender.DeviceID(), action.ActionID, action.ProjectID, action.Text, action.ModelID, action.ReasoningID, action.PermissionModeID, action.AttachmentIDs) {
 		case newTaskConfirmed:
 			refreshTasks = true
 		case newTaskOutcomeUnknown:
@@ -431,7 +534,7 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 			setActionFailure(result, "invalid_action", false)
 		}
 	case "steer_turn":
-		outcome, resultCode := handler.startExistingTask(ctx, action.ActionID, action.TaskID, action.Text, true)
+		outcome, resultCode := handler.startExistingTask(ctx, sender.DeviceID(), action.ActionID, action.TaskID, action.Text, action.AttachmentIDs, true)
 		applyExistingTaskOutcome(result, outcome, resultCode)
 		refreshTasks = outcome == existingTaskAccepted && resultCode == "redirected"
 	case "interrupt_turn":
@@ -439,9 +542,17 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		applyExistingTaskOutcome(result, outcome, resultCode)
 		refreshTasks = outcome == existingTaskAccepted
 	case "dismiss_unknown_control":
-		if handler.promptQueue == nil || handler.promptQueue.DismissUnknown(ctx, action.TargetActionID, action.TaskID, handler.now()) != nil {
+		var dismissed promptqueue.Entry
+		var dismissErr error
+		if handler.promptQueue == nil {
+			dismissErr = promptqueue.ErrInvalidEntry
+		} else {
+			dismissed, dismissErr = handler.promptQueue.DismissUnknown(ctx, action.TargetActionID, action.TaskID, sender.DeviceID(), handler.now())
+		}
+		if dismissErr != nil {
 			setActionFailure(result, "invalid_action", false)
 		} else {
+			handler.releaseActionAttachments(dismissed)
 			result["resultCode"] = "accepted"
 			refreshTasks = true
 		}
@@ -473,8 +584,15 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		case "archive_task":
 			err = handler.managementSource.Archive(ctx, action.TaskID)
 			if err == nil && handler.promptQueue != nil {
+				entries, entriesErr := handler.promptQueue.Entries(ctx, action.TaskID)
+				if entriesErr != nil {
+					err = fmt.Errorf("archive completed but queued prompt attachment lookup failed: %w", entriesErr)
+					break
+				}
 				if cancelErr := handler.promptQueue.CancelThread(ctx, action.TaskID, "task_archived", handler.now()); cancelErr != nil {
 					err = fmt.Errorf("archive completed but queued prompt cleanup is uncertain: %w", cancelErr)
+				} else {
+					handler.releaseCanceledAttachments(entries, false)
 				}
 			}
 		case "fork_task":
@@ -545,7 +663,7 @@ func applyExistingTaskOutcome(result map[string]any, outcome existingTaskOutcome
 	}
 }
 
-func (handler *Handler) startExistingTask(ctx context.Context, actionID, taskID, prompt string, redirect bool) (existingTaskOutcome, string) {
+func (handler *Handler) startExistingTask(ctx context.Context, deviceID, actionID, taskID, prompt string, attachmentIDs []string, redirect bool) (existingTaskOutcome, string) {
 	if handler.existingTaskSource == nil || handler.promptQueue == nil {
 		return existingTaskFailed, ""
 	}
@@ -553,11 +671,11 @@ func (handler *Handler) startExistingTask(ctx context.Context, actionID, taskID,
 	if redirect {
 		kind = "steer_turn"
 	}
-	requestHash := newTaskRequestHash(kind, taskID, prompt)
+	requestHash := requestHashWithAttachments([]string{kind, taskID, prompt}, deviceID, attachmentIDs)
 	stored, err := handler.promptQueue.Entry(ctx, actionID)
 	switch {
 	case err == nil:
-		if stored.RequestHash != requestHash || stored.ThreadID != taskID {
+		if stored.RequestHash != requestHash || stored.ThreadID != taskID || stored.DeviceID != attachmentDeviceID(deviceID, attachmentIDs) || !slices.Equal(stored.AttachmentIDs, attachmentIDs) {
 			return existingTaskFailed, ""
 		}
 		switch stored.State {
@@ -577,8 +695,15 @@ func (handler *Handler) startExistingTask(ctx context.Context, actionID, taskID,
 	if err != nil || task.ID != taskID {
 		return existingTaskFailed, ""
 	}
-	entry := promptqueue.Entry{ActionID: actionID, QueueKey: taskID, ActionKind: kind, OwnerSource: string(task.Source), ThreadID: taskID, Prompt: prompt, RequestHash: requestHash, CreatedAt: handler.now()}
+	if err := handler.claimActionAttachments(deviceID, attachmentIDs, actionID); err != nil {
+		return existingTaskFailed, ""
+	}
+	entry := promptqueue.Entry{
+		ActionID: actionID, QueueKey: taskID, ActionKind: kind, OwnerSource: string(task.Source), ThreadID: taskID, Prompt: prompt,
+		RequestHash: requestHash, DeviceID: attachmentDeviceID(deviceID, attachmentIDs), AttachmentIDs: append([]string(nil), attachmentIDs...), CreatedAt: handler.now(),
+	}
 	if err := handler.promptQueue.Enqueue(ctx, entry); err != nil {
+		handler.releaseActionAttachments(entry)
 		return existingTaskFailed, ""
 	}
 	busy := task.State == taskstate.Working || task.State == taskstate.WaitingForApproval || task.State == taskstate.WaitingForAnswer
@@ -594,7 +719,7 @@ func (handler *Handler) startExistingTask(ctx context.Context, actionID, taskID,
 		code := "accepted"
 		if redirect {
 			code = "redirected"
-			controlled, controlErr = handler.existingTaskSource.RedirectExistingTurn(ctx, queued.ThreadID, queued.Prompt)
+			controlled, controlErr = handler.redirectQueuedExistingTurn(ctx, queued)
 		} else {
 			controlled, controlErr = handler.startQueuedExistingTurn(ctx, queued)
 		}
@@ -616,8 +741,10 @@ func (handler *Handler) startExistingTask(ctx context.Context, actionID, taskID,
 		return existingTaskOutcomeUnknown, ""
 	}
 	if dispatchErr != nil {
+		handler.releaseActionAttachments(entry)
 		return existingTaskFailed, ""
 	}
+	handler.releaseActionAttachments(entry)
 	return existingTaskAccepted, result.Code
 }
 
@@ -683,16 +810,16 @@ const (
 	newTaskOutcomeUnknown
 )
 
-func (handler *Handler) startNewTask(ctx context.Context, actionID, projectID, prompt, modelID, reasoningID, permissionModeID string) newTaskOutcome {
+func (handler *Handler) startNewTask(ctx context.Context, deviceID, actionID, projectID, prompt, modelID, reasoningID, permissionModeID string, attachmentIDs []string) newTaskOutcome {
 	if handler.newTaskSource == nil || handler.optionSource == nil || handler.promptQueue == nil {
 		return newTaskFailed
 	}
-	requestHash := newTaskRequestHash(projectID, prompt, modelID, reasoningID, permissionModeID)
+	requestHash := requestHashWithAttachments([]string{projectID, prompt, modelID, reasoningID, permissionModeID}, deviceID, attachmentIDs)
 	var prepared *promptqueue.Entry
 	stored, storedErr := handler.promptQueue.Entry(ctx, actionID)
 	switch {
 	case storedErr == nil:
-		if stored.RequestHash != requestHash {
+		if stored.RequestHash != requestHash || stored.DeviceID != attachmentDeviceID(deviceID, attachmentIDs) || !slices.Equal(stored.AttachmentIDs, attachmentIDs) {
 			handler.logger.Warn("[mobile-session] duplicate new task rejected", "action_id", actionID, "branch_reason", "request_hash_mismatch")
 			return newTaskFailed
 		}
@@ -730,7 +857,7 @@ func (handler *Handler) startNewTask(ctx context.Context, actionID, projectID, p
 	entry := promptqueue.Entry{
 		ActionID: actionID, QueueKey: queueKey, ProjectID: projectID, Prompt: prompt, Model: model.WireName,
 		Effort: reasoningID, PermissionMode: permissionModeID,
-		RequestHash: requestHash, CreatedAt: handler.now(),
+		RequestHash: requestHash, DeviceID: attachmentDeviceID(deviceID, attachmentIDs), AttachmentIDs: append([]string(nil), attachmentIDs...), CreatedAt: handler.now(),
 	}
 	if prepared != nil {
 		if prepared.Model != entry.Model {
@@ -739,7 +866,11 @@ func (handler *Handler) startNewTask(ctx context.Context, actionID, projectID, p
 		}
 		entry = *prepared
 	} else {
+		if err := handler.claimActionAttachments(deviceID, attachmentIDs, actionID); err != nil {
+			return newTaskFailed
+		}
 		if err := handler.promptQueue.Enqueue(ctx, entry); err != nil {
+			handler.releaseActionAttachments(entry)
 			handler.logger.Error("[mobile-session] new task preparation failed", "action_id", actionID, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", err))
 			return newTaskFailed
 		}
@@ -749,9 +880,13 @@ func (handler *Handler) startNewTask(ctx context.Context, actionID, projectID, p
 		if !mapped {
 			return promptqueue.Result{}, promptqueue.ErrSendNotSent
 		}
+		attachmentInputs, attachmentErr := handler.resolveActionAttachments(queued)
+		if attachmentErr != nil {
+			return promptqueue.Result{}, promptqueue.ErrSendNotSent
+		}
 		started, startErr := handler.newTaskSource.StartNewTask(ctx, taskadapter.NewTaskRequest{
 			ProjectPath: projectPath, Prompt: queued.Prompt, Model: queued.Model, Effort: queued.Effort,
-			Sandbox: sandbox, ApprovalPolicy: json.RawMessage(`"on-request"`),
+			Sandbox: sandbox, ApprovalPolicy: json.RawMessage(`"on-request"`), Attachments: attachmentInputs,
 		})
 		if startErr != nil {
 			var unknown *appserver.OutcomeUnknownError
@@ -767,14 +902,77 @@ func (handler *Handler) startNewTask(ctx context.Context, actionID, projectID, p
 		if errors.Is(err, promptqueue.ErrOutcomeUnknown) {
 			return newTaskOutcomeUnknown
 		}
+		handler.releaseActionAttachments(entry)
 		return newTaskFailed
 	}
+	handler.releaseActionAttachments(entry)
 	return newTaskConfirmed
 }
 
 func newTaskRequestHash(values ...string) string {
 	encoded, _ := json.Marshal(values)
 	return fmt.Sprintf("%x", sha256.Sum256(encoded))
+}
+
+func requestHashWithAttachments(values []string, deviceID string, attachmentIDs []string) string {
+	if len(attachmentIDs) == 0 {
+		return newTaskRequestHash(values...)
+	}
+	withAttachments := append(append([]string(nil), values...), deviceID)
+	withAttachments = append(withAttachments, attachmentIDs...)
+	return newTaskRequestHash(withAttachments...)
+}
+
+func attachmentDeviceID(deviceID string, attachmentIDs []string) string {
+	if len(attachmentIDs) == 0 {
+		return ""
+	}
+	return deviceID
+}
+
+func (handler *Handler) claimActionAttachments(deviceID string, attachmentIDs []string, actionID string) error {
+	if len(attachmentIDs) == 0 {
+		return nil
+	}
+	if handler.attachmentStore == nil {
+		return attachments.ErrAttachmentUnavailable
+	}
+	return handler.attachmentStore.Claim(deviceID, attachmentIDs, actionID, handler.now())
+}
+
+func (handler *Handler) resolveActionAttachments(entry promptqueue.Entry) ([]taskadapter.AttachmentInput, error) {
+	if len(entry.AttachmentIDs) == 0 {
+		return nil, nil
+	}
+	if handler.attachmentStore == nil {
+		return nil, attachments.ErrAttachmentUnavailable
+	}
+	resolved, err := handler.attachmentStore.ResolveClaimed(entry.DeviceID, entry.AttachmentIDs, entry.ActionID, handler.now())
+	if err != nil {
+		return nil, err
+	}
+	result := make([]taskadapter.AttachmentInput, len(resolved))
+	for index, attachment := range resolved {
+		result[index] = taskadapter.AttachmentInput{ID: attachment.ID, Path: attachment.Path, MediaType: attachment.MediaType}
+	}
+	return result, nil
+}
+
+func (handler *Handler) releaseActionAttachments(entry promptqueue.Entry) {
+	if len(entry.AttachmentIDs) == 0 || handler.attachmentStore == nil {
+		return
+	}
+	if err := handler.attachmentStore.ReleaseClaimed(entry.DeviceID, entry.AttachmentIDs, entry.ActionID); err != nil && !errors.Is(err, attachments.ErrAttachmentUnavailable) {
+		handler.logger.Error("[mobile-session] attachment cleanup failed", "action_id", entry.ActionID, "device_id", entry.DeviceID, "attachment_count", len(entry.AttachmentIDs), "decision", "retain_bounded_claim", "error_class", fmt.Sprintf("%T", err))
+	}
+}
+
+func (handler *Handler) releaseCanceledAttachments(entries []promptqueue.Entry, includeUnknown bool) {
+	for _, entry := range entries {
+		if entry.State == promptqueue.StatePrepared || includeUnknown && entry.State == promptqueue.StateSentUnknown {
+			handler.releaseActionAttachments(entry)
+		}
+	}
 }
 
 func resolveNewTaskOptions(catalog taskoptions.Catalog, modelID, reasoningID, permissionModeID string) (taskoptions.Model, taskoptions.PermissionMode, bool) {
@@ -1031,7 +1229,9 @@ func (handler *Handler) dispatchNextQueuedPrompt(ctx context.Context, taskID str
 	if handler.promptQueue == nil || handler.existingTaskSource == nil {
 		return
 	}
+	var dispatched promptqueue.Entry
 	result, err := handler.promptQueue.DispatchNext(ctx, taskID, func(ctx context.Context, queued promptqueue.Entry) (promptqueue.Result, error) {
+		dispatched = queued
 		started, startErr := handler.startQueuedExistingTurn(ctx, queued)
 		if errors.Is(startErr, taskadapter.ErrTaskBusy) || errors.Is(startErr, taskadapter.ErrTaskLookupTransient) {
 			return promptqueue.Result{}, promptqueue.ErrSendDeferred
@@ -1048,10 +1248,14 @@ func (handler *Handler) dispatchNextQueuedPrompt(ctx context.Context, taskID str
 		return
 	}
 	if err != nil {
+		if !errors.Is(err, promptqueue.ErrOutcomeUnknown) {
+			handler.releaseActionAttachments(dispatched)
+		}
 		handler.logger.Error("[mobile-session] queued follow-up dispatch failed", "thread_id", taskID, "decision", "retain_durable_queue_state", "error_class", fmt.Sprintf("%T", err))
 		handler.publishCurrentSnapshot(ctx, taskID, "queued_follow_up_state_changed")
 		return
 	}
+	handler.releaseActionAttachments(dispatched)
 	handler.logger.Info("[mobile-session] queued follow-up started", "thread_id", taskID, "turn_id", result.TurnID, "decision", "oldest_prepared_first")
 	snapshot, refreshErr := handler.refreshTaskSnapshot(ctx)
 	if refreshErr != nil {
@@ -1070,10 +1274,37 @@ func (handler *Handler) dispatchNextQueuedPrompt(ctx context.Context, taskID str
 }
 
 func (handler *Handler) startQueuedExistingTurn(ctx context.Context, queued promptqueue.Entry) (taskadapter.ExistingTaskResult, error) {
+	attachmentInputs, err := handler.resolveActionAttachments(queued)
+	if err != nil {
+		return taskadapter.ExistingTaskResult{}, err
+	}
+	if len(attachmentInputs) != 0 {
+		if source, okay := handler.existingTaskSource.(ExistingTaskRecoveryAttachmentSource); okay && queued.OwnerSource != "" {
+			return source.StartExistingTurnFromSourceWithAttachments(ctx, queued.ThreadID, queued.Prompt, taskstate.Source(queued.OwnerSource), attachmentInputs)
+		}
+		if source, okay := handler.existingTaskSource.(ExistingTaskAttachmentSource); okay {
+			return source.StartExistingTurnWithAttachments(ctx, queued.ThreadID, queued.Prompt, attachmentInputs)
+		}
+		return taskadapter.ExistingTaskResult{}, attachments.ErrAttachmentUnavailable
+	}
 	if source, okay := handler.existingTaskSource.(ExistingTaskRecoveryControlSource); okay && queued.OwnerSource != "" {
 		return source.StartExistingTurnFromSource(ctx, queued.ThreadID, queued.Prompt, taskstate.Source(queued.OwnerSource))
 	}
 	return handler.existingTaskSource.StartExistingTurn(ctx, queued.ThreadID, queued.Prompt)
+}
+
+func (handler *Handler) redirectQueuedExistingTurn(ctx context.Context, queued promptqueue.Entry) (taskadapter.ExistingTaskResult, error) {
+	attachmentInputs, err := handler.resolveActionAttachments(queued)
+	if err != nil {
+		return taskadapter.ExistingTaskResult{}, err
+	}
+	if len(attachmentInputs) != 0 {
+		if source, okay := handler.existingTaskSource.(ExistingTaskAttachmentSource); okay {
+			return source.RedirectExistingTurnWithAttachments(ctx, queued.ThreadID, queued.Prompt, attachmentInputs)
+		}
+		return taskadapter.ExistingTaskResult{}, attachments.ErrAttachmentUnavailable
+	}
+	return handler.existingTaskSource.RedirectExistingTurn(ctx, queued.ThreadID, queued.Prompt)
 }
 
 func writeOutcomeUnknown(err error) bool {
@@ -1189,7 +1420,7 @@ func (handler *Handler) send(ctx context.Context, sender transport.MessageSender
 	return nil
 }
 
-func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable bool, options taskoptions.Catalog) json.RawMessage {
+func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable, attachmentCapable bool, options taskoptions.Catalog) json.RawMessage {
 	capabilities := []string{"set_project"}
 	if taskCapable {
 		capabilities = append(capabilities, "desktop_tasks")
@@ -1202,6 +1433,9 @@ func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCap
 	}
 	if optionsCapable {
 		capabilities = append(capabilities, "new_task_options")
+	}
+	if attachmentCapable {
+		capabilities = append(capabilities, "attachments")
 	}
 	body, _ := json.Marshal(struct {
 		SessionID      string              `json:"sessionId"`

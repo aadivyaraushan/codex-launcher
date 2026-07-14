@@ -11,6 +11,7 @@ var (
 	ErrAttachmentQuota       = errors.New("attachment storage quota exceeded")
 	ErrAttachmentUnavailable = errors.New("attachment is unavailable")
 	ErrAttachmentCorrupt     = errors.New("attachment digest does not match")
+	ErrAttachmentClaimed     = errors.New("attachment belongs to another durable action")
 	ErrStorageUnavailable    = errors.New("attachment storage is unavailable")
 )
 
