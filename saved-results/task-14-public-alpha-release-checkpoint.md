@@ -165,8 +165,23 @@ six-target companion reproducibility: PASS
 ```
 
 The local comparison used the placeholder commit `0123456789abcdef` because
-Task 14 was not yet committed. A final package check must use the real Task 14
-commit after it exists.
+Task 14 was not yet committed.
+
+After the implementation commit existed, the same full matrix was built twice
+from commit `397e6222488d22bd60a92dac92ddc543300984fb` and source epoch
+`1784019989`. Both output directories had identical digests and every entry in
+both `SHA256SUMS` files verified. The first build produced:
+
+```text
+26a4dec6368ea44f871a2b868709b400bfca14c663ffb85929a7e6c797f69d6f  THIRD_PARTY_NOTICES.md
+b98d039aa33da15643a4bef5e5efdb97c153ea280cc16f92960b9e0cdec7ac52  codex-launcher_0.1.0-alpha.1_darwin_amd64.tar.gz
+e6fd142520af286f0e8df42a77682a335c9d791cd537785fd17ecbf3f7dbc134  codex-launcher_0.1.0-alpha.1_darwin_arm64.tar.gz
+75be0415fd32d326dd345cc24591f84c0dbc8a66fb4eb3228f4f50d1a644455b  codex-launcher_0.1.0-alpha.1_linux_amd64.tar.gz
+1e48202411048c3280bb945c816ece9a330305a31b2ebe4349c5c574dfc151cb  codex-launcher_0.1.0-alpha.1_linux_arm64.tar.gz
+16260d47c4c218b339852f01e059dffc9f44f24d0291429390b1a93faf1e844f  codex-launcher_0.1.0-alpha.1_windows_amd64.zip
+1f31b1d7a940ecab1b69037154e5efc9a62f965fb8adaef4ee0cedbb546d34e3  codex-launcher_0.1.0-alpha.1_windows_arm64.zip
+six-target companion real-commit reproducibility: PASS
+```
 
 ## Not yet verified
 
