@@ -852,6 +852,20 @@ Decision rules:
 
 **Gate:** Any P1 or P2 returns work to the relevant task, adds/revises a failing test first, and triggers a full rerun of affected integration/E2E suites. `READY` requires zero open P1/P2 findings and a second clean judge pass after corrections.
 
+> **Checkpoint — 2026-07-14:** The final local Android audit correction pass is
+> complete. Source commit `84854bf1ccb05a11a8fc6936676414d38621f6fb`
+> produced debug APK SHA-256
+> `fb27c0dd9a86d07704fcdaa6e75dd006b119e365d7833937c37ad4c78a922527`.
+> The clean-source audit passed 66/66 checks across 10 production launcher
+> checks, all 42 fixed UI states, and 14 interaction groups. The same final
+> matrix passed 248 Android unit tests, 108 Android 16 device tests with zero
+> failures and one externally guarded network skip, every release contract,
+> release-APK debug-surface isolation, the protocol fixtures, Go race tests,
+> and Go vet. After two correction rounds, a third fresh judge found zero local
+> code/evidence P1 or P2 gaps and approved this incremental checkpoint. V1 is
+> not `READY`: real Tailscale, unlocked model-backed Desktop control, physical
+> Pixel 9, and native Windows/Linux checks remain external release gates.
+
 ## Test coverage map
 
 ```text
