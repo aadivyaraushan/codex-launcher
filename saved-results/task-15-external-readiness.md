@@ -25,6 +25,12 @@ Tailscale, physical-device, or model-backed result.
 - The desktop follower adapter deliberately pins build `26.707.51957` in
   `companion/internal/codex/desktopipc/client.go`. It will therefore fail
   closed until the newer private bridge is read-verified.
+- A read-only inspection of the installed `app.asar` found the follower method
+  names the companion relies on, including `thread-follower-load-complete-history`,
+  `thread-follower-start-turn`, `thread-follower-steer-turn`, and the matching
+  request and response names. This shows that the newer bundle still contains
+  that interface, but it does **not** prove its message versions, parameters,
+  or responses. The compatibility pin remains unchanged on purpose.
 - QEMU system binaries are installed for both AArch64 and x86_64. No guest
   image or licensed Windows media was selected or started.
 - Local cross-compiles completed for Linux and Windows on amd64 and arm64.
@@ -52,6 +58,7 @@ adb devices -l
 command -v tailscale
 codex --version
 /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/ChatGPT.app/Contents/Info.plist
+strings /Applications/ChatGPT.app/Contents/Resources/app.asar | rg -o 'thread-follower-[a-z0-9-]+' | sort -u
 GOOS=linux GOARCH=amd64 go build ./companion/cmd/codex-launcher
 GOOS=windows GOARCH=amd64 go build ./companion/cmd/codex-launcher
 GOOS=linux GOARCH=arm64 go build -o /tmp/codex-launcher-linux-arm64 ./companion/cmd/codex-launcher
