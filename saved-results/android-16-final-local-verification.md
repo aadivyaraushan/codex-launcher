@@ -12,14 +12,15 @@ Purpose: record the final local Android and repository checks for the Codex Laun
 - Android version: 16
 - ADB serial: `emulator-5554`
 - Android SDK: `/opt/homebrew/share/android-commandlinetools`
-- Audited source commit: `84854bf1ccb05a11a8fc6936676414d38621f6fb`
-- Audited debug APK SHA-256: `fb27c0dd9a86d07704fcdaa6e75dd006b119e365d7833937c37ad4c78a922527`
+- Audited source commit: `b02108088ca7f3d9bc2882eb351472f324ac026b`
+- Audited debug APK SHA-256: `024d29db62ee80f4abfe77937241ec66c1c9aca7fd5ee03f2985910ab1e30f61`
 - Audited source state: clean; the runner found no source changes outside the excluded evidence folders.
 
 ## Results
 
-- Hands-on launcher audit: 66 passed, 0 failed. It covered 10 real launcher checks, all 42 fixed UI states, and 14 interaction groups. Full screenshots and per-check links are in `saved-results/android-16-hands-on-ui-audit.md`.
-- Audit-runner unit tests: 7 passed, including exact APK installation, source/build identity, and replace-before-retry text entry.
+- Hands-on launcher audit: 73 passed, 0 failed. It covered 10 real launcher checks, all 42 fixed UI states, and 21 interaction groups. Full screenshots and per-check links are in `saved-results/android-16-hands-on-ui-audit.md`.
+- Audit-runner unit tests: 9 passed, including exact APK installation, source/build identity, replace-before-retry text entry, bounded transient Android UI-dump recovery, and direct interactions for every synthetic state with a user action.
+- Sending a Codex answer now disables its choice chips as well as Send and Not now. The focused Android 16 test failed before the fix and passed after it; the 73-check audit also verified the disabled visual state.
 - Android unit tests: 248 passed, 0 failed, 0 skipped. Evidence: `android/app/build/test-results/testDebugUnitTest/TEST-*.xml`.
 - Android device tests: 108 total, 0 failed, 1 skipped by its external-network guard. Evidence: `android/app/build/outputs/androidTest-results/connected/debug/TEST-codex_launcher_pixel_9_api_36(AVD) - 16-_app-.xml`.
 - Android lint and builds: `lintDebug`, `assembleDebug`, and `assembleRelease` passed.

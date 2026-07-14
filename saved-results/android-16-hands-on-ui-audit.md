@@ -1,6 +1,6 @@
 # Android 16 hands-on UI audit
 
-Date: 2026-07-14T12:38:32.688Z
+Date: 2026-07-14T13:34:40.389Z
 
 Purpose: drive the Codex Launcher on a running Android emulator using Android UI dumps plus real tap, type, Back, and screenshot commands. The fixed-state activity renders production Compose surfaces with local synthetic data; it does not prove a live Tailscale or Codex account connection.
 
@@ -11,11 +11,11 @@ Purpose: drive the Codex Launcher on a running Android emulator using Android UI
 - ADB serial: emulator-5554
 - AVD: codex_launcher_pixel_9_api_36
 - Build fingerprint: google/sdk_gphone64_arm64/emu64a:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys
-- Debug APK SHA-256: fb27c0dd9a86d07704fcdaa6e75dd006b119e365d7833937c37ad4c78a922527
-- Source commit: 84854bf1ccb05a11a8fc6936676414d38621f6fb
+- Debug APK SHA-256: 024d29db62ee80f4abfe77937241ec66c1c9aca7fd5ee03f2985910ab1e30f61
+- Source commit: b02108088ca7f3d9bc2882eb351472f324ac026b
 - Source tree dirty during audit: no
 - Fixed states read from the Kotlin catalog: 42
-- Checks: 66 passed, 0 failed
+- Checks: 73 passed, 0 failed
 
 ## Results
 
@@ -75,13 +75,20 @@ Purpose: drive the Codex Launcher on a running Android emulator using Android UI
 - PASS: pairing save retry [screenshot](../outputs/android-vm-audit/interaction-pairing-save-retry.png)
 - PASS: project is required before first send [screenshot](../outputs/android-vm-audit/interaction-home-project-required.png)
 - PASS: Home model choice and prompt send [screenshot](../outputs/android-vm-audit/interaction-home-send.png)
+- PASS: new-task review, retry, and attachment removal [screenshot](../outputs/android-vm-audit/interaction-home-review-retry-attachment.png)
+- PASS: project selection and save retry [screenshot](../outputs/android-vm-audit/interaction-project-selection.png)
 - PASS: offline connection help [screenshot](../outputs/android-vm-audit/interaction-offline-help.png)
 - PASS: working task redirect and confirmed stop [screenshot](../outputs/android-vm-audit/interaction-task-control.png)
 - PASS: idle task dictation and attachment removal [screenshot](../outputs/android-vm-audit/interaction-task-inputs.png)
+- PASS: transcript detail navigation [screenshot](../outputs/android-vm-audit/interaction-transcript-details.png)
 - PASS: task rename, archive, and fork menus [screenshot](../outputs/android-vm-audit/interaction-task-actions.png)
+- PASS: uncertain task controls require explicit review [screenshot](../outputs/android-vm-audit/interaction-uncertain-task-review.png)
 - PASS: redacted and sending approvals stay fail-closed [screenshot](../outputs/android-vm-audit/interaction-approval-safety.png)
+- PASS: full approval actions [screenshot](../outputs/android-vm-audit/interaction-approval-full.png)
 - PASS: free-text, dismiss, and secret question paths [screenshot](../outputs/android-vm-audit/interaction-question-safety.png)
+- PASS: sending question disables actions [screenshot](../outputs/android-vm-audit/interaction-question-sending.png)
 - PASS: app search empty state and navigation [screenshot](../outputs/android-vm-audit/interaction-app-search.png)
+- PASS: app launch failure and dismissal dialogs [screenshot](../outputs/android-vm-audit/interaction-app-error-dialogs.png)
 - PASS: appearance choices [screenshot](../outputs/android-vm-audit/interaction-appearance.png)
 - PASS: recovery and attachment-file dialog actions [screenshot](../outputs/android-vm-audit/interaction-recovery-dialog.png)
 - PASS: production default Home recovers after Android reboot [screenshot](../outputs/android-vm-audit/production-reboot-home.png)
