@@ -5,6 +5,16 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
+val releaseStoreFile = providers.environmentVariable("CODEX_LAUNCHER_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("CODEX_LAUNCHER_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("CODEX_LAUNCHER_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("CODEX_LAUNCHER_KEY_PASSWORD").orNull
+val releaseSigningValues = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+val releaseSigningConfigured = releaseSigningValues.all { !it.isNullOrBlank() }
+if (releaseSigningValues.any { !it.isNullOrBlank() } && !releaseSigningConfigured) {
+    throw GradleException("Android release signing requires all CODEX_LAUNCHER signing variables")
+}
+
 android {
     namespace = "app.codexlauncher"
     compileSdk = 36
@@ -25,6 +35,24 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseStoreFile))
+                storePassword = requireNotNull(releaseStorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.findByName("release")
+            isMinifyEnabled = false
+        }
     }
 
     testOptions {

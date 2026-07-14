@@ -824,6 +824,24 @@ Decision rules:
 
 **Verify:** CI from a clean clone, dependency/security scans, Android lint, Go vet/test/race, schema compatibility fixtures, and the complete manual release checklist on Pixel 9 + macOS plus platform VM results.
 
+> **2026-07-14 checkpoint:** Added pinned, least-permission Android and
+> companion CI plus a manual-only release workflow. The release path builds a
+> signed APK/AAB and deterministic darwin/linux/windows archives for amd64 and
+> arm64, publishes checksums, SPDX JSON SBOMs, dependency notices, and GitHub
+> attestations, and creates a GitHub Release only when the manual `publish`
+> input is explicitly true. Android signing reads an all-or-none set of four
+> environment variables; a temporary external test key produced a v2-signed
+> APK and verified AAB. Two local six-target package runs produced identical
+> digests and valid embedded provenance. The 120-assertion release contract,
+> repository checks, Go race/vet gates, Android unit/lint gates, YAML parsing,
+> shell syntax, and diff checks pass. Public setup, security, compatibility,
+> license, and technical-alpha overview documents are linked from the README.
+> No remote workflow, production key, push, tag, repository, or release has
+> been used. Hosted clean-clone CI, real SBOM generation/attestation, native
+> Linux/Windows lifecycle testing, real Tailscale, and the unlocked live
+> Desktop follower remain open. Evidence:
+> `saved-results/task-14-public-alpha-release-checkpoint.md`.
+
 ### Task 15: Run a fresh final implementation judge and close every P1/P2 gap
 
 **Objective:** Verify the finished product against an independently defined quality bar rather than the assumptions of the implementation context.

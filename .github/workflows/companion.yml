@@ -1,0 +1,82 @@
+name: Companion
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: companion-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test
+        run: go test ./... -count=1
+      - name: Vet
+        run: go vet ./...
+      - name: POSIX smoke contract
+        if: runner.os != 'Windows'
+        run: bash -n release/checks/companion-smoke.sh && node release/checks/companion-install-smoke.test.mjs
+      - name: Windows smoke contract
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "release/checks/companion-smoke.ps1"),
+            [ref]$null,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -ne 0) { throw ($errors | Out-String) }
+          node release/checks/companion-install-smoke.test.mjs
+
+  race:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./... -race -count=1
+
+  reproducible-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./release/companion-package -count=1
+
+  dependency-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Scan resolved repository dependencies
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          path: .
+          fail-build: true
+          severity-cutoff: high
+          output-format: table

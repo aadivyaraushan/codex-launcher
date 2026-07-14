@@ -1,0 +1,236 @@
+name: Technical alpha release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without a leading v
+        required: true
+        type: string
+      publish:
+        description: Publish a GitHub Release after every build and attestation passes
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: technical-alpha-release
+  cancel-in-progress: false
+
+jobs:
+  validate-repository:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@90ddb51e90a5fd9ba75f40cf85156b7b41bf76a3 # v6
+      - name: Verify companion, repository contracts, and Android
+        run: |
+          go test ./... -race -count=1
+          go vet ./...
+          for test in release/checks/*.test.mjs; do node "${test}"; done
+          bash -n release/checks/companion-smoke.sh
+          python3 -m venv .release-schema-venv
+          .release-schema-venv/bin/python -m pip install --requirement release/checks/protocol/requirements.txt
+          .release-schema-venv/bin/python release/checks/protocol/schema_test.py
+          ./android/gradlew -p android --no-daemon --stacktrace testDebugUnitTest lintDebug
+
+  validate-android-16:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@90ddb51e90a5fd9ba75f40cf85156b7b41bf76a3 # v6
+      - name: Verify the Pixel Android 16 flow
+        uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_9
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: ./android/gradlew -p android --no-daemon --stacktrace connectedDebugAndroidTest
+
+  companion:
+    needs: [validate-repository, validate-android-16]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build reproducible companion archives
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          test "${VERSION}" = "0.1.0-alpha.1"
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          go run ./release/companion-package \
+            -output dist/companion \
+            -version "${VERSION}" \
+            -commit "${GITHUB_SHA}"
+      - name: Generate companion SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: dist/companion
+          format: spdx-json
+          output-file: dist/companion/companion.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Scan companion SBOM for known vulnerabilities
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          sbom: dist/companion/companion.spdx.json
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+      - name: Attest companion archives
+        uses: actions/attest@f6bf1532d7d6793fce74eac584813a8eee607999 # v4
+        with:
+          subject-path: |
+            dist/companion/*.tar.gz
+            dist/companion/*.zip
+            dist/companion/SHA256SUMS
+            dist/companion/companion.spdx.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: companion-release
+          path: dist/companion
+          if-no-files-found: error
+
+  android:
+    needs: [validate-repository, validate-android-16]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@90ddb51e90a5fd9ba75f40cf85156b7b41bf76a3 # v6
+      - name: Prepare release signing key
+        env:
+          STORE_BASE64: ${{ secrets.CODEX_LAUNCHER_STORE_BASE64 }}
+          CODEX_LAUNCHER_STORE_PASSWORD: ${{ secrets.CODEX_LAUNCHER_STORE_PASSWORD }}
+          CODEX_LAUNCHER_KEY_ALIAS: ${{ secrets.CODEX_LAUNCHER_KEY_ALIAS }}
+          CODEX_LAUNCHER_KEY_PASSWORD: ${{ secrets.CODEX_LAUNCHER_KEY_PASSWORD }}
+        run: |
+          test -n "${STORE_BASE64}"
+          test -n "${CODEX_LAUNCHER_STORE_PASSWORD}"
+          test -n "${CODEX_LAUNCHER_KEY_ALIAS}"
+          test -n "${CODEX_LAUNCHER_KEY_PASSWORD}"
+          printf '%s' "${STORE_BASE64}" | base64 --decode > "${RUNNER_TEMP}/codex-launcher-release.keystore"
+      - name: Build signed APK and app bundle
+        env:
+          CODEX_LAUNCHER_STORE_FILE: ${{ runner.temp }}/codex-launcher-release.keystore
+          CODEX_LAUNCHER_STORE_PASSWORD: ${{ secrets.CODEX_LAUNCHER_STORE_PASSWORD }}
+          CODEX_LAUNCHER_KEY_ALIAS: ${{ secrets.CODEX_LAUNCHER_KEY_ALIAS }}
+          CODEX_LAUNCHER_KEY_PASSWORD: ${{ secrets.CODEX_LAUNCHER_KEY_PASSWORD }}
+        run: ./android/gradlew -p android --no-daemon --stacktrace assembleRelease bundleRelease
+      - name: Remove temporary signing key
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/codex-launcher-release.keystore"
+      - name: Collect Android release files and checksums
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          test "${VERSION}" = "0.1.0-alpha.1"
+          mkdir -p dist/android
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/android/codex-launcher-${VERSION}.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "dist/android/codex-launcher-${VERSION}.aab"
+          cp THIRD_PARTY_NOTICES.md dist/android/THIRD_PARTY_NOTICES.android.md
+          cd dist/android
+          sha256sum *.apk *.aab THIRD_PARTY_NOTICES.android.md > SHA256SUMS.android
+      - name: Generate Android SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: android/app/build/outputs
+          format: spdx-json
+          output-file: dist/android/android.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Scan Android SBOM for known vulnerabilities
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          sbom: dist/android/android.spdx.json
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+      - name: Attest Android artifacts
+        uses: actions/attest@f6bf1532d7d6793fce74eac584813a8eee607999 # v4
+        with:
+          subject-path: |
+            dist/android/*.apk
+            dist/android/*.aab
+            dist/android/SHA256SUMS.android
+            dist/android/android.spdx.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-release
+          path: dist/android
+          if-no-files-found: error
+
+  publish:
+    if: inputs.publish
+    needs: [companion, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: "*-release"
+          path: dist
+          merge-multiple: true
+      - name: Publish explicitly requested technical alpha
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          test "${VERSION}" = "0.1.0-alpha.1"
+          if git show-ref --verify --quiet "refs/tags/v${VERSION}"; then
+            test "$(git rev-parse "refs/tags/v${VERSION}^{commit}")" = "${GITHUB_SHA}"
+          else
+            git tag "v${VERSION}" "${GITHUB_SHA}"
+            git push origin "refs/tags/v${VERSION}"
+          fi
+          gh release create "v${VERSION}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --target "${GITHUB_SHA}" \
+            --prerelease \
+            --latest=false \
+            --title "Codex Launcher v${VERSION}" \
+            --notes "Unsigned desktop technical alpha. See the bundled checksums, SBOMs, attestations, and repository setup guides."
