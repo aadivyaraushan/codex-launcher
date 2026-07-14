@@ -5,6 +5,38 @@ import org.junit.Test
 
 class PromptDictationTest {
     @Test
+    fun `home recognition appends text and reports success`() {
+        assertEquals(
+            "Dictation added",
+            homeDictationMessage(PromptDictationResult.Recognized("new words"), recognizedApplied = true),
+        )
+    }
+
+    @Test
+    fun `home dictation failures keep the current draft`() {
+        assertEquals(
+            "Dictation canceled",
+            homeDictationMessage(PromptDictationResult.Cancelled, recognizedApplied = false),
+        )
+        assertEquals(
+            "Speech recognition isn’t installed",
+            homeDictationMessage(PromptDictationResult.Unavailable, recognizedApplied = false),
+        )
+        assertEquals(
+            "Couldn’t understand speech",
+            homeDictationMessage(PromptDictationResult.Failed, recognizedApplied = false),
+        )
+    }
+
+    @Test
+    fun `home recognition cannot claim success when the draft became unavailable`() {
+        assertEquals(
+            "Dictation wasn’t added because the draft changed",
+            homeDictationMessage(PromptDictationResult.Recognized("new words"), recognizedApplied = false),
+        )
+    }
+
+    @Test
     fun `recognized words append to existing editable text`() {
         assertEquals("Existing words new words", mergePromptDictation("Existing words", "  new words  "))
     }

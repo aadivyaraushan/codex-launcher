@@ -30,11 +30,13 @@ sealed interface PromptDictationResult {
     data object Failed : PromptDictationResult
 }
 
-class PromptDictationContract : ActivityResultContract<Unit, PromptDictationResult>() {
+class PromptDictationContract(
+    private val prompt: String = "Speak your follow-up",
+) : ActivityResultContract<Unit, PromptDictationResult>() {
     override fun createIntent(context: Context, input: Unit): Intent =
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak your follow-up")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
 
@@ -57,6 +59,17 @@ internal fun mergePromptDictation(currentText: String, recognizedText: String): 
     if (currentText.isBlank()) return recognized
     return if (currentText.last().isWhitespace()) "$currentText$recognized" else "$currentText $recognized"
 }
+
+internal fun homeDictationMessage(
+    result: PromptDictationResult,
+    recognizedApplied: Boolean,
+): String =
+    when (result) {
+        is PromptDictationResult.Recognized -> if (recognizedApplied) "Dictation added" else "Dictation wasn’t added because the draft changed"
+        PromptDictationResult.Cancelled -> "Dictation canceled"
+        PromptDictationResult.Unavailable -> "Speech recognition isn’t installed"
+        PromptDictationResult.Failed -> "Couldn’t understand speech"
+    }
 
 @Composable
 internal fun PromptDictationButton(

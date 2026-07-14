@@ -450,6 +450,53 @@ class LauncherSessionViewModelTest {
     }
 
     @Test
+    fun `successful connection callback runs once when the session first becomes online`() = runBlocking {
+        val observers = mutableListOf<SessionObserver>()
+        val connections = mutableListOf<FakeSessionConnection>()
+        val recorded = mutableListOf<Pair<String, Long>>()
+        val firstPairing = pairedComputer()
+        val secondPairing = firstPairing.copy(
+            pairingGeneration = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { 3 }),
+        )
+        var now = 1_720_000_000_000L
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver ->
+                observers += nextObserver
+                FakeSessionConnection().also { connections += it }
+            },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            onSuccessfulConnection = { generation, epochMillis -> recorded += generation to epochMillis },
+            nowMillis = { now },
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+
+        viewModel.connect(firstPairing)
+        observers[0].onReady(connections[0], ByteArray(32))
+        observers[0].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[0].onMessage(snapshotWithTask(1, "Initial"))
+        observers[0].onMessage(snapshotWithTask(2, "Refresh"))
+
+        now += 1_000
+        viewModel.connect(secondPairing, force = true)
+        observers[0].onMessage(snapshotWithTask(3, "Stale first pairing"))
+        observers[1].onReady(connections[1], ByteArray(32))
+        observers[1].onMessage(welcome(capabilities = listOf("set_project")))
+        observers[1].onMessage(snapshotWithTask(4, "Second pairing"))
+
+        assertEquals(
+            listOf(
+                firstPairing.pairingGeneration to 1_720_000_000_000,
+                secondPairing.pairingGeneration to 1_720_000_001_000,
+            ),
+            recorded,
+        )
+    }
+
+    @Test
     fun disconnectClearsComputerContentAndFailsPendingProjectActions() = runBlocking {
         lateinit var observer: SessionObserver
         val connection = FakeSessionConnection()

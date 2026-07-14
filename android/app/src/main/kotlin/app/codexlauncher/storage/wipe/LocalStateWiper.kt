@@ -4,6 +4,7 @@ import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.storage.actions.ActionRecordStore
 import app.codexlauncher.storage.drafts.DraftKeyStore
 import app.codexlauncher.storage.drafts.EncryptedDraftStore
+import app.codexlauncher.storage.connection.lastseen.LastConnectionStore
 import app.codexlauncher.storage.pairing.DeviceIdentityStore
 import app.codexlauncher.storage.pairing.PairingRecordStore
 import app.codexlauncher.storage.projects.ProjectSelectionStore
@@ -14,6 +15,7 @@ enum class WipeStep {
     MARKER_BEGIN,
     PROJECT_SELECTION,
     ACTION_RECORDS,
+    LAST_CONNECTION,
     DRAFT_CIPHERTEXT,
     DRAFT_KEY,
     DEVICE_IDENTITY,
@@ -27,6 +29,7 @@ enum class WipeStep {
             listOf(
                 PROJECT_SELECTION,
                 ACTION_RECORDS,
+                LAST_CONNECTION,
                 DRAFT_CIPHERTEXT,
                 DRAFT_KEY,
                 DEVICE_IDENTITY,
@@ -139,6 +142,7 @@ class LocalStateWiper(
             intent: WipeIntent,
             projects: ProjectSelectionStore,
             actions: ActionRecordStore,
+            lastConnections: LastConnectionStore,
             drafts: EncryptedDraftStore,
             draftKeys: DraftKeyStore,
             deviceIdentity: DeviceIdentityStore,
@@ -152,6 +156,7 @@ class LocalStateWiper(
                     mapOf(
                         WipeStep.PROJECT_SELECTION to projects::clearForWipe,
                         WipeStep.ACTION_RECORDS to actions::clearAllForWipe,
+                        WipeStep.LAST_CONNECTION to lastConnections::clearForWipe,
                         WipeStep.DRAFT_CIPHERTEXT to { drafts.clearForWipe() },
                         WipeStep.DRAFT_KEY to { deleteKey(draftKeys::delete) },
                         WipeStep.DEVICE_IDENTITY to deviceIdentity::clearForWipe,

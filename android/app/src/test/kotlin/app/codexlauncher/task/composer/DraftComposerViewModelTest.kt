@@ -18,6 +18,46 @@ import org.junit.Test
 
 class DraftComposerViewModelTest {
     @Test
+    fun `dictation applies atomically only to the exact draft that launched it`() = runBlocking {
+        val viewModel =
+            DraftComposerViewModel(
+                loadDraft = { DraftReadState.Available("Existing words", Instant.EPOCH) },
+                saveDraft = { true },
+                storageDispatcher = Dispatchers.Unconfined,
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.load("pairing-a")
+
+        assertTrue(viewModel.beginDictation())
+        assertTrue(viewModel.applyDictation { "$it new words" })
+        assertEquals("Existing words new words", viewModel.state.value.text)
+
+        assertTrue(viewModel.beginDictation())
+        viewModel.update("Newer typed words")
+        assertFalse(viewModel.applyDictation { "$it stale speech" })
+        assertEquals("Newer typed words", viewModel.state.value.text)
+
+        assertTrue(viewModel.beginDictation())
+        viewModel.reset()
+        viewModel.load("pairing-b")
+        assertFalse(viewModel.applyDictation { "$it wrong owner" })
+        assertEquals("Existing words", viewModel.state.value.text)
+    }
+
+    @Test
+    fun `dictation cannot start before the exact draft is editable`() {
+        val viewModel =
+            DraftComposerViewModel(
+                loadDraft = { DraftReadState.Empty },
+                saveDraft = { true },
+                storageDispatcher = Dispatchers.Unconfined,
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+
+        assertFalse(viewModel.beginDictation())
+    }
+
+    @Test
     fun `authenticated storage load restores unfinished text`() = runBlocking {
         val viewModel =
             DraftComposerViewModel(

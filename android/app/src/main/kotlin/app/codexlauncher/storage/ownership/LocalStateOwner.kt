@@ -6,6 +6,8 @@ import app.codexlauncher.storage.actions.StoredActionJournal
 import app.codexlauncher.storage.actions.actionRecordDataStore
 import app.codexlauncher.storage.drafts.DraftKeyStore
 import app.codexlauncher.storage.drafts.EncryptedDraftStore
+import app.codexlauncher.storage.connection.lastseen.LastConnectionStore
+import app.codexlauncher.storage.connection.lastseen.lastConnectionDataStore
 import app.codexlauncher.storage.pairing.DeviceIdentityStore
 import app.codexlauncher.storage.pairing.PairingRecordStore
 import app.codexlauncher.storage.pairing.deviceIdentityDataStore
@@ -30,6 +32,7 @@ class LocalStateOwner(context: Context) {
     val projectSelections = ProjectSelectionStore(appContext.projectSelectionDataStore, gate)
     val actionRecords = ActionRecordStore(appContext.actionRecordDataStore, gate)
     val actionJournal = StoredActionJournal(actionRecords)
+    val lastConnections = LastConnectionStore(appContext.lastConnectionDataStore, gate)
     val pairingKeys = PairingKeyStore()
     private val draftKeys = DraftKeyStore()
     val drafts =
@@ -46,6 +49,7 @@ class LocalStateOwner(context: Context) {
             intent = WipeIntentStore(appContext.wipeIntentDataStore),
             projects = projectSelections,
             actions = actionRecords,
+            lastConnections = lastConnections,
             drafts = drafts,
             draftKeys = draftKeys,
             deviceIdentity = deviceIdentity,

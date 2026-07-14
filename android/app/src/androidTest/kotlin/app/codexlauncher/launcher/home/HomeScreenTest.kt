@@ -169,6 +169,29 @@ class HomeScreenTest {
     }
 
     @Test
+    fun dictationIsAvailableOnlyWhileTheHomeDraftCanAcceptEdits() {
+        var dictationStarts = 0
+        var composerState by mutableStateOf(DraftComposerState("Keep this", DraftComposerPhase.READY))
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    composerState = composerState,
+                    onDictate = { dictationStarts += 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Dictate prompt").assertIsEnabled().performClick()
+        assertEquals(1, dictationStarts)
+
+        compose.runOnIdle {
+            composerState = DraftComposerState("Keep this", DraftComposerPhase.UNAVAILABLE)
+        }
+        compose.onNodeWithContentDescription("Dictate prompt").assertIsNotEnabled()
+    }
+
+    @Test
     fun unknownNewTaskShowsAReviewGateAndBlocksAnotherSend() {
         var dismisses = 0
         compose.setContent {

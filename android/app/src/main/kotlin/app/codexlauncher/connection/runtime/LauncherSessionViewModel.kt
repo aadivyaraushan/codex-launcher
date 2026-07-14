@@ -20,6 +20,7 @@ import app.codexlauncher.project.selection.ProjectSelectionViewModel
 import app.codexlauncher.project.session.ProjectSessionBridge
 import app.codexlauncher.project.session.ProjectSnapshot
 import app.codexlauncher.storage.actions.ActionJournal
+import app.codexlauncher.storage.connection.lastseen.shouldRecordSuccessfulConnection
 import app.codexlauncher.task.summary.TaskEventReducer
 import app.codexlauncher.task.summary.TaskQueueState
 import app.codexlauncher.task.management.TaskAction
@@ -81,6 +82,8 @@ class LauncherSessionViewModel(
     clearProject: suspend () -> Boolean,
     private val actionJournal: ActionJournal,
     private val clearConfirmedDraft: suspend (DraftVersion) -> Boolean = { false },
+    private val onSuccessfulConnection: suspend (pairingGeneration: String, epochMillis: Long) -> Unit = { _, _ -> },
+    private val nowMillis: () -> Long = System::currentTimeMillis,
     private val nextSessionId: () -> String = { UUID.randomUUID().toString() },
     private val retryWait: suspend (attempt: Int) -> Unit = { attempt -> delay(retryDelayMillis(attempt)) },
     private val attachmentUploader: AttachmentUploader = AttachmentUploader(),
@@ -182,7 +185,7 @@ class LauncherSessionViewModel(
         mutableState.value = LauncherSessionState(ConnectionStateMachine.reduce(ConnectionSnapshot.initial(), ConnectionEvent.ConnectRequested))
         val currentGeneration = generation.get()
         val sessionId = nextSessionId()
-        val observer = observer(currentGeneration, sessionId)
+        val observer = observer(currentGeneration, sessionId, paired.pairingGeneration)
         AppLog.info(
             feature = "connection-runtime",
             message = "companion connection requested",
@@ -211,7 +214,11 @@ class LauncherSessionViewModel(
         mutableState.value = LauncherSessionState(ConnectionStateMachine.reduce(mutableState.value.connection, ConnectionEvent.ConnectionLost))
     }
 
-    private fun observer(expectedGeneration: Long, sessionId: String) =
+    private fun observer(
+        expectedGeneration: Long,
+        sessionId: String,
+        pairingGeneration: String,
+    ) =
         object : SessionObserver {
             override fun onReady(connection: SessionConnection, attachmentKey: ByteArray) {
                 try {
@@ -240,7 +247,7 @@ class LauncherSessionViewModel(
                 if (generation.get() != expectedGeneration) return
                 when (message.type) {
                     MessageType.WELCOME -> acceptCapabilities(expectedGeneration, message)
-                    MessageType.SNAPSHOT -> applySnapshot(expectedGeneration, message)
+                    MessageType.SNAPSHOT -> applySnapshot(expectedGeneration, pairingGeneration, message)
                     MessageType.EVENT -> applyTaskEvent(expectedGeneration, message)
                     MessageType.TASK_PAGE -> applyTaskPage(expectedGeneration, message)
                     MessageType.DECISION_PAGE -> applyDecisionPage(expectedGeneration, message)
@@ -702,7 +709,11 @@ class LauncherSessionViewModel(
         )
     }
 
-    private fun applySnapshot(expectedGeneration: Long, message: ProtocolMessage) {
+    private fun applySnapshot(
+        expectedGeneration: Long,
+        pairingGeneration: String,
+        message: ProtocolMessage,
+    ) {
         val bridge = projectBridge ?: return
         val snapshot = bridge.snapshot(message)
         val snapshotTicket = beginSnapshot(expectedGeneration, snapshot.baseSequence) ?: return
@@ -744,8 +755,12 @@ class LauncherSessionViewModel(
                     else -> connection
                 }
             connection = ConnectionStateMachine.reduce(connection, ConnectionEvent.SnapshotApplied(snapshot.baseSequence))
+            val becameOnline = shouldRecordSuccessfulConnection(mutableState.value.connection.phase, connection.phase)
             val appliedThrough = publishSnapshot(expectedGeneration, snapshotTicket.token, connection, snapshot)
             if (appliedThrough == null) return@launch
+            if (becameOnline) {
+                onSuccessfulConnection(pairingGeneration, nowMillis())
+            }
             releaseTaskAcknowledgementsThrough(expectedGeneration, appliedThrough)
             markConnectionStable(expectedGeneration)
             acknowledge(expectedGeneration, appliedThrough)

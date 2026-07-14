@@ -16,6 +16,8 @@ import app.codexlauncher.storage.actions.ActionRecordStore
 import app.codexlauncher.storage.actions.actionRecordDataStore
 import app.codexlauncher.storage.drafts.DraftKeyStore
 import app.codexlauncher.storage.drafts.EncryptedDraftStore
+import app.codexlauncher.storage.connection.lastseen.LastConnectionStore
+import app.codexlauncher.storage.connection.lastseen.lastConnectionDataStore
 import app.codexlauncher.storage.pairing.DeviceIdentityStore
 import app.codexlauncher.storage.pairing.PairingRecordStore
 import app.codexlauncher.storage.pairing.deviceIdentityDataStore
@@ -59,6 +61,7 @@ class LocalStateWiperInstrumentedTest {
         val pairingRecords = PairingRecordStore(context.pairingDataStore, gate)
         val projects = ProjectSelectionStore(context.projectSelectionDataStore, gate)
         val actions = ActionRecordStore(context.actionRecordDataStore, gate)
+        val lastConnections = LastConnectionStore(context.lastConnectionDataStore, gate)
         val identity = DeviceIdentityStore(context.deviceIdentityDataStore)
         val drafts = EncryptedDraftStore(draftFile, draftKeys, Instant::now, Duration.ofDays(7), writeGate = gate)
         val intent = WipeIntentStore(context.wipeIntentDataStore)
@@ -74,6 +77,7 @@ class LocalStateWiperInstrumentedTest {
         assertTrue(pairingRecords.save(paired))
         assertTrue(projects.save(ProjectChoice("project-main", "Main")))
         assertTrue(actions.save(actionRecord()))
+        assertTrue(lastConnections.record(paired.pairingGeneration, 1_720_000_000_000))
         assertTrue(drafts.save("private unfinished prompt"))
         assertTrue(pairingKeys.exists())
         assertTrue(draftKeys.exists())
@@ -85,6 +89,7 @@ class LocalStateWiperInstrumentedTest {
                 intent,
                 projects,
                 actions,
+                lastConnections,
                 drafts,
                 draftKeys,
                 identity,
@@ -97,6 +102,7 @@ class LocalStateWiperInstrumentedTest {
         assertNull(pairingRecords.paired.first())
         assertNull(projects.selected.first())
         assertTrue((actions.state.first() as ActionRecordReadState.Available).records.isEmpty())
+        assertNull(lastConnections.forPairing(paired.pairingGeneration).first())
         assertTrue(context.deviceIdentityDataStore.data.first().asMap().isEmpty())
         assertFalse(draftFile.exists())
         assertFalse(pairingKeys.exists())
@@ -109,6 +115,7 @@ class LocalStateWiperInstrumentedTest {
         context.pairingDataStore.edit { it.clear() }
         context.projectSelectionDataStore.edit { it.clear() }
         context.actionRecordDataStore.edit { it.clear() }
+        context.lastConnectionDataStore.edit { it.clear() }
         context.deviceIdentityDataStore.edit { it.clear() }
         context.wipeIntentDataStore.edit { it.clear() }
         draftFile.parentFile?.deleteRecursively()

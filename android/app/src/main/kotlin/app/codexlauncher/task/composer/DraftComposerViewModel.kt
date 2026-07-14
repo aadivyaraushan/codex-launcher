@@ -43,6 +43,7 @@ class DraftComposerViewModel(
     private var generation = 0L
     private var revision = 0L
     private var loadedOwnerKey: String? = null
+    private var pendingDictationVersion: DraftVersion? = null
     private val scope = workScope ?: viewModelScope
 
     val state: StateFlow<DraftComposerState> = mutableState.asStateFlow()
@@ -58,6 +59,7 @@ class DraftComposerViewModel(
             synchronized(lock) {
                 if (loadedOwnerKey == ownerKey && mutableState.value.phase in setOf(DraftComposerPhase.LOADING, DraftComposerPhase.READY)) return
                 loadedOwnerKey = ownerKey
+                pendingDictationVersion = null
                 generation += 1
                 revision = 0
                 mutableState.value = DraftComposerState(phase = DraftComposerPhase.LOADING)
@@ -110,24 +112,62 @@ class DraftComposerViewModel(
             generation += 1
             revision = 0
             loadedOwnerKey = null
+            pendingDictationVersion = null
             mutableState.value = DraftComposerState()
         }
+    }
+
+    fun beginDictation(): Boolean =
+        synchronized(lock) {
+            val version = mutableState.value.version
+            if (!mutableState.value.canEdit || version == null) return false
+            pendingDictationVersion = version
+            true
+        }
+
+    fun cancelDictation() {
+        synchronized(lock) { pendingDictationVersion = null }
+    }
+
+    fun applyDictation(transform: (String) -> String): Boolean {
+        val write =
+            synchronized(lock) {
+                val expectedVersion = pendingDictationVersion
+                pendingDictationVersion = null
+                if (!mutableState.value.canEdit || expectedVersion == null || mutableState.value.version != expectedVersion) return false
+                acceptEditLocked(transform(mutableState.value.text))
+            }
+        logAcceptedEdit(write)
+        writes.trySend(write)
+        return true
     }
 
     fun update(text: String) {
         val write =
             synchronized(lock) {
                 if (!mutableState.value.canEdit) return
-                revision += 1
-                mutableState.value = mutableState.value.copy(text = text, saveFailed = false, version = DraftVersion(generation, revision))
-                DraftWrite(generation, revision, text)
+                acceptEditLocked(text)
             }
+        logAcceptedEdit(write)
+        writes.trySend(write)
+    }
+
+    private fun acceptEditLocked(text: String): DraftWrite {
+        revision += 1
+        mutableState.value = mutableState.value.copy(text = text, saveFailed = false, version = DraftVersion(generation, revision))
+        return DraftWrite(generation, revision, text)
+    }
+
+    private fun logAcceptedEdit(write: DraftWrite) {
         AppLog.info(
             feature = "draft-composer",
             message = "draft edit accepted",
-            fields = mapOf("generation" to write.generation, "revision" to write.revision, "input_shape" to "bytes=${text.encodeToByteArray().size}"),
+            fields = mapOf(
+                "generation" to write.generation,
+                "revision" to write.revision,
+                "input_shape" to "bytes=${write.text.encodeToByteArray().size}",
+            ),
         )
-        writes.trySend(write)
     }
 
     suspend fun clearAfterConfirmedSend(sentVersion: DraftVersion): Boolean {

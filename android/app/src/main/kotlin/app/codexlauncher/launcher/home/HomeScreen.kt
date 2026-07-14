@@ -366,6 +366,7 @@ private fun OnlineContent(
                 }
                 IconButton(
                     onClick = onDictate,
+                    enabled = composerState.canEdit,
                     modifier = Modifier.size(48.dp).semantics { contentDescription = "Dictate prompt" },
                 ) {
                     Text("⌁")

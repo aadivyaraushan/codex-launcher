@@ -29,6 +29,9 @@ class LauncherApplication : Application() {
             clearProject = localState.projectSelections::clear,
             actionJournal = localState.actionJournal,
             clearConfirmedDraft = draftComposer::clearAfterConfirmedSend,
+            onSuccessfulConnection = { pairingGeneration, epochMillis ->
+                localState.lastConnections.record(pairingGeneration, epochMillis)
+            },
         )
     }
     val streamClient: StreamClient by lazy { LauncherStreamClient(session) }
