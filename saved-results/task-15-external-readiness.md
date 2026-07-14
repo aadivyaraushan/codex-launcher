@@ -27,10 +27,13 @@ Tailscale, physical-device, or model-backed result.
   closed until the newer private bridge is read-verified.
 - A read-only inspection of the installed `app.asar` found the follower method
   names the companion relies on, including `thread-follower-load-complete-history`,
-  `thread-follower-start-turn`, `thread-follower-steer-turn`, and the matching
-  request and response names. This shows that the newer bundle still contains
-  that interface, but it does **not** prove its message versions, parameters,
-  or responses. The compatibility pin remains unchanged on purpose.
+  `thread-follower-start-turn`, and `thread-follower-steer-turn`. Its embedded
+  version map matches every version in the companion's supported and ignored
+  follower-method maps, including stream state `11`, start/history `1`, and
+  interrupt/edit `2`. This shows that the newer bundle still contains the
+  expected method names and version numbers, but it does **not** prove the
+  connection handshake, parameters, or responses. The compatibility pin remains
+  unchanged on purpose.
 - QEMU system binaries are installed for both AArch64 and x86_64. No guest
   image or licensed Windows media was selected or started.
 - Local cross-compiles completed for Linux and Windows on amd64 and arm64.
