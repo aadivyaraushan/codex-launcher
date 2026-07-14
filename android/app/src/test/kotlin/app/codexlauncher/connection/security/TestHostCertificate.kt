@@ -10,6 +10,12 @@ import java.security.spec.PKCS8EncodedKeySpec
 import java.util.Base64
 
 internal object TestHostCertificate {
+    private val tlsCertificate: HeldCertificate by lazy {
+        HeldCertificate.Builder()
+            .commonName("Codex Launcher Companion")
+            .build()
+    }
+
     fun keyPair(): KeyPair {
         val privateKey =
             KeyFactory.getInstance("Ed25519").generatePrivate(
@@ -18,7 +24,10 @@ internal object TestHostCertificate {
         return KeyPair(certificate().publicKey, privateKey)
     }
 
-    fun held(): HeldCertificate = HeldCertificate(keyPair(), certificate())
+    fun held(): HeldCertificate = tlsCertificate
+
+    fun tlsIdentity(): String =
+        Base64.getUrlEncoder().withoutPadding().encodeToString(tlsCertificate.certificate.publicKey.encoded)
 
     private fun certificate(): X509Certificate =
         CertificateFactory.getInstance("X.509").generateCertificate(

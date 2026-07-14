@@ -276,6 +276,7 @@ class CompanionSessionClientTest {
             port = 9443,
             protocol = 1,
             hostIdentity = Base64.getUrlEncoder().withoutPadding().encodeToString(hostPublicKey),
+            tlsIdentity = TestHostCertificate.tlsIdentity(),
             deviceId = "pixel-9",
             deviceName = "Pixel 9",
             pairingGeneration = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() }),

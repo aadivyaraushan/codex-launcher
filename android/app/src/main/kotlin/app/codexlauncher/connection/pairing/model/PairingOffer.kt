@@ -1,6 +1,7 @@
 package app.codexlauncher.connection.pairing.model
 
 import app.codexlauncher.connection.security.HostIdentityPin
+import app.codexlauncher.connection.security.TlsIdentityPin
 import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -11,6 +12,7 @@ class PairingOffer private constructor(
     val port: Int,
     val protocol: Int,
     val hostIdentity: String,
+    val tlsIdentity: String,
     val secret: String,
 ) {
     val pairingEndpoint: String
@@ -19,13 +21,13 @@ class PairingOffer private constructor(
             return "https://$endpointHost:$port/v1/pair"
         }
 
-    fun hostIdentityPin(): HostIdentityPin = HostIdentityPin.parse(hostIdentity)
+    fun tlsIdentityPin(): TlsIdentityPin = TlsIdentityPin.parse(tlsIdentity)
 
     override fun toString(): String =
-        "PairingOffer(host=$host, port=$port, protocol=$protocol, hostIdentity=[redacted], secret=[redacted])"
+        "PairingOffer(host=$host, port=$port, protocol=$protocol, hostIdentity=[redacted], tlsIdentity=[redacted], secret=[redacted])"
 
     companion object {
-        private val requiredFields = setOf("host", "port", "v", "identity", "secret")
+        private val requiredFields = setOf("host", "port", "v", "identity", "tls_identity", "secret")
 
         fun parse(encoded: String): PairingOffer {
             val uri = runCatching { URI(encoded) }.getOrElse { throw invalidOffer(it) }
@@ -44,15 +46,18 @@ class PairingOffer private constructor(
             val port = query.getValue("port").toIntOrNull()
             val protocol = query.getValue("v").toIntOrNull()
             val identity = query.getValue("identity")
+            val tlsIdentity = query.getValue("tls_identity")
             val secret = query.getValue("secret")
             require(PairingValidation.isTailscaleAddress(host) && port in 1..65535 && protocol == 1) { "Invalid pairing offer" }
             HostIdentityPin.parse(identity)
+            TlsIdentityPin.parse(tlsIdentity)
             require(PairingValidation.isCanonicalBase64Url(secret, decodedBytes = 16)) { "Invalid pairing offer" }
             return PairingOffer(
                 host = host,
                 port = requireNotNull(port),
                 protocol = requireNotNull(protocol),
                 hostIdentity = identity,
+                tlsIdentity = tlsIdentity,
                 secret = secret,
             )
         }

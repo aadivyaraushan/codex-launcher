@@ -176,7 +176,7 @@ class CompanionSessionClient private constructor(
     ): SessionConnection {
         val handshake = SessionHandshake(paired, sessionId, signer)
         val client =
-            tlsClients.builder(paired.hostIdentityPin())
+            tlsClients.builder(paired.tlsIdentityPin())
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)
@@ -290,8 +290,8 @@ class CompanionSessionClient private constructor(
         return connection
     }
 
-    private fun PairedComputer.hostIdentityPin() =
-        app.codexlauncher.connection.security.HostIdentityPin.parse(hostIdentity)
+    private fun PairedComputer.tlsIdentityPin() =
+        app.codexlauncher.connection.security.TlsIdentityPin.parse(tlsIdentity)
 
     private companion object {
         fun reportFailure(

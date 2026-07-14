@@ -47,6 +47,7 @@ class PairingClientTest {
         assertEquals("Pixel 9", paired.deviceName)
         assertEquals(PairingKeyProtection.SOFTWARE_BACKED, paired.keyProtection)
         assertEquals("100.64.0.10", paired.host)
+        assertEquals(offer.tlsIdentity, paired.tlsIdentity)
     }
 
     @Test
@@ -108,7 +109,11 @@ class PairingClientTest {
                     KeyPairGenerator.getInstance("Ed25519").generateKeyPair().public.encoded,
                 )
             val secret = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() })
-            return "codex-launcher://pair?host=100.64.0.10&port=9443&v=1&identity=$identity&secret=$secret"
+            val tlsIdentity =
+                Base64.getUrlEncoder().withoutPadding().encodeToString(
+                    KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair().public.encoded,
+                )
+            return "codex-launcher://pair?host=100.64.0.10&port=9443&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret"
         }
 
         fun validGeneration(): String =

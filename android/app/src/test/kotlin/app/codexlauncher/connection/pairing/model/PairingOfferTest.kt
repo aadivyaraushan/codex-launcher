@@ -11,16 +11,18 @@ class PairingOfferTest {
     @Test
     fun parsesOnlyACompleteTailscaleBoundPairingLinkWithoutPrintingItsSecret() {
         val identity = validIdentity()
+        val tlsIdentity = validTlsIdentity()
         val secret = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() })
         val offer =
             PairingOffer.parse(
-                "codex-launcher://pair?host=100.64.0.10&port=9443&v=1&identity=$identity&secret=$secret",
+                "codex-launcher://pair?host=100.64.0.10&port=9443&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret",
             )
 
         assertEquals("100.64.0.10", offer.host)
         assertEquals(9443, offer.port)
         assertEquals(1, offer.protocol)
         assertEquals(identity, offer.hostIdentity)
+        assertEquals(tlsIdentity, offer.tlsIdentity)
         assertEquals(secret, offer.secret)
         assertEquals("https://100.64.0.10:9443/v1/pair", offer.pairingEndpoint)
         assertFalse(offer.toString().contains(secret))
@@ -44,11 +46,13 @@ class PairingOfferTest {
                 validUri().replace("port=9443", "port=0"),
                 validUri().replace("secret=${validSecret()}", "secret=short"),
                 validUri().replace(Regex("identity=[^&]+"), "identity=not-base64!"),
+                validUri().replace(Regex("tls_identity=[^&]+"), "tls_identity=not-base64!"),
+                validUri().replace(Regex("&tls_identity=[^&]+"), ""),
                 validUri() + "&identity=${validIdentity()}",
                 validUri() + "&extra=value",
                 validUri().replace("codex-launcher://pair", "https://pair"),
                 validUri() + "#fragment",
-                "codex-launcher://user@pair?host=100.64.0.10&port=9443&v=1&identity=${validIdentity()}&secret=${validSecret()}",
+                "codex-launcher://user@pair?host=100.64.0.10&port=9443&v=1&identity=${validIdentity()}&tls_identity=${validTlsIdentity()}&secret=${validSecret()}",
             )
 
         invalid.forEach { uri ->
@@ -59,10 +63,15 @@ class PairingOfferTest {
     }
 
     private fun validUri(host: String = "100.64.0.10"): String =
-        "codex-launcher://pair?host=$host&port=9443&v=1&identity=${validIdentity()}&secret=${validSecret()}"
+        "codex-launcher://pair?host=$host&port=9443&v=1&identity=${validIdentity()}&tls_identity=${validTlsIdentity()}&secret=${validSecret()}"
 
     private fun validIdentity(): String {
         val publicKey = KeyPairGenerator.getInstance("Ed25519").generateKeyPair().public
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.encoded)
+    }
+
+    private fun validTlsIdentity(): String {
+        val publicKey = KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair().public
         return Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.encoded)
     }
 

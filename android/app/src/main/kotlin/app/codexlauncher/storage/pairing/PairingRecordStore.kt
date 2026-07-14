@@ -11,6 +11,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import app.codexlauncher.connection.pairing.model.PairingValidation
 import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.connection.security.HostIdentityPin
+import app.codexlauncher.connection.security.TlsIdentityPin
 import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.storage.secrets.PairingKeyProtection
 import app.codexlauncher.storage.wipe.LocalStateWriteGate
@@ -79,6 +80,7 @@ class PairingRecordStore internal constructor(
                 this[portKey] = record.port
                 this[protocolKey] = record.protocol
                 this[hostIdentityKey] = record.hostIdentity
+                this[tlsIdentityKey] = record.tlsIdentity
                 this[deviceIdKey] = record.deviceId
                 this[deviceNameKey] = record.deviceName
                 this[pairingGenerationKey] = record.pairingGeneration
@@ -121,6 +123,7 @@ class PairingRecordStore internal constructor(
                 port = preferences[portKey] ?: return invalidStoredRecord(),
                 protocol = preferences[protocolKey] ?: return invalidStoredRecord(),
                 hostIdentity = preferences[hostIdentityKey] ?: return invalidStoredRecord(),
+                tlsIdentity = preferences[tlsIdentityKey] ?: return invalidStoredRecord(),
                 deviceId = preferences[deviceIdKey] ?: return invalidStoredRecord(),
                 deviceName = preferences[deviceNameKey] ?: return invalidStoredRecord(),
                 pairingGeneration = preferences[pairingGenerationKey] ?: return invalidStoredRecord(),
@@ -134,6 +137,7 @@ class PairingRecordStore internal constructor(
             record.port in 1..65535 &&
             record.protocol == 1 &&
             runCatching { HostIdentityPin.parse(record.hostIdentity) }.isSuccess &&
+            runCatching { TlsIdentityPin.parse(record.tlsIdentity) }.isSuccess &&
             PairingValidation.isSafeIdentifier(record.deviceId) &&
             PairingValidation.isSafeDeviceName(record.deviceName) &&
             PairingValidation.isCanonicalBase64Url(record.pairingGeneration, decodedBytes = 16)
@@ -144,12 +148,13 @@ class PairingRecordStore internal constructor(
     }
 
     private companion object {
-        const val RECORD_VERSION = 1
+        const val RECORD_VERSION = 2
         val versionKey = intPreferencesKey("version")
         val hostKey = stringPreferencesKey("host")
         val portKey = intPreferencesKey("port")
         val protocolKey = intPreferencesKey("protocol")
         val hostIdentityKey = stringPreferencesKey("host_identity")
+        val tlsIdentityKey = stringPreferencesKey("tls_identity")
         val deviceIdKey = stringPreferencesKey("device_id")
         val deviceNameKey = stringPreferencesKey("device_name")
         val pairingGenerationKey = stringPreferencesKey("pairing_generation")
@@ -161,6 +166,7 @@ class PairingRecordStore internal constructor(
                 portKey,
                 protocolKey,
                 hostIdentityKey,
+                tlsIdentityKey,
                 deviceIdKey,
                 deviceNameKey,
                 pairingGenerationKey,

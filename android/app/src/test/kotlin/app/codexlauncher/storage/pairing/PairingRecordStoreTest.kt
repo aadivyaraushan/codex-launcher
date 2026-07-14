@@ -38,6 +38,7 @@ class PairingRecordStoreTest {
                 "port",
                 "protocol",
                 "host_identity",
+                "tls_identity",
                 "device_id",
                 "device_name",
                 "pairing_generation",
@@ -128,6 +129,10 @@ class PairingRecordStoreTest {
             hostIdentity =
                 Base64.getUrlEncoder().withoutPadding().encodeToString(
                     TestHostCertificate.keyPair().public.encoded,
+                ),
+            tlsIdentity =
+                Base64.getUrlEncoder().withoutPadding().encodeToString(
+                    java.security.KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair().public.encoded,
                 ),
             deviceId = "pixel-9",
             deviceName = "Pixel 9",

@@ -16,8 +16,6 @@ class HostIdentityPin private constructor(
     fun matches(publicKey: PublicKey): Boolean =
         MessageDigest.isEqual(expectedSubjectPublicKeyInfo, publicKey.encoded)
 
-    fun trustManager(): X509TrustManager = PinnedHostTrustManager(this)
-
     fun verifies(message: ByteArray, signature: ByteArray): Boolean =
         runCatching {
             verifier.verify(signature, message)
@@ -52,8 +50,40 @@ class HostIdentityPin private constructor(
     }
 }
 
-private class PinnedHostTrustManager(
-    private val pin: HostIdentityPin,
+class TlsIdentityPin private constructor(
+    private val expectedSubjectPublicKeyInfo: ByteArray,
+) {
+    fun matches(publicKey: PublicKey): Boolean =
+        MessageDigest.isEqual(expectedSubjectPublicKeyInfo, publicKey.encoded)
+
+    fun trustManager(): X509TrustManager = PinnedTlsTrustManager(this)
+
+    companion object {
+        fun parse(encoded: String): TlsIdentityPin {
+            val subjectPublicKeyInfo =
+                try {
+                    Base64.getUrlDecoder().decode(encoded)
+                } catch (error: IllegalArgumentException) {
+                    throw IllegalArgumentException("Invalid TLS identity pin", error)
+                }
+            require(subjectPublicKeyInfo.size == P256_SPKI_BYTES) { "Invalid TLS identity pin" }
+            require(subjectPublicKeyInfo.copyOfRange(0, P256_SPKI_PREFIX.size).contentEquals(P256_SPKI_PREFIX)) {
+                "TLS identity must be P-256"
+            }
+            return TlsIdentityPin(subjectPublicKeyInfo.copyOf())
+        }
+
+        private const val P256_SPKI_BYTES = 91
+        private val P256_SPKI_PREFIX =
+            byteArrayOf(
+                0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86.toByte(), 0x48, 0xce.toByte(), 0x3d, 0x02, 0x01,
+                0x06, 0x08, 0x2a, 0x86.toByte(), 0x48, 0xce.toByte(), 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
+            )
+    }
+}
+
+private class PinnedTlsTrustManager(
+    private val pin: TlsIdentityPin,
 ) : X509TrustManager {
     override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
         val certificate = chain?.singleOrNull() ?: throw CertificateException("Expected one self-signed companion certificate")

@@ -3,6 +3,7 @@ package app.codexlauncher.connection.runtime
 import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.connection.protocol.ProtocolCodec
 import app.codexlauncher.connection.protocol.ProtocolMessage
+import app.codexlauncher.connection.security.TestHostCertificate
 import app.codexlauncher.connection.session.SessionConnection
 import app.codexlauncher.connection.session.ActionSendResult
 import app.codexlauncher.connection.session.SessionFailure
@@ -1756,6 +1757,7 @@ class LauncherSessionViewModelTest {
             port = 9443,
             protocol = 1,
             hostIdentity = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(44) { 1 }),
+            tlsIdentity = TestHostCertificate.tlsIdentity(),
             deviceId = "pixel-9",
             deviceName = "Pixel 9",
             pairingGeneration = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { 2 }),

@@ -33,7 +33,7 @@ func TestPairingOfferIsBoundExpiredAndSingleUse(t *testing.T) {
 		t.Fatalf("offer = %#v, secret bytes = %d, error = %v", offer, len(secret), err)
 	}
 	parsed, err := url.Parse(offer.URI)
-	if err != nil || parsed.Scheme != "codex-launcher" || parsed.Host != "pair" || parsed.Query().Get("host") != "mac.tailnet.ts.net" || parsed.Query().Get("port") != "9443" || parsed.Query().Get("v") != "1" || parsed.Query().Get("identity") != offer.HostPublicKey || parsed.Query().Get("secret") != offer.Secret {
+	if err != nil || parsed.Scheme != "codex-launcher" || parsed.Host != "pair" || parsed.Query().Get("host") != "mac.tailnet.ts.net" || parsed.Query().Get("port") != "9443" || parsed.Query().Get("v") != "1" || parsed.Query().Get("identity") != offer.HostPublicKey || parsed.Query().Get("tls_identity") != offer.TLSPublicKey || parsed.Query().Get("secret") != offer.Secret {
 		t.Fatalf("pairing URI = %q, parsed = %#v, error = %v", offer.URI, parsed, err)
 	}
 	request := signedPairRequest(t, offer, "pixel-9")
@@ -374,12 +374,20 @@ func TestKeyRotationAcceptsOverlapThenRemovesOldKey(t *testing.T) {
 }
 
 func TestTLSCertificateRenewsUnderStableIdentityPin(t *testing.T) {
-	service := newTestService(t)
-	first, err := service.TLSCertificate(testNow)
+	store := NewMemoryStore()
+	firstService, err := NewService(context.Background(), store, rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := service.TLSCertificate(testNow.Add(24 * time.Hour))
+	first, err := firstService.TLSCertificate(testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondService, err := NewService(context.Background(), store, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := secondService.TLSCertificate(testNow.Add(24 * time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +404,7 @@ func TestTLSCertificateRenewsUnderStableIdentityPin(t *testing.T) {
 	}
 }
 
-func TestPairingIdentityPinMatchesTheTLSSubjectPublicKeyInfo(t *testing.T) {
+func TestPairingOfferSeparatesTheHostProofAndTLSIdentityPins(t *testing.T) {
 	service := newTestService(t)
 	offer, err := service.BeginPairing(PairingTarget{Host: "mac.tailnet.ts.net", Port: 9443, Protocol: 1}, testNow)
 	if err != nil {
@@ -411,8 +419,24 @@ func TestPairingIdentityPinMatchesTheTLSSubjectPublicKeyInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := base64.RawURLEncoding.EncodeToString(leaf.RawSubjectPublicKeyInfo)
-	if offer.HostPublicKey != want {
-		t.Fatalf("pairing identity = %q, TLS SPKI pin = %q", offer.HostPublicKey, want)
+	if offer.TLSPublicKey != want || offer.HostPublicKey == want {
+		t.Fatalf("host identity = %q, TLS identity = %q, TLS SPKI pin = %q", offer.HostPublicKey, offer.TLSPublicKey, want)
+	}
+}
+
+func TestTLSCertificateUsesAndroidCompatibleP256Identity(t *testing.T) {
+	service := newTestService(t)
+	certificate, err := service.TLSCertificate(testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := x509.ParseCertificate(certificate.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, ok := leaf.PublicKey.(*ecdsa.PublicKey)
+	if !ok || publicKey.Curve != elliptic.P256() || leaf.PublicKeyAlgorithm != x509.ECDSA || leaf.SignatureAlgorithm != x509.ECDSAWithSHA256 {
+		t.Fatalf("TLS certificate algorithm = public %T/%v, signature %v", leaf.PublicKey, leaf.PublicKeyAlgorithm, leaf.SignatureAlgorithm)
 	}
 }
 

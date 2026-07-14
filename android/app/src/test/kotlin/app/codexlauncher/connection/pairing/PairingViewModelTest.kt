@@ -126,8 +126,9 @@ class PairingViewModelTest {
 
     private fun validOffer(): String {
         val identity = Base64.getUrlEncoder().withoutPadding().encodeToString(TestHostCertificate.keyPair().public.encoded)
+        val tlsIdentity = TestHostCertificate.tlsIdentity()
         val secret = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() })
-        return "codex-launcher://pair?host=100.64.0.10&port=9443&v=1&identity=$identity&secret=$secret"
+        return "codex-launcher://pair?host=100.64.0.10&port=9443&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret"
     }
 
     private fun pairedComputer(): PairedComputer =
@@ -136,6 +137,7 @@ class PairingViewModelTest {
             port = 9443,
             protocol = 1,
             hostIdentity = Base64.getUrlEncoder().withoutPadding().encodeToString(TestHostCertificate.keyPair().public.encoded),
+            tlsIdentity = TestHostCertificate.tlsIdentity(),
             deviceId = "pixel-9",
             deviceName = "Pixel 9",
             pairingGeneration = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() }),

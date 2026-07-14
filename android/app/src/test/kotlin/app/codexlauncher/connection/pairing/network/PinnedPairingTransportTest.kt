@@ -22,7 +22,7 @@ class PinnedPairingTransportTest {
     }
 
     @Test
-    fun postsOverTls13OnlyWhenTheServerCertificateHasTheExactPinnedHostKey() {
+    fun postsOverTls13OnlyWhenTheServerCertificateHasTheExactPinnedTlsKey() {
         val hostKey = TestHostCertificate.keyPair()
         val server = tlsServer().apply {
             enqueue(
@@ -48,13 +48,19 @@ class PinnedPairingTransportTest {
     }
 
     @Test
-    fun rejectsAValidCertificateWhoseHostKeyDoesNotMatchTheOffer() {
-        val offeredHostKey = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+    fun rejectsAValidCertificateWhoseTlsKeyDoesNotMatchTheOffer() {
+        val offeredTlsKey = KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair()
         val server = tlsServer().apply {
             enqueue(MockResponse.Builder().code(201).body("{}").build())
             start()
         }
-        val offer = PairingOffer.parse(offerUri(server.port, offeredHostKey.public.encoded))
+        val offer = PairingOffer.parse(
+            offerUri(
+                port = server.port,
+                hostPublicKey = TestHostCertificate.keyPair().public.encoded,
+                tlsPublicKey = offeredTlsKey.public.encoded,
+            ),
+        )
 
         assertThrows(PairingException::class.java) {
             PinnedPairingTransport(server.url("/v1/pair").toString()).pair(offer, testRequest(offer))
@@ -69,10 +75,15 @@ class PinnedPairingTransportTest {
         }
     }
 
-    private fun offerUri(port: Int, hostPublicKey: ByteArray): String {
+    private fun offerUri(
+        port: Int,
+        hostPublicKey: ByteArray,
+        tlsPublicKey: ByteArray = TestHostCertificate.held().certificate.publicKey.encoded,
+    ): String {
         val identity = Base64.getUrlEncoder().withoutPadding().encodeToString(hostPublicKey)
+        val tlsIdentity = Base64.getUrlEncoder().withoutPadding().encodeToString(tlsPublicKey)
         val secret = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() })
-        return "codex-launcher://pair?host=100.64.0.10&port=$port&v=1&identity=$identity&secret=$secret"
+        return "codex-launcher://pair?host=100.64.0.10&port=$port&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret"
     }
 
     private fun testRequest(offer: PairingOffer): PairingRequest =

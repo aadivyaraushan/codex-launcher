@@ -23,7 +23,7 @@ class PinnedPairingTransport private constructor(
     internal constructor(testEndpoint: String) : this(endpoint = { testEndpoint }, tlsClients = PinnedTlsClientFactory())
 
     override fun pair(offer: PairingOffer, request: PairingRequest): PairingResponse {
-        val pin = offer.hostIdentityPin()
+        val pin = offer.tlsIdentityPin()
         val client =
             tlsClients.builder(pin)
                 .connectTimeout(10, TimeUnit.SECONDS)

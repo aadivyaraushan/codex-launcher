@@ -52,4 +52,23 @@ class HostIdentityPinTest {
         assertFalse(pin.verifies(message, otherSignature))
         assertFalse(pin.verifies("changed".encodeToByteArray(), expectedSignature))
     }
+
+    @Test
+    fun tlsIdentityPinAcceptsOnlyTheExactP256SubjectPublicKeyInfo() {
+        val expected = KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair().public
+        val other = KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair().public
+        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(expected.encoded)
+
+        val pin = TlsIdentityPin.parse(encoded)
+
+        assertTrue(pin.matches(expected))
+        assertFalse(pin.matches(other))
+        assertThrows(IllegalArgumentException::class.java) {
+            TlsIdentityPin.parse(
+                Base64.getUrlEncoder().withoutPadding().encodeToString(
+                    KeyPairGenerator.getInstance("Ed25519").generateKeyPair().public.encoded,
+                ),
+            )
+        }
+    }
 }

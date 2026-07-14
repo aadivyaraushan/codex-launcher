@@ -23,9 +23,10 @@ completed before SQLite composition and the Android network client.
 - Revocation deletes the paired public key and closes every active session.
   Key rotation keeps the old and new public keys only during the confirmed
   overlap window.
-- TLS leaf certificates renew under the stable host identity key. The pairing
-  URI carries the exact Ed25519 SubjectPublicKeyInfo used by the certificate,
-  so the phone pins the stable identity instead of an expiring certificate.
+- TLS leaf certificates renew under a stable P-256 key derived from the saved
+  host identity. The pairing URI carries both the P-256 TLS
+  SubjectPublicKeyInfo and the Ed25519 proof identity, so the phone pins stable
+  keys instead of an expiring certificate while keeping the two uses separate.
 - The mobile server accepts pairing only over TLS 1.3 and requires a signed
   server nonce before forwarding WebSocket frames. It rejects plaintext,
   unknown devices, invalid proofs, wrong-direction or malformed protocol

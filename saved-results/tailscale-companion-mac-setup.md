@@ -46,4 +46,25 @@ Observed status:
 
 ## Remaining external step
 
-The Pixel must join the same Tailscale network before pairing. The current `doctor` command can falsely fail its self-connection check because this Mac does not complete a connection to its own Tailscale address, even though `lsof` confirms the listener. A real Pixel connection is the required end-to-end check.
+The Pixel joined the same Tailscale network at `100.112.69.87`. After Cisco
+Secure Client was disconnected and Tailscale was rebound, the Mac route to the
+Pixel used Tailscale interface `utun7`, and the Pixel downloaded the APK from
+`100.91.30.118` successfully.
+
+The first pairing scan reached the companion but failed during TLS setup. The
+companion log recorded:
+
+```text
+http: TLS handshake error from 100.112.69.87:42016: tls: peer doesn't support any of the certificate's signature algorithms
+```
+
+This showed the private route was working and isolated the failure to the
+Ed25519 TLS certificate. The compatibility fix keeps Ed25519 for the computer's
+signed proof identity and adds a separate pinned P-256 identity for TLS. A new
+companion build, Android APK, and pairing QR are required before the final
+end-to-end check.
+
+The current `doctor` command can falsely fail its self-connection check because
+this Mac does not complete a connection to its own Tailscale address, even
+though `lsof` confirms the listener. A real Pixel connection remains the final
+end-to-end check.

@@ -129,6 +129,7 @@ class LocalStateWiperInstrumentedTest {
             port = 9443,
             protocol = 1,
             hostIdentity = "MCowBQYDK2VwAyEAYDOLV9NWOH032zsijde9dIuugWxkFqfKZ4g8MFIKNmI",
+            tlsIdentity = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPotVQVIz2gtqAtliXTpj-CIQGbXqOjlQWj0NPBJkBA2hnwkflB0VU_iRmYVVHqBVcUsYKc80gzRwueuGMAzKSg",
             deviceId = deviceId,
             deviceName = "Pixel 9 emulator",
             pairingGeneration = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() }),

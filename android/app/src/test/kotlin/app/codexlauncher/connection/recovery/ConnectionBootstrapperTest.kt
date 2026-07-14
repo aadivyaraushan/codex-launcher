@@ -1,6 +1,7 @@
 package app.codexlauncher.connection.recovery
 
 import app.codexlauncher.connection.pairing.network.PairedComputer
+import app.codexlauncher.connection.security.TestHostCertificate
 import app.codexlauncher.storage.pairing.PairingRecordReadState
 import app.codexlauncher.storage.secrets.PairingKeyProtection
 import app.codexlauncher.storage.wipe.StartupRecovery
@@ -66,6 +67,7 @@ class ConnectionBootstrapperTest {
             port = 9443,
             protocol = 1,
             hostIdentity = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(44) { 1 }),
+            tlsIdentity = TestHostCertificate.tlsIdentity(),
             deviceId = "pixel-9",
             deviceName = "Pixel 9",
             pairingGeneration = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { 2 }),

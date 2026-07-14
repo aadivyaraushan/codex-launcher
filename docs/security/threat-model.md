@@ -8,8 +8,10 @@ ask the project maintainers to hold ChatGPT, Codex, or Tailscale credentials.
 
 - ChatGPT/Codex authentication remains in the computer's existing Codex or
   ChatGPT installation.
-- Pairing uses a one-time secret, a phone signing key, a pinned computer
-  identity, and TLS. Later requests must be signed by the paired phone.
+- Pairing uses a one-time secret, a phone signing key, a pinned Ed25519 computer
+  proof identity, a separate pinned P-256 TLS identity, and TLS. The TLS key is
+  derived from the saved computer identity so both pins stay stable across
+  restarts. Later requests must be signed by the paired phone.
 - The companion listens only on an address Tailscale confirms belongs to the
   computer. It rejects public, loopback, and arbitrary LAN bind addresses.
 - Project choices are server-approved opaque IDs. The phone does not choose an
@@ -44,9 +46,9 @@ forwarded to the phone. The companion maps them to a smaller mobile contract.
 
 ## Sensitive data on each device
 
-The phone stores its pairing key, pinned computer identity, selected project
-ID, encrypted unfinished draft, task/action state needed for recovery, and files
-selected for an in-progress upload. The computer stores its identity key,
+The phone stores its pairing key, pinned computer proof and TLS identities,
+selected project ID, encrypted unfinished draft, task/action state needed for
+recovery, and files selected for an in-progress upload. The computer stores its identity key,
 paired-device record, approved folder list, event/action journal, and temporary
 attachment data. Codex and ChatGPT keep their own task and authentication data.
 

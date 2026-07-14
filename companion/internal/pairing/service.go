@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -56,6 +57,7 @@ type PairingOffer struct {
 	Secret        string
 	URI           string
 	HostPublicKey string
+	TLSPublicKey  string
 	Target        PairingTarget
 	ExpiresAt     time.Time
 }
@@ -113,12 +115,14 @@ type sessionReplay struct {
 }
 
 type Service struct {
-	store       Store
-	random      io.Reader
-	logger      *slog.Logger
-	identity    ed25519.PrivateKey
-	publicKey   ed25519.PublicKey
-	fingerprint string
+	store          Store
+	random         io.Reader
+	logger         *slog.Logger
+	identity       ed25519.PrivateKey
+	publicKey      ed25519.PublicKey
+	fingerprint    string
+	tlsIdentity    *ecdsa.PrivateKey
+	tlsFingerprint string
 
 	mu             sync.Mutex
 	deviceMu       sync.RWMutex
@@ -175,8 +179,37 @@ func NewServiceWithLogger(ctx context.Context, store Store, random io.Reader, lo
 		return nil, fmt.Errorf("encode host identity: %w", err)
 	}
 	fingerprint := base64.RawURLEncoding.EncodeToString(publicKeyInfo)
-	return &Service{store: store, random: random, logger: logger, identity: append(ed25519.PrivateKey(nil), identity...), publicKey: publicKey, fingerprint: fingerprint,
+	tlsIdentity, err := deriveTLSIdentity(identity)
+	if err != nil {
+		return nil, fmt.Errorf("derive TLS identity: %w", err)
+	}
+	tlsPublicKeyInfo, err := x509.MarshalPKIXPublicKey(&tlsIdentity.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("encode TLS identity: %w", err)
+	}
+	tlsFingerprint := base64.RawURLEncoding.EncodeToString(tlsPublicKeyInfo)
+	logger.Info(
+		"[pairing] identities ready",
+		"proof_algorithm", "ed25519",
+		"tls_algorithm", "p256",
+	)
+	return &Service{store: store, random: random, logger: logger, identity: append(ed25519.PrivateKey(nil), identity...), publicKey: publicKey, fingerprint: fingerprint, tlsIdentity: tlsIdentity, tlsFingerprint: tlsFingerprint,
 		sessionReplays: make(map[[32]byte]sessionReplay), sessions: make(map[string]map[*Session]struct{})}, nil
+}
+
+func deriveTLSIdentity(identity ed25519.PrivateKey) (*ecdsa.PrivateKey, error) {
+	if len(identity) != ed25519.PrivateKeySize {
+		return nil, errors.New("host identity is invalid")
+	}
+	digest := hmac.New(sha256.New, identity.Seed())
+	_, _ = digest.Write([]byte("codex-launcher/tls-p256/v1"))
+	curve := elliptic.P256()
+	orderMinusOne := new(big.Int).Sub(curve.Params().N, big.NewInt(1))
+	scalar := new(big.Int).SetBytes(digest.Sum(nil))
+	scalar.Mod(scalar, orderMinusOne)
+	scalar.Add(scalar, big.NewInt(1))
+	x, y := curve.ScalarBaseMult(scalar.Bytes())
+	return &ecdsa.PrivateKey{PublicKey: ecdsa.PublicKey{Curve: curve, X: x, Y: y}, D: scalar}, nil
 }
 
 func (service *Service) BeginPairing(target PairingTarget, now time.Time) (PairingOffer, error) {
@@ -198,10 +231,11 @@ func (service *Service) BeginPairing(target PairingTarget, now time.Time) (Pairi
 	query.Set("port", strconv.Itoa(target.Port))
 	query.Set("v", strconv.Itoa(target.Protocol))
 	query.Set("identity", service.fingerprint)
+	query.Set("tls_identity", service.tlsFingerprint)
 	query.Set("secret", encodedSecret)
 	pairingURL := (&url.URL{Scheme: "codex-launcher", Host: "pair", RawQuery: query.Encode()}).String()
 	service.logger.Info("[pairing] offer created", "host", target.Host, "port", target.Port, "protocol", target.Protocol, "expires_at", expiresAt)
-	return PairingOffer{Secret: encodedSecret, URI: pairingURL, HostPublicKey: service.fingerprint, Target: target, ExpiresAt: expiresAt}, nil
+	return PairingOffer{Secret: encodedSecret, URI: pairingURL, HostPublicKey: service.fingerprint, TLSPublicKey: service.tlsFingerprint, Target: target, ExpiresAt: expiresAt}, nil
 }
 
 func (service *Service) Pair(ctx context.Context, request PairRequest, now time.Time) (DeviceRecord, error) {
@@ -470,7 +504,7 @@ func (service *Service) TLSCertificate(now time.Time) (tls.Certificate, error) {
 		serial.SetInt64(1)
 	}
 	template := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "Codex Launcher Companion"}, NotBefore: now.Add(-5 * time.Minute), NotAfter: now.Add(30 * 24 * time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, BasicConstraintsValid: true}
-	der, err := x509.CreateCertificate(service.random, template, template, service.publicKey, service.identity)
+	der, err := x509.CreateCertificate(service.random, template, template, &service.tlsIdentity.PublicKey, service.tlsIdentity)
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("create companion TLS certificate: %w", err)
 	}
@@ -478,7 +512,7 @@ func (service *Service) TLSCertificate(now time.Time) (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("parse companion TLS certificate: %w", err)
 	}
-	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: service.identity, Leaf: leaf}, nil
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: service.tlsIdentity, Leaf: leaf}, nil
 }
 
 func (session *Session) DeviceID() string      { return session.deviceID }

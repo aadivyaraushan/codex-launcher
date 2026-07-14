@@ -2,6 +2,7 @@ package app.codexlauncher.connection.lifecycle
 
 import app.codexlauncher.PairingRecordState
 import app.codexlauncher.connection.pairing.network.PairedComputer
+import app.codexlauncher.connection.security.TestHostCertificate
 import app.codexlauncher.storage.secrets.PairingKeyProtection
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -24,6 +25,7 @@ class PairingConnectionPolicyTest {
             port = 9443,
             protocol = 1,
             hostIdentity = "host-key",
+            tlsIdentity = TestHostCertificate.tlsIdentity(),
             deviceId = "pixel-9-test",
             deviceName = "Test computer",
             pairingGeneration = "generation",

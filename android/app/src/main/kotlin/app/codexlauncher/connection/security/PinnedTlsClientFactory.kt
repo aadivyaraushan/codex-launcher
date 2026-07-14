@@ -9,7 +9,7 @@ import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
 
 class PinnedTlsClientFactory {
-    fun builder(pin: HostIdentityPin): OkHttpClient.Builder {
+    fun builder(pin: TlsIdentityPin): OkHttpClient.Builder {
         val trustManager = pin.trustManager()
         val sslContext = SSLContext.getInstance("TLSv1.3").apply {
             init(null, arrayOf(trustManager), SecureRandom())

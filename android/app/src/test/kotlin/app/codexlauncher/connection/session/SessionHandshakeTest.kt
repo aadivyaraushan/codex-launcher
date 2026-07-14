@@ -3,6 +3,7 @@ package app.codexlauncher.connection.session
 import app.codexlauncher.connection.pairing.network.DevicePairingSigner
 import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.connection.pairing.model.PairingWire
+import app.codexlauncher.connection.security.TestHostCertificate
 import app.codexlauncher.storage.secrets.PairingKeyProtection
 import app.codexlauncher.storage.secrets.PairingPublicKey
 import kotlinx.serialization.json.Json
@@ -106,6 +107,7 @@ class SessionHandshakeTest {
             port = 9443,
             protocol = 1,
             hostIdentity = Base64.getUrlEncoder().withoutPadding().encodeToString(host.public.encoded),
+            tlsIdentity = TestHostCertificate.tlsIdentity(),
             deviceId = "pixel-9",
             deviceName = "Pixel 9",
             pairingGeneration = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() }),
