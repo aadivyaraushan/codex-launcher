@@ -140,7 +140,7 @@ func startWith(ctx context.Context, options Options, deps dependencies) (*Sessio
 		var connectErr error
 		desktopClient, connectErr = desktop.Connect(ctx)
 		if connectErr != nil {
-			logger.Error("[codex-runtime] Desktop connection failed", "platform", deps.goos, "error_class", fmt.Sprintf("%T", connectErr))
+			logger.Error("[codex-runtime] Desktop connection failed", "platform", deps.goos, "error_class", fmt.Sprintf("%T", connectErr), "error", connectErr)
 			cleanupErr := closeOwners(desktop, app)
 			return nil, errors.Join(fmt.Errorf("connect verified ChatGPT Desktop: %w", connectErr), cleanupErr)
 		}

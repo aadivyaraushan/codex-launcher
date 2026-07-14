@@ -40,7 +40,7 @@ var (
 	errStoppedBeforeWrite     = errors.New("desktop IPC stopped before write")
 )
 
-const PinnedDesktopBuild = "26.707.51957"
+const PinnedDesktopBuild = "26.707.72221"
 
 const (
 	darwinDesktopExecutable  = "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"

@@ -1147,9 +1147,16 @@ func TestUnknownDesktopBuildFailsBeforeConnect(t *testing.T) {
 	}
 }
 
+func TestPinnedDesktopBuildMatchesValidatedChatGPTBuild(t *testing.T) {
+	const validatedBuild = "26.707.72221"
+	if PinnedDesktopBuild != validatedBuild {
+		t.Fatalf("PinnedDesktopBuild = %q, want %q", PinnedDesktopBuild, validatedBuild)
+	}
+}
+
 func TestReadDarwinDesktopBuildUsesInfoPlist(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "Info.plist")
-	plist := `<?xml version="1.0"?><plist><dict><key>CFBundleVersion</key><string>5175</string><key>CFBundleShortVersionString</key><string>26.707.51957</string></dict></plist>`
+	plist := `<?xml version="1.0"?><plist><dict><key>CFBundleVersion</key><string>5307</string><key>CFBundleShortVersionString</key><string>26.707.72221</string></dict></plist>`
 	if err := os.WriteFile(path, []byte(plist), 0o600); err != nil {
 		t.Fatal(err)
 	}

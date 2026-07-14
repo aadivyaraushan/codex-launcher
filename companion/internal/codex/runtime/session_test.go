@@ -98,7 +98,8 @@ func TestWindowsFailsClosedUntilItsVerifiedDesktopConnectorExists(t *testing.T) 
 func TestDesktopConnectionFailureCleansUpEveryStartedOwner(t *testing.T) {
 	app := newFakeAppSession(nil)
 	desktop := &fakeDesktopConnector{connectErr: errors.New("desktop unavailable")}
-	session, err := startWith(context.Background(), Options{}, dependencies{
+	var logs lockedBuffer
+	session, err := startWith(context.Background(), Options{Logger: slog.New(slog.NewTextHandler(&logs, nil))}, dependencies{
 		goos:           "darwin",
 		startAppServer: func(context.Context, process.Options) (appSession, error) { return app, nil },
 		newDesktop:     func(string, *slog.Logger) desktopConnector { return desktop },
@@ -108,6 +109,9 @@ func TestDesktopConnectionFailureCleansUpEveryStartedOwner(t *testing.T) {
 	}
 	if app.closeCount() != 1 || desktop.closeCount != 1 {
 		t.Fatalf("cleanup counts: app = %d, desktop = %d", app.closeCount(), desktop.closeCount)
+	}
+	if !strings.Contains(logs.String(), "error=\"desktop unavailable\"") {
+		t.Fatalf("connection log did not preserve the cause: %s", logs.String())
 	}
 }
 

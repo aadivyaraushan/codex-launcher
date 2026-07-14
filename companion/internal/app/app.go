@@ -89,6 +89,7 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 	decisionReady := dependencies.DecisionOwner != nil && dependencies.DecisionRequests != nil && decisionTasksReady
 	decisionPartial := dependencies.DecisionOwner != nil || dependencies.DecisionRequests != nil
 	if decisionPartial && !decisionReady {
+		logger.Error("[app] decision startup failed", "error_class", "decision_dependency")
 		return nil, ErrMissingDependency
 	}
 	if decisionReady {

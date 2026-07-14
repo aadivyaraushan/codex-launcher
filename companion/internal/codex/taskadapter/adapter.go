@@ -228,6 +228,14 @@ func (set Set) CurrentTaskFromSource(ctx context.Context, taskID string, source 
 	return taskstate.Task{}, err
 }
 
+// CurrentTask resolves a task from the latest catalog before a decision is sent back to Codex.
+func (set Set) CurrentTask(ctx context.Context, taskID string) (taskstate.Task, error) {
+	if set.currentTask == nil {
+		return taskstate.Task{}, ErrTaskLookupTransient
+	}
+	return set.currentTask(ctx, taskID)
+}
+
 func (set Set) reloadTask(ctx context.Context, taskID string) (taskstate.Task, error) {
 	tasks, err := set.ListRecentCandidates(ctx, MaxRecentCatalogTasks)
 	if err != nil {
@@ -491,21 +499,8 @@ func (set Set) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, err
 	if len(tasks) > taskstate.MaxHomeTasks {
 		tasks = tasks[:taskstate.MaxHomeTasks]
 	}
-	for index := range tasks {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if tasks[index].Source != taskstate.SourceCatalog || set.catalog.load == nil {
-			continue
-		}
-		resolved, resolveErr := set.catalog.ResolveDesktopOwner(ctx, tasks[index].ID)
-		if resolveErr != nil {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		tasks[index] = resolved
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return orderHomeTasks(tasks), nil
 }

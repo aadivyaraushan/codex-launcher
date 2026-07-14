@@ -726,7 +726,21 @@ func TestSetProvidesTheMobileRecentTaskSourceContract(t *testing.T) {
 	}
 }
 
-func TestSetListRecentFollowsFourHomeTasksAndOrdersAttentionBeforeRecent(t *testing.T) {
+func TestSetCurrentTaskUsesTheConfiguredCatalogLookup(t *testing.T) {
+	want := taskstate.Task{ID: "task-1", Source: taskstate.SourceAppServer}
+	set := Set{currentTask: func(_ context.Context, taskID string) (taskstate.Task, error) {
+		if taskID != want.ID {
+			t.Fatalf("task ID = %q", taskID)
+		}
+		return want, nil
+	}}
+	task, err := set.CurrentTask(context.Background(), want.ID)
+	if err != nil || task != want {
+		t.Fatalf("CurrentTask() = %#v, %v", task, err)
+	}
+}
+
+func TestSetListRecentShowsFourCandidatesWithoutStartingDesktopFollowing(t *testing.T) {
 	loaded := make([]string, 0)
 	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
 		return json.RawMessage(`{"data":[
@@ -756,23 +770,23 @@ func TestSetListRecentFollowsFourHomeTasksAndOrdersAttentionBeforeRecent(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(loaded, ",") != "task-1,task-2,task-3,task-4" {
+	if len(loaded) != 0 {
 		t.Fatalf("loaded tasks = %#v", loaded)
 	}
 	if len(tasks) != 4 {
 		t.Fatalf("Home task count = %d, tasks = %#v", len(tasks), tasks)
 	}
-	if got := []string{tasks[0].ID, tasks[1].ID, tasks[2].ID, tasks[3].ID}; strings.Join(got, ",") != "task-2,task-3,task-1,task-4" {
+	if got := []string{tasks[0].ID, tasks[1].ID, tasks[2].ID, tasks[3].ID}; strings.Join(got, ",") != "task-1,task-2,task-3,task-4" {
 		t.Fatalf("Home task order = %#v", got)
 	}
 	for _, task := range tasks {
-		if task.Source != taskstate.SourceDesktop {
+		if task.Source != taskstate.SourceCatalog {
 			t.Fatalf("task source = %#v", task)
 		}
 	}
 }
 
-func TestSetListRecentSkipsAppServerAndKeepsFailedDesktopCandidateReadable(t *testing.T) {
+func TestSetListRecentKeepsDesktopCandidatesUnreadUntilRequested(t *testing.T) {
 	loaded := make([]string, 0)
 	stateReads := 0
 	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
@@ -797,15 +811,35 @@ func TestSetListRecentSkipsAppServerAndKeepsFailedDesktopCandidateReadable(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(loaded, ",") != "task-1,task-2" || stateReads != 1 {
+	if len(loaded) != 0 || stateReads != 0 {
 		t.Fatalf("loaded = %#v, state reads = %d", loaded, stateReads)
 	}
 	byID := make(map[string]taskstate.Source, len(tasks))
 	for _, task := range tasks {
 		byID[task.ID] = task.Source
 	}
-	if byID["app-1"] != taskstate.SourceAppServer || byID["task-1"] != taskstate.SourceCatalog || byID["task-2"] != taskstate.SourceDesktop {
+	if byID["app-1"] != taskstate.SourceAppServer || byID["task-1"] != taskstate.SourceCatalog || byID["task-2"] != taskstate.SourceCatalog {
 		t.Fatalf("Home task sources = %#v", byID)
+	}
+}
+
+func TestSetListRecentDoesNotLetAnUnverifiedDesktopTaskBlockStartup(t *testing.T) {
+	loadCalls := 0
+	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[{"id":"slow","name":"Slow","preview":"","cwd":"/work","updatedAt":42,"status":{"type":"notLoaded","activeFlags":[]},"turns":[]},{"id":"ready","name":"Ready","preview":"","cwd":"/work","updatedAt":43,"status":{"type":"notLoaded","activeFlags":[]},"turns":[]}]}`), nil
+	}, func(context.Context, string) error {
+		loadCalls++
+		return nil
+	}, func(taskID string) (json.RawMessage, error) {
+		return json.RawMessage(`{"id":"` + taskID + `","cwd":"/work","threadRuntimeStatus":{"type":"idle","activeFlags":[]},"requests":[],"turns":[]}`), nil
+	})
+	set := Set{catalog: catalog}
+	tasks, err := set.ListRecent(context.Background(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loadCalls != 0 || len(tasks) != 2 || tasks[0].Source != taskstate.SourceCatalog || tasks[1].Source != taskstate.SourceCatalog {
+		t.Fatalf("load calls = %d, tasks = %#v", loadCalls, tasks)
 	}
 }
 
