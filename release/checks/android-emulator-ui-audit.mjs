@@ -41,7 +41,7 @@ export function parseNodes(xml) {
 
 export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-export const isTransientUiDumpExit = (status) => status === 137;
+export const isTransientUiDumpExit = (status, errorCode = "") => status === 137 || errorCode === "ETIMEDOUT";
 
 export function adbTextCommands(value, { clear = false } = {}) {
   const typeCommand = ["input", "text", value.replaceAll(" ", "%s")];
@@ -128,6 +128,7 @@ class EmulatorAudit {
     return spawnSync(this.adb, ["-s", this.serial, ...args], {
       encoding: options.binary ? null : "utf8",
       maxBuffer: 32 * 1024 * 1024,
+      timeout: options.timeout,
     });
   }
 
@@ -180,12 +181,13 @@ class EmulatorAudit {
 
   dumpUi() {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-      const result = this.runAdbResult(["shell", "uiautomator", "dump", "/sdcard/codex-launcher-audit.xml"]);
+      const result = this.runAdbResult(["shell", "uiautomator", "dump", "/sdcard/codex-launcher-audit.xml"], { timeout: 10_000 });
       if (result.status === 0) return this.runAdb(["exec-out", "cat", "/sdcard/codex-launcher-audit.xml"]);
-      if (!isTransientUiDumpExit(result.status) || attempt === 3) {
-        assert.fail(`adb shell uiautomator dump failed after ${attempt} attempt(s): ${result.stderr?.toString() ?? ""}`);
+      const errorCode = result.error?.code ?? "";
+      if (!isTransientUiDumpExit(result.status, errorCode) || attempt === 3) {
+        assert.fail(`adb shell uiautomator dump failed after ${attempt} attempt(s): ${errorCode} ${result.stderr?.toString() ?? ""}`);
       }
-      console.warn(`[android-ui-audit] uiautomator dump exited ${result.status}; retrying (${attempt}/3)`);
+      console.warn(`[android-ui-audit] uiautomator dump ended with ${result.status ?? errorCode}; retrying (${attempt}/3)`);
       wait(600);
     }
     throw new Error("unreachable UI dump retry state");

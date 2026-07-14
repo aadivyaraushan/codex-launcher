@@ -100,8 +100,10 @@ test("selected control check follows the selectable parent around its label", ()
 
 test("audit retries only Android's known transient UI dump termination", () => {
   assert.equal(isTransientUiDumpExit(137), true);
+  assert.equal(isTransientUiDumpExit(null, "ETIMEDOUT"), true);
   assert.equal(isTransientUiDumpExit(0), false);
   assert.equal(isTransientUiDumpExit(1), false);
+  assert.equal(isTransientUiDumpExit(null, "EACCES"), false);
   assert.equal(isTransientUiDumpExit(null), false);
 });
 
