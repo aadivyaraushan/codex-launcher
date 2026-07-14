@@ -367,13 +367,17 @@ class LauncherActivity : ComponentActivity() {
                             onRetry = {
                                 pairedComputer?.let { sessionViewModel.connect(it, force = true) }
                             },
-                            onChooseProject = { destination = LauncherDestination.PROJECT },
+                            onChooseProject = {
+                                sessionViewModel.clearAttachments()
+                                destination = LauncherDestination.PROJECT
+                            },
                             onAllApps = { destination = LauncherDestination.APPS },
                             onAndroidSettings = ::openAndroidSettings,
                             onConnectionHelp = { connectionHelpVisible = true },
                             onManageComputer = { unpairConfirmVisible = true },
                             onOpenTask = { taskId ->
                                 if (sessionViewModel.openTask(taskId)) {
+                                    sessionViewModel.clearAttachments()
                                     transcriptDetail = null
                                     destination = LauncherDestination.TASK
                                 }
@@ -386,6 +390,7 @@ class LauncherActivity : ComponentActivity() {
                             TaskScreen(
                                 state = transcript,
                                 onBack = {
+                                    sessionViewModel.clearAttachments()
                                     sessionViewModel.closeTask()
                                     transcriptDetail = null
                                     destination = LauncherDestination.HOME
@@ -402,7 +407,10 @@ class LauncherActivity : ComponentActivity() {
                                 taskActionsAvailable = sessionUiState.taskManagementAvailable,
                                 unresolvedFork = transcript.taskId in sessionUiState.unconfirmedForkTaskIds,
                                 onRenameTask = { title -> sessionViewModel.renameTask(transcript.taskId, title) },
-                                onArchiveTask = { sessionViewModel.archiveTask(transcript.taskId) },
+                                onArchiveTask = {
+                                    sessionViewModel.clearAttachments()
+                                    sessionViewModel.archiveTask(transcript.taskId)
+                                },
                                 onForkTask = { sessionViewModel.forkTask(transcript.taskId) },
                                 onDismissUnresolvedFork = { sessionViewModel.dismissUnconfirmedFork(transcript.taskId) },
                                 taskState = taskSummary?.state?.takeIf { sessionUiState.taskControlsAvailable },

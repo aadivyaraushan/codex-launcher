@@ -73,6 +73,9 @@ class LauncherSessionViewModelTest {
 			),
 		)
 		assertEquals(listOf("upload-1"), prepared.await())
+		viewModel.disconnect()
+		assertTrue(viewModel.attachments.value.isEmpty())
+		assertEquals("attachment_cancel", ProtocolCodec.decodeText(connection.awaitType("attachment_cancel")).type.wireName)
 	}
     @Test
     fun newTaskSendUsesSelectedProjectAndClearsDraftAfterDurableConfirmation() = runBlocking {

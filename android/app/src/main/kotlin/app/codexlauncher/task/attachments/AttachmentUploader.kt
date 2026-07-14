@@ -160,6 +160,7 @@ class AttachmentUploader(
             var offset = accepted.receivedBytes.toInt()
             var chunk = accepted.nextChunk
             while (offset < selectedFile.bytes.size) {
+                if (!isCurrentSelection(id, active.id)) return false
                 val end = minOf(offset + chunkBytes, selectedFile.bytes.size)
                 val frame = ProtocolCodec.encodeAttachmentFrame(
                     AttachmentChunk(active.id, id, chunk, offset.toLong(), selectedFile.bytes.size.toLong(), end == selectedFile.bytes.size, selectedFile.bytes.copyOfRange(offset, end)),
@@ -170,6 +171,7 @@ class AttachmentUploader(
                 chunk += 1
                 update(id, AttachmentPhase.UPLOADING, offset.toLong())
             }
+            if (!isCurrentSelection(id, active.id)) return false
             update(id, AttachmentPhase.VERIFYING, offset.toLong())
             if (!active.connection.sendText(envelope("attachment_complete", buildJsonObject { put("uploadId", id) }))) return retry(id)
             val completed = channel.receiveCatching().getOrNull() ?: return retry(id)
@@ -207,7 +209,30 @@ class AttachmentUploader(
         synchronized(lock) { acknowledgements[id] }?.trySend(ack)
     }
 
-    fun remove(id: String): Boolean =
+    fun remove(id: String): Boolean {
+        val connection = synchronized(lock) {
+            if (id !in selected) return false
+            session?.connection
+        }
+        connection?.sendText(envelope("attachment_cancel", buildJsonObject { put("uploadId", id) }))
+        return consumeOne(id)
+    }
+
+    fun consume(ids: List<String>) {
+        ids.forEach(::consumeOne)
+    }
+
+    fun clearAll() {
+        val ids = synchronized(lock) { selected.keys.toList() }
+        ids.forEach(::remove)
+        AppLog.info(
+            feature = "attachment-upload",
+            message = "attachment selections cleared",
+            fields = mapOf("attachment_count" to ids.size, "decision" to "cancel_remote_and_zero_local"),
+        )
+    }
+
+    private fun consumeOne(id: String): Boolean =
         synchronized(lock) {
             acknowledgements.remove(id)?.close()
             val removed = selected.remove(id) ?: return@synchronized false
@@ -231,6 +256,9 @@ class AttachmentUploader(
 
     private fun Ack.validFor(file: Selected, expectedState: String): Boolean =
         state == expectedState && receivedBytes >= 0 && nextChunk >= 0 && sha256.equals(file.sha256, ignoreCase = true)
+
+    private fun isCurrentSelection(id: String, sessionId: String): Boolean =
+        synchronized(lock) { id in selected && session?.id == sessionId }
 
     private fun envelope(type: String, body: kotlinx.serialization.json.JsonObject): String =
         buildJsonObject {

@@ -164,6 +164,7 @@ class LauncherSessionViewModel(
     fun disconnect() {
         cancelRetry(resetAttempts = true)
         retryComputer = null
+        attachmentUploader.clearAll()
         closeCurrent(invalidate = true)
         mutableState.value = LauncherSessionState(ConnectionStateMachine.reduce(mutableState.value.connection, ConnectionEvent.ConnectionLost))
     }
@@ -327,6 +328,8 @@ class LauncherSessionViewModel(
 
     fun removeAttachment(uploadId: String): Boolean = attachmentUploader.remove(uploadId)
 
+    fun clearAttachments() = attachmentUploader.clearAll()
+
     @Synchronized
     fun attachmentLimitBytes(): Long = if (attachmentCapable) maxAttachmentBytes else 0
 
@@ -376,7 +379,7 @@ class LauncherSessionViewModel(
     private fun finishNewTaskAttachments(ids: List<String>, outcome: NewTaskSendOutcome) {
         when (outcome) {
             NewTaskSendOutcome.Complete, NewTaskSendOutcome.CompleteDraftRetained, NewTaskSendOutcome.NeedsReview ->
-                ids.forEach(attachmentUploader::remove)
+                attachmentUploader.consume(ids)
             is NewTaskSendOutcome.Failed -> attachmentUploader.retryAfterActionFailure(ids)
             NewTaskSendOutcome.Invalid, NewTaskSendOutcome.Unavailable -> Unit
         }
@@ -385,7 +388,7 @@ class LauncherSessionViewModel(
     private fun finishExistingTaskAttachments(ids: List<String>, outcome: ExistingTaskControlOutcome) {
         when (outcome) {
             ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued,
-            ExistingTaskControlOutcome.Redirected, ExistingTaskControlOutcome.NeedsReview -> ids.forEach(attachmentUploader::remove)
+            ExistingTaskControlOutcome.Redirected, ExistingTaskControlOutcome.NeedsReview -> attachmentUploader.consume(ids)
             is ExistingTaskControlOutcome.Failed -> attachmentUploader.retryAfterActionFailure(ids)
             ExistingTaskControlOutcome.Interrupted, ExistingTaskControlOutcome.Invalid,
             ExistingTaskControlOutcome.Unavailable -> Unit
@@ -1084,6 +1087,7 @@ class LauncherSessionViewModel(
         cancelRetry(resetAttempts = true)
         retryComputer = null
         followUpDrafts.clear()
+        attachmentUploader.clearAll()
         closeCurrent(invalidate = true)
         super.onCleared()
     }

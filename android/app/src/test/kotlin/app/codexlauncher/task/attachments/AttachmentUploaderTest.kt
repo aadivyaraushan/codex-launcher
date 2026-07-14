@@ -10,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -17,6 +18,38 @@ import org.junit.Test
 import java.security.MessageDigest
 
 class AttachmentUploaderTest {
+    @Test
+    fun `user removal cancels companion upload while action consumption only clears local bytes`() {
+        val connection = RecordingAttachmentConnection()
+        val ids = sequenceOf("remove-me", "consume-me").iterator()
+        val uploader = AttachmentUploader(uploadId = ids::next, messageId = nextMessageId())
+        uploader.attach("session-1", ByteArray(32) { 3 }, connection)
+        uploader.select("remove.txt", "text/plain", byteArrayOf(1), 20)
+        uploader.select("consume.txt", "text/plain", byteArrayOf(2), 20)
+
+        assertTrue(uploader.remove("remove-me"))
+        uploader.consume(listOf("consume-me"))
+
+        val cancel = ProtocolCodec.decodeText(connection.textFrames.single())
+        assertEquals(MessageType.ATTACHMENT_CANCEL, cancel.type)
+        assertEquals("remove-me", cancel.body.getValue("uploadId").jsonPrimitive.content)
+        assertTrue(uploader.state.value.isEmpty())
+    }
+
+    @Test
+    fun `explicit clear cancels every selection before dropping private bytes`() {
+        val connection = RecordingAttachmentConnection()
+        val ids = sequenceOf("one", "two").iterator()
+        val uploader = AttachmentUploader(uploadId = ids::next, messageId = nextMessageId())
+        uploader.attach("session-1", ByteArray(32) { 3 }, connection)
+        uploader.select("one.txt", "text/plain", byteArrayOf(1), 20)
+        uploader.select("two.txt", "text/plain", byteArrayOf(2), 20)
+
+        uploader.clearAll()
+
+        assertEquals(2, connection.textFrames.map(ProtocolCodec::decodeText).count { it.type == MessageType.ATTACHMENT_CANCEL })
+        assertTrue(uploader.state.value.isEmpty())
+    }
     @Test
     fun `definitive action failure makes completed upload ready for a fresh offer`() = runBlocking {
         val uploader = AttachmentUploader(uploadId = { "upload-1" })

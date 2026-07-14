@@ -139,7 +139,17 @@
 > dictation now uses the installed system recognizer, appends returned words to
 > the editable follow-up, keeps cancel/error/unavailable states non-destructive,
 > and retains drafts only in the activity ViewModel rather than Android saved
-> state. Attachments remain.
+> state. Task 10 attachments are now implemented end to end: Android's system
+> photo/document pickers copy at most the host-advertised limit into private
+> memory, show at most two removable upload rows, and send authenticated binary
+> chunks that resume from the companion's durable offset. The companion verifies
+> hash, MIME type, quotas, ownership, and expiry; claims completed files with the
+> durable action before Codex handoff; maps images/files to the current Codex
+> input schema; and removes files only after confirmed handoff, definitive
+> failure, explicit review, archive, or orphan recovery. Cross-device dismissal
+> is rejected. The Pixel 9 API 36 Home suite (15 tests), the full Android unit
+> suite, and the ten-package Go race suite pass. A real picker/upload/send flow
+> against the emulator and local companion remains before Task 10 is closed.
 
 **Goal:** Build an Apache-2.0 Android 16 home-screen launcher that lets a user pair their phone with their own macOS, Windows, or Linux computer over Tailscale and safely operate Codex tasks running on that computer.
 
