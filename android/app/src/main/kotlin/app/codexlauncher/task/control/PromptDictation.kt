@@ -7,7 +7,8 @@ import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContract
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -18,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import app.codexlauncher.diagnostics.AppLog
 
 sealed interface PromptDictationResult {
@@ -90,9 +92,9 @@ internal fun PromptDictationButton(
     }
     val launcher = rememberLauncherForActivityResult(PromptDictationContract(), deliver)
 
-    OutlinedButton(
+    OutlinedIconButton(
         enabled = enabled && !waiting,
-        modifier = Modifier.semantics { contentDescription = "Dictate follow-up" },
+        modifier = Modifier.size(48.dp).semantics { contentDescription = "Dictate follow-up" },
         onClick = {
             waiting = true
             AppLog.info(
@@ -121,7 +123,7 @@ internal fun PromptDictationButton(
             }
         },
     ) {
-        Text(if (waiting) "Listening…" else "Voice")
+        Text(if (waiting) "…" else "Mic")
     }
 }
 

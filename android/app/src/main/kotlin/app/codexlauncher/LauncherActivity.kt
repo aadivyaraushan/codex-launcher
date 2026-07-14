@@ -74,6 +74,11 @@ import app.codexlauncher.launcher.home.HomeScreen
 import app.codexlauncher.launcher.home.HomeUiPolicy
 import app.codexlauncher.launcher.home.lastConnectedLabel
 import app.codexlauncher.launcher.home.toHomeTask
+import app.codexlauncher.launcher.surface.AttachmentChoiceDialog
+import app.codexlauncher.launcher.surface.BackgroundConnectionWarningDialog
+import app.codexlauncher.launcher.surface.LauncherLoadingScreen
+import app.codexlauncher.launcher.surface.LocalStateRecoveryScreen
+import app.codexlauncher.launcher.surface.UnpairConfirmationDialog
 import app.codexlauncher.project.selection.ProjectSelector
 import app.codexlauncher.project.selection.ProjectSelectionUiState
 import app.codexlauncher.storage.pairing.PairingRecordReadState
@@ -557,32 +562,22 @@ class LauncherActivity : ComponentActivity() {
                         )
                 }
                 if (attachmentChoiceVisible) {
-                    AlertDialog(
-                        onDismissRequest = { attachmentChoiceVisible = false },
-                        title = { Text("Attach") },
-                        text = { Text("Choose a photo or a file. Files stay private and are sent only to your paired computer.") },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                attachmentChoiceVisible = false
-                                photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                            }) { Text("Photo") }
+                    AttachmentChoiceDialog(
+                        onDismiss = { attachmentChoiceVisible = false },
+                        onPhoto = {
+                            attachmentChoiceVisible = false
+                            photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         },
-                        dismissButton = {
-                            TextButton(onClick = {
-                                attachmentChoiceVisible = false
-                                documentPicker.launch(arrayOf("image/*", "text/*", "application/pdf", "application/json", "application/zip"))
-                            }) { Text("File") }
+                        onFile = {
+                            attachmentChoiceVisible = false
+                            documentPicker.launch(arrayOf("image/*", "text/*", "application/pdf", "application/json", "application/zip"))
                         },
                     )
                 }
                 connectionServiceWarning?.let { warning ->
-                    AlertDialog(
-                        onDismissRequest = { connectionServiceWarning = null },
-                        title = { Text("Background connection unavailable") },
-                        text = { Text(warning) },
-                        confirmButton = {
-                            TextButton(onClick = { connectionServiceWarning = null }) { Text("OK") }
-                        },
+                    BackgroundConnectionWarningDialog(
+                        warning = warning,
+                        onDismiss = { connectionServiceWarning = null },
                     )
                 }
                 decisionState.active?.let { request ->
@@ -602,46 +597,35 @@ class LauncherActivity : ComponentActivity() {
                     }
                 }
                 if (unpairConfirmVisible) {
-                    AlertDialog(
-                        onDismissRequest = { unpairConfirmVisible = false },
-                        title = { Text("Remove this computer?") },
-                        text = {
-                            Text("This removes the pairing, selected project, action records, and unfinished draft from this phone. Your Codex tasks stay on the computer.")
-                        },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
-                                    unpairConfirmVisible = false
-                                    sessionViewModel.clearFollowUpDrafts()
-                                    sessionViewModel.disconnect()
-                                    CodexConnectionService.stop(applicationContext)
-                                    sessionViewModel.closeTask()
-                                    transcriptDetail = null
-                                    localStorageUiState = LocalStorageUiState.WIPING
-                                    pairingState = PairingRecordState.Loading
-                                    scope.launch {
-                                        when (localState.wiper.wipe()) {
-                                            WipeResult.Complete -> {
-                                                pairingViewModel.resetAfterUnpair()
-                                                localStorageUiState = LocalStorageUiState.READY
-                                                pairingState = PairingRecordState.Loaded(null)
-                                                destination = LauncherDestination.PAIRING
-                                            }
-                                            WipeResult.AlreadyInProgress -> {
-                                                localStorageUiState = LocalStorageUiState.FAILED
-                                                pairingState = PairingRecordState.RecoveryFailed
-                                            }
-                                            is WipeResult.Incomplete -> {
-                                                localStorageUiState = LocalStorageUiState.FAILED
-                                                pairingState = PairingRecordState.RecoveryFailed
-                                            }
-                                        }
+                    UnpairConfirmationDialog(
+                        onDismiss = { unpairConfirmVisible = false },
+                        onConfirm = {
+                            unpairConfirmVisible = false
+                            sessionViewModel.clearFollowUpDrafts()
+                            sessionViewModel.disconnect()
+                            CodexConnectionService.stop(applicationContext)
+                            sessionViewModel.closeTask()
+                            transcriptDetail = null
+                            localStorageUiState = LocalStorageUiState.WIPING
+                            pairingState = PairingRecordState.Loading
+                            scope.launch {
+                                when (localState.wiper.wipe()) {
+                                    WipeResult.Complete -> {
+                                        pairingViewModel.resetAfterUnpair()
+                                        localStorageUiState = LocalStorageUiState.READY
+                                        pairingState = PairingRecordState.Loaded(null)
+                                        destination = LauncherDestination.PAIRING
                                     }
-                                },
-                            ) { Text("Remove computer") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { unpairConfirmVisible = false }) { Text("Cancel") }
+                                    WipeResult.AlreadyInProgress -> {
+                                        localStorageUiState = LocalStorageUiState.FAILED
+                                        pairingState = PairingRecordState.RecoveryFailed
+                                    }
+                                    is WipeResult.Incomplete -> {
+                                        localStorageUiState = LocalStorageUiState.FAILED
+                                        pairingState = PairingRecordState.RecoveryFailed
+                                    }
+                                }
+                            }
                         },
                     )
                 }
@@ -675,33 +659,6 @@ class LauncherActivity : ComponentActivity() {
         startActivity(Intent(Settings.ACTION_SETTINGS))
     }
 
-}
-
-@Composable
-private fun LauncherLoadingScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(
-            modifier = Modifier.semantics { contentDescription = "Loading launcher" },
-        )
-    }
-}
-
-@Composable
-private fun LocalStateRecoveryScreen(
-    onRetry: () -> Unit,
-    onAllApps: () -> Unit,
-    onAndroidSettings: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-    ) {
-        Text("Finishing private data cleanup", style = MaterialTheme.typography.headlineSmall)
-        Text("Codex Launcher could not safely finish removing local data. Try again before pairing.")
-        Button(onClick = onRetry) { Text("Try again") }
-        OutlinedButton(onClick = onAllApps) { Text("All apps") }
-        OutlinedButton(onClick = onAndroidSettings) { Text("Android Settings") }
-    }
 }
 
 internal enum class LauncherDestination {

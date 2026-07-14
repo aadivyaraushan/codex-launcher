@@ -24,7 +24,10 @@ jobs:
           java-version: "17"
       - uses: gradle/actions/setup-gradle@90ddb51e90a5fd9ba75f40cf85156b7b41bf76a3 # v6
       - name: Test and lint
-        run: ./android/gradlew -p android --no-daemon --stacktrace testDebugUnitTest lintDebug
+        run: |
+          node release/checks/android-debug-surface.test.mjs
+          ./android/gradlew -p android --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug assembleRelease
+          node release/checks/android-debug-apk-isolation.test.mjs
       - name: Upload lint report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

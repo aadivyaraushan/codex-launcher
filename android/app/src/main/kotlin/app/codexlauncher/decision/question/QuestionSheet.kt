@@ -15,6 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.decision.approval.DecisionRequest
 
@@ -47,7 +49,10 @@ fun QuestionSheet(
                                 OutlinedTextField(
                                     value = answers[question.id].orEmpty(),
                                     onValueChange = { answers[question.id] = it },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .semantics { contentDescription = "Answer: ${question.header}" },
                                     singleLine = false,
                                 )
                             } else {

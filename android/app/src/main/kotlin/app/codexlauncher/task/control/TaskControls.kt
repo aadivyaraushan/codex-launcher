@@ -107,6 +107,7 @@ fun TaskControls(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onAttach, enabled = !sending && !followUpsBlocked && attachments.size < 2) { Text("Attach") }
             Button(
+                modifier = Modifier.weight(1f),
                 enabled = !sending && !followUpsBlocked && text.isNotBlank(),
                 onClick = {
                     val submitted = text
@@ -125,6 +126,7 @@ fun TaskControls(
                         mode == ExistingTaskSendMode.REDIRECT -> "Redirect now"
                         else -> "Queue follow-up"
                     },
+                    maxLines = 1,
                 )
             }
             if (active) {

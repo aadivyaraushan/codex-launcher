@@ -91,6 +91,16 @@ fun AppDrawerScreen(
                 Spacer(Modifier.height(8.dp))
             }
             LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                if (visibleApps.isEmpty()) {
+                    item(key = "no-matching-apps") {
+                        Text(
+                            "No matching apps",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        )
+                    }
+                }
                 visibleApps.groupBy { it.label.firstOrNull()?.uppercaseChar() ?: '#' }.forEach { (letter, group) ->
                     item(key = "letter:$letter") {
                         Text(
