@@ -369,6 +369,8 @@ class LauncherActivity : ComponentActivity() {
                                 onRedirect = { text -> sessionViewModel.redirectTask(transcript.taskId, text) },
                                 onStop = { sessionViewModel.stopTask(transcript.taskId) },
                                 onDismissUnresolvedControl = { sessionViewModel.dismissUnconfirmedTaskControl(transcript.taskId) },
+                                followUpText = sessionUiState.followUpDraft,
+                                onFollowUpTextChange = { text -> sessionViewModel.updateTaskFollowUpDraft(transcript.taskId, text) },
                             )
                         } ?: LauncherLoadingScreen()
                     LauncherDestination.TASK_DETAIL ->
@@ -416,6 +418,7 @@ class LauncherActivity : ComponentActivity() {
                             TextButton(
                                 onClick = {
                                     unpairConfirmVisible = false
+                                    sessionViewModel.clearFollowUpDrafts()
                                     sessionViewModel.disconnect()
                                     sessionViewModel.closeTask()
                                     transcriptDetail = null

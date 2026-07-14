@@ -35,6 +35,7 @@ import app.codexlauncher.task.management.TaskActionOutcome
 import app.codexlauncher.task.management.TaskActionsMenu
 import app.codexlauncher.task.control.ExistingTaskControlOutcome
 import app.codexlauncher.task.control.TaskControls
+import app.codexlauncher.task.control.PromptDictationResult
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskQueueState
 
@@ -59,6 +60,9 @@ fun TaskScreen(
     onRedirect: suspend (String) -> ExistingTaskControlOutcome = { ExistingTaskControlOutcome.Unavailable },
     onStop: suspend () -> ExistingTaskControlOutcome = { ExistingTaskControlOutcome.Unavailable },
     onDismissUnresolvedControl: suspend () -> Boolean = { false },
+    onRequestDictation: ((((PromptDictationResult) -> Unit) -> Unit))? = null,
+    followUpText: String? = null,
+    onFollowUpTextChange: ((String) -> Unit)? = null,
 ) {
     Column(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding(),
@@ -168,6 +172,9 @@ fun TaskScreen(
                 onRedirect = onRedirect,
                 onStop = onStop,
                 onDismissUnresolved = onDismissUnresolvedControl,
+                onRequestDictation = onRequestDictation,
+                composerText = followUpText,
+                onComposerTextChange = onFollowUpTextChange,
             )
         }
     }

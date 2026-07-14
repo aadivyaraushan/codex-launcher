@@ -35,9 +35,17 @@ fun TaskControls(
     onRedirect: suspend (String) -> ExistingTaskControlOutcome,
     onStop: suspend () -> ExistingTaskControlOutcome,
     onDismissUnresolved: suspend () -> Boolean,
+    onRequestDictation: ((((PromptDictationResult) -> Unit) -> Unit))? = null,
+    composerText: String? = null,
+    onComposerTextChange: ((String) -> Unit)? = null,
 ) {
     val active = taskState in setOf(TaskState.WORKING, TaskState.WAITING_FOR_APPROVAL, TaskState.WAITING_FOR_ANSWER)
-    var text by remember { mutableStateOf("") }
+    var localText by remember { mutableStateOf("") }
+    val text = composerText ?: localText
+    val updateText: (String) -> Unit = { next ->
+        if (composerText == null) localText = next
+        onComposerTextChange?.invoke(next)
+    }
     var mode by remember(taskState, canRedirect) { mutableStateOf(ExistingTaskSendMode.QUEUE) }
     var sending by remember { mutableStateOf(false) }
     var stopDialog by remember { mutableStateOf(false) }
@@ -81,7 +89,7 @@ fun TaskControls(
         }
         OutlinedTextField(
             value = text,
-            onValueChange = { text = it },
+            onValueChange = updateText,
             modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Follow-up message" },
             enabled = !sending && !followUpsBlocked,
             placeholder = { Text(if (active) "Add a follow-up or redirect…" else "Send a follow-up…") },
@@ -97,7 +105,7 @@ fun TaskControls(
                     scope.launch {
                         val outcome = if (mode == ExistingTaskSendMode.REDIRECT) onRedirect(submitted) else onQueueFollowUp(submitted)
                         message = outcome.message()
-                        if (outcome in setOf(ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued, ExistingTaskControlOutcome.Redirected)) text = ""
+                        if (outcome in setOf(ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued, ExistingTaskControlOutcome.Redirected)) updateText("")
                         sending = false
                     }
                 },
@@ -113,6 +121,21 @@ fun TaskControls(
             if (active) {
                 OutlinedButton(onClick = { stopDialog = true }, enabled = !sending) { Text("Stop") }
             }
+            PromptDictationButton(
+                enabled = !sending && !followUpsBlocked,
+                requestOverride = onRequestDictation,
+                onResult = { result ->
+                    when (result) {
+                        is PromptDictationResult.Recognized -> {
+                            updateText(mergePromptDictation(text, result.text))
+                            message = "Dictation added"
+                        }
+                        PromptDictationResult.Cancelled -> message = "Dictation canceled"
+                        PromptDictationResult.Unavailable -> message = "Speech recognition isn’t installed"
+                        PromptDictationResult.Failed -> message = "Couldn’t understand speech"
+                    }
+                },
+            )
         }
         message?.let { Text(it) }
     }

@@ -480,6 +480,43 @@ class LauncherSessionViewModelTest {
     }
 
     @Test
+    fun followUpDraftStaysOnlyInTheRetainedViewModelAndReturnsWhenTaskReopens() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts")))
+        observer.onMessage(snapshotWithTask(1, "Build launcher"))
+
+        assertTrue(viewModel.openTask("thread-1"))
+        assertTrue(viewModel.updateTaskFollowUpDraft("thread-1", "memory-only prompt"))
+        assertEquals("memory-only prompt", viewModel.state.value.followUpDraft)
+
+        observer.onMessage(snapshotWithTask(2, "Build launcher refreshed"))
+        assertEquals("memory-only prompt", viewModel.state.value.followUpDraft)
+
+        viewModel.closeTask()
+        assertEquals("", viewModel.state.value.followUpDraft)
+        assertTrue(viewModel.openTask("thread-1"))
+        assertEquals("memory-only prompt", viewModel.state.value.followUpDraft)
+        assertFalse(viewModel.updateTaskFollowUpDraft("different-thread", "must not move"))
+
+        viewModel.clearFollowUpDrafts()
+        viewModel.closeTask()
+        assertTrue(viewModel.openTask("thread-1"))
+        assertEquals("", viewModel.state.value.followUpDraft)
+    }
+
+    @Test
     fun staleTranscriptPageCannotReplaceANewerTaskRequest() = runBlocking {
         lateinit var observer: SessionObserver
         val connection = FakeSessionConnection()

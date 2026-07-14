@@ -1,6 +1,7 @@
 package app.codexlauncher.task.transcript
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -18,10 +19,43 @@ import org.junit.Rule
 import org.junit.Test
 import app.codexlauncher.task.management.TaskActionOutcome
 import app.codexlauncher.task.control.ExistingTaskControlOutcome
+import app.codexlauncher.task.control.PromptDictationResult
 
 class TaskScreenTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun dictationAppendsEditableTextAndReportsCancelWithoutErasingIt() {
+        var nextResult: PromptDictationResult = PromptDictationResult.Recognized("spoken words")
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.LIGHT) {
+                TaskScreen(
+                    state = populatedState(),
+                    taskState = app.codexlauncher.task.summary.TaskState.IDLE_AFTER_REPLY,
+                    onRequestDictation = { callback -> callback(nextResult) },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Follow-up message").performTextInput("Typed words")
+        compose.onNodeWithContentDescription("Dictate follow-up").performClick()
+        compose.onNodeWithContentDescription("Follow-up message").assertTextContains("Typed words spoken words")
+
+        nextResult = PromptDictationResult.Cancelled
+        compose.onNodeWithContentDescription("Dictate follow-up").performClick()
+        compose.onNodeWithText("Dictation canceled").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Follow-up message").assertTextContains("Typed words spoken words")
+
+        nextResult = PromptDictationResult.Unavailable
+        compose.onNodeWithContentDescription("Dictate follow-up").performClick()
+        compose.onNodeWithText("Speech recognition isn’t installed").assertIsDisplayed()
+
+        nextResult = PromptDictationResult.Failed
+        compose.onNodeWithContentDescription("Dictate follow-up").performClick()
+        compose.onNodeWithText("Couldn’t understand speech").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Follow-up message").assertTextContains("Typed words spoken words")
+    }
 
     @Test
     fun transcriptRendersChatAndKeepsLargeDetailsBehindExplicitActions() {

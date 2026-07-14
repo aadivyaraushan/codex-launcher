@@ -65,6 +65,7 @@ data class LauncherSessionState(
     val newTaskMessage: String? = null,
     val unconfirmedForkTaskIds: Set<String> = emptySet(),
     val unconfirmedControlTaskIds: Set<String> = emptySet(),
+    val followUpDraft: String = "",
 )
 
 class LauncherSessionViewModel(
@@ -98,6 +99,7 @@ class LauncherSessionViewModel(
     private val publishedProject = AtomicReference<ProjectChoice?>()
     private val storedProjectBaseline = AtomicReference<ProjectChoice?>()
     private val pendingTaskEvents = ArrayDeque<ProtocolMessage>()
+    private val followUpDrafts = ConcurrentHashMap<String, String>()
     private var nextSnapshotToken = 0L
     private var pendingSnapshotToken: Long? = null
     private var retryJob: Job? = null
@@ -415,8 +417,38 @@ class LauncherSessionViewModel(
         val current = mutableState.value
         val task = current.snapshot?.tasks?.singleOrNull { it.id == taskId }
         if (!transcriptCapable || current.connection.phase != app.codexlauncher.connection.state.ConnectionPhase.ONLINE || task == null) return false
-        mutableState.value = current.copy(transcript = TaskTranscriptUiState(taskId = taskId, title = task.title))
+        mutableState.value =
+            current.copy(
+                transcript = TaskTranscriptUiState(taskId = taskId, title = task.title),
+                followUpDraft = followUpDrafts[taskId].orEmpty(),
+            )
         return sendTranscriptRead(taskId, beforeEntryId = null, appendEarlier = false)
+    }
+
+    @Synchronized
+    fun updateTaskFollowUpDraft(taskId: String, text: String): Boolean {
+        val current = mutableState.value
+        if (current.transcript?.taskId != taskId) return false
+        if (text.isEmpty()) followUpDrafts.remove(taskId) else followUpDrafts[taskId] = text
+        mutableState.value = current.copy(followUpDraft = text)
+        AppLog.info(
+            feature = "task-control",
+            message = "in-memory follow-up draft updated",
+            fields = mapOf("thread_id" to taskId, "text_length" to text.length, "storage" to "memory_only"),
+        )
+        return true
+    }
+
+    @Synchronized
+    fun clearFollowUpDrafts() {
+        val cleared = followUpDrafts.size
+        followUpDrafts.clear()
+        mutableState.value = mutableState.value.copy(followUpDraft = "")
+        AppLog.info(
+            feature = "task-control",
+            message = "in-memory follow-up drafts cleared",
+            fields = mapOf("draft_count" to cleared, "reason" to "explicit_local_wipe"),
+        )
     }
 
     @Synchronized
@@ -431,7 +463,7 @@ class LauncherSessionViewModel(
     @Synchronized
     fun closeTask() {
         pendingTranscript = null
-        mutableState.value = mutableState.value.copy(transcript = null)
+        mutableState.value = mutableState.value.copy(transcript = null, followUpDraft = "")
     }
 
     private fun sendTranscriptRead(taskId: String, beforeEntryId: String?, appendEarlier: Boolean): Boolean {
@@ -686,6 +718,7 @@ class LauncherSessionViewModel(
             previousTranscript?.let { transcript ->
                 tasks.singleOrNull { it.id == transcript.taskId }?.let { task -> transcript.copy(title = task.title) }
             }
+        val nextFollowUpDraft = nextTranscript?.taskId?.let(followUpDrafts::get).orEmpty()
         mutableState.value =
             LauncherSessionState(
                 connection = connection,
@@ -699,6 +732,7 @@ class LauncherSessionViewModel(
                 newTaskMessage = mutableState.value.newTaskMessage,
                 unconfirmedForkTaskIds = mutableState.value.unconfirmedForkTaskIds,
                 unconfirmedControlTaskIds = mutableState.value.unconfirmedControlTaskIds,
+                followUpDraft = nextFollowUpDraft,
             )
         AppLog.info(
             feature = "connection-runtime",
@@ -975,6 +1009,7 @@ class LauncherSessionViewModel(
     override fun onCleared() {
         cancelRetry(resetAttempts = true)
         retryComputer = null
+        followUpDrafts.clear()
         closeCurrent(invalidate = true)
         super.onCleared()
     }
