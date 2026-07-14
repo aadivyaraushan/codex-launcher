@@ -1528,6 +1528,38 @@ class LauncherSessionViewModelTest {
     }
 
     @Test
+    fun networkAvailableDoesNotReplaceAHealthyOnlineSession() = runBlocking {
+        val observers = mutableListOf<SessionObserver>()
+        val connections = mutableListOf<FakeSessionConnection>()
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, observer ->
+                observers += observer
+                FakeSessionConnection().also(connections::add)
+            },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observers.single().onReady(connections.single(), ByteArray(32))
+        observers.single().onMessage(welcome(capabilities = listOf("set_project")))
+        observers.single().onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-online","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[],"tasks":[]}}""",
+            ),
+        )
+        assertEquals(ConnectionPhase.ONLINE, viewModel.state.value.connection.phase)
+
+        viewModel.reconnectNow("default_network_available")
+
+        assertEquals(1, connections.size)
+        assertTrue(!connections.single().closed)
+        assertEquals(ConnectionPhase.ONLINE, viewModel.state.value.connection.phase)
+    }
+
+    @Test
     fun incompatibleCompanionNeverSchedulesAutomaticRetry() = runBlocking {
         lateinit var observer: SessionObserver
         var retryCalls = 0

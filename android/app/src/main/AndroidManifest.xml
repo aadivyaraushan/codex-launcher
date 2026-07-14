@@ -20,7 +20,7 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service
-            android:name=".connection.ConnectionLifecycleSpike"
+            android:name=".connection.stream.CodexConnectionService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice"
             android:stopWithTask="false" />

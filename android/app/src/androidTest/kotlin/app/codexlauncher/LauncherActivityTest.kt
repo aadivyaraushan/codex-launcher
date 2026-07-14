@@ -45,8 +45,6 @@ class LauncherActivityTest {
 
     @After
     fun closeActivity() {
-        scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
-        scenario.onActivity { it.finishAndRemoveTask() }
         scenario.close()
         Intents.release()
     }
@@ -141,6 +139,14 @@ class LauncherActivityTest {
 
     @Test
     fun AndroidDeliversALaterHomeIntentAndTheLauncherReturnsHome() {
+        compose.waitUntil(timeoutMillis = 3_000) {
+            try {
+                compose.onNodeWithText("All apps").assertIsDisplayed()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
         compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
 

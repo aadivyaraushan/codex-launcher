@@ -56,9 +56,12 @@ import app.codexlauncher.connection.pairing.network.AndroidDevicePairingSigner
 import app.codexlauncher.connection.pairing.network.PairingClient
 import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.connection.pairing.network.PinnedPairingTransport
+import app.codexlauncher.connection.lifecycle.PairingConnectionCommand
+import app.codexlauncher.connection.lifecycle.pairingConnectionCommand
 import app.codexlauncher.connection.runtime.LauncherSessionViewModel
-import app.codexlauncher.connection.session.CompanionSessionClient
 import app.codexlauncher.connection.state.ConnectionPhase
+import app.codexlauncher.connection.stream.CodexConnectionService
+import app.codexlauncher.connection.stream.userWarning
 import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.decision.approval.ApprovalSheet
 import app.codexlauncher.decision.question.QuestionSheet
@@ -90,23 +93,13 @@ import kotlinx.coroutines.withContext
 
 class LauncherActivity : ComponentActivity() {
     private val themePreferences by lazy { ThemePreferenceStore(applicationContext.themeDataStore) }
-    private val localState get() = (application as LauncherApplication).localState
+    private val launcherApplication get() = application as LauncherApplication
+    private val localState get() = launcherApplication.localState
     private val pairingViewModel: PairingViewModel by viewModels {
         viewModelFactory { initializer { createPairingViewModel() } }
     }
-    private val draftComposerViewModel: DraftComposerViewModel by viewModels {
-        viewModelFactory {
-            initializer {
-                DraftComposerViewModel(
-                    loadDraft = localState.drafts::load,
-                    saveDraft = localState.drafts::save,
-                )
-            }
-        }
-    }
-    private val sessionViewModel: LauncherSessionViewModel by viewModels {
-        viewModelFactory { initializer { createSessionViewModel() } }
-    }
+    private val draftComposerViewModel: DraftComposerViewModel get() = launcherApplication.draftComposer
+    private val sessionViewModel: LauncherSessionViewModel get() = launcherApplication.session
 
     private fun createPairingViewModel(): PairingViewModel {
         val client = PairingClient(AndroidDevicePairingSigner(localState.pairingKeys), PinnedPairingTransport())
@@ -128,17 +121,6 @@ class LauncherActivity : ComponentActivity() {
         )
     }
 
-    private fun createSessionViewModel(): LauncherSessionViewModel {
-        val client = CompanionSessionClient(AndroidDevicePairingSigner(localState.pairingKeys))
-        return LauncherSessionViewModel(
-            connect = client::connect,
-            loadProject = { localState.projectSelections.selected.first() },
-            saveProject = localState.projectSelections::save,
-            clearProject = localState.projectSelections::clear,
-            actionJournal = localState.actionJournal,
-            clearConfirmedDraft = draftComposerViewModel::clearAfterConfirmedSend,
-        )
-    }
     private var homeIntentSequence by mutableLongStateOf(0L)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -165,6 +147,8 @@ class LauncherActivity : ComponentActivity() {
             var destination by rememberSaveable { mutableStateOf(LauncherDestination.PAIRING) }
             var installedApps by remember { mutableStateOf(emptyList<InstalledApp>()) }
             var connectionHelpVisible by rememberSaveable { mutableStateOf(false) }
+            var connectionServiceWarning by rememberSaveable { mutableStateOf<String?>(null) }
+            var appLaunchFailureMessage by rememberSaveable { mutableStateOf<String?>(null) }
             var unpairConfirmVisible by rememberSaveable { mutableStateOf(false) }
             var transcriptDetail by remember { mutableStateOf<TranscriptDetail?>(null) }
             var attachmentChoiceVisible by rememberSaveable { mutableStateOf(false) }
@@ -204,6 +188,14 @@ class LauncherActivity : ComponentActivity() {
             val cameraPermission =
                 rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                     cameraPermissionGranted = granted
+                }
+            val notificationPermission =
+                rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    AppLog.info(
+                        feature = "connection-service",
+                        message = "notification permission request finished",
+                        fields = mapOf("output_shape" to "granted=$granted"),
+                    )
                 }
             LaunchedEffect(recoveryAttempt) {
                 localStorageUiState = LocalStorageUiState.RECOVERING
@@ -251,16 +243,30 @@ class LauncherActivity : ComponentActivity() {
                     pairingState is PairingRecordState.Loaded && pairedComputer == null -> destination = LauncherDestination.PAIRING
                     pairedComputer != null && destination == LauncherDestination.PAIRING -> destination = LauncherDestination.HOME
                 }
-                when (val loaded = pairingState) {
-                    PairingRecordState.Loading -> sessionViewModel.disconnect()
-                    PairingRecordState.RecoveryFailed -> sessionViewModel.disconnect()
-                    is PairingRecordState.Loaded ->
-                        loaded.record?.let { paired ->
+                when (pairingConnectionCommand(pairingState)) {
+                    PairingConnectionCommand.KEEP -> Unit
+                    PairingConnectionCommand.DISCONNECT -> {
+                        draftComposerViewModel.reset()
+                        sessionViewModel.disconnect()
+                        CodexConnectionService.stop(applicationContext)
+                    }
+                    PairingConnectionCommand.CONNECT ->
+                        pairedComputer?.let { paired ->
                             draftComposerViewModel.load(paired.pairingGeneration)
                             sessionViewModel.connect(paired)
-                        } ?: run {
-                            draftComposerViewModel.reset()
-                            sessionViewModel.disconnect()
+                            val startResult = CodexConnectionService.start(this@LauncherActivity)
+                            connectionServiceWarning = startResult.userWarning()
+                            AppLog.info(
+                                feature = "connection-service",
+                                message = "visible launcher requested connection service",
+                                fields = mapOf("output_shape" to "start_result=${startResult.name.lowercase()}"),
+                            )
+                            if (
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
                         }
                 }
             }
@@ -464,8 +470,16 @@ class LauncherActivity : ComponentActivity() {
                     LauncherDestination.APPS ->
                         AppDrawerScreen(
                             apps = installedApps,
+                            launchFailureMessage = appLaunchFailureMessage,
                             onBack = { destination = rootDestination },
-                            onLaunch = appsRepository::launch,
+                            onLaunch = { app ->
+                                appLaunchFailureMessage =
+                                    if (appsRepository.launch(app)) {
+                                        null
+                                    } else {
+                                        "${app.label} could not be opened. Refresh All apps and try again."
+                                    }
+                            },
                             onAndroidSettings = ::openAndroidSettings,
                             onLauncherSettings = { destination = LauncherDestination.APPEARANCE },
                         )
@@ -492,6 +506,16 @@ class LauncherActivity : ComponentActivity() {
                                 attachmentChoiceVisible = false
                                 documentPicker.launch(arrayOf("image/*", "text/*", "application/pdf", "application/json", "application/zip"))
                             }) { Text("File") }
+                        },
+                    )
+                }
+                connectionServiceWarning?.let { warning ->
+                    AlertDialog(
+                        onDismissRequest = { connectionServiceWarning = null },
+                        title = { Text("Background connection unavailable") },
+                        text = { Text(warning) },
+                        confirmButton = {
+                            TextButton(onClick = { connectionServiceWarning = null }) { Text("OK") }
                         },
                     )
                 }
@@ -524,6 +548,7 @@ class LauncherActivity : ComponentActivity() {
                                     unpairConfirmVisible = false
                                     sessionViewModel.clearFollowUpDrafts()
                                     sessionViewModel.disconnect()
+                                    CodexConnectionService.stop(applicationContext)
                                     sessionViewModel.closeTask()
                                     transcriptDetail = null
                                     localStorageUiState = LocalStorageUiState.WIPING

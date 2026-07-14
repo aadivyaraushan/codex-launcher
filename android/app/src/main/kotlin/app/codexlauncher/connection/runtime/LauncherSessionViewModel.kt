@@ -146,6 +146,34 @@ class LauncherSessionViewModel(
         startConnection(paired, force)
     }
 
+    @Synchronized
+    fun reconnectNow(reason: String) {
+        if (mutableState.value.connection.phase != app.codexlauncher.connection.state.ConnectionPhase.DISCONNECTED) {
+            AppLog.info(
+                feature = "connection-runtime",
+                message = "immediate reconnect ignored",
+                fields = mapOf("branch_reason" to reason, "decision" to "session_already_active"),
+            )
+            return
+        }
+        val paired = retryComputer
+        if (paired == null) {
+            AppLog.info(
+                feature = "connection-runtime",
+                message = "immediate reconnect ignored",
+                fields = mapOf("branch_reason" to reason, "decision" to "no_paired_computer"),
+            )
+            return
+        }
+        cancelRetry(resetAttempts = false)
+        AppLog.info(
+            feature = "connection-runtime",
+            message = "immediate companion reconnect requested",
+            fields = mapOf("branch_reason" to reason, "decision" to "open_fresh_session"),
+        )
+        startConnection(paired, force = true)
+    }
+
     private fun startConnection(paired: PairedComputer, force: Boolean) {
         val current = mutableState.value.connection
         if (!force && activeDeviceId == paired.deviceId && current.phase != app.codexlauncher.connection.state.ConnectionPhase.DISCONNECTED) return
@@ -505,8 +533,8 @@ class LauncherSessionViewModel(
         val current = mutableState.value
         val task = current.snapshot?.tasks?.singleOrNull { it.id == taskId }
         if (!transcriptCapable || current.connection.phase != app.codexlauncher.connection.state.ConnectionPhase.ONLINE || task == null) return false
-		pendingDecisionRead = null
-		decisionViewModel.clear()
+        pendingDecisionRead = null
+        decisionViewModel.clear()
         mutableState.value =
             current.copy(
                 transcript = TaskTranscriptUiState(taskId = taskId, title = task.title),
@@ -563,8 +591,8 @@ class LauncherSessionViewModel(
     @Synchronized
     fun closeTask() {
         pendingTranscript = null
-		pendingDecisionRead = null
-		decisionViewModel.clear()
+        pendingDecisionRead = null
+        decisionViewModel.clear()
         mutableState.value = mutableState.value.copy(transcript = null, followUpDraft = "")
     }
 

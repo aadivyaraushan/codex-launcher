@@ -741,6 +741,22 @@ Decision rules:
 
 **Verify:** Instrumentation on Android 16 with screen off, Doze, Wi-Fi→5G, service stop/restart, and Tailscale disconnect.
 
+> **Checkpoint — 2026-07-14:** The production app drawer, approved Appearance
+> screen, application-owned session, `connectedDevice` foreground service,
+> generic notifications, process-recovery bootstrap, and default-network
+> reconnect path are implemented. The final run passed 239 JVM tests, Android
+> lint, and 84 Pixel 9 Android 16 instrumentation tests, with the externally
+> driven network gate honestly reported as skipped in the normal suite and then
+> passed in a separate real airplane-mode cycle. Real VM taps covered
+> HOME selection, cold start, app search/launch, Settings, dark mode, force-stop,
+> and reboot. Paired activity recreation now proves the healthy service is not
+> restarted; deep Doze proves the service and in-process observer stay alive,
+> while socket-level deep-idle delivery remains open. User-visible warnings
+> cover rejected background starts and app-launch failures. Evidence is saved in
+> `saved-results/task-12-launcher-service-checkpoint.md`. Real Tailscale
+> stop/restart/update, paired process-death recovery, physical Pixel 9, and the
+> final Computer Use pass remain open; Tailscale is absent and macOS is locked.
+
 ### Task 13: Install, replace, roll back, and verify the companion on all desktop platforms
 
 **Objective:** Start the companion after the user's next login/reboot, replace it safely, roll back locally, and uninstall without leaving credentials or services behind.

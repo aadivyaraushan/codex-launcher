@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun AppDrawerScreen(
     apps: List<InstalledApp>,
+    launchFailureMessage: String? = null,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
     onLaunch: (InstalledApp) -> Unit = {},
@@ -81,6 +82,14 @@ fun AppDrawerScreen(
                         .semantics { contentDescription = "Search apps" },
             )
             Spacer(Modifier.height(12.dp))
+            launchFailureMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 visibleApps.groupBy { it.label.firstOrNull()?.uppercaseChar() ?: '#' }.forEach { (letter, group) ->
                     item(key = "letter:$letter") {

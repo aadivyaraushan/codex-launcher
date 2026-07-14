@@ -2,6 +2,7 @@ package app.codexlauncher.storage.wipe
 
 import android.content.Context
 import android.content.Intent
+import android.Manifest
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -10,9 +11,11 @@ import androidx.compose.ui.test.performClick
 import androidx.datastore.preferences.core.edit
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import app.codexlauncher.LauncherActivity
 import app.codexlauncher.LauncherApplication
 import app.codexlauncher.connection.pairing.network.PairedComputer
+import app.codexlauncher.connection.stream.CodexConnectionService
 import app.codexlauncher.storage.actions.actionRecordDataStore
 import app.codexlauncher.storage.drafts.DraftKeyStore
 import app.codexlauncher.storage.pairing.deviceIdentityDataStore
@@ -46,6 +49,10 @@ class UnpairActivityTest {
     @Before
     fun seedPairedLauncher() = runBlocking {
         reset()
+        InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
+            context.packageName,
+            Manifest.permission.POST_NOTIFICATIONS,
+        )
         val owner = (context as LauncherApplication).localState
         assertEquals(WipeResult.Complete, owner.wiper.wipe())
         owner.pairingKeys.loadOrCreate()
@@ -60,6 +67,13 @@ class UnpairActivityTest {
 
     @After
     fun closeAndReset() = runBlocking {
+        (context as LauncherApplication).session.disconnect()
+        CodexConnectionService.stop(context)
+        val stopDeadline = android.os.SystemClock.elapsedRealtime() + 5_000
+        while (CodexConnectionService.snapshot().running && android.os.SystemClock.elapsedRealtime() < stopDeadline) {
+            android.os.SystemClock.sleep(50)
+        }
+        assertFalse("connection service leaked past paired test teardown", CodexConnectionService.snapshot().running)
         scenario.close()
         reset()
     }
@@ -95,6 +109,32 @@ class UnpairActivityTest {
             assertEquals(LocalStateWriteResult.Blocked, ownerAfter.gate.withPairedWrite { true })
         }
         assertFalse(pairingKeys.exists())
+    }
+
+    @Test
+    fun pairedActivityRecreationDoesNotRestartTheProcessConnectionService() {
+        compose.waitUntil(timeoutMillis = 5_000) {
+            CodexConnectionService.snapshot().running &&
+                runCatching {
+                    compose.onNodeWithContentDescription("Manage paired computer").assertIsDisplayed()
+                    true
+                }.getOrDefault(false)
+        }
+        val before = CodexConnectionService.snapshot()
+
+        scenario.recreate()
+
+        compose.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                compose.onNodeWithContentDescription("Manage paired computer").assertIsDisplayed()
+                true
+            }.getOrDefault(false)
+        }
+        android.os.SystemClock.sleep(500)
+        val after = CodexConnectionService.snapshot()
+        assertTrue(after.running)
+        assertEquals(before.createCount, after.createCount)
+        assertEquals(before.destroyCount, after.destroyCount)
     }
 
     private suspend fun reset() {

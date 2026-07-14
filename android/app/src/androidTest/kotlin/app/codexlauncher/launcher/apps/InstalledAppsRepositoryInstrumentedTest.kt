@@ -31,5 +31,11 @@ class InstalledAppsRepositoryInstrumentedTest {
         }
         assertEquals("com.android.settings", foregroundPackage)
         automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        val returnDeadline = android.os.SystemClock.uptimeMillis() + 3_000
+        while (android.os.SystemClock.uptimeMillis() < returnDeadline) {
+            if (automation.rootInActiveWindow?.packageName != "com.android.settings") return
+            android.os.SystemClock.sleep(50)
+        }
+        throw AssertionError("Android Settings remained in front after the test pressed Back")
     }
 }

@@ -56,4 +56,18 @@ class AppDrawerScreenTest {
 
         assertEquals(listOf("launch:camera", "settings", "appearance", "back"), calls)
     }
+
+    @Test
+    fun launchFailureIsShownBesideTheAppList() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.LIGHT) {
+                AppDrawerScreen(
+                    apps = listOf(InstalledApp("camera", "Camera")),
+                    launchFailureMessage = "Camera could not be opened. Refresh All apps and try again.",
+                )
+            }
+        }
+
+        compose.onNodeWithText("Camera could not be opened. Refresh All apps and try again.").assertIsDisplayed()
+    }
 }
