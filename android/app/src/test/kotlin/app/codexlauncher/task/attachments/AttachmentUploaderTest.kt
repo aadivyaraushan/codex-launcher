@@ -6,6 +6,8 @@ import app.codexlauncher.connection.protocol.ProtocolMessage
 import app.codexlauncher.connection.session.ActionSendResult
 import app.codexlauncher.connection.session.SessionConnection
 import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.buildJsonObject
@@ -16,8 +18,39 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.MessageDigest
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class AttachmentUploaderTest {
+    @Test
+    fun `cancel waits for an in-flight chunk and no chunk is sent after cancel`() = runBlocking {
+        val connection = RecordingAttachmentConnection().apply {
+            binaryEntered = CountDownLatch(1)
+            binaryRelease = CountDownLatch(1)
+        }
+        val payload = "abcdefgh".encodeToByteArray()
+        val uploader = AttachmentUploader(uploadId = { "upload-1" }, messageId = nextMessageId(), chunkBytes = 4)
+        uploader.select("notes.txt", "text/plain", payload, 20)
+        uploader.attach("session-1", ByteArray(32) { 6 }, connection)
+        val upload = async(Dispatchers.Default) { uploader.upload("upload-1") }
+        waitUntil { connection.textFrames.size == 1 }
+        uploader.accept(ack("upload-1", "accepted", 0, 0, digest(payload)))
+        assertTrue(connection.binaryEntered!!.await(2, TimeUnit.SECONDS))
+        val removeStarted = CompletableDeferred<Unit>()
+        val removal = async(Dispatchers.Default) {
+            removeStarted.complete(Unit)
+            uploader.remove("upload-1")
+        }
+        removeStarted.await()
+        yield()
+        assertFalse(removal.isCompleted)
+
+        connection.binaryRelease!!.countDown()
+
+        assertTrue(removal.await())
+        assertFalse(upload.await())
+        assertEquals(listOf("attachment_offer", "binary", "attachment_cancel"), connection.events)
+    }
     @Test
     fun `user removal cancels companion upload while action consumption only clears local bytes`() {
         val connection = RecordingAttachmentConnection()
@@ -185,16 +218,23 @@ class AttachmentUploaderTest {
 }
 
 private class RecordingAttachmentConnection : SessionConnection {
-    val textFrames = mutableListOf<String>()
-    val binaryFrames = mutableListOf<ByteArray>()
+    val textFrames = java.util.Collections.synchronizedList(mutableListOf<String>())
+    val binaryFrames = java.util.Collections.synchronizedList(mutableListOf<ByteArray>())
+    val events = java.util.Collections.synchronizedList(mutableListOf<String>())
+    var binaryEntered: CountDownLatch? = null
+    var binaryRelease: CountDownLatch? = null
 
     override fun sendText(encoded: String): Boolean {
         textFrames += encoded
+        events += ProtocolCodec.decodeText(encoded).type.wireName
         return true
     }
 
     override fun sendBinary(frame: ByteArray): Boolean {
+        binaryEntered?.countDown()
+        binaryRelease?.await(2, TimeUnit.SECONDS)
         binaryFrames += frame.copyOf()
+        events += "binary"
         return true
     }
 

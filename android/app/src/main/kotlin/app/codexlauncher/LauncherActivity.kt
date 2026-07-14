@@ -280,6 +280,7 @@ class LauncherActivity : ComponentActivity() {
             val currentHomeIntentSequence = homeIntentSequence
             LaunchedEffect(currentHomeIntentSequence, pairingState) {
                 if (pairingState is PairingRecordState.Loaded) {
+                    sessionViewModel.clearAttachments()
                     sessionViewModel.closeTask()
                     transcriptDetail = null
                     destination = if (pairedComputer == null) LauncherDestination.PAIRING else LauncherDestination.HOME
@@ -297,6 +298,7 @@ class LauncherActivity : ComponentActivity() {
                         LauncherDestination.APPEARANCE -> LauncherDestination.APPS
                         LauncherDestination.PROJECT -> LauncherDestination.HOME
                         LauncherDestination.TASK -> {
+                            sessionViewModel.clearAttachments()
                             sessionViewModel.closeTask()
                             transcriptDetail = null
                             LauncherDestination.HOME

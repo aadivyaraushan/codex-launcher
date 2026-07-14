@@ -68,7 +68,9 @@ class AttachmentUploader(
     )
 
     private val lock = Any()
+    private val outboundLock = Any()
     private val selected = linkedMapOf<String, Selected>()
+    private val canceling = mutableSetOf<String>()
     private val acknowledgements = mutableMapOf<String, Channel<Ack>>()
     private var session: Session? = null
     private val mutableState = MutableStateFlow<List<AttachmentUploadState>>(emptyList())
@@ -147,36 +149,40 @@ class AttachmentUploader(
             replaceStateLocked(stateForLocked(id).copy(phase = AttachmentPhase.OFFERING, sentBytes = 0))
         }
         return try {
-            if (!active.connection.sendText(envelope("attachment_offer", buildJsonObject {
-                    put("uploadId", selectedFile.id)
-                    put("declaredTotal", selectedFile.bytes.size)
-                    put("sha256", selectedFile.sha256)
-                }))) return retry(id)
+            if (!sendIfCurrent(id, active.id) {
+                    active.connection.sendText(envelope("attachment_offer", buildJsonObject {
+                        put("uploadId", selectedFile.id)
+                        put("declaredTotal", selectedFile.bytes.size)
+                        put("sha256", selectedFile.sha256)
+                    }))
+                }) return retry(id)
             val accepted = channel.receiveCatching().getOrNull() ?: return retry(id)
             if (!accepted.validFor(selectedFile, "accepted") || accepted.receivedBytes > selectedFile.bytes.size ||
                 (accepted.receivedBytes == 0L) != (accepted.nextChunk == 0)
             ) return fail(id)
-            update(id, AttachmentPhase.UPLOADING, accepted.receivedBytes)
+            if (!update(id, AttachmentPhase.UPLOADING, accepted.receivedBytes)) return false
             var offset = accepted.receivedBytes.toInt()
             var chunk = accepted.nextChunk
             while (offset < selectedFile.bytes.size) {
-                if (!isCurrentSelection(id, active.id)) return false
                 val end = minOf(offset + chunkBytes, selectedFile.bytes.size)
-                val frame = ProtocolCodec.encodeAttachmentFrame(
-                    AttachmentChunk(active.id, id, chunk, offset.toLong(), selectedFile.bytes.size.toLong(), end == selectedFile.bytes.size, selectedFile.bytes.copyOfRange(offset, end)),
-                    active.key,
-                )
-                if (!active.connection.sendBinary(frame)) return retry(id)
+                if (!sendIfCurrent(id, active.id) {
+                        val frame = ProtocolCodec.encodeAttachmentFrame(
+                            AttachmentChunk(active.id, id, chunk, offset.toLong(), selectedFile.bytes.size.toLong(), end == selectedFile.bytes.size, selectedFile.bytes.copyOfRange(offset, end)),
+                            active.key,
+                        )
+                        active.connection.sendBinary(frame)
+                    }) return retry(id)
                 offset = end
                 chunk += 1
-                update(id, AttachmentPhase.UPLOADING, offset.toLong())
+                if (!update(id, AttachmentPhase.UPLOADING, offset.toLong())) return false
             }
-            if (!isCurrentSelection(id, active.id)) return false
-            update(id, AttachmentPhase.VERIFYING, offset.toLong())
-            if (!active.connection.sendText(envelope("attachment_complete", buildJsonObject { put("uploadId", id) }))) return retry(id)
+            if (!update(id, AttachmentPhase.VERIFYING, offset.toLong())) return false
+            if (!sendIfCurrent(id, active.id) {
+                    active.connection.sendText(envelope("attachment_complete", buildJsonObject { put("uploadId", id) }))
+                }) return retry(id)
             val completed = channel.receiveCatching().getOrNull() ?: return retry(id)
             if (!completed.validFor(selectedFile, "complete") || completed.receivedBytes != selectedFile.bytes.size.toLong() || completed.nextChunk != chunk) return fail(id)
-            update(id, AttachmentPhase.COMPLETE, completed.receivedBytes)
+            if (!update(id, AttachmentPhase.COMPLETE, completed.receivedBytes)) return false
             AppLog.info(
                 feature = "attachment-upload",
                 message = "attachment upload completed",
@@ -211,11 +217,15 @@ class AttachmentUploader(
 
     fun remove(id: String): Boolean {
         val connection = synchronized(lock) {
-            if (id !in selected) return false
+            if (id !in selected || !canceling.add(id)) return false
+            acknowledgements.remove(id)?.close()
             session?.connection
         }
-        connection?.sendText(envelope("attachment_cancel", buildJsonObject { put("uploadId", id) }))
-        return consumeOne(id)
+        return synchronized(outboundLock) {
+            if (!consumeOne(id)) return@synchronized false
+            connection?.sendText(envelope("attachment_cancel", buildJsonObject { put("uploadId", id) }))
+            true
+        }
     }
 
     fun consume(ids: List<String>) {
@@ -236,6 +246,7 @@ class AttachmentUploader(
         synchronized(lock) {
             acknowledgements.remove(id)?.close()
             val removed = selected.remove(id) ?: return@synchronized false
+            canceling.remove(id)
             removed.bytes.fill(0)
             mutableState.value = mutableState.value.filterNot { it.id == id }
             true
@@ -258,7 +269,13 @@ class AttachmentUploader(
         state == expectedState && receivedBytes >= 0 && nextChunk >= 0 && sha256.equals(file.sha256, ignoreCase = true)
 
     private fun isCurrentSelection(id: String, sessionId: String): Boolean =
-        synchronized(lock) { id in selected && session?.id == sessionId }
+        synchronized(lock) { id in selected && id !in canceling && session?.id == sessionId }
+
+    private fun sendIfCurrent(id: String, sessionId: String, send: () -> Boolean): Boolean =
+        synchronized(outboundLock) {
+            if (!isCurrentSelection(id, sessionId)) return@synchronized false
+            send()
+        }
 
     private fun envelope(type: String, body: kotlinx.serialization.json.JsonObject): String =
         buildJsonObject {
@@ -269,15 +286,17 @@ class AttachmentUploader(
             put("body", body)
         }.toString()
 
-    private fun update(id: String, phase: AttachmentPhase, sentBytes: Long) = synchronized(lock) {
+    private fun update(id: String, phase: AttachmentPhase, sentBytes: Long): Boolean = synchronized(lock) {
+        if (id !in selected || id in canceling) return@synchronized false
         val current = stateForLocked(id)
         replaceStateLocked(current.copy(phase = phase, sentBytes = sentBytes))
+        true
     }
 
     private fun retry(id: String): Boolean = synchronized(lock) { retryLocked(id) }
 
     private fun retryLocked(id: String): Boolean {
-        selected[id] ?: return false
+        if (id !in selected || id in canceling) return false
         replaceStateLocked(stateForLocked(id).copy(phase = AttachmentPhase.RETRYABLE))
         return false
     }
