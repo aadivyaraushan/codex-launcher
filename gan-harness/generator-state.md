@@ -1,4 +1,4 @@
-# Generator State — Iteration 001
+# Generator State — Iteration 002
 
 ## What Was Built
 - Single self-contained `landing/index.html` for Codex Launcher — Deep Charcoal "Quiet Instrument" identity, dark mode only, exact hex tokens.
@@ -18,23 +18,27 @@
 - Inline JS: form submit is prevented, attempts `fetch('/api/waitlist')` (skipped under `file:` protocol to avoid a scheme console error, still attempted over http/https), then always shows "You're on the list." via `role="status"`.
 
 ## What Changed This Iteration
-- N/A — first iteration.
+Coordinator scored v1 at 7.83/10 (just under the 8.0 bar) and requested one focused polish pass. Addressed all 5 priorities, same file, no redesign:
+1. **Hero phone (crown jewel)**: enlarged 320px → 380px max-width, more internal padding (14→18px outer, 24/16/16→32/22/22 screen), task-row title 13px→15px/weight 600, task-row padding-block 10px→14px, state icons 16px→20px, activity-mark bars enlarged and given `flex-shrink:0` so they're never clipped, composer field/icons enlarged (icon-btn 20px→24px).
+2. **Weak fragments (blocks 1 & 6)**: clock-compare and composer-detail now have a header-bar + hairline-divider at the top (matching the sheet's handle and the transcript's header pattern), bigger padding, and a bolder/bigger title in clock-compare (700 weight, up to 1.75rem) so they read as intentional panels, not thumbnails.
+3. **Block 2 diagram**: replaced the plain "companion app" floating label with a distinctive tag — a small lock icon + mono "TAILSCALE" — sitting directly on the connecting hairline (background cuts the line like a flowchart node), reinforcing "one private line" ahead of block 3.
+4. **Vertical rhythm**: `--section-pad` reduced from 96px to 64px desktop / 48px mobile (both valid stops on the spec's 4px scale), tightening the stack of 7 feature blocks + CTA without touching the intentionally larger hero.
+5. **Mobile nav**: added a `max-width:480px` rule shrinking the wordmark and CTA link padding/font-size so they sit comfortably instead of crowding the edges.
 
-## Self-Check Performed (Playwright, chromium)
-- 1440px and 390px: zero horizontal scroll (`scrollWidth === clientWidth` at both).
-- No console errors, no page errors.
-- Waitlist form: fill email → submit → form hides, `#waitlist-success` becomes visible with exact text "You're on the list."
-- Keyboard focus: `:focus-visible` confirmed via computed style — 2px solid `rgb(240,107,63)` (#F06B3F) outline, 3px offset, on nav link and buttons.
-- `prefers-reduced-motion: reduce` confirmed collapses the activity-mark keyframe animation to ~0.
-- Verified all locked copy strings render verbatim (hero eyebrow/headline/subhead/button/support line, feature heading, CTA heading/body/placeholder/button, footer mark + affiliation print) via DOM text extraction.
-- Visually inspected full-page screenshots at both widths plus cropped close-ups of the approval sheet, transcript diff, composer-detail, and footer — state shapes, hairlines, and mono alignment all read clean.
+Also fixed a real bug introduced by enlarging the phone: a CSS grid item defaults to `min-width:auto`, so once the hero phone grew, the single-column mobile grid track blew out ~10px past the viewport. Fixed with `min-width:0` on `.hero__text`/`.hero__visual` inside the `max-width:900px` query — verified with a full-page DOM overflow scan (0 elements crossing the viewport edge at 390px, down from 4).
+
+## Self-Check Performed (Playwright, chromium) — iteration 2
+- Re-ran the iteration-1 checklist (horizontal scroll, console/page errors, waitlist form success text, focus-visible outline color/width, reduced-motion collapse) — all still pass.
+- Added a full DOM overflow scan (`getBoundingClientRect` on every element vs viewport) at both 1440px and 390px — 0 overflowing elements at both, after fixing the grid min-width bug above.
+- Cropped screenshots of the phone, clock-compare, diagram (desktop + mobile/vertical), composer-detail, and mobile nav to confirm the specific fixes visually.
+- Iterated on the diagram's node text wrap (`macOS · Windows · Linux` was breaking mid-phrase after narrowing the connector column) by widening the diagram's own max-width to 480px (still within its 556px grid column, so no overflow) — now renders on one line.
 
 ## Known Issues
 - Have not tested in a real (non-Chromium) browser engine (Firefox/WebKit) — only Chromium via Playwright.
-- The empty space in the middle of the phone Home mockup (between the RECENT row and the composer) is intentional — it reads as the "apps stay one swipe away" dead zone referenced in copy block 1 — but worth flagging in case the Evaluator reads it as a bug rather than a deliberate echo of the product's own design system.
+- The empty space in the middle of the phone Home mockup (between the RECENT row and the composer) is intentional — it reads as the "apps stay one swipe away" dead zone referenced in copy block 1 — flagging again since the phone is now bigger and the gap is proportionally larger too.
 - No automated Lighthouse/contrast-checker run; contrast ratios for text/muted/state colors against `--bg` were computed by hand (all ≥ 6:1, comfortably AA) but not machine-verified.
 
 ## Dev Server
 - No server needed — single static file.
 - Open directly: `file:///Users/aadivyar/conductor/workspaces/codex-launcher/bozeman/landing/index.html`
-- Status: file complete, self-checked, ready for evaluation.
+- Status: file complete, self-checked, ready for re-evaluation.
