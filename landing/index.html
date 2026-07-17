@@ -4,6 +4,19 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Codex Launcher</title>
+<meta name="description" content="Codex Launcher turns your Android phone into the remote control for Codex coding tasks running on your own computer, connected privately over Tailscale." />
+
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Codex Launcher" />
+<meta property="og:description" content="Codex Launcher turns your Android phone into the remote control for Codex coding tasks running on your own computer, connected privately over Tailscale." />
+<meta property="og:image" content="og.png" />
+<meta property="og:url" content="https://codexlauncher.app" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Codex Launcher" />
+<meta name="twitter:description" content="Codex Launcher turns your Android phone into the remote control for Codex coding tasks running on your own computer, connected privately over Tailscale." />
+<meta name="twitter:image" content="og.png" />
+
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23111210'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23F06B3F'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -137,11 +150,15 @@ body{
 .nav__link:hover{
   border-color: var(--text);
 }
+.nav__link:active{
+  border-color: var(--text);
+  transform: translateY(1px);
+}
 
 @media (max-width: 480px){
-  .nav .wrap{ padding-block: 16px; gap: 12px; }
+  .nav .wrap{ padding-block: 16px; gap: 10px; }
   .nav__mark{ font-size: 12.5px; }
-  .nav__link{ padding: 7px 10px; font-size: 10.5px; }
+  .nav__link{ padding: 8px 12px; font-size: 13px; }
 }
 
 /* ============================= BUTTONS ============================= */
@@ -171,6 +188,7 @@ body{
   border-color: var(--hairline);
 }
 .btn--outline:hover{ border-color: var(--text); }
+.btn--outline:active{ border-color: var(--text); transform: translateY(1px); }
 
 /* ============================= HERO ============================= */
 .hero{
@@ -896,10 +914,25 @@ body{
   outline-offset: 2px;
   border-color: var(--signal);
 }
+.waitlist-form input[type="email"].is-invalid{
+  border-color: var(--error);
+}
+.waitlist-form__error{
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--error);
+  margin-top: 8px;
+}
 .waitlist-success{
   font-family: var(--font-mono);
   font-size: 15px;
   color: var(--success);
+  padding: 14px 0;
+}
+.waitlist-error{
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--error);
   padding: 14px 0;
 }
 [hidden]{ display: none !important; }
@@ -1252,11 +1285,15 @@ body{
       <form class="waitlist-form" id="waitlist-form" novalidate>
         <div class="waitlist-form__field">
           <label class="sr-only" for="email">Email address</label>
-          <input type="email" id="email" name="email" placeholder="you@yourdomain.com" required autocomplete="email" />
+          <input type="email" id="email" name="email" placeholder="you@yourdomain.com" required autocomplete="email" aria-describedby="email-error" />
+          <p class="waitlist-form__error mono" id="email-error" role="alert" hidden>Enter a valid email address.</p>
         </div>
         <button type="submit" class="btn btn--primary">Join the waitlist</button>
       </form>
-      <p class="waitlist-success mono" id="waitlist-success" role="status" hidden>You're on the list.</p>
+      <div aria-live="polite">
+        <p class="waitlist-success mono" id="waitlist-success" role="status" hidden>You're on the list.</p>
+        <p class="waitlist-error mono" id="waitlist-error" role="status" hidden>Something went wrong &mdash; try again.</p>
+      </div>
     </div>
   </section>
 
@@ -1273,24 +1310,58 @@ body{
 (function () {
   var form = document.getElementById('waitlist-form');
   if (!form) return;
+
+  var emailField = document.getElementById('email');
+  var emailError = document.getElementById('email-error');
+  var success = document.getElementById('waitlist-success');
+  var errorMsg = document.getElementById('waitlist-error');
+  var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function setInvalid(isInvalid) {
+    emailField.classList.toggle('is-invalid', isInvalid);
+    emailField.setAttribute('aria-invalid', isInvalid ? 'true' : 'false');
+    emailError.hidden = !isInvalid;
+  }
+
+  function resetStatus() {
+    success.hidden = true;
+    errorMsg.hidden = true;
+  }
+
   form.addEventListener('submit', function (event) {
     event.preventDefault();
-    var emailField = document.getElementById('email');
-    var email = emailField ? emailField.value : '';
+    resetStatus();
 
-    if (window.location.protocol !== 'file:') {
-      fetch('/api/waitlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email })
-      }).catch(function () {
-        /* placeholder endpoint — show success regardless */
-      });
+    var email = emailField.value.trim();
+    var isValid = email.length > 0 && emailPattern.test(email);
+    setInvalid(!isValid);
+    if (!isValid) {
+      emailField.focus();
+      return;
     }
 
-    form.hidden = true;
-    var success = document.getElementById('waitlist-success');
-    if (success) success.hidden = false;
+    if (window.location.protocol === 'file:') {
+      /* No server to talk to from a static file. /api/waitlist ships at
+         deploy time — showing the error state here is the honest behavior
+         rather than faking success. */
+      errorMsg.hidden = false;
+      return;
+    }
+
+    fetch('/api/waitlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email })
+    }).then(function (response) {
+      if (response.ok) {
+        form.hidden = true;
+        success.hidden = false;
+      } else {
+        errorMsg.hidden = false;
+      }
+    }).catch(function () {
+      errorMsg.hidden = false;
+    });
   });
 })();
 </script>
