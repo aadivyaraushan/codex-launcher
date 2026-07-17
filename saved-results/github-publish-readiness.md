@@ -76,3 +76,27 @@ git remote -v
 gh auth status
 gh repo view OWNER/REPOSITORY --json nameWithOwner,visibility,url,defaultBranchRef
 ```
+
+## Published result
+
+The project was published to:
+
+```text
+https://github.com/aadivyaraushan/codex-launcher
+```
+
+GitHub reported:
+
+- Visibility: `PRIVATE`
+- Default branch: `main`
+- First verified remote commit:
+  `99e98c333d6b4ef7ac6000068cc8f08ff65dbe4f`
+- Local and remote tree:
+  `11ed4ee90878193f7b37040c200b978978479824`
+- Local tracked files: `445`
+- Remote blobs: `445`
+
+The implementation worktree branch `codex-launcher-v1` tracks `origin/main`.
+Representative Android, companion, security documentation, planning,
+saved-result, and X-post image files were read successfully through the GitHub
+API from `main`.
