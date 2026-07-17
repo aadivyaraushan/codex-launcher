@@ -1,0 +1,1243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Codex Launcher</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23111210'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23F06B3F'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+
+/* ============================= RESET ============================= */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, h1, h2, h3, p, figure, blockquote, dl, dd, ul, ol { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+img, svg { display: block; max-width: 100%; }
+button, input { font: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+
+/* ============================= TOKENS ============================= */
+:root{
+  --bg:        #111210;
+  --surface:   #1A1B18;
+  --text:      #F0EEE8;
+  --muted:     #969990;
+  --hairline:  #30312D;
+  --signal:    #F06B3F;
+  --success:   #75A987;
+  --warning:   #D49A3B;
+  --error:     #E46F61;
+
+  --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --wrap: 1240px;
+  --pad: 32px;
+  --section-pad: 96px;
+}
+
+@media (max-width: 640px){
+  :root{ --pad: 20px; --section-pad: 64px; }
+}
+
+html{ scroll-behavior: smooth; background: var(--bg); }
+
+@media (prefers-reduced-motion: reduce){
+  html{ scroll-behavior: auto; }
+  *, *::before, *::after{
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+body{
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+.mono{ font-family: var(--font-mono); }
+
+.wrap{
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding-inline: var(--pad);
+}
+
+.sr-only{
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:focus-visible{
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ============================= LABEL SYSTEM ============================= */
+.eyebrow{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.index-label{
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--signal);
+  margin-bottom: 16px;
+}
+
+/* ============================= NAV ============================= */
+.nav{
+  border-bottom: 1px solid var(--hairline);
+}
+.nav .wrap{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 20px;
+}
+.nav__mark{
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.nav__link{
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 8px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+.nav__link:hover{
+  border-color: var(--text);
+}
+
+/* ============================= BUTTONS ============================= */
+.btn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 14px 24px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: opacity 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+.btn--primary{
+  background: var(--signal);
+  color: var(--bg);
+}
+.btn--primary:hover{ opacity: 0.88; }
+.btn--primary:active{ transform: translateY(1px); }
+.btn--outline{
+  background: transparent;
+  color: var(--text);
+  border-color: var(--hairline);
+}
+.btn--outline:hover{ border-color: var(--text); }
+
+/* ============================= HERO ============================= */
+.hero{
+  padding-top: 72px;
+  padding-bottom: var(--section-pad);
+}
+.hero .wrap{
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(260px, 340px);
+  gap: 64px;
+  align-items: center;
+}
+.hero__eyebrow{ margin-bottom: 20px; }
+.hero__headline{
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: clamp(2.5rem, 3.6vw + 1.6rem, 5.75rem);
+  line-height: 1.03;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  max-width: 16ch;
+}
+.hero__subhead{
+  margin-top: 28px;
+  font-size: clamp(1rem, 0.3vw + 0.95rem, 1.15rem);
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 46ch;
+}
+.hero__actions{
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.hero__support{
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.hero__visual{
+  display: flex;
+  justify-content: center;
+}
+
+@media (max-width: 900px){
+  .hero .wrap{ grid-template-columns: 1fr; gap: 48px; }
+  .hero__headline{ max-width: none; }
+  .hero__visual{ order: 2; }
+}
+
+/* ============================= PHONE MOCKUP ============================= */
+.phone{
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 9 / 19.5;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 40px;
+  padding: 14px;
+  position: relative;
+}
+.phone::before{
+  content: "";
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--hairline);
+}
+.phone__screen{
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hairline);
+  border-radius: 28px;
+  padding: 24px 16px 16px;
+  overflow: hidden;
+}
+.phone__status{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+.phone__status-left{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dot{
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot--online{ background: var(--success); }
+.dot--offline{
+  background: transparent;
+  border: 1px solid var(--muted);
+}
+
+.section-label{
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+  margin-top: 16px;
+}
+.section-label:first-of-type{ margin-top: 0; }
+
+/* task rows */
+.task-list{ display: flex; flex-direction: column; }
+.task-row{
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-block: 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+.task-row:last-child{ border-bottom: none; }
+.task-row__body{ min-width: 0; flex: 1; }
+.task-row__title{
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.task-row__meta{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.task-row__state{
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  margin-bottom: 3px;
+}
+.task-row__state--waiting{ color: var(--warning); }
+.task-row__state--replied{ color: var(--muted); }
+.task-row__state--failed{ color: var(--error); }
+.task-row--failed{ opacity: 0.88; }
+
+/* state icons */
+.state-icon{
+  width: 16px; height: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.state-icon--working{
+  border-radius: 50%;
+  background: var(--signal);
+}
+.state-icon--waiting{
+  width: 12px; height: 12px;
+  margin: 4px 2px;
+  border: 1.5px solid var(--warning);
+  transform: rotate(45deg);
+}
+.state-icon--replied{
+  border-radius: 50%;
+  border: 1.5px solid var(--muted);
+  color: var(--muted);
+}
+.state-icon--failed{
+  border-radius: 3px;
+  border: 1.5px solid var(--error);
+  color: var(--error);
+}
+.state-icon svg{ width: 8px; height: 8px; }
+
+.activity-mark{
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 8px;
+  margin-left: 2px;
+}
+.activity-mark span{
+  width: 2px;
+  background: var(--signal);
+  border-radius: 1px;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+.activity-mark span:nth-child(1){ height: 4px; opacity: 0.5; animation-delay: 0ms; }
+.activity-mark span:nth-child(2){ height: 8px; opacity: 0.85; animation-delay: 150ms; }
+.activity-mark span:nth-child(3){ height: 5px; opacity: 0.65; animation-delay: 300ms; }
+@keyframes pulse{
+  0%, 100% { transform: scaleY(0.7); }
+  50% { transform: scaleY(1); }
+}
+
+/* composer */
+.composer{
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chip{
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.chip--selected{
+  color: var(--signal);
+  border-color: var(--signal);
+}
+.composer__field{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+.composer__placeholder{
+  flex: 1;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.icon-btn{
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.icon-btn--send{
+  background: var(--signal);
+  color: var(--bg);
+}
+.icon-btn svg{ width: 11px; height: 11px; }
+
+/* ============================= SPEC STRIP ============================= */
+.spec-strip{
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+.spec-strip .wrap{
+  padding-block: 22px;
+}
+.spec-strip p{
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ============================= FEATURE BLOCKS ============================= */
+.feature{
+  padding-block: var(--section-pad);
+}
+.feature + .feature{ border-top: 1px solid var(--hairline); }
+
+.feature__grid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+}
+@media (max-width: 900px){
+  .feature__grid{ grid-template-columns: 1fr; gap: 40px; }
+  .feature__visual{ order: 2 !important; }
+  .feature__text{ order: 1 !important; }
+}
+@media (min-width: 901px){
+  .feature--reverse .feature__visual{ order: 1; }
+  .feature--reverse .feature__text{ order: 2; }
+}
+
+.feature__heading{
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: clamp(1.5rem, 1vw + 1.25rem, 2.15rem);
+  line-height: 1.18;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+.feature__body{
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--muted);
+  max-width: 50ch;
+}
+.feature__visual{
+  display: flex;
+  justify-content: center;
+}
+.visual-card{
+  width: 100%;
+  max-width: 420px;
+}
+
+/* --- privacy block (full width, typographic) --- */
+.feature--privacy .wrap{ max-width: 900px; }
+.feature--privacy .feature__heading{
+  font-size: clamp(2rem, 1.6vw + 1.5rem, 3rem);
+  max-width: 14ch;
+}
+.feature--privacy .feature__body{ max-width: 62ch; font-size: 1.05rem; }
+.feature__emphasis{
+  display: block;
+  margin-top: 24px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: clamp(1.2rem, 0.6vw + 1.05rem, 1.5rem);
+  line-height: 1.4;
+  color: var(--text);
+  max-width: 46ch;
+}
+
+/* ============================= VISUAL: clock-compare ============================= */
+.clock-compare{
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 32px 28px;
+}
+.clock-compare__time{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 24px;
+}
+.clock-compare__task{
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.clock-compare__task .state-icon--waiting{ width: 16px; height: 16px; margin-top: 6px; }
+.clock-compare__title{
+  font-size: clamp(1.15rem, 0.6vw + 1rem, 1.4rem);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+}
+.clock-compare__meta{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--warning);
+  margin-top: 6px;
+}
+
+/* ============================= VISUAL: diagram ============================= */
+.diagram{
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+}
+.diagram__node{
+  flex: 1;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 20px 18px;
+  background: var(--surface);
+  text-align: left;
+}
+.diagram__node strong{
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.diagram__node span{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.diagram__connector{
+  position: relative;
+  flex: 0 0 56px;
+  height: 1px;
+  background: var(--hairline);
+}
+.diagram__connector::after{
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  width: 6px; height: 6px;
+  border-top: 1px solid var(--hairline);
+  border-right: 1px solid var(--hairline);
+  transform: rotate(45deg);
+}
+.diagram__connector-label{
+  position: absolute;
+  left: 50%;
+  top: -22px;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+@media (max-width: 480px){
+  .diagram{ flex-direction: column; }
+  .diagram__connector{ width: 1px; height: 40px; flex-basis: 40px; }
+  .diagram__connector-label{ top: 50%; left: -10px; transform: translateY(-50%) rotate(0deg); writing-mode: horizontal-tb; }
+}
+
+/* ============================= VISUAL: sheet (approval) ============================= */
+.sheet{
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 28px 24px 24px;
+}
+.sheet__handle{
+  width: 36px; height: 4px;
+  background: var(--hairline);
+  border-radius: 2px;
+  margin: 0 auto 20px;
+}
+.sheet__row{
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 10px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 13px;
+}
+.sheet__row:first-of-type{ padding-top: 0; }
+.sheet__label{
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.sheet__value{
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: right;
+  word-break: break-word;
+}
+.sheet__command{
+  margin-top: 16px;
+  margin-bottom: 16px;
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text);
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}
+.sheet__actions{
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+.sheet__actions .btn{ flex: 1; padding: 12px 16px; font-size: 14px; }
+
+/* ============================= VISUAL: transcript ============================= */
+.transcript{
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 24px;
+}
+.transcript__header{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 16px;
+}
+.transcript__title{
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.transcript__meta{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.transcript__elapsed{
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.transcript__tool{
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-block: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--hairline);
+}
+.transcript__tool-caret{ color: var(--muted); flex-shrink: 0; }
+.transcript__diff{
+  margin-top: 8px;
+  padding: 12px 0 0;
+}
+.diff-line{
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.7;
+  padding-left: 10px;
+  border-left: 2px solid transparent;
+  white-space: pre;
+  overflow-x: auto;
+}
+.diff-line--add{ color: var(--success); border-left-color: var(--success); }
+.diff-line--del{ color: var(--error); border-left-color: var(--error); }
+.diff-line--ctx{ color: var(--muted); }
+
+/* ============================= VISUAL: composer detail ============================= */
+.composer-detail{
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 24px;
+}
+.composer-detail__chips{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.composer-detail__chip{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.composer-detail__chip--selected{
+  color: var(--signal);
+  border-color: var(--signal);
+}
+.composer-detail__project{
+  align-self: flex-start;
+  margin-bottom: 10px;
+}
+.composer-detail__field{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.composer-detail__field-text{
+  flex: 1;
+  font-size: 13px;
+  color: var(--muted);
+}
+.composer-detail__field-icons{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* ============================= VISUAL: offline ============================= */
+.offline-card{
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 24px;
+}
+.offline-card__status{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 4px;
+}
+.offline-card__meta{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  padding: 12px 0 4px;
+}
+
+/* ============================= FINAL CTA ============================= */
+.cta{
+  padding-block: var(--section-pad);
+  border-top: 1px solid var(--hairline);
+}
+.cta .wrap{
+  max-width: 720px;
+}
+.cta__heading{
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: clamp(2rem, 2vw + 1.5rem, 3.25rem);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  margin-bottom: 16px;
+}
+.cta__body{
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 54ch;
+  margin-bottom: 40px;
+}
+.waitlist-form{
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.waitlist-form__field{
+  flex: 1;
+  min-width: 220px;
+}
+.waitlist-form input[type="email"]{
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 14px 16px;
+  font-size: 15px;
+  color: var(--text);
+}
+.waitlist-form input[type="email"]::placeholder{ color: var(--muted); }
+.waitlist-form input[type="email"]:focus-visible{
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-color: var(--signal);
+}
+.waitlist-success{
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--success);
+  padding: 14px 0;
+}
+[hidden]{ display: none !important; }
+
+/* ============================= FOOTER ============================= */
+.footer{
+  border-top: 1px solid var(--hairline);
+  padding-block: 32px;
+}
+.footer .wrap{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.footer__mark{
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+}
+.footer__print{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 56ch;
+}
+
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <span class="nav__mark">Codex Launcher</span>
+    <a class="nav__link" href="#waitlist">Join the waitlist</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============================= HERO ============================= -->
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero__text">
+        <p class="eyebrow hero__eyebrow">Codex Launcher</p>
+        <h1 class="hero__headline">Codex runs on your machine. You run it from your phone.</h1>
+        <p class="hero__subhead">Codex Launcher turns a Pixel into the front of your computer&rsquo;s coding agent. Your home screen stops being a grid of apps and becomes the work: every task running right now and what each one needs from you. Start a task on the train, approve a command over lunch, redirect it before dinner.</p>
+        <div class="hero__actions">
+          <a class="btn btn--primary" href="#waitlist">Join the waitlist</a>
+          <p class="hero__support mono">Pixel 9 &middot; Android 16 &middot; macOS, Windows &amp; Linux companion</p>
+        </div>
+      </div>
+      <div class="hero__visual" aria-hidden="true">
+        <div class="phone">
+          <div class="phone__screen">
+            <div class="phone__status">
+              <span class="phone__status-left"><span class="dot dot--online"></span> Studio &middot; online</span>
+              <span>9:41</span>
+            </div>
+
+            <p class="section-label">Active</p>
+            <div class="task-list">
+              <div class="task-row task-row--active">
+                <span class="state-icon state-icon--working"></span>
+                <div class="task-row__body">
+                  <p class="task-row__title">Refactor auth session handling</p>
+                  <p class="task-row__meta">running &middot; editing session_refresh.go &middot; 4m 12s
+                    <span class="activity-mark"><span></span><span></span><span></span></span>
+                  </p>
+                </div>
+              </div>
+              <div class="task-row task-row--waiting">
+                <span class="state-icon state-icon--waiting"></span>
+                <div class="task-row__body">
+                  <p class="task-row__state task-row__state--waiting">Needs your answer</p>
+                  <p class="task-row__title">Migrate payments schema</p>
+                </div>
+              </div>
+              <div class="task-row task-row--replied">
+                <span class="state-icon state-icon--replied">
+                  <svg viewBox="0 0 10 10" fill="none"><path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+                <div class="task-row__body">
+                  <p class="task-row__state task-row__state--replied">Replied</p>
+                  <p class="task-row__title">Add rate limit to /login</p>
+                </div>
+              </div>
+            </div>
+
+            <p class="section-label">Recent</p>
+            <div class="task-list">
+              <div class="task-row task-row--failed">
+                <span class="state-icon state-icon--failed">
+                  <svg viewBox="0 0 10 10" fill="none"><path d="M2 2L8 8M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                </span>
+                <div class="task-row__body">
+                  <p class="task-row__state task-row__state--failed">Failed</p>
+                  <p class="task-row__title">Update CI matrix</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="composer">
+              <span class="chip">~/studio/api</span>
+              <div class="composer__field">
+                <span class="composer__placeholder">Describe the task&hellip;</span>
+                <span class="icon-btn" aria-hidden="true">
+                  <svg viewBox="0 0 12 12" fill="none"><path d="M2 6C2 3.8 3.8 2 6 2C7.4 2 8.6 2.7 9.3 3.8M9.3 3.8V1.5M9.3 3.8H7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" style="display:none"/><rect x="4.6" y="1.8" width="2.8" height="5" rx="1.4" stroke="currentColor" stroke-width="1"/><path d="M2.6 6.2C2.6 8 4.1 9.4 6 9.4C7.9 9.4 9.4 8 9.4 6.2M6 9.4V10.6" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+                </span>
+                <span class="icon-btn icon-btn--send">
+                  <svg viewBox="0 0 12 12" fill="none"><path d="M2 6H10M10 6L6.5 2.5M10 6L6.5 9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= SPEC STRIP ============================= -->
+  <div class="spec-strip">
+    <div class="wrap">
+      <p>Pixel 9 &middot; Android 16 &middot; Tailscale &middot; macOS / Windows / Linux</p>
+    </div>
+  </div>
+
+  <!-- ============================= FEATURE 1 ============================= -->
+  <section class="feature">
+    <div class="wrap feature__grid">
+      <div class="feature__text">
+        <span class="index-label mono">01</span>
+        <h2 class="feature__heading">The home screen is the work</h2>
+        <p class="feature__body">Your tasks sit where your app icons used to. Active work on top, everything else quiet underneath. The clock is smaller than the task waiting on you. Apps stay one swipe away, they&rsquo;re just not the point anymore.</p>
+      </div>
+      <div class="feature__visual" aria-hidden="true">
+        <div class="clock-compare visual-card">
+          <p class="clock-compare__time mono">9:41 &middot; Home screen</p>
+          <div class="clock-compare__task">
+            <span class="state-icon state-icon--waiting"></span>
+            <div>
+              <p class="clock-compare__title">Migrate payments schema</p>
+              <p class="clock-compare__meta">Needs your answer</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= FEATURE 2 ============================= -->
+  <section class="feature feature--reverse">
+    <div class="wrap feature__grid">
+      <div class="feature__text">
+        <span class="index-label mono">02</span>
+        <h2 class="feature__heading">It runs where your code lives</h2>
+        <p class="feature__body">Codex runs on your own computer through a companion app for macOS, Windows, and Linux. The phone is the remote, not the engine. Nothing about your project leaves the machine it already lives on.</p>
+      </div>
+      <div class="feature__visual" aria-hidden="true">
+        <div class="diagram visual-card">
+          <div class="diagram__node">
+            <strong>Your phone</strong>
+            <span>Codex Launcher</span>
+          </div>
+          <div class="diagram__connector">
+            <span class="diagram__connector-label mono">companion app</span>
+          </div>
+          <div class="diagram__node">
+            <strong>Your computer</strong>
+            <span>macOS &middot; Windows &middot; Linux</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= FEATURE 3 — PRIVACY, TYPOGRAPHIC ============================= -->
+  <section class="feature feature--privacy">
+    <div class="wrap">
+      <span class="index-label mono">03</span>
+      <h2 class="feature__heading">One private line, no middleman</h2>
+      <p class="feature__body">The phone reaches your computer directly over your own Tailscale network. No cloud relay in between, no shared server holding your session. Your ChatGPT sign-in, API keys, and Codex credentials never touch the phone.</p>
+      <strong class="feature__emphasis">Lose the phone and there&rsquo;s nothing on it to lose.</strong>
+    </div>
+  </section>
+
+  <!-- ============================= FEATURE 4 — APPROVAL SHEET ============================= -->
+  <section class="feature">
+    <div class="wrap feature__grid">
+      <div class="feature__text">
+        <span class="index-label mono">04</span>
+        <h2 class="feature__heading">You approve every move</h2>
+        <p class="feature__body">When Codex wants to run a command or touch a file, it asks. The approval sheet shows the exact command, the paths it affects, the access it wants, and how long the permission lasts. Deny is always right there. Disconnect or timeout, and it fails closed.</p>
+      </div>
+      <div class="feature__visual" aria-hidden="true">
+        <div class="sheet visual-card">
+          <div class="sheet__handle"></div>
+          <div class="sheet__row">
+            <span class="sheet__label">Computer</span>
+            <span class="sheet__value">Studio</span>
+          </div>
+          <div class="sheet__row">
+            <span class="sheet__label">Project</span>
+            <span class="sheet__value">~/studio/api</span>
+          </div>
+          <div class="sheet__row">
+            <span class="sheet__label">Requested access</span>
+            <span class="sheet__value">Run command</span>
+          </div>
+          <div class="sheet__row">
+            <span class="sheet__label">Affected paths</span>
+            <span class="sheet__value">session_refresh.go</span>
+          </div>
+          <p class="sheet__command">go test ./auth/... -run TestSessionRefresh</p>
+          <div class="sheet__row" style="border-bottom:none; padding-bottom:0;">
+            <span class="sheet__label">Duration</span>
+            <span class="sheet__value">This task only</span>
+          </div>
+          <div class="sheet__actions">
+            <span class="btn btn--outline">Deny</span>
+            <span class="btn btn--primary">Allow</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= FEATURE 5 — TRANSCRIPT ============================= -->
+  <section class="feature feature--reverse">
+    <div class="wrap feature__grid">
+      <div class="feature__text">
+        <span class="index-label mono">05</span>
+        <h2 class="feature__heading">The whole task, in your hand</h2>
+        <p class="feature__body">Follow the run as one continuous log, not a wall of chat bubbles. Open the diff, the command output, the test results, the files, the screenshots. Tap a tool call to see what it did. Elapsed time and current state stay in the header the whole way through.</p>
+      </div>
+      <div class="feature__visual" aria-hidden="true">
+        <div class="transcript visual-card">
+          <div class="transcript__header">
+            <div>
+              <p class="transcript__title">Refactor auth session handling</p>
+              <p class="transcript__meta"><span class="dot dot--online" style="background:var(--signal)"></span> Studio &middot; Working</p>
+            </div>
+            <span class="transcript__elapsed">6m 04s</span>
+          </div>
+          <div class="transcript__tool">
+            <span class="transcript__tool-caret">&#9656;</span>
+            <span>Ran go test ./auth/... -run TestSessionRefresh</span>
+          </div>
+          <div class="transcript__tool">
+            <span class="transcript__tool-caret">&#9656;</span>
+            <span>Read session_refresh.go</span>
+          </div>
+          <div class="transcript__diff">
+            <p class="diff-line diff-line--ctx">  func RefreshSession(tok string) error {</p>
+            <p class="diff-line diff-line--del">-     return store.Refresh(tok)</p>
+            <p class="diff-line diff-line--add">+     if err := ctx.Err(); err != nil {</p>
+            <p class="diff-line diff-line--add">+         return err</p>
+            <p class="diff-line diff-line--add">+     }</p>
+            <p class="diff-line diff-line--add">+     return store.Refresh(ctx, tok)</p>
+            <p class="diff-line diff-line--ctx">  }</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= FEATURE 6 — COMPOSER ============================= -->
+  <section class="feature">
+    <div class="wrap feature__grid">
+      <div class="feature__text">
+        <span class="index-label mono">06</span>
+        <h2 class="feature__heading">Send work the way you mean it</h2>
+        <p class="feature__body">Start a new task with the model, reasoning depth, and permission mode you want, without burying the prompt. Attach files straight from the phone. Dictate when typing is slow. Pick the project folder above the composer; sending waits until you&rsquo;ve chosen one.</p>
+      </div>
+      <div class="feature__visual" aria-hidden="true">
+        <div class="composer-detail visual-card">
+          <div class="composer-detail__chips">
+            <span class="composer-detail__chip mono">Model</span>
+            <span class="composer-detail__chip mono">Reasoning &middot; High</span>
+            <span class="composer-detail__chip composer-detail__chip--selected mono">Permission &middot; Ask each time</span>
+          </div>
+          <span class="chip composer-detail__project">~/studio/api</span>
+          <div class="composer-detail__field">
+            <span class="composer-detail__field-text">Describe the task&hellip;</span>
+            <span class="composer-detail__field-icons">
+              <span class="icon-btn" aria-hidden="true">
+                <svg viewBox="0 0 12 12" fill="none"><path d="M8 3L4 7C3.4 7.6 3.4 8.6 4 9.2C4.6 9.8 5.6 9.8 6.2 9.2L9.6 5.8C10.7 4.7 10.7 2.9 9.6 1.8C8.5 0.7 6.7 0.7 5.6 1.8L2.2 5.2C0.7 6.7 0.7 9.1 2.2 10.6C3.7 12.1 6.1 12.1 7.6 10.6" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+              <span class="icon-btn" aria-hidden="true">
+                <svg viewBox="0 0 12 12" fill="none"><rect x="4.6" y="1.8" width="2.8" height="5" rx="1.4" stroke="currentColor" stroke-width="1"/><path d="M2.6 6.2C2.6 8 4.1 9.4 6 9.4C7.9 9.4 9.4 8 9.4 6.2M6 9.4V10.6" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+              </span>
+              <span class="icon-btn icon-btn--send">
+                <svg viewBox="0 0 12 12" fill="none"><path d="M2 6H10M10 6L6.5 2.5M10 6L6.5 9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= FEATURE 7 — OFFLINE ============================= -->
+  <section class="feature feature--reverse">
+    <div class="wrap feature__grid">
+      <div class="feature__text">
+        <span class="index-label mono">07</span>
+        <h2 class="feature__heading">Offline is a state, not a failure</h2>
+        <p class="feature__body">Lose the connection and the launcher says so plainly. Your tasks keep running on the computer. The last connection time and your selected machine stay on screen, and your apps and Android settings never go away.</p>
+      </div>
+      <div class="feature__visual" aria-hidden="true">
+        <div class="offline-card visual-card">
+          <p class="offline-card__status"><span class="dot dot--offline"></span> Offline &middot; Studio</p>
+          <div class="task-list">
+            <div class="task-row task-row--active">
+              <span class="state-icon state-icon--working"></span>
+              <div class="task-row__body">
+                <p class="task-row__title">Refactor auth session handling</p>
+                <p class="task-row__meta">running on Studio &middot; 4m 12s</p>
+              </div>
+            </div>
+            <div class="task-row task-row--waiting">
+              <span class="state-icon state-icon--waiting"></span>
+              <div class="task-row__body">
+                <p class="task-row__state task-row__state--waiting">Needs your answer</p>
+                <p class="task-row__title">Migrate payments schema</p>
+              </div>
+            </div>
+          </div>
+          <p class="offline-card__meta">Last connected 2m ago</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= FINAL CTA ============================= -->
+  <section class="cta" id="waitlist">
+    <div class="wrap">
+      <h2 class="cta__heading">Be first to pair your phone.</h2>
+      <p class="cta__body">Codex Launcher is coming to Pixel 9 on Android 16. Leave your email and we&rsquo;ll tell you the moment you can set it up.</p>
+
+      <form class="waitlist-form" id="waitlist-form" novalidate>
+        <div class="waitlist-form__field">
+          <label class="sr-only" for="email">Email address</label>
+          <input type="email" id="email" name="email" placeholder="you@yourdomain.com" required autocomplete="email" />
+        </div>
+        <button type="submit" class="btn btn--primary">Join the waitlist</button>
+      </form>
+      <p class="waitlist-success mono" id="waitlist-success" role="status" hidden>You're on the list.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <span class="footer__mark mono">Codex Launcher</span>
+    <p class="footer__print">Apache 2.0 &middot; Codex Launcher is an independent project and is not affiliated with OpenAI or Tailscale.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var form = document.getElementById('waitlist-form');
+  if (!form) return;
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var emailField = document.getElementById('email');
+    var email = emailField ? emailField.value : '';
+
+    if (window.location.protocol !== 'file:') {
+      fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email })
+      }).catch(function () {
+        /* placeholder endpoint — show success regardless */
+      });
+    }
+
+    form.hidden = true;
+    var success = document.getElementById('waitlist-success');
+    if (success) success.hidden = false;
+  });
+})();
+</script>
+
+</body>
+</html>
