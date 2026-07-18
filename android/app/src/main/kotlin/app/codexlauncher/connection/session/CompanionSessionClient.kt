@@ -9,6 +9,7 @@ import app.codexlauncher.connection.protocol.ProtocolSession
 import app.codexlauncher.connection.protocol.Sender
 import app.codexlauncher.connection.security.PinnedTlsClientFactory
 import app.codexlauncher.diagnostics.AppLog
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -166,8 +167,10 @@ class CompanionSessionClient private constructor(
 ) {
     constructor(signer: DevicePairingSigner) : this(signer, ::productionEndpoint, PinnedTlsClientFactory())
 
+    // Test-only: targets a local MockWebServer URL, not an untrusted paired-computer
+    // host, so it uses the system resolver instead of the public-address DNS filter.
     internal constructor(signer: DevicePairingSigner, testEndpoint: String) :
-        this(signer, { _, _ -> testEndpoint }, PinnedTlsClientFactory())
+        this(signer, { _, _ -> testEndpoint }, PinnedTlsClientFactory(dns = Dns.SYSTEM))
 
     fun connect(
         paired: PairedComputer,

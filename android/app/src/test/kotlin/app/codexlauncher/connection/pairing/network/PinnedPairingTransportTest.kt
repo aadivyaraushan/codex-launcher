@@ -83,7 +83,7 @@ class PinnedPairingTransportTest {
         val identity = Base64.getUrlEncoder().withoutPadding().encodeToString(hostPublicKey)
         val tlsIdentity = Base64.getUrlEncoder().withoutPadding().encodeToString(tlsPublicKey)
         val secret = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() })
-        return "codex-launcher://pair?host=100.64.0.10&port=$port&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret"
+        return "codex-launcher://pair?host=203.0.113.5&port=$port&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret"
     }
 
     private fun testRequest(offer: PairingOffer): PairingRequest =

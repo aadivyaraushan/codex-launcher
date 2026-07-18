@@ -29,8 +29,23 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/hostinstall"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
+	"github.com/codex-launcher/codex-launcher/companion/internal/relayclient"
 	"github.com/codex-launcher/codex-launcher/companion/internal/servicehealth"
 )
+
+// testPinnedKeyFlag is a base64-encoded stand-in for a box's public key,
+// only used so config.Validate()'s pinned-key decode step passes in tests
+// that never actually dial a relay box.
+const testPinnedKeyFlag = "cGlubmVkLWtleS1ieXRlcw=="
+
+// testRelayConfig returns a RelayConfig that passes Validate for tests that
+// load a saved config directly rather than going through setup.
+func testRelayConfig() companionapp.RelayConfig {
+	return companionapp.RelayConfig{
+		BoxHost: "relay.example.com", MacPort: 9000, PhonePort: 8443,
+		PinnedKey: testPinnedKeyFlag, Secret: "relay-secret-value",
+	}
+}
 
 func TestFirstTimeSetupAndInstallDoNotRequireAnExistingConfig(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -51,7 +66,8 @@ func TestFirstTimeSetupAndInstallDoNotRequireAnExistingConfig(t *testing.T) {
 		installer: installer,
 	}
 	setupArgs := []string{
-		"setup", "--computer-name", "Studio Mac", "--listen-host", "100.64.0.10", "--codex-binary", filepath.Join(t.TempDir(), "codex"),
+		"setup", "--computer-name", "Studio Mac", "--box-host", "relay.example.com", "--pinned-key", testPinnedKeyFlag, "--relay-secret", "relay-secret-value",
+		"--codex-binary", filepath.Join(t.TempDir(), "codex"),
 		"--project-id", "main", "--project-name", "Main", "--project-path", projectPath,
 	}
 	if code := runWith(context.Background(), setupArgs, io.Discard, io.Discard, dependencies); code != 0 || setupCalls != 1 {
@@ -83,7 +99,7 @@ func TestConfiguredDoctorAndStatusUseInjectedHostChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := companionapp.Config{Version: 1, ComputerName: "Test computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}}
+	config := companionapp.Config{Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}}
 	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +185,7 @@ func TestConfiguredCLIUsesPersistentRuntimeAcrossProcesses(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := companionapp.Config{
-		Version: 1, ComputerName: "Test computer", ListenHost: "100.64.0.10", ListenPort: 9443,
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
 		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
 	}
 	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
@@ -216,7 +232,7 @@ func TestServeUsesPersistentRuntimeAndTheOwnedCodexTaskSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := companionapp.Config{
-		Version: 1, ComputerName: "Test computer", ListenHost: "100.64.0.10", ListenPort: 9443,
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
 		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
 	}
 	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
@@ -229,7 +245,7 @@ func TestServeUsesPersistentRuntimeAndTheOwnedCodexTaskSource(t *testing.T) {
 	code := runWith(ctx, []string{"serve"}, io.Discard, &errorOutput, liveDependencies{
 		random:     rand.Reader,
 		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
-		listen: func(string, string) (net.Listener, error) {
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			go func() {
 				time.Sleep(20 * time.Millisecond)
@@ -264,14 +280,17 @@ func TestServeRecordsOnlyASafeCodeWhenCodexCannotStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := companionapp.Config{Version: 1, ComputerName: "Test computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}}
+	config := companionapp.Config{Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}}
 	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
 		t.Fatal(err)
 	}
 	health := servicehealth.New(filepath.Join(root, "health.json"), time.Now)
 	code := runWith(context.Background(), []string{"serve"}, io.Discard, io.Discard, liveDependencies{
 		random: rand.Reader, startCodex: func(context.Context, string) (codexOwner, error) { return nil, errors.New("secret raw process error") },
-		listen: net.Listen, now: time.Now, health: health,
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			return net.Listen("tcp", "127.0.0.1:0")
+		},
+		now: time.Now, health: health,
 	})
 	if code != 1 {
 		t.Fatalf("serve exit = %d", code)
@@ -299,7 +318,7 @@ func TestOwnedCodexExitStopsTheMobileService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := companionapp.Config{Version: 1, ComputerName: "Test computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}}
+	config := companionapp.Config{Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}}
 	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +327,7 @@ func TestOwnedCodexExitStopsTheMobileService(t *testing.T) {
 	code := runWith(context.Background(), []string{"serve"}, io.Discard, &errorOutput, liveDependencies{
 		random:     rand.Reader,
 		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
-		listen: func(string, string) (net.Listener, error) {
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			go func() {
 				time.Sleep(20 * time.Millisecond)
@@ -336,7 +355,7 @@ func TestPairCommandOfferIsAcceptedByTheRunningService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := companionapp.Config{Version: 1, ComputerName: "Test computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}}
+	config := companionapp.Config{Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}}
 	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +368,7 @@ func TestPairCommandOfferIsAcceptedByTheRunningService(t *testing.T) {
 		serveDone <- runWith(ctx, []string{"serve"}, io.Discard, io.Discard, liveDependencies{
 			random:     rand.Reader,
 			startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
-			listen: func(string, string) (net.Listener, error) {
+			relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
 				listener, err := net.Listen("tcp", "127.0.0.1:0")
 				if err == nil {
 					addresses <- listener.Addr().String()

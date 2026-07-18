@@ -150,7 +150,7 @@ class UnpairActivityTest {
 
     private fun pairedComputer(): PairedComputer =
         PairedComputer(
-            host = "100.64.0.10",
+            host = "203.0.113.5",
             port = 9443,
             protocol = 1,
             hostIdentity = "MCowBQYDK2VwAyEAYDOLV9NWOH032zsijde9dIuugWxkFqfKZ4g8MFIKNmI",

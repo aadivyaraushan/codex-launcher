@@ -63,7 +63,7 @@ class ConnectionBootstrapperTest {
 
     private fun pairedComputer() =
         PairedComputer(
-            host = "100.64.0.10",
+            host = "203.0.113.5",
             port = 9443,
             protocol = 1,
             hostIdentity = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(44) { 1 }),

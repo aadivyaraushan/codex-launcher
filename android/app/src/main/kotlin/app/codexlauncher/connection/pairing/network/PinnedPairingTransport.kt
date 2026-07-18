@@ -8,6 +8,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -20,7 +21,10 @@ class PinnedPairingTransport private constructor(
 ) : PairingTransport {
     constructor() : this(endpoint = PairingOffer::pairingEndpoint, tlsClients = PinnedTlsClientFactory())
 
-    internal constructor(testEndpoint: String) : this(endpoint = { testEndpoint }, tlsClients = PinnedTlsClientFactory())
+    // Test-only: targets a local MockWebServer URL, not an untrusted pairing-offer
+    // host, so it uses the system resolver instead of the public-address DNS filter.
+    internal constructor(testEndpoint: String) :
+        this(endpoint = { testEndpoint }, tlsClients = PinnedTlsClientFactory(dns = Dns.SYSTEM))
 
     override fun pair(offer: PairingOffer, request: PairingRequest): PairingResponse {
         val pin = offer.tlsIdentityPin()

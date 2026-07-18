@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +22,49 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/promptqueue"
 )
 
+// testRelayConfig returns a RelayConfig that passes Validate, for tests that
+// only care about some other field. PinnedKey is base64 of an arbitrary
+// non-empty byte slice — Validate only checks it decodes, not that it's a
+// real key.
+func testRelayConfig() RelayConfig {
+	return RelayConfig{
+		BoxHost: "relay.example.com", MacPort: 9000, PhonePort: 8443,
+		PinnedKey: base64.StdEncoding.EncodeToString([]byte("pinned-key-bytes")), Secret: "relay-secret-value",
+	}
+}
+
 var appNow = time.Date(2026, 7, 13, 4, 0, 0, 0, time.UTC)
+
+// TestValidateRejectsWeakRelaySecret proves Config.Validate refuses a
+// registration secret that is too short or carries control characters. The
+// relay secret is now the only application-level access gate (the Tailscale
+// network gate is gone), so a trivially guessable or malformed secret must be
+// rejected at the config boundary, before it is ever persisted or dialed.
+func TestValidateRejectsWeakRelaySecret(t *testing.T) {
+	weak := []struct {
+		name   string
+		secret string
+	}{
+		{"empty", ""},
+		{"too short", "short"},
+		{"whitespace padded but short", "   short   "},
+		{"embedded newline", strings.Repeat("a", 20) + "\n"},
+		{"embedded control char", strings.Repeat("a", 20) + "\x01"},
+	}
+	for _, tc := range weak {
+		relay := testRelayConfig()
+		relay.Secret = tc.secret
+		config := Config{Version: 1, ComputerName: "Computer", Relay: relay, CodexBinary: absoluteCodexPath(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
+		if err := config.Validate(); !errors.Is(err, ErrInvalidConfig) {
+			t.Errorf("%s: Validate accepted secret %q (err = %v), want ErrInvalidConfig", tc.name, tc.secret, err)
+		}
+	}
+
+	// A clean secret at the minimum length is accepted (the good path testRelayConfig relies on).
+	if err := (Config{Version: 1, ComputerName: "Computer", Relay: testRelayConfig(), CodexBinary: absoluteCodexPath(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}).Validate(); err != nil {
+		t.Fatalf("Validate rejected a well-formed config: %v", err)
+	}
+}
 
 func TestLoadConfigAcceptsStrictOwnerOnlyConfiguration(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -30,17 +74,19 @@ func TestLoadConfigAcceptsStrictOwnerOnlyConfiguration(t *testing.T) {
 	path := writeConfig(t, map[string]any{
 		"version":      1,
 		"computerName": "Aadi's Mac",
-		"listenHost":   "100.64.0.10",
-		"listenPort":   9443,
-		"codexBinary":  absoluteCodexPath(),
-		"projects":     []map[string]string{{"id": "launcher", "displayName": "Codex Launcher", "path": projectPath}},
+		"relay": map[string]any{
+			"boxHost": "relay.example.com", "macPort": 9000, "phonePort": 8443,
+			"pinnedKey": base64.StdEncoding.EncodeToString([]byte("pinned-key-bytes")), "secret": "relay-secret-value",
+		},
+		"codexBinary": absoluteCodexPath(),
+		"projects":    []map[string]string{{"id": "launcher", "displayName": "Codex Launcher", "path": projectPath}},
 	})
 
 	config, err := loadConfig(path, filepath.Dir(path))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.Version != 1 || config.ComputerName != "Aadi's Mac" || config.ListenHost != "100.64.0.10" || config.ListenPort != 9443 || len(config.Projects) != 1 {
+	if config.Version != 1 || config.ComputerName != "Aadi's Mac" || config.Relay.BoxHost != "relay.example.com" || config.Relay.MacPort != 9000 || config.Relay.PhonePort != 8443 || len(config.Projects) != 1 {
 		t.Fatalf("config = %#v", config)
 	}
 }
@@ -51,7 +97,7 @@ func TestWriteConfigPublishesOwnerOnlyFileOnce(t *testing.T) {
 	}
 	root := filepath.Join(t.TempDir(), "codex-launcher")
 	path := filepath.Join(root, "config.json")
-	config := Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, CodexBinary: absoluteCodexPath(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
+	config := Config{Version: 1, ComputerName: "Computer", Relay: testRelayConfig(), CodexBinary: absoluteCodexPath(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
 	if err := writeConfigAt(path, root, config); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +154,7 @@ func TestWriteConfigValidatesBeforeCreatingFiles(t *testing.T) {
 	}
 	root := filepath.Join(t.TempDir(), "codex-launcher")
 	path := filepath.Join(root, "config.json")
-	config := Config{Version: 1, ComputerName: "Computer", ListenHost: "192.168.1.10", ListenPort: 9443}
+	config := Config{Version: 1, ComputerName: ""}
 	if err := writeConfigAt(path, root, config); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("invalid config write error = %v", err)
 	}
@@ -125,7 +171,7 @@ func TestUpdateConfigAtomicallyChangesTheApprovedProjectFolders(t *testing.T) {
 	path := filepath.Join(root, "config.json")
 	firstPath := canonicalTempDir(t)
 	secondPath := canonicalTempDir(t)
-	first := Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, CodexBinary: absoluteCodexPath(), Projects: []projects.Config{{ID: "first", DisplayName: "First", Path: firstPath}}}
+	first := Config{Version: 1, ComputerName: "Computer", Relay: testRelayConfig(), CodexBinary: absoluteCodexPath(), Projects: []projects.Config{{ID: "first", DisplayName: "First", Path: firstPath}}}
 	if err := writeConfigAt(path, root, first); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +194,11 @@ func TestLoadConfigRejectsUnknownOversizedSymlinkAndOpenPermissions(t *testing.T
 		t.Skip("permission-mode assertions are POSIX-specific; Windows ACL behavior has its own native tests")
 	}
 	valid := map[string]any{
-		"version": 1, "computerName": "Computer", "listenHost": "100.64.0.10", "listenPort": 9443,
+		"version": 1, "computerName": "Computer",
+		"relay": map[string]any{
+			"boxHost": "relay.example.com", "macPort": 9000, "phonePort": 8443,
+			"pinnedKey": base64.StdEncoding.EncodeToString([]byte("pinned-key-bytes")), "secret": "relay-secret-value",
+		},
 		"projects": []map[string]string{{"id": "main", "displayName": "Main", "path": canonicalTempDir(t)}},
 	}
 
@@ -205,11 +255,12 @@ func TestLoadConfigRejectsDuplicateAndCaseVariantKeys(t *testing.T) {
 		t.Skip("permission-mode assertions are POSIX-specific; Windows ACL behavior has its own native tests")
 	}
 	projectPath := canonicalTempDir(t)
+	relay := `"macPort":9000,"phonePort":8443,"pinnedKey":"` + base64.StdEncoding.EncodeToString([]byte("pinned-key-bytes")) + `","secret":"relay-secret-value"`
 	for name, encoded := range map[string]string{
-		"duplicate":        `{"version":1,"computerName":"Computer","listenHost":"100.64.0.10","listenHost":"192.168.1.10","listenPort":9443,"projects":[{"id":"main","displayName":"Main","path":` + quoted(projectPath) + `}]}`,
-		"case variant":     `{"version":1,"computerName":"Computer","listenHost":"100.64.0.10","ListenHost":"192.168.1.10","listenPort":9443,"projects":[{"id":"main","displayName":"Main","path":` + quoted(projectPath) + `}]}`,
-		"unicode fold":     `{"version":1,"computerName":"Computer","listenHost":"100.64.0.10","liſtenHost":"100.64.0.11","listenPort":9443,"projects":[{"id":"main","displayName":"Main","path":` + quoted(projectPath) + `}]}`,
-		"nested duplicate": `{"version":1,"computerName":"Computer","listenHost":"100.64.0.10","listenPort":9443,"projects":[{"id":"main","id":"other","displayName":"Main","path":` + quoted(projectPath) + `}]}`,
+		"duplicate":        `{"version":1,"computerName":"Computer","relay":{"boxHost":"a.example.com","boxHost":"b.example.com",` + relay + `},"projects":[{"id":"main","displayName":"Main","path":` + quoted(projectPath) + `}]}`,
+		"case variant":     `{"version":1,"computerName":"Computer","relay":{"boxHost":"a.example.com","BoxHost":"b.example.com",` + relay + `},"projects":[{"id":"main","displayName":"Main","path":` + quoted(projectPath) + `}]}`,
+		"unicode fold":     `{"version":1,"computerName":"Computer","relay":{"boxHoſt":"a.example.com","boxHost":"b.example.com",` + relay + `},"projects":[{"id":"main","displayName":"Main","path":` + quoted(projectPath) + `}]}`,
+		"nested duplicate": `{"version":1,"computerName":"Computer","relay":{"boxHost":"a.example.com",` + relay + `},"projects":[{"id":"main","id":"other","displayName":"Main","path":` + quoted(projectPath) + `}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(secureTempDir(t), "config.json")
@@ -224,16 +275,20 @@ func TestLoadConfigRejectsDuplicateAndCaseVariantKeys(t *testing.T) {
 }
 
 func TestConfigRejectsUnsafeNetworkAndProjectShapes(t *testing.T) {
-	base := Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
+	base := Config{Version: 1, ComputerName: "Computer", Relay: testRelayConfig(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
 	for name, mutate := range map[string]func(*Config){
-		"wildcard IPv4":          func(config *Config) { config.ListenHost = "0.0.0.0" },
-		"wildcard IPv6":          func(config *Config) { config.ListenHost = "::" },
-		"private LAN":            func(config *Config) { config.ListenHost = "192.168.1.10" },
-		"public IP":              func(config *Config) { config.ListenHost = "8.8.8.8" },
-		"unverified DNS":         func(config *Config) { config.ListenHost = "computer.example.com" },
-		"missing computer":       func(config *Config) { config.ComputerName = "" },
-		"invalid port":           func(config *Config) { config.ListenPort = 0 },
-		"path-shaped project ID": func(config *Config) { config.Projects[0].ID = "../main" },
+		"missing computer":             func(config *Config) { config.ComputerName = "" },
+		"path-shaped project ID":       func(config *Config) { config.Projects[0].ID = "../main" },
+		"empty box host":               func(config *Config) { config.Relay.BoxHost = "" },
+		"box host with a space":        func(config *Config) { config.Relay.BoxHost = "relay example.com" },
+		"box host too long":            func(config *Config) { config.Relay.BoxHost = strings.Repeat("a", 254) },
+		"invalid mac port":             func(config *Config) { config.Relay.MacPort = 0 },
+		"invalid phone port":           func(config *Config) { config.Relay.PhonePort = 70000 },
+		"mac and phone port collide":   func(config *Config) { config.Relay.PhonePort = config.Relay.MacPort },
+		"non-base64 pinned key":        func(config *Config) { config.Relay.PinnedKey = "not valid base64!!" },
+		"empty pinned key":             func(config *Config) { config.Relay.PinnedKey = "" },
+		"empty relay secret":           func(config *Config) { config.Relay.Secret = "" },
+		"whitespace-only relay secret": func(config *Config) { config.Relay.Secret = "   " },
 	} {
 		t.Run(name, func(t *testing.T) {
 			config := base
@@ -246,26 +301,25 @@ func TestConfigRejectsUnsafeNetworkAndProjectShapes(t *testing.T) {
 	}
 }
 
-func TestConfigAcceptsOnlyTailscaleAddressRanges(t *testing.T) {
-	base := Config{Version: 1, ComputerName: "Computer", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
-	for _, host := range []string{"100.64.0.1", "100.127.255.254", "fd7a:115c:a1e0::1"} {
+// TestConfigAcceptsPlausibleRelayHostsNotJustTailscaleRanges is the relay
+// era's replacement for the old Tailscale-only address gate: BoxHost is a
+// public relay box's hostname or IP now, so any non-empty, control-char-free
+// host under the length cap must validate — not just addresses in the
+// Tailscale CGNAT ranges.
+func TestConfigAcceptsPlausibleRelayHostsNotJustTailscaleRanges(t *testing.T) {
+	base := Config{Version: 1, ComputerName: "Computer", Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
+	for _, host := range []string{"relay-box.fly.dev", "203.0.113.10", "100.64.0.1", "my-relay-box", "fd7a:115c:a1e0::1"} {
 		config := base
-		config.ListenHost = host
+		config.Relay = testRelayConfig()
+		config.Relay.BoxHost = host
 		if err := config.Validate(); err != nil {
-			t.Fatalf("Tailscale address %q rejected: %v", host, err)
-		}
-	}
-	for _, host := range []string{"100.63.255.255", "100.128.0.1", "fd7a:115c:a1e1::1"} {
-		config := base
-		config.ListenHost = host
-		if err := config.Validate(); !errors.Is(err, ErrInvalidConfig) {
-			t.Fatalf("non-Tailscale address %q error = %v", host, err)
+			t.Fatalf("relay host %q rejected: %v", host, err)
 		}
 	}
 }
 
 func TestRuntimeWiresSharedStoresWithoutChangingHostIdentityOrConfirmedResult(t *testing.T) {
-	config := Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
+	config := Config{Version: 1, ComputerName: "Computer", Relay: testRelayConfig(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
 	pairingStore := pairing.NewMemoryStore()
 	promptStore := promptqueue.NewMemoryStore()
 	eventStore := eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 32, MaxBytes: 64 * 1024})
@@ -277,7 +331,7 @@ func TestRuntimeWiresSharedStoresWithoutChangingHostIdentityOrConfirmedResult(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstOffer, err := first.Pairing.BeginPairing(pairing.PairingTarget{Host: config.ListenHost, Port: config.ListenPort, Protocol: pairing.ProtocolMajor}, appNow)
+	firstOffer, err := first.Pairing.BeginPairing(pairing.PairingTarget{Host: config.Relay.BoxHost, Port: config.Relay.PhonePort, Protocol: pairing.ProtocolMajor}, appNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +348,7 @@ func TestRuntimeWiresSharedStoresWithoutChangingHostIdentityOrConfirmedResult(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondOffer, err := second.Pairing.BeginPairing(pairing.PairingTarget{Host: config.ListenHost, Port: config.ListenPort, Protocol: pairing.ProtocolMajor}, appNow)
+	secondOffer, err := second.Pairing.BeginPairing(pairing.PairingTarget{Host: config.Relay.BoxHost, Port: config.Relay.PhonePort, Protocol: pairing.ProtocolMajor}, appNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +365,7 @@ func TestRuntimeWiresSharedStoresWithoutChangingHostIdentityOrConfirmedResult(t 
 }
 
 func TestPersistentRuntimeReopensTheSameProductionStores(t *testing.T) {
-	config := Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
+	config := Config{Version: 1, ComputerName: "Computer", Relay: testRelayConfig(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
 	statePath := filepath.Join(t.TempDir(), "state.sqlite3")
 	first, firstStore, err := openPersistentRuntimeAt(context.Background(), config, PersistentDependencies{Random: rand.Reader}, statePath)
 	if err != nil {
@@ -351,7 +405,7 @@ func TestPersistentRuntimeReopensTheSameProductionStores(t *testing.T) {
 }
 
 func TestRuntimeRejectsMissingStoresAndRandomSource(t *testing.T) {
-	config := Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
+	config := Config{Version: 1, ComputerName: "Computer", Relay: testRelayConfig(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
 	valid := Dependencies{
 		PairingStore: pairing.NewMemoryStore(), PromptStore: promptqueue.NewMemoryStore(),
 		EventStore: eventjournal.NewMemoryStore(eventjournal.Limits{MaxEvents: 4, MaxBytes: 1024}), Random: rand.Reader,

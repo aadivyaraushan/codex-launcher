@@ -69,7 +69,7 @@ class LocalStateWiperInstrumentedTest {
         val deviceId = identity.loadOrCreate()
         pairingKeys.loadOrCreate()
         val paired = pairedComputer(deviceId)
-        assertTrue(PairingValidation.isTailscaleAddress(paired.host))
+        assertTrue(PairingValidation.isSafePublicEndpoint(paired.host))
         assertTrue(PairingValidation.isSafeIdentifier(paired.deviceId))
         assertTrue(PairingValidation.isSafeDeviceName(paired.deviceName))
         assertTrue(PairingValidation.isCanonicalBase64Url(paired.pairingGeneration, decodedBytes = 16))
@@ -125,7 +125,7 @@ class LocalStateWiperInstrumentedTest {
 
     private fun pairedComputer(deviceId: String): PairedComputer {
         return PairedComputer(
-            host = "100.64.0.10",
+            host = "203.0.113.5",
             port = 9443,
             protocol = 1,
             hostIdentity = "MCowBQYDK2VwAyEAYDOLV9NWOH032zsijde9dIuugWxkFqfKZ4g8MFIKNmI",

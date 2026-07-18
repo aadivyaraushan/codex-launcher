@@ -9,39 +9,40 @@ import java.util.Base64
 
 class PairingOfferTest {
     @Test
-    fun parsesOnlyACompleteTailscaleBoundPairingLinkWithoutPrintingItsSecret() {
+    fun parsesOnlyACompletePublicBoxPairingLinkWithoutPrintingItsSecret() {
         val identity = validIdentity()
         val tlsIdentity = validTlsIdentity()
         val secret = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() })
         val offer =
             PairingOffer.parse(
-                "codex-launcher://pair?host=100.64.0.10&port=9443&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret",
+                "codex-launcher://pair?host=203.0.113.5&port=9443&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret",
             )
 
-        assertEquals("100.64.0.10", offer.host)
+        assertEquals("203.0.113.5", offer.host)
         assertEquals(9443, offer.port)
         assertEquals(1, offer.protocol)
         assertEquals(identity, offer.hostIdentity)
         assertEquals(tlsIdentity, offer.tlsIdentity)
         assertEquals(secret, offer.secret)
-        assertEquals("https://100.64.0.10:9443/v1/pair", offer.pairingEndpoint)
+        assertEquals("https://203.0.113.5:9443/v1/pair", offer.pairingEndpoint)
         assertFalse(offer.toString().contains(secret))
     }
 
     @Test
-    fun acceptsTheCompanionTailscaleIpv6RangeAndBracketsItsEndpoint() {
-        val offer = PairingOffer.parse(validUri(host = "fd7a:115c:a1e0::1"))
+    fun acceptsAPublicIpv6BoxAndBracketsItsEndpoint() {
+        val offer = PairingOffer.parse(validUri(host = "2606:4700:4700::1111"))
 
-        assertEquals("fd7a:115c:a1e0::1", offer.host)
-        assertEquals("https://[fd7a:115c:a1e0::1]:9443/v1/pair", offer.pairingEndpoint)
+        assertEquals("2606:4700:4700::1111", offer.host)
+        assertEquals("https://[2606:4700:4700::1111]:9443/v1/pair", offer.pairingEndpoint)
     }
 
     @Test
     fun rejectsLinksThatCanEscapeTheExpectedPairingContract() {
         val invalid =
             listOf(
-                validUri(host = "192.168.1.10"),
-                validUri(host = "100.128.0.1"),
+                validUri(host = "192.168.1.10"), // private LAN
+                validUri(host = "169.254.169.254"), // cloud metadata
+                validUri(host = "100.64.0.10"), // CGNAT (the old Tailscale-style host is now denied)
                 validUri().replace("v=1", "v=2"),
                 validUri().replace("port=9443", "port=0"),
                 validUri().replace("secret=${validSecret()}", "secret=short"),
@@ -62,7 +63,7 @@ class PairingOfferTest {
         }
     }
 
-    private fun validUri(host: String = "100.64.0.10"): String =
+    private fun validUri(host: String = "203.0.113.5"): String =
         "codex-launcher://pair?host=$host&port=9443&v=1&identity=${validIdentity()}&tls_identity=${validTlsIdentity()}&secret=${validSecret()}"
 
     private fun validIdentity(): String {

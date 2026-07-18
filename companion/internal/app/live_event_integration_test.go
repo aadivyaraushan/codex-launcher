@@ -22,7 +22,7 @@ func TestRuntimePumpsProjectedCodexEventIntoJournalSnapshot(t *testing.T) {
 		appended:    make(chan eventjournal.Event, 1),
 	}
 	config := Config{
-		Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443,
+		Version: 1, ComputerName: "Computer", Relay: testRelayConfig(),
 		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}},
 	}
 	runtime, err := NewRuntime(ctx, config, Dependencies{

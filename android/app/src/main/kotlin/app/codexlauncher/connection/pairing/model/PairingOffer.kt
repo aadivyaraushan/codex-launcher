@@ -48,7 +48,7 @@ class PairingOffer private constructor(
             val identity = query.getValue("identity")
             val tlsIdentity = query.getValue("tls_identity")
             val secret = query.getValue("secret")
-            require(PairingValidation.isTailscaleAddress(host) && port in 1..65535 && protocol == 1) { "Invalid pairing offer" }
+            require(PairingValidation.isSafePublicEndpoint(host) && port in 1..65535 && protocol == 1) { "Invalid pairing offer" }
             HostIdentityPin.parse(identity)
             TlsIdentityPin.parse(tlsIdentity)
             require(PairingValidation.isCanonicalBase64Url(secret, decodedBytes = 16)) { "Invalid pairing offer" }

@@ -56,7 +56,7 @@ class PairingRecordStoreTest {
     fun corruptOrNonTailscaleRecordsFailClosedInsteadOfPartiallyLoading() = runBlocking {
         val corruptIdentity =
             preferencesOf(
-                stringPreferencesKey("host") to "100.64.0.10",
+                stringPreferencesKey("host") to "203.0.113.5",
                 stringPreferencesKey("host_identity") to "not-a-key",
             )
         assertNull(PairingRecordStore(FakePreferencesDataStore(corruptIdentity), NoOpPairingRecordReporter).paired.first())
@@ -70,7 +70,7 @@ class PairingRecordStoreTest {
 
     @Test
     fun incompleteRecordAndReadIoFailureBothLoadAsUnpaired() = runBlocking {
-        val incomplete = preferencesOf(stringPreferencesKey("host") to "100.64.0.10")
+        val incomplete = preferencesOf(stringPreferencesKey("host") to "203.0.113.5")
         assertNull(PairingRecordStore(FakePreferencesDataStore(incomplete), NoOpPairingRecordReporter).paired.first())
 
         val unavailable =
@@ -92,7 +92,7 @@ class PairingRecordStoreTest {
         val expected = pairedComputer()
         assertTrue(validStore.save(expected))
         assertEquals(PairingRecordReadState.Paired(expected), validStore.readForStartup())
-        val corrupt = preferencesOf(stringPreferencesKey("host") to "100.64.0.10")
+        val corrupt = preferencesOf(stringPreferencesKey("host") to "203.0.113.5")
         assertEquals(
             PairingRecordReadState.Unavailable,
             PairingRecordStore(FakePreferencesDataStore(corrupt), NoOpPairingRecordReporter).readForStartup(),
@@ -123,7 +123,7 @@ class PairingRecordStoreTest {
 
     private fun pairedComputer(): PairedComputer =
         PairedComputer(
-            host = "100.64.0.10",
+            host = "203.0.113.5",
             port = 9443,
             protocol = 1,
             hostIdentity =

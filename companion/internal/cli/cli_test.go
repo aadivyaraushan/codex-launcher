@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,10 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
 	"github.com/codex-launcher/codex-launcher/companion/internal/promptqueue"
 )
+
+// testPinnedKeyFlag is a valid base64 value for the --pinned-key flag in
+// tests that need one but don't care what it decodes to.
+const testPinnedKeyFlag = "cGlubmVkLWtleS1ieXRlcw=="
 
 var cliNow = time.Date(2026, 7, 13, 5, 0, 0, 0, time.UTC)
 
@@ -89,7 +94,7 @@ func TestPairDevicesStatusAndRevokeUseOneRuntime(t *testing.T) {
 
 func TestPairRefusesToCreateAnotherSecretWhenADeviceIsAlreadyPaired(t *testing.T) {
 	runtime := newTestRuntime(t)
-	offer, err := runtime.Pairing.BeginPairing(pairing.PairingTarget{Host: runtime.Config.ListenHost, Port: runtime.Config.ListenPort, Protocol: pairing.ProtocolMajor}, cliNow)
+	offer, err := runtime.Pairing.BeginPairing(pairing.PairingTarget{Host: runtime.Config.Relay.BoxHost, Port: runtime.Config.Relay.PhonePort, Protocol: pairing.ProtocolMajor}, cliNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +178,9 @@ func TestSetupBuildsOneStrictConfigFromExplicitComputerAndFolderFlags(t *testing
 		Setup: func(_ context.Context, config companionapp.Config) error { captured = config; return nil },
 	})
 	args := []string{
-		"setup", "--computer-name", "Studio Mac", "--listen-host", "100.64.0.10", "--listen-port", "9443", "--codex-binary", codexBinary,
+		"setup", "--computer-name", "Studio Mac",
+		"--box-host", "relay.example.com", "--mac-port", "9000", "--phone-port", "8443",
+		"--pinned-key", testPinnedKeyFlag, "--relay-secret", "relay-secret-value", "--codex-binary", codexBinary,
 		"--project-id", "launcher", "--project-name", "Codex Launcher", "--project-path", projectOne,
 		"--project-id", "notes", "--project-name", "Notes", "--project-path", projectTwo,
 	}
@@ -181,8 +188,12 @@ func TestSetupBuildsOneStrictConfigFromExplicitComputerAndFolderFlags(t *testing
 	if exitCode := command.Run(context.Background(), args); exitCode != 0 {
 		t.Fatalf("setup exit = %d, output = %q", exitCode, output.String())
 	}
-	if captured.Version != 1 || captured.ComputerName != "Studio Mac" || captured.ListenHost != "100.64.0.10" || captured.ListenPort != 9443 || captured.CodexBinary != codexBinary {
+	if captured.Version != 1 || captured.ComputerName != "Studio Mac" || captured.CodexBinary != codexBinary {
 		t.Fatalf("setup config = %#v", captured)
+	}
+	if captured.Relay.BoxHost != "relay.example.com" || captured.Relay.MacPort != 9000 || captured.Relay.PhonePort != 8443 ||
+		captured.Relay.PinnedKey != testPinnedKeyFlag || captured.Relay.Secret != "relay-secret-value" {
+		t.Fatalf("setup relay config = %#v", captured.Relay)
 	}
 	if len(captured.Projects) != 2 || captured.Projects[0].ID != "launcher" || captured.Projects[0].DisplayName != "Codex Launcher" || captured.Projects[0].Path != projectOne || captured.Projects[1].ID != "notes" {
 		t.Fatalf("setup projects = %#v", captured.Projects)
@@ -199,7 +210,11 @@ func TestSetupRejectsIncompleteProjectTriplesBeforeWriting(t *testing.T) {
 		Output: &output, ErrorOutput: &output,
 		Setup: func(context.Context, companionapp.Config) error { writes++; return nil },
 	})
-	args := []string{"setup", "--computer-name", "Studio Mac", "--listen-host", "100.64.0.10", "--codex-binary", filepath.Join(t.TempDir(), "codex"), "--project-id", "main", "--project-name", "Main"}
+	args := []string{
+		"setup", "--computer-name", "Studio Mac",
+		"--box-host", "relay.example.com", "--pinned-key", testPinnedKeyFlag, "--relay-secret", "relay-secret-value",
+		"--codex-binary", filepath.Join(t.TempDir(), "codex"), "--project-id", "main", "--project-name", "Main",
+	}
 
 	if exitCode := command.Run(context.Background(), args); exitCode != 2 || writes != 0 || !strings.HasPrefix(output.String(), "Usage:") {
 		t.Fatalf("setup exit = %d, writes = %d, output = %q", exitCode, writes, output.String())
@@ -209,7 +224,9 @@ func TestSetupRejectsIncompleteProjectTriplesBeforeWriting(t *testing.T) {
 func TestSetupReportsWhichRequiredLocalDependencyFailed(t *testing.T) {
 	projectPath := canonicalTempDirForCLI(t)
 	baseArgs := []string{
-		"setup", "--computer-name", "Studio Mac", "--listen-host", "100.64.0.10", "--codex-binary", filepath.Join(t.TempDir(), "codex"),
+		"setup", "--computer-name", "Studio Mac",
+		"--box-host", "relay.example.com", "--pinned-key", testPinnedKeyFlag, "--relay-secret", "relay-secret-value",
+		"--codex-binary", filepath.Join(t.TempDir(), "codex"),
 		"--project-id", "main", "--project-name", "Main", "--project-path", projectPath,
 	}
 	for _, test := range []struct {
@@ -217,8 +234,8 @@ func TestSetupReportsWhichRequiredLocalDependencyFailed(t *testing.T) {
 		want string
 	}{
 		{fmt.Errorf("wrapped: %w", hostsetup.ErrCodexUnavailable), "Codex is missing or broken. Check --codex-binary.\n"},
-		{fmt.Errorf("wrapped: %w", hostsetup.ErrTailscaleUnavailable), "Tailscale is missing, disconnected, or does not own that address.\n"},
-		{fmt.Errorf("wrapped: %w", hostsetup.ErrPortUnavailable), "That Tailscale address and port are already in use.\n"},
+		{fmt.Errorf("wrapped: %w", hostsetup.ErrRelayUnavailable), "The relay box is unreachable, or its pinned key does not match. Check --box-host, --mac-port, and --pinned-key.\n"},
+		{fmt.Errorf("wrapped: %w", hostsetup.ErrRelayRegisterRejected), "The relay box rejected the registration secret. Check --relay-secret.\n"},
 		{errors.New("disk failed"), "Companion setup could not be saved.\n"},
 	} {
 		var output bytes.Buffer
@@ -306,7 +323,10 @@ func newTestRuntime(t *testing.T) *companionapp.Runtime {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := companionapp.Config{Version: 1, ComputerName: "Computer", ListenHost: "100.64.0.10", ListenPort: 9443, Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Computer", Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+		Relay: companionapp.RelayConfig{BoxHost: "relay.example.com", MacPort: 9000, PhonePort: 8443, PinnedKey: testPinnedKeyFlag, Secret: "relay-secret-value"},
+	}
 	runtime, err := companionapp.NewRuntime(context.Background(), config, companionapp.Dependencies{
 		PairingStore: pairing.NewMemoryStore(),
 		PromptStore:  promptqueue.NewMemoryStore(),
@@ -325,7 +345,10 @@ func pairDevice(t *testing.T, service *pairing.Service, parsed *url.URL) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := 9443
+	port, err := strconv.Atoi(parsed.Query().Get("port"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	request := pairing.PairRequest{
 		Secret: parsed.Query().Get("secret"), Host: parsed.Query().Get("host"), Port: port, Protocol: pairing.ProtocolMajor,
 		HostPublicKey: parsed.Query().Get("identity"), DeviceID: "pixel-9", DeviceName: "Pixel 9", DevicePublicKey: publicKey,

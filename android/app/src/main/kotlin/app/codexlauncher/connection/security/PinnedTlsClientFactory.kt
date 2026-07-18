@@ -1,6 +1,7 @@
 package app.codexlauncher.connection.security
 
 import okhttp3.ConnectionSpec
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.TlsVersion
@@ -8,7 +9,7 @@ import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
 
-class PinnedTlsClientFactory {
+class PinnedTlsClientFactory(private val dns: Dns = SafePublicDns()) {
     fun builder(pin: TlsIdentityPin): OkHttpClient.Builder {
         val trustManager = pin.trustManager()
         val sslContext = SSLContext.getInstance("TLSv1.3").apply {
@@ -27,5 +28,6 @@ class PinnedTlsClientFactory {
                 }.getOrDefault(false)
             }.connectionSpecs(listOf(tls13))
             .protocols(listOf(Protocol.HTTP_1_1))
+            .dns(dns)
     }
 }

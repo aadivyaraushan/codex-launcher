@@ -9,6 +9,8 @@ class PairingWireTest {
         val encoded =
             PairingWire.pairingProofMessage(
                 secret = "secret",
+                // Arbitrary wire-encoding payload — this golden-bytes test pins the
+                // length-prefixed byte contract against Go, not address validation.
                 host = "100.64.0.10",
                 port = 9443,
                 protocol = 1,

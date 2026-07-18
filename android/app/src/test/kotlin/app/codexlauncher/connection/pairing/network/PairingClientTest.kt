@@ -46,7 +46,7 @@ class PairingClientTest {
         assertEquals("pixel-9", paired.deviceId)
         assertEquals("Pixel 9", paired.deviceName)
         assertEquals(PairingKeyProtection.SOFTWARE_BACKED, paired.keyProtection)
-        assertEquals("100.64.0.10", paired.host)
+        assertEquals("203.0.113.5", paired.host)
         assertEquals(offer.tlsIdentity, paired.tlsIdentity)
     }
 
@@ -113,7 +113,7 @@ class PairingClientTest {
                 Base64.getUrlEncoder().withoutPadding().encodeToString(
                     KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair().public.encoded,
                 )
-            return "codex-launcher://pair?host=100.64.0.10&port=9443&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret"
+            return "codex-launcher://pair?host=203.0.113.5&port=9443&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret"
         }
 
         fun validGeneration(): String =

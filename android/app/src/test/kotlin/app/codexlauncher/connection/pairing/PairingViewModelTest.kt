@@ -128,12 +128,12 @@ class PairingViewModelTest {
         val identity = Base64.getUrlEncoder().withoutPadding().encodeToString(TestHostCertificate.keyPair().public.encoded)
         val tlsIdentity = TestHostCertificate.tlsIdentity()
         val secret = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { it.toByte() })
-        return "codex-launcher://pair?host=100.64.0.10&port=9443&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret"
+        return "codex-launcher://pair?host=203.0.113.5&port=9443&v=1&identity=$identity&tls_identity=$tlsIdentity&secret=$secret"
     }
 
     private fun pairedComputer(): PairedComputer =
         PairedComputer(
-            host = "100.64.0.10",
+            host = "203.0.113.5",
             port = 9443,
             protocol = 1,
             hostIdentity = Base64.getUrlEncoder().withoutPadding().encodeToString(TestHostCertificate.keyPair().public.encoded),

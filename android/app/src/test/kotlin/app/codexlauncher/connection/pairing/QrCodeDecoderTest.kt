@@ -9,7 +9,7 @@ import org.junit.Test
 class QrCodeDecoderTest {
     @Test
     fun decodesARealQrLuminanceFrame() {
-        val expected = "codex-launcher://pair?host=100.64.0.10"
+        val expected = "codex-launcher://pair?host=203.0.113.5"
         val matrix = QRCodeWriter().encode(expected, BarcodeFormat.QR_CODE, 240, 240)
         val luminance =
             ByteArray(matrix.width * matrix.height) { index ->

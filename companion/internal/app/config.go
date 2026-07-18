@@ -2,20 +2,35 @@ package app
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/configsecurity"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
+	"github.com/codex-launcher/codex-launcher/companion/internal/relayclient"
 )
 
 const MaxConfigBytes = 1024 * 1024
+
+// maxBoxHostLength caps RelayConfig.BoxHost the same way DNS caps a
+// hostname (253 octets), so an oversized value fails validation instead of
+// silently truncating somewhere downstream.
+const maxBoxHostLength = 253
+
+// minRelaySecretLength is the minimum length a relay registration secret
+// must have. Mirrors relaybox.MinSecretLength: the relay secret is the sole
+// access gate now that the Tailscale network gate is gone, so a trivially
+// short secret must be rejected at the config boundary too.
+const minRelaySecretLength = 16
 
 var (
 	ErrInvalidConfig    = errors.New("companion configuration is invalid")
@@ -23,18 +38,30 @@ var (
 	ErrConfigExists     = errors.New("companion configuration already exists")
 )
 
-var (
-	tailscaleIPv4 = netip.MustParsePrefix("100.64.0.0/10")
-	tailscaleIPv6 = netip.MustParsePrefix("fd7a:115c:a1e0::/48")
-)
-
+// Config is the Mac companion's on-disk configuration. The Mac never
+// listens for the phone directly (see planning/relay-box-build-plan.md) —
+// instead it dials out to a self-hosted relay box described by Relay.
 type Config struct {
 	Version      int               `json:"version"`
 	ComputerName string            `json:"computerName"`
-	ListenHost   string            `json:"listenHost"`
-	ListenPort   int               `json:"listenPort"`
 	CodexBinary  string            `json:"codexBinary,omitempty"`
 	Projects     []projects.Config `json:"projects"`
+	Relay        RelayConfig       `json:"relay"`
+}
+
+// RelayConfig describes the relay box this Mac registers with. BoxHost and
+// MacPort are where the Mac dials out to become the control line;
+// PhonePort is the box's other door, and goes into the pairing offer so the
+// phone knows where to connect. PinnedKey and Secret are the two trust
+// anchors: PinnedKey is what proves this is really our box (no CA
+// fallback — see relayclient/dial.go), and Secret is what proves this is
+// really our Mac to the box.
+type RelayConfig struct {
+	BoxHost   string `json:"boxHost"`
+	MacPort   int    `json:"macPort"`
+	PhonePort int    `json:"phonePort"`
+	PinnedKey string `json:"pinnedKey"`
+	Secret    string `json:"secret"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -143,7 +170,7 @@ func updateConfigAt(path, root string, config Config) error {
 }
 
 func (config Config) Validate() error {
-	if config.Version != 1 || !validComputerName(config.ComputerName) || !validListenHost(config.ListenHost) || config.ListenPort < 1 || config.ListenPort > 65535 {
+	if config.Version != 1 || !validComputerName(config.ComputerName) {
 		return ErrInvalidConfig
 	}
 	if config.CodexBinary != "" && !filepath.IsAbs(config.CodexBinary) {
@@ -151,6 +178,9 @@ func (config Config) Validate() error {
 	}
 	if _, err := projects.New(config.Projects); err != nil {
 		return ErrInvalidConfig
+	}
+	if err := config.Relay.validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -160,13 +190,72 @@ func validComputerName(name string) bool {
 	return trimmed != "" && len(trimmed) <= 80 && strings.IndexFunc(trimmed, unicode.IsControl) < 0
 }
 
-func validListenHost(host string) bool {
-	address, err := netip.ParseAddr(host)
-	if err != nil {
+// validate checks RelayConfig on its own terms. Unlike the old Tailscale
+// gate, BoxHost is a public address now (a Fly app host, a bare IP,
+// whatever the operator points the box at), so this only rejects shapes
+// that could never be a valid host/port/key/secret — it does not restrict
+// BoxHost to any particular network range.
+func (relay RelayConfig) validate() error {
+	if !validBoxHost(relay.BoxHost) {
+		return ErrInvalidConfig
+	}
+	if relay.MacPort < 1 || relay.MacPort > 65535 || relay.PhonePort < 1 || relay.PhonePort > 65535 {
+		return ErrInvalidConfig
+	}
+	if relay.MacPort == relay.PhonePort {
+		return ErrInvalidConfig
+	}
+	pinnedKey, err := base64.StdEncoding.DecodeString(relay.PinnedKey)
+	if err != nil || len(pinnedKey) == 0 {
+		return ErrInvalidConfig
+	}
+	if len(strings.TrimSpace(relay.Secret)) < minRelaySecretLength {
+		return ErrInvalidConfig
+	}
+	// Checked on the raw (untrimmed) secret so an embedded or trailing
+	// control character (e.g. a newline) is caught even though TrimSpace
+	// would strip a trailing one before the length check above ever saw it.
+	if strings.IndexFunc(relay.Secret, unicode.IsControl) >= 0 {
+		return ErrInvalidConfig
+	}
+	return nil
+}
+
+// validBoxHost accepts either a literal IP address (v4 or v6 — a relay box
+// hostname is frequently just an address) or a plausible DNS hostname: a
+// non-empty string, no whitespace or control characters, within the DNS
+// hostname length cap. It deliberately does not check that the hostname
+// resolves or is reachable — that is doctor's job, not a config-shape
+// check.
+func validBoxHost(host string) bool {
+	if host == "" || len(host) > maxBoxHostLength {
 		return false
 	}
-	address = address.Unmap()
-	return tailscaleIPv4.Contains(address) || tailscaleIPv6.Contains(address)
+	if _, err := netip.ParseAddr(host); err == nil {
+		return true
+	}
+	for _, r := range host {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// RelayClientConfig adapts the persisted RelayConfig into the shape
+// relayclient.Listen needs to dial out. PinnedKey is decoded here (already
+// validated by Validate) rather than at every call site, so a bad base64
+// value can never reach relayclient as a silently-empty pin.
+func (config Config) RelayClientConfig() (relayclient.Config, error) {
+	pinnedKey, err := base64.StdEncoding.DecodeString(config.Relay.PinnedKey)
+	if err != nil {
+		return relayclient.Config{}, ErrInvalidConfig
+	}
+	return relayclient.Config{
+		BoxAddr:         net.JoinHostPort(config.Relay.BoxHost, strconv.Itoa(config.Relay.MacPort)),
+		Secret:          config.Relay.Secret,
+		PinnedPublicKey: pinnedKey,
+	}, nil
 }
 
 func ensureJSONEnd(decoder *json.Decoder) error {

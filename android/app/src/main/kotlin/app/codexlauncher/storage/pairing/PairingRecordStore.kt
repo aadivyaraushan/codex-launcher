@@ -133,7 +133,7 @@ class PairingRecordStore internal constructor(
     }
 
     private fun isValid(record: PairedComputer): Boolean =
-        PairingValidation.isTailscaleAddress(record.host) &&
+        PairingValidation.isSafePublicEndpoint(record.host) &&
             record.port in 1..65535 &&
             record.protocol == 1 &&
             runCatching { HostIdentityPin.parse(record.hostIdentity) }.isSuccess &&
