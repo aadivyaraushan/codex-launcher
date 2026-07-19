@@ -87,10 +87,8 @@ between them" — without changing any of the locks that keep it private.
 > belonged only to the harness; the LaunchAgent was restored and `doctor`
 > returned 7/7 checks green. Full Go race/vet, Android unit/lint/debug/release
 > builds, release contracts, and protocol schema checks are green. The old phone
-> was revoked so migration cannot silently keep its stale address. **Only step 7
-> remains:** `adb devices -l` sees no physical Android device, so installing,
-> pairing, and running the final real phone task needs the Pixel connected and
-> unlocked with USB debugging enabled.
+> was revoked so migration could not silently keep its stale address. The
+> physical step that followed is recorded below.
 > A final independent review found no confidentiality flaw and its four
 > completion gaps are closed: `doctor` now uses a non-evicting `CHECK` command
 > to verify both pin and secret; the external-test evidence is described as a
@@ -99,6 +97,22 @@ between them" — without changing any of the locks that keep it private.
 > the control-blip test proves replacement acceptance by heartbeat plus the
 > configured reconnect delay. The phone door now also rejects a non-TLS preface
 > before consuming a Mac session slot.
+>
+> **Physical-phone confirmation complete 2026-07-19.** A Pixel 9 running
+> Android 16 paired with the installed Mac companion through the deployed Fly
+> box, selected the one approved project, started a real Codex turn, and showed
+> `RELAY_BOX_PHONE_VERIFICATION_PASSED` in the phone transcript. The user
+> approved that one turn on the verified ChatGPT login `aadivya@fermi.ai`;
+> `OPENAI_API_KEY` was not set. The repository status and tracked diff were
+> unchanged by the read-only prompt. This physical run found and closed two
+> final migration bugs: an already-paired phone now has an explicit **Remove
+> local data** recovery action when an obsolete Tailscale record fails closed,
+> and the companion now records its sent snapshot sequence before validating
+> the phone's cumulative acknowledgement. The latter fix stopped the real
+> phone's repeated 40-second reconnect loop. Its regression test failed first
+> because a valid acknowledgement never reached the handler, then passed under
+> `-race`; the full companion race suite and Android unit/lint/debug/release
+> checks are green. **All required §11 steps are now complete.**
 
 > How to read this: Sections 0–3 are the whole idea, skimmable in a minute.
 > Everything after is detail for completeness (and for the engineer and the
@@ -609,11 +623,11 @@ TDD — failing test first, then code:
    - *Optional extra layer:* drive the phone-side Kotlin in an **Android emulator**
      (scripted/instrumented) — the closest thing to "computer use" for the app,
      since the box and companion have no GUI to click.
-7. **Final confirmation on your physical phone.** Install the build, pair once,
-   run a real task — the goal you've been blocked on. By here, step 6 has already
-   exercised the identical code path end-to-end, so this is a confirmation tap, not
-   a debugging session. (I can't drive your physical phone; the emulator layer in
-   step 6 is how we automate everything up to it.)
+7. **Final confirmation on your physical phone — complete.** Installed the
+   debug build on a Pixel 9 running Android 16, paired once through Fly, selected
+   the sole approved project, and ran a real read-only Codex task. The phone
+   transcript showed `RELAY_BOX_PHONE_VERIFICATION_PASSED`, the companion kept
+   one paired device, and the repository did not change.
 
 Each step: see it fail, make it pass, show the green run. Steps 6–7 are the "does
 it actually work" gate — we do not call this done on green unit tests alone.

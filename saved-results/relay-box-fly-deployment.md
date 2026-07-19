@@ -117,16 +117,59 @@ data line. A post-deploy pin check during Fly's rolling restart failed closed;
 the same check passed after the machine reached `started`, confirming the
 encrypted volume preserved the box identity.
 
-The final Mac companion artifact was built from commit
+The earlier post-deployment hardening artifact was built from commit
 `a3be5661b6e448425d2b34673e3020061d16f97a`, with SHA-256
 `b9d08189fab11ccbfee620f6433eabd882b8655dfd3b89d755cdb28416d3d9b4`.
-The verified replacement installer completed, the LaunchAgent returned to
-`running`, and the installed command's new secret-aware doctor passed 7/7.
+It was the artifact used for the deployed stage-6b harness and the initial
+physical pairing. The later physical run found the acknowledgement bug recorded
+below, so this is deployment history rather than the final installed build.
 
 ## Physical-phone handoff
 
-The old Pixel 9 pairing was revoked as required for the address migration. The
-debug APK is at `android/app/build/outputs/apk/debug/app-debug.apk`. At the final
-check, `adb devices -l` listed no device, so the only unfinished plan step is to
-connect and unlock the Pixel with USB debugging enabled, install this APK,
-generate a fresh five-minute pairing link, pair once, and run a real task.
+Completed on 2026-07-19 with physical device `4B230DLAQ001Z5`, a Pixel 9 running
+Android 16:
+
+1. Installed `android/app/build/outputs/apk/debug/app-debug.apk` over USB.
+2. Generated a fresh one-time pairing link and transferred it directly into the
+   phone field. Its value is not stored in this repository or report. The
+   installed companion changed from zero to one paired device.
+3. The phone completed pinned TLS, device proof, `hello`, snapshot, project
+   selection, action results, and cumulative acknowledgements through the public
+   Fly route.
+4. The one approved project was selected.
+5. After explicit approval, the phone started one real read-only Codex turn using
+   the ChatGPT login `aadivya@fermi.ai`. `OPENAI_API_KEY` was not set, so the
+   credential source was the existing ChatGPT login. Expected added charge was
+   $0 under the existing plan, with normal plan usage consumed.
+6. The phone transcript showed the original prompt and the reply
+   `RELAY_BOX_PHONE_VERIFICATION_PASSED`. The model omitted the requested final
+   period, but the complete prompt and response round trip succeeded.
+7. Git status and the complete tracked diff had identical hashes immediately
+   before and after the turn, proving the read-only task changed no repository
+   files.
+
+The physical run exposed two final bugs that automated harnesses had missed:
+
+- A stale stored Tailscale pairing record correctly failed the new public-address
+  rule, but the recovery screen offered no way to remove it. The screen now has
+  **Remove local data**, wired to the same complete wipe used by normal unpairing.
+  Its device UI test failed before the control existed and passed after the fix.
+- The companion validated a phone acknowledgement without first recording the
+  snapshot sequence it had sent. Every valid acknowledgement was rejected as an
+  invalid text frame, causing a reconnect roughly every 40 seconds. The transport
+  now records outgoing protocol frames under the same lock used for incoming
+  frames and attachment state. The regression test failed because the valid
+  acknowledgement never reached the handler, then passed with `-race`; the full
+  companion race suite and `go vet` also passed. From the repaired companion's
+  14:26 start through the completed task, its log contained 11 accepted phone
+  acknowledgements and zero rejected transport frames.
+
+Final operator checks after installing the repaired companion: `status` reported
+one paired device and a running LaunchAgent; `doctor` passed all 7 checks. The
+final reproducible companion was built from commit
+`09cb1d9e4ae7009dea8adbcdd6cbb4379864630a`, with SHA-256
+`52bfbb01011ad2eef2d9aea9ed77274d02adf23fde8242583fe9e865d5cbd07b`.
+The adjacent provenance file names that exact source commit. After verified
+replacement, the installed binary and rebuilt artifact had the same SHA-256,
+the LaunchAgent was running, the paired-device count remained one, and doctor
+again passed 7/7.
