@@ -302,7 +302,7 @@ class HomeScreenTest {
     }
 
     @Test
-    fun swipeUpOpensAllAppsAndExpandedHelpStaysOfflineSafe() {
+    fun scrollingHomeContentDoesNotOpenAllAppsAndExpandedHelpStaysOfflineSafe() {
         var allAppsOpens = 0
         compose.setContent {
             QuietInstrumentTheme(AppearanceMode.DARK) {
@@ -317,7 +317,7 @@ class HomeScreenTest {
         compose.onNodeWithText("Check that the relay box and computer companion are online.").assertIsDisplayed()
         compose.onNodeWithContentDescription("Launcher home").performTouchInput { swipeUp() }
 
-        assertEquals(1, allAppsOpens)
+        assertEquals(0, allAppsOpens)
     }
 
     @Test
