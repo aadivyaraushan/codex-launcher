@@ -24,4 +24,4 @@ Android launcher activities -> complete, sorted app drawer list -> last app rema
 - [x] Remove the screen-wide swipe shortcut and declare narrowly scoped launcher-app visibility.
 - [x] Run focused tests and lint; search for the same gesture and visibility assumptions elsewhere.
 - [x] Install the final APK and verify scrolling, explicit opening, full-list count, and deep-list reachability on Pixel 9.
-- [ ] Save evidence, obtain an independent review, commit, and apply the commit to the main workspace.
+- [x] Save evidence, obtain an independent review, commit, and apply the commit to the main workspace.
