@@ -4,6 +4,13 @@
 **Goal:** existing tasks open to their transcript on the connected Pixel, and
 task titles remain readable against the active background.
 
+> **Completed 2026-07-19.** Commit `a5a41ba` was installed on the Mac and the
+> matching APK was installed on physical Pixel `4B230DLAQ001Z5`. The dark-title
+> device test passed, and two post-restart `catalog_candidate` tasks opened with
+> 5 and 2 transcript entries. Neither phone UI dump contained `Task unavailable`.
+> Full evidence is in
+> [`saved-results/task-open-contrast-phone-verification.md`](../saved-results/task-open-contrast-phone-verification.md).
+
 ```text
 Pixel task tap
     │
