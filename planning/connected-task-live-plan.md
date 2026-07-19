@@ -53,5 +53,5 @@ Mac task files / owned app-server events
 5. [x] Install the matching APK on Pixel `4B230DLAQ001Z5`, preserve or restore its
    pairing, and verify all four behaviors on the real task surface.
 6. [x] Search sibling transcript/title/inset paths for the same assumptions.
-7. [ ] Have an independent reviewer grade the finished result, then commit the
+7. [x] Have an independent reviewer grade the finished result, then commit the
    isolated change, bring it into the Conductor workspace, and save evidence.

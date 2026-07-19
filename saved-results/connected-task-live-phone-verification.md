@@ -9,10 +9,18 @@ connected-task fixes on the physical Pixel.
 The updated Android app passed the automated and physical checks on Pixel 9
 `4B230DLAQ001Z5`, running Android 16.
 
+The final Conductor-workspace implementation commit is
+`d4b248a244366bcaab8f8a58be8b5e894cf6df19`. The APK built from that workspace
+has SHA-256
+`1719052d066759ec6c83e9afe52a3c758de60e13cdd606f60e0a070a91e4dc75`.
+
 - The paired Mac received transcript reads at `16:20:20`, `16:20:22`,
   `16:20:24`, `16:20:26`, `16:20:28`, and `16:20:30` while one task remained
   open. This is the requested two-second refresh interval; the task was not
   reopened between reads.
+- After installing the final workspace APK and pairing it fresh, the same live
+  check repeated at `16:47:17`, `16:47:19`, and `16:47:21`, returning 32
+  entries from one continuously open task on every read.
 - The connected transcript returned 29 entries on every read. Android logged
   `read_mode=refresh` and applied each 29-entry page in memory.
 - Collision tests prove a live update arriving during either the initial read
@@ -82,3 +90,7 @@ new `message_type=task_read` lines in
 `~/Library/Logs/CodexLauncher/companion.log`. Consecutive reads should be two
 seconds apart. Then focus the follow-up field and use `uiautomator dump` plus a
 screenshot to compare the composer bounds with the visible app window.
+
+Final operator checks reported one paired device, a running LaunchAgent, and
+`doctor` completed 7 checks with 0 failures. The app was left open on the
+connected task with the keyboard dismissed.
