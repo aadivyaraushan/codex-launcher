@@ -6,12 +6,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,12 +29,20 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.task.management.TaskActionOutcome
 import app.codexlauncher.task.management.TaskActionsMenu
@@ -68,12 +82,20 @@ fun TaskScreen(
     onAttach: () -> Unit = {},
     onRemoveAttachment: (String) -> Unit = {},
 ) {
+    var titleExpanded by remember(state.taskId) { mutableStateOf(false) }
+    var titleWasTruncated by remember(state.taskId) { mutableStateOf(false) }
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
-    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -85,7 +107,33 @@ fun TaskScreen(
                 Text("←", style = MaterialTheme.typography.titleLarge)
             }
             Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                Text(state.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                Text(
+                    text = state.title,
+                    modifier =
+                        Modifier
+                            .then(
+                                if (titleExpanded || titleWasTruncated) {
+                                    Modifier.clickable(
+                                        onClickLabel = if (titleExpanded) "Collapse task title" else "Expand task title",
+                                        role = Role.Button,
+                                    ) { titleExpanded = !titleExpanded }
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .semantics {
+                                if (titleExpanded || titleWasTruncated) {
+                                    stateDescription = if (titleExpanded) "Expanded" else "Collapsed"
+                                }
+                            },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = if (titleExpanded) Int.MAX_VALUE else 2,
+                    overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { result ->
+                        if (!titleExpanded) titleWasTruncated = result.hasVisualOverflow
+                    },
+                )
                 Text(
                     "Task transcript",
                     style = MaterialTheme.typography.labelSmall,
@@ -103,7 +151,7 @@ fun TaskScreen(
             )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().testTag("task-transcript-content")) {
         when {
             state.loading && state.entries.isEmpty() ->
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

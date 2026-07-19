@@ -35,6 +35,7 @@ import app.codexlauncher.task.control.ExistingTaskSendMode
 import app.codexlauncher.task.composer.DraftVersion
 import app.codexlauncher.task.attachments.AttachmentSelection
 import app.codexlauncher.task.attachments.AttachmentUploader
+import app.codexlauncher.task.transcript.TranscriptEntry
 import app.codexlauncher.task.transcript.TaskTranscriptMapper
 import app.codexlauncher.task.transcript.TaskTranscriptUiState
 import java.util.UUID
@@ -86,6 +87,7 @@ class LauncherSessionViewModel(
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val nextSessionId: () -> String = { UUID.randomUUID().toString() },
     private val retryWait: suspend (attempt: Int) -> Unit = { attempt -> delay(retryDelayMillis(attempt)) },
+    private val transcriptRefreshWait: suspend () -> Unit = { delay(TRANSCRIPT_REFRESH_MILLIS) },
     private val attachmentUploader: AttachmentUploader = AttachmentUploader(),
     workScope: CoroutineScope? = null,
 ) : ViewModel() {
@@ -106,6 +108,7 @@ class LauncherSessionViewModel(
     private val pendingTaskAcknowledgements = ConcurrentHashMap<String, TaskAcknowledgement>()
     private val retainedUnknownActionIds = ConcurrentHashMap.newKeySet<String>()
     private var pendingTranscript: PendingTranscriptRequest? = null
+    private var transcriptRefreshQueued = false
     private var pendingDecisionRead: PendingDecisionRequest? = null
     private val acknowledgementGate = SequenceAcknowledgementGate()
     private val acknowledgementMutex = Mutex()
@@ -117,6 +120,7 @@ class LauncherSessionViewModel(
     private var nextSnapshotToken = 0L
     private var pendingSnapshotToken: Long? = null
     private var retryJob: Job? = null
+    private var transcriptRefreshJob: Job? = null
     private var retryComputer: PairedComputer? = null
     private var retryAttempt = 0
     private var retryToken = 0L
@@ -541,14 +545,16 @@ class LauncherSessionViewModel(
         val task = current.snapshot?.tasks?.singleOrNull { it.id == taskId }
         if (!transcriptCapable || current.connection.phase != app.codexlauncher.connection.state.ConnectionPhase.ONLINE || task == null) return false
         pendingDecisionRead = null
+        stopTranscriptRefresh("open_another_task")
         decisionViewModel.clear()
         mutableState.value =
             current.copy(
                 transcript = TaskTranscriptUiState(taskId = taskId, title = task.title),
                 followUpDraft = followUpDrafts[taskId].orEmpty(),
             )
-        val transcriptRequested = sendTranscriptRead(taskId, beforeEntryId = null, appendEarlier = false)
+        val transcriptRequested = sendTranscriptRead(taskId, beforeEntryId = null, mode = TranscriptReadMode.INITIAL)
         val decisionsRequested = !decisionCapable || sendDecisionRead(taskId)
+        if (transcriptRequested && decisionsRequested) startTranscriptRefresh(taskId, generation.get())
         return transcriptRequested && decisionsRequested
     }
 
@@ -592,18 +598,20 @@ class LauncherSessionViewModel(
         val cursor = transcript.earlierCursor ?: return false
         if (transcript.loading) return false
         mutableState.value = mutableState.value.copy(transcript = transcript.copy(loading = true, errorCode = null))
-        return sendTranscriptRead(transcript.taskId, beforeEntryId = cursor, appendEarlier = true)
+        return sendTranscriptRead(transcript.taskId, beforeEntryId = cursor, mode = TranscriptReadMode.EARLIER)
     }
 
     @Synchronized
     fun closeTask() {
+        stopTranscriptRefresh("task_closed")
         pendingTranscript = null
+        transcriptRefreshQueued = false
         pendingDecisionRead = null
         decisionViewModel.clear()
         mutableState.value = mutableState.value.copy(transcript = null, followUpDraft = "")
     }
 
-    private fun sendTranscriptRead(taskId: String, beforeEntryId: String?, appendEarlier: Boolean): Boolean {
+    private fun sendTranscriptRead(taskId: String, beforeEntryId: String?, mode: TranscriptReadMode): Boolean {
         val connection = activeConnection ?: return false
         val requestId = UUID.randomUUID().toString()
         val encoded =
@@ -619,7 +627,7 @@ class LauncherSessionViewModel(
                     beforeEntryId?.let { put("beforeEntryId", it) }
                 })
             }.toString().also(ProtocolCodec::decodeText)
-        pendingTranscript = PendingTranscriptRequest(generation.get(), requestId, taskId, appendEarlier)
+        pendingTranscript = PendingTranscriptRequest(generation.get(), requestId, taskId, mode)
         if (!connection.sendText(encoded)) {
             fail(generation.get(), SessionFailure.CONNECTION_LOST)
             return false
@@ -627,9 +635,65 @@ class LauncherSessionViewModel(
         AppLog.info(
             feature = "task-transcript",
             message = "transcript page requested",
-            fields = mapOf("task_id" to taskId, "has_cursor" to (beforeEntryId != null), "input_limit" to TRANSCRIPT_PAGE_SIZE),
+            fields = mapOf(
+                "task_id" to taskId,
+                "has_cursor" to (beforeEntryId != null),
+                "input_limit" to TRANSCRIPT_PAGE_SIZE,
+                "read_mode" to mode.name.lowercase(),
+            ),
         )
         return true
+    }
+
+    private fun startTranscriptRefresh(taskId: String, expectedGeneration: Long) {
+        transcriptRefreshJob = submissionScope.launch {
+            AppLog.info(
+                feature = "task-transcript",
+                message = "live transcript refresh started",
+                fields = mapOf("task_id" to taskId, "interval_millis" to TRANSCRIPT_REFRESH_MILLIS),
+            )
+            while (true) {
+                transcriptRefreshWait()
+                requestTranscriptRefresh(expectedGeneration, taskId, "interval")
+            }
+        }
+    }
+
+    @Synchronized
+    private fun requestTranscriptRefresh(expectedGeneration: Long, taskId: String, reason: String): Boolean {
+        val current = mutableState.value
+        if (
+            generation.get() != expectedGeneration ||
+            current.connection.phase != app.codexlauncher.connection.state.ConnectionPhase.ONLINE ||
+            current.transcript?.taskId != taskId
+        ) return false
+        if (pendingTranscript != null) {
+            transcriptRefreshQueued = true
+            AppLog.info(
+                feature = "task-transcript",
+                message = "live transcript refresh coalesced",
+                fields = mapOf("task_id" to taskId, "reason" to reason, "decision" to "refresh_after_pending_read"),
+            )
+            return true
+        }
+        AppLog.info(
+            feature = "task-transcript",
+            message = "live transcript refresh requested",
+            fields = mapOf("task_id" to taskId, "reason" to reason),
+        )
+        return sendTranscriptRead(taskId, beforeEntryId = null, mode = TranscriptReadMode.REFRESH)
+    }
+
+    private fun stopTranscriptRefresh(reason: String) {
+        transcriptRefreshQueued = false
+        if (transcriptRefreshJob == null) return
+        transcriptRefreshJob?.cancel()
+        transcriptRefreshJob = null
+        AppLog.info(
+            feature = "task-transcript",
+            message = "live transcript refresh stopped",
+            fields = mapOf("reason" to reason),
+        )
     }
 
     private fun sendDecisionRead(taskId: String): Boolean {
@@ -679,6 +743,7 @@ class LauncherSessionViewModel(
         val current = mutableState.value.transcript
         if (current == null || current.taskId != pending.taskId) {
             pendingTranscript = null
+            transcriptRefreshQueued = false
             return
         }
         pendingTranscript = null
@@ -686,9 +751,15 @@ class LauncherSessionViewModel(
             mutableState.value = mutableState.value.copy(
                 transcript = current.copy(loading = false, errorCode = page.errorCode),
             )
+            flushQueuedTranscriptRefresh(expectedGeneration, pending.taskId)
             return
         }
-        val entries = if (pending.appendEarlier) page.entries + current.entries else page.entries
+        val entries =
+            when (pending.mode) {
+                TranscriptReadMode.INITIAL -> page.entries
+                TranscriptReadMode.EARLIER -> page.entries + current.entries
+                TranscriptReadMode.REFRESH -> mergeRefreshedEntries(current.entries, page.entries)
+            }
         if (entries.map { it.id }.distinct().size != entries.size) {
             fail(expectedGeneration, SessionFailure.INVALID_PROTOCOL)
             return
@@ -696,7 +767,7 @@ class LauncherSessionViewModel(
         mutableState.value = mutableState.value.copy(
             transcript = current.copy(
                 entries = entries,
-                earlierCursor = page.earlierCursor,
+                earlierCursor = if (pending.mode == TranscriptReadMode.REFRESH) current.earlierCursor else page.earlierCursor,
                 truncated = current.truncated || page.truncated,
                 loading = false,
                 errorCode = null,
@@ -707,6 +778,14 @@ class LauncherSessionViewModel(
             message = "transcript page applied",
             fields = mapOf("task_id" to page.taskId, "page_count" to page.entries.size, "total_count" to entries.size, "has_earlier" to (page.earlierCursor != null)),
         )
+        flushQueuedTranscriptRefresh(expectedGeneration, pending.taskId)
+    }
+
+    @Synchronized
+    private fun flushQueuedTranscriptRefresh(expectedGeneration: Long, taskId: String) {
+        if (!transcriptRefreshQueued) return
+        transcriptRefreshQueued = false
+        requestTranscriptRefresh(expectedGeneration, taskId, "coalesced")
     }
 
     private fun applySnapshot(
@@ -818,6 +897,10 @@ class LauncherSessionViewModel(
             return
         }
         mutableState.value = current.copy(snapshot = snapshot.copy(tasks = updatedTasks))
+        val taskId = message.body.getValue("taskId").jsonPrimitive.content
+        if (current.transcript?.taskId == taskId) {
+            requestTranscriptRefresh(expectedGeneration, taskId, "live_event")
+        }
         submissionScope.launch { acknowledge(expectedGeneration, requireNotNull(message.sequence)) }
     }
 
@@ -1068,6 +1151,7 @@ class LauncherSessionViewModel(
     private fun fail(expectedGeneration: Long, reason: SessionFailure) {
         if (generation.get() != expectedGeneration) return
         generation.incrementAndGet()
+        stopTranscriptRefresh("session_failed")
         snapshotScope.cancel()
         snapshotScope = newSnapshotScope()
         projectBridge?.close()
@@ -1165,6 +1249,7 @@ class LauncherSessionViewModel(
     @Synchronized
     private fun closeCurrent(invalidate: Boolean) {
         if (invalidate) generation.incrementAndGet()
+        stopTranscriptRefresh("session_closed")
         snapshotScope.cancel()
         snapshotScope = newSnapshotScope()
         projectBridge?.close()
@@ -1237,8 +1322,18 @@ private data class PendingTranscriptRequest(
     val generation: Long,
     val requestId: String,
     val taskId: String,
-    val appendEarlier: Boolean,
+    val mode: TranscriptReadMode,
 )
+
+private enum class TranscriptReadMode { INITIAL, EARLIER, REFRESH }
+
+internal const val TRANSCRIPT_REFRESH_MILLIS = 2_000L
+
+private fun mergeRefreshedEntries(current: List<TranscriptEntry>, refreshed: List<TranscriptEntry>): List<TranscriptEntry> {
+    val refreshedById = refreshed.associateBy(TranscriptEntry::id)
+    val currentIds = current.mapTo(mutableSetOf(), TranscriptEntry::id)
+    return current.map { refreshedById[it.id] ?: it } + refreshed.filterNot { it.id in currentIds }
+}
 
 private data class PendingDecisionRequest(
     val generation: Long,

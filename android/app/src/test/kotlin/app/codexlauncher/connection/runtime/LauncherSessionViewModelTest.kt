@@ -581,6 +581,184 @@ class LauncherSessionViewModelTest {
     }
 
     @Test
+    fun openTranscriptRefreshesEveryTwoSecondsKeepsReasoningAndStopsWhenClosed() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val refreshTicks = Channel<Unit>(Channel.UNLIMITED)
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            transcriptRefreshWait = { refreshTicks.receive() },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts")))
+        observer.onMessage(snapshotWithTask(1, "Build launcher"))
+
+        assertEquals(2_000L, TRANSCRIPT_REFRESH_MILLIS)
+        assertTrue(viewModel.openTask("thread-1"))
+        val firstRead = connection.taskReads().single()
+        observer.onMessage(
+            transcriptPage(
+                requestId = firstRead.body.getValue("requestId").jsonPrimitive.content,
+                entries = """[{"id":"user-1","turnId":"turn-1","kind":"user","text":"Fix it"}]""",
+            ),
+        )
+
+        refreshTicks.send(Unit)
+        yield()
+        val refreshedRead = connection.taskReads().last()
+        assertEquals(2, connection.taskReads().size)
+        observer.onMessage(
+            transcriptPage(
+                requestId = refreshedRead.body.getValue("requestId").jsonPrimitive.content,
+                entries = """[{"id":"user-1","turnId":"turn-1","kind":"user","text":"Fix it"},{"id":"reason-1","turnId":"turn-1","kind":"reasoning","text":"Checking the failing path"},{"id":"agent-1","turnId":"turn-1","kind":"agent","text":"The fix is ready"}]""",
+            ),
+        )
+
+        assertEquals(
+            listOf("user-1", "reason-1", "agent-1"),
+            viewModel.state.value.transcript?.entries?.map { it.id },
+        )
+        assertEquals("Checking the failing path", viewModel.state.value.transcript?.entries?.get(1)?.text)
+
+        viewModel.closeTask()
+        val readsBeforeClosedTick = connection.taskReads().size
+        refreshTicks.send(Unit)
+        yield()
+        assertEquals(readsBeforeClosedTick, connection.taskReads().size)
+    }
+
+    @Test
+    fun matchingLiveTaskEventRefreshesOpenTranscriptImmediately() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val refreshTicks = Channel<Unit>(Channel.UNLIMITED)
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null },
+            saveProject = { true },
+            clearProject = { true },
+            actionJournal = FakeActionJournal(),
+            nextSessionId = { "session-1" },
+            transcriptRefreshWait = { refreshTicks.receive() },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts")))
+        observer.onMessage(snapshotWithTask(1, "Build launcher"))
+        assertTrue(viewModel.openTask("thread-1"))
+        val initialRead = connection.taskReads().single()
+        observer.onMessage(
+            transcriptPage(
+                requestId = initialRead.body.getValue("requestId").jsonPrimitive.content,
+                entries = """[{"id":"user-1","turnId":"turn-1","kind":"user","text":"Fix it"}]""",
+            ),
+        )
+
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"event-2","sender":"companion","type":"event","seq":2,"body":{"taskId":"thread-1","event":"activity","state":"working","summary":"Thinking"}}""",
+            ),
+        )
+        yield()
+
+        assertEquals(2, connection.taskReads().size)
+    }
+
+    @Test
+    fun liveEventDuringInitialReadIsCoalescedAndSentAsSoonAsThePageArrives() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val refreshTicks = Channel<Unit>(Channel.UNLIMITED)
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null }, saveProject = { true }, clearProject = { true },
+            actionJournal = FakeActionJournal(), nextSessionId = { "session-1" },
+            transcriptRefreshWait = { refreshTicks.receive() },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts")))
+        observer.onMessage(snapshotWithTask(1, "Build launcher"))
+        assertTrue(viewModel.openTask("thread-1"))
+        val initialRead = connection.taskReads().single()
+
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"event-2","sender":"companion","type":"event","seq":2,"body":{"taskId":"thread-1","event":"activity","state":"working","summary":"Thinking"}}""",
+            ),
+        )
+        assertEquals(1, connection.taskReads().size)
+        observer.onMessage(
+            transcriptPage(
+                requestId = initialRead.body.getValue("requestId").jsonPrimitive.content,
+                entries = """[{"id":"user-1","turnId":"turn-1","kind":"user","text":"Fix it"}]""",
+            ),
+        )
+
+        assertEquals(2, connection.taskReads().size)
+    }
+
+    @Test
+    fun refreshAfterLoadingEarlierPreservesTheOldestCursorAndNeverDuplicatesHistory() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val refreshTicks = Channel<Unit>(Channel.UNLIMITED)
+        val viewModel = LauncherSessionViewModel(
+            connect = { _, _, nextObserver -> observer = nextObserver; connection },
+            loadProject = { null }, saveProject = { true }, clearProject = { true },
+            actionJournal = FakeActionJournal(), nextSessionId = { "session-1" },
+            transcriptRefreshWait = { refreshTicks.receive() },
+            workScope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts")))
+        observer.onMessage(snapshotWithTask(1, "Build launcher"))
+        assertTrue(viewModel.openTask("thread-1"))
+        val initialRead = connection.taskReads().single()
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"latest","sender":"companion","type":"task_page","body":{"requestId":"${initialRead.body.getValue("requestId").jsonPrimitive.content}","taskId":"thread-1","entries":[{"id":"user-2","turnId":"turn-2","kind":"user","text":"Latest"}],"earlierCursor":"user-2","truncated":false}}""",
+            ),
+        )
+        assertTrue(viewModel.loadEarlierTranscript())
+        val earlierRead = connection.taskReads().last()
+
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"event-2","sender":"companion","type":"event","seq":2,"body":{"taskId":"thread-1","event":"activity","state":"working","summary":"More work"}}""",
+            ),
+        )
+        observer.onMessage(
+            transcriptPage(
+                requestId = earlierRead.body.getValue("requestId").jsonPrimitive.content,
+                entries = """[{"id":"user-1","turnId":"turn-1","kind":"user","text":"Oldest"}]""",
+            ),
+        )
+        val refreshRead = connection.taskReads().last()
+        assertEquals(3, connection.taskReads().size)
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"refreshed","sender":"companion","type":"task_page","body":{"requestId":"${refreshRead.body.getValue("requestId").jsonPrimitive.content}","taskId":"thread-1","entries":[{"id":"user-2","turnId":"turn-2","kind":"user","text":"Latest updated"},{"id":"agent-2","turnId":"turn-2","kind":"agent","text":"New reply"}],"earlierCursor":"user-2","truncated":false}}""",
+            ),
+        )
+
+        assertEquals(null, viewModel.state.value.transcript?.earlierCursor)
+        assertEquals(listOf("user-1", "user-2", "agent-2"), viewModel.state.value.transcript?.entries?.map { it.id })
+        assertFalse(viewModel.loadEarlierTranscript())
+        assertEquals(ConnectionPhase.ONLINE, viewModel.state.value.connection.phase)
+    }
+
+    @Test
     fun liveDecisionPageOpensForTaskAndExactDeclineCrossesDurableActionBoundary() = runBlocking {
         lateinit var observer: SessionObserver
         val connection = FakeSessionConnection()
@@ -1746,6 +1924,11 @@ class LauncherSessionViewModelTest {
 
     private fun decode(frame: String): ProtocolMessage = ProtocolCodec.decodeText(frame)
 
+    private fun transcriptPage(requestId: String, entries: String): ProtocolMessage =
+        decode(
+            """{"version":{"major":1,"minor":0},"messageId":"page-$requestId","sender":"companion","type":"task_page","body":{"requestId":"$requestId","taskId":"thread-1","entries":$entries,"truncated":false}}""",
+        )
+
     private fun snapshotWithTask(sequence: Long, title: String): ProtocolMessage =
         decode(
             """{"version":{"major":1,"minor":0},"messageId":"snapshot-$sequence","sender":"companion","type":"snapshot","seq":$sequence,"body":{"baseSeq":$sequence,"computerName":"Studio Mac","projects":[],"tasks":[{"taskId":"thread-1","title":"$title","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"}]}}""",
@@ -1830,6 +2013,9 @@ private class FakeSessionConnection : SessionConnection {
     override fun close() {
         closed = true
     }
+
+    fun taskReads(): List<ProtocolMessage> =
+        sent.map(ProtocolCodec::decodeText).filter { it.type.wireName == "task_read" }
 }
 
 private class FakeActionJournal(

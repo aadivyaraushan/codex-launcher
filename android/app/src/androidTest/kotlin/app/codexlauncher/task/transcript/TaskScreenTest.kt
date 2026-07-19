@@ -1,11 +1,23 @@
 package app.codexlauncher.task.transcript
 
+import android.view.WindowInsets as AndroidWindowInsets
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
@@ -44,6 +56,71 @@ class TaskScreenTest {
             }
         }
         assertTrue("dark task title never becomes brighter than its background", brightestChannel > 0.5f)
+    }
+
+    @Test
+    fun longTaskTitleStartsCollapsedAndExpandsOnlyAfterTap() {
+        val longTitle = List(20) { "Detailed task description" }.joinToString(" ")
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                TaskScreen(state = TaskTranscriptUiState(taskId = "thread-1", title = longTitle))
+            }
+        }
+
+        val title = compose.onNodeWithText(longTitle).assertHasClickAction()
+        val collapsedNode = title.fetchSemanticsNode()
+        val collapsedHeight = collapsedNode.boundsInRoot.height
+        assertEquals("Collapsed", collapsedNode.config[SemanticsProperties.StateDescription])
+        assertEquals("Expand task title", collapsedNode.config[SemanticsActions.OnClick].label)
+        title.performClick()
+        val expandedNode = compose.onNodeWithText(longTitle).assertHasClickAction().fetchSemanticsNode()
+        val expandedHeight = expandedNode.boundsInRoot.height
+
+        assertTrue("long task title did not expand after tap", expandedHeight > collapsedHeight)
+        assertEquals("Expanded", expandedNode.config[SemanticsProperties.StateDescription])
+        assertEquals("Collapse task title", expandedNode.config[SemanticsActions.OnClick].label)
+        compose.onNodeWithText(longTitle).performClick()
+        assertEquals(collapsedHeight, compose.onNodeWithText(longTitle).fetchSemanticsNode().boundsInRoot.height)
+    }
+
+    @Test
+    fun transcriptWithoutControlsStaysAboveTheBottomNavigationInset() {
+        var navigationBottom = 0
+        compose.setContent {
+            navigationBottom = WindowInsets.navigationBars.getBottom(LocalDensity.current)
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                TaskScreen(
+                    state = TaskTranscriptUiState(
+                        taskId = "thread-1",
+                        title = "Task",
+                        entries = listOf(TranscriptEntry("agent-1", "turn-1", TranscriptEntryKind.AGENT, text = "Last entry")),
+                    ),
+                )
+            }
+        }
+
+        val rootBottom = compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom
+        val contentBottom = compose.onNodeWithTag("task-transcript-content").fetchSemanticsNode().boundsInRoot.bottom
+        assertTrue("transcript content extends beneath navigation UI", rootBottom - contentBottom >= navigationBottom)
+    }
+
+    @Test
+    fun keyboardLeavesFollowUpControlsAtTheBottomOfTheVisibleApp() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                TaskScreen(
+                    state = populatedState(),
+                    taskState = app.codexlauncher.task.summary.TaskState.IDLE_AFTER_REPLY,
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Follow-up message").performClick().performTextInput("Keyboard check")
+        compose.waitUntil(timeoutMillis = 3_000) { isImeVisible() }
+        val rootBottom = compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom
+        val actionBottom = compose.onNodeWithText("Send follow-up").fetchSemanticsNode().boundsInRoot.bottom
+
+        assertTrue("follow-up actions leave excessive space above the keyboard", rootBottom - actionBottom < 160f)
     }
 
     @Test
@@ -102,6 +179,8 @@ class TaskScreenTest {
 
         compose.onNodeWithText("Build launcher").assertIsDisplayed()
         compose.onNodeWithText("Fix the tests").assertIsDisplayed()
+        compose.onNodeWithText("Reasoning").assertIsDisplayed()
+        compose.onNodeWithText("Checking the package").assertIsDisplayed()
         compose.onNodeWithText("All tests pass.").assertIsDisplayed()
         compose.onNodeWithText("go test ./...").assertIsDisplayed()
         compose.onNodeWithText("private command output").assertDoesNotExist()
@@ -344,4 +423,18 @@ class TaskScreenTest {
                 TranscriptEntry("agent-1", "turn-1", TranscriptEntryKind.AGENT, text = "All tests pass."),
             ),
         )
+
+    private fun isImeVisible(): Boolean {
+        var visible = false
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            visible =
+                ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)
+                    .any { activity ->
+                        activity.window.decorView.rootWindowInsets
+                            ?.isVisible(AndroidWindowInsets.Type.ime()) == true
+                    }
+        }
+        return visible
+    }
 }
