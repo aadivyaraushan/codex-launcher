@@ -1,7 +1,6 @@
 package app.codexlauncher.task.transcript
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,9 +68,12 @@ fun TaskScreen(
     onAttach: () -> Unit = {},
     onRemoveAttachment: (String) -> Unit = {},
 ) {
-    Column(
-        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding(),
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
+    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -187,6 +189,7 @@ fun TaskScreen(
             )
         }
     }
+    }
 }
 
 @Composable
@@ -262,7 +265,12 @@ fun TranscriptDetailScreen(
     onBack: () -> Unit = {},
 ) {
     val title = if (detail is TranscriptDetail.Command) "Command output" else "File change"
-    Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
+    ) {
+    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -300,5 +308,6 @@ fun TranscriptDetailScreen(
                 }
             }
         }
+    }
     }
 }

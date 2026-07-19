@@ -2,12 +2,14 @@ package app.codexlauncher.task.transcript
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.runtime.mutableStateOf
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
@@ -15,6 +17,7 @@ import app.codexlauncher.LauncherDestination
 import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.visibleDestination
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import app.codexlauncher.task.management.TaskActionOutcome
@@ -24,6 +27,24 @@ import app.codexlauncher.task.control.PromptDictationResult
 class TaskScreenTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun darkTaskScreenUsesReadablePrimaryText() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                TaskScreen(state = TaskTranscriptUiState(taskId = "thread-1", title = "Readable title"))
+            }
+        }
+
+        val titlePixels = compose.onNodeWithText("Readable title").captureToImage().toPixelMap()
+        val brightestChannel = (0 until titlePixels.width).maxOf { x ->
+            (0 until titlePixels.height).maxOf { y ->
+                val color = titlePixels[x, y]
+                maxOf(color.red, color.green, color.blue)
+            }
+        }
+        assertTrue("dark task title never becomes brighter than its background", brightestChannel > 0.5f)
+    }
 
     @Test
     fun dictationAppendsEditableTextAndReportsCancelWithoutErasingIt() {

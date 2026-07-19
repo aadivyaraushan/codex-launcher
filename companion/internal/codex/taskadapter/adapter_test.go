@@ -902,7 +902,33 @@ func TestCatalogReadsBoundedAppServerTranscriptWithTurns(t *testing.T) {
 	}
 }
 
-func TestCatalogReadsOnlyVerifiedDesktopTranscriptAndRejectsCandidate(t *testing.T) {
+func TestCatalogReadsCatalogCandidateThroughAppServerWithoutClaimingDesktopOwnership(t *testing.T) {
+	readTaskID := ""
+	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[{"id":"catalog-1","name":"Catalog","preview":"","cwd":"/work/catalog","updatedAt":45,"status":{"type":"notLoaded","activeFlags":[]},"turns":[]}]}`), nil
+	}, nil, nil)
+	catalog.readAppTranscript = func(_ context.Context, taskID string) (json.RawMessage, error) {
+		readTaskID = taskID
+		return json.RawMessage(`{"thread":{"id":"catalog-1","turns":[{"id":"turn-1","status":"completed","items":[{"id":"agent-1","type":"agentMessage","text":"Saved reply"}]}]}}`), nil
+	}
+	tasks, err := catalog.ListRecent(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].Source != taskstate.SourceCatalog {
+		t.Fatalf("catalog tasks = %#v", tasks)
+	}
+
+	page, err := catalog.ReadTranscript(context.Background(), "catalog-1", tasktranscript.PageOptions{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readTaskID != "catalog-1" || len(page.Entries) != 1 || page.Entries[0].Text != "Saved reply" {
+		t.Fatalf("catalog transcript = %#v, read task = %q", page, readTaskID)
+	}
+}
+
+func TestCatalogReadsOnlyVerifiedDesktopTranscriptWhenAppServerReadIsUnavailable(t *testing.T) {
 	state := json.RawMessage(`{"id":"desktop-1","cwd":"/work/desktop","threadRuntimeStatus":{"type":"idle","activeFlags":[]},"requests":[],"turns":[{"role":"assistant","text":"Desktop reply"}]}`)
 	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
 		return json.RawMessage(`{"data":[{"id":"desktop-1","name":"Desktop","preview":"","cwd":"/work/desktop","updatedAt":45,"status":{"type":"notLoaded","activeFlags":[]},"turns":[]}]}`), nil

@@ -121,8 +121,11 @@ func (catalog *Catalog) ReadTranscript(ctx context.Context, taskID string, optio
 	catalog.logger.Debug("[codex-adapter] transcript requested", "task_id", taskID, "source", candidate.Source, "input_limit", options.Limit, "has_cursor", options.BeforeEntryID != "")
 	var page tasktranscript.Page
 	switch candidate.Source {
-	case taskstate.SourceAppServer:
+	case taskstate.SourceAppServer, taskstate.SourceCatalog:
 		if catalog.readAppTranscript == nil {
+			if candidate.Source == taskstate.SourceCatalog {
+				return tasktranscript.Page{}, taskstate.ErrUnresolvedTaskSource
+			}
 			return tasktranscript.Page{}, errors.New("app-server transcript reader is unavailable")
 		}
 		raw, readErr := catalog.readAppTranscript(ctx, taskID)
@@ -141,8 +144,6 @@ func (catalog *Catalog) ReadTranscript(ctx context.Context, taskID string, optio
 			return tasktranscript.Page{}, fmt.Errorf("read Desktop task transcript: %w", readErr)
 		}
 		page, err = tasktranscript.MapDesktopPage(raw, options)
-	case taskstate.SourceCatalog:
-		return tasktranscript.Page{}, taskstate.ErrUnresolvedTaskSource
 	default:
 		return tasktranscript.Page{}, taskstate.ErrUnknownTaskSource
 	}
