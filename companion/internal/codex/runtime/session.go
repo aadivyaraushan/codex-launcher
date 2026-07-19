@@ -140,12 +140,17 @@ func startWith(ctx context.Context, options Options, deps dependencies) (*Sessio
 		var connectErr error
 		desktopClient, connectErr = desktop.Connect(ctx)
 		if connectErr != nil {
-			logger.Error("[codex-runtime] Desktop connection failed", "platform", deps.goos, "error_class", fmt.Sprintf("%T", connectErr), "error", connectErr)
-			cleanupErr := closeOwners(desktop, app)
-			return nil, errors.Join(fmt.Errorf("connect verified ChatGPT Desktop: %w", connectErr), cleanupErr)
+			logger.Warn("[codex-runtime] Desktop connection unavailable; continuing with owned app-server", "platform", deps.goos, "error_class", fmt.Sprintf("%T", connectErr), "error", connectErr, "decision", "app_server_fallback")
+			if closeErr := desktop.Close(); closeErr != nil {
+				logger.Warn("[codex-runtime] unavailable Desktop connector cleanup failed", "error_class", fmt.Sprintf("%T", closeErr))
+			}
+			desktop = nil
+			desktopClient = nil
+			tasks, err = taskadapter.NewAppServerOnly(app.Client())
+		} else {
+			tasks, err = taskadapter.New(desktopClient, app.Client())
+			adapterMode = "desktop_and_app_server"
 		}
-		tasks, err = taskadapter.New(desktopClient, app.Client())
-		adapterMode = "desktop_and_app_server"
 	} else {
 		tasks, err = taskadapter.NewAppServerOnly(app.Client())
 	}

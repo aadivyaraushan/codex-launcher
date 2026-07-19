@@ -60,6 +60,9 @@ func TestPhoneDroppedWhenMacNeverRedeems(t *testing.T) {
 		t.Fatalf("dial phone door: %v", err)
 	}
 	defer conn.Close()
+	if _, err := conn.Write([]byte{0x16, 0x03}); err != nil {
+		t.Fatalf("write phone TLS preface: %v", err)
+	}
 
 	// Confirm the box really did mint+signal a token (so we know we're testing
 	// the redeem-wait path, not the no-control-line path).

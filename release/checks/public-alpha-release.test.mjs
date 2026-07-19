@@ -9,6 +9,7 @@ const requiredFiles = [
   ".github/workflows/release.yml",
   "docs/setup/android.md",
   "docs/setup/companion.md",
+  "docs/setup/relay-box.md",
   "docs/security/threat-model.md",
   "docs/compatibility/codex.md",
   "release/companion-package/main.go",
@@ -115,6 +116,7 @@ assert.doesNotMatch(readme, /not yet a usable launcher/i);
 for (const doc of [
   "docs/setup/android.md",
   "docs/setup/companion.md",
+  "docs/setup/relay-box.md",
   "docs/security/threat-model.md",
   "docs/compatibility/codex.md",
 ]) {
@@ -124,12 +126,14 @@ for (const doc of [
 const combinedDocs = [
   read("docs/setup/android.md"),
   read("docs/setup/companion.md"),
+  read("docs/setup/relay-box.md"),
   read("docs/security/threat-model.md"),
   read("docs/compatibility/codex.md"),
 ].join("\n");
 for (const phrase of [
   "Computer offline",
-  "Tailscale",
+  "relay box",
+  "sealed TLS",
   "ChatGPT",
   "unsigned technical alpha",
   "Pixel 9",
@@ -138,6 +142,14 @@ for (const phrase of [
   "uninstall",
 ]) {
   assert.ok(combinedDocs.toLowerCase().includes(phrase.toLowerCase()), `documentation must cover ${phrase}`);
+}
+for (const staleInstruction of [
+  /official Tailscale client/i,
+  /tailscale ip -4/i,
+  /--listen-host/i,
+  /Tailscale address ownership/i,
+]) {
+  assert.doesNotMatch(combinedDocs, staleInstruction, `documentation must not retain removed Tailscale setup: ${staleInstruction}`);
 }
 
 const companionSetup = read("docs/setup/companion.md");

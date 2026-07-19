@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 5 ]]; then
-  printf 'usage: %s COMPANION REPLACEMENT CODEX_BINARY TAILSCALE_IP PROJECT_DIR\n' "$0" >&2
+if [[ $# -ne 9 ]]; then
+  printf 'usage: %s COMPANION REPLACEMENT CODEX_BINARY BOX_HOST MAC_PORT PHONE_PORT PINNED_KEY RELAY_SECRET PROJECT_DIR\n' "$0" >&2
   exit 2
 fi
 
 companion=$1
 replacement=$2
 codex_binary=$3
-tailscale_ip=$4
-project_dir=$5
+box_host=$4
+mac_port=$5
+phone_port=$6
+pinned_key=$7
+relay_secret=$8
+project_dir=$9
 
 for executable in "$companion" "$replacement" "$codex_binary"; do
   if [[ ! -f "$executable" ]]; then
@@ -44,8 +48,11 @@ esac
 "$companion" version
 "$companion" setup \
   --computer-name "Codex Launcher smoke" \
-  --listen-host "$tailscale_ip" \
-  --listen-port 19443 \
+  --box-host "$box_host" \
+  --mac-port "$mac_port" \
+  --phone-port "$phone_port" \
+  --pinned-key "$pinned_key" \
+  --relay-secret "$relay_secret" \
   --codex-binary "$codex_binary" \
   --project-id smoke \
   --project-name "Smoke project" \

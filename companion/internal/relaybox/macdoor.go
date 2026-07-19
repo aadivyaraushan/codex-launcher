@@ -22,12 +22,20 @@ type controlLine struct {
 }
 
 func (line *controlLine) sendSession(token string) error {
+	return line.send("SESSION " + token + "\n")
+}
+
+func (line *controlLine) sendHeartbeat() error {
+	return line.send("PING\n")
+}
+
+func (line *controlLine) send(message string) error {
 	line.writeMu.Lock()
 	defer line.writeMu.Unlock()
 	if line.closed {
 		return net.ErrClosed
 	}
-	_, err := line.conn.Write([]byte("SESSION " + token + "\n"))
+	_, err := line.conn.Write([]byte(message))
 	return err
 }
 
@@ -86,12 +94,30 @@ func (box *Box) handleMacConn(conn net.Conn) {
 	switch {
 	case strings.HasPrefix(line, "REGISTER "):
 		box.handleRegister(conn, strings.TrimPrefix(line, "REGISTER "))
+	case strings.HasPrefix(line, "CHECK "):
+		box.handleCheck(conn, strings.TrimPrefix(line, "CHECK "))
 	case strings.HasPrefix(line, "REDEEM "):
 		box.handleRedeem(conn, reader, strings.TrimPrefix(line, "REDEEM "))
 	default:
 		box.logger.Warn("[relaybox] mac-door connection rejected", "branch_reason", "unknown_framing")
 		_ = conn.Close()
 	}
+}
+
+// handleCheck lets setup and doctor prove that the saved secret matches
+// without taking or disturbing the one live REGISTER control slot.
+func (box *Box) handleCheck(conn net.Conn, providedSecret string) {
+	defer func() { _ = conn.Close() }()
+	if subtle.ConstantTimeCompare([]byte(providedSecret), box.secret) != 1 {
+		box.logger.Warn("[relaybox] registration check rejected", "branch_reason", "invalid_secret")
+		_, _ = conn.Write([]byte("ERR\n"))
+		return
+	}
+	if _, err := conn.Write([]byte("OK\n")); err != nil {
+		box.logger.Warn("[relaybox] registration check reply failed", "branch_reason", "ok_write_failed")
+		return
+	}
+	box.logger.Info("[relaybox] registration secret checked")
 }
 
 func (box *Box) handleRegister(conn net.Conn, providedSecret string) {
@@ -113,17 +139,41 @@ func (box *Box) handleRegister(conn net.Conn, providedSecret string) {
 	box.watchControlLine(line)
 }
 
-// watchControlLine blocks for the lifetime of a control line, so its
-// eviction (or disconnect) can clear box.control. It ignores any bytes read
-// (there is no heartbeat protocol in this slice) and only cares about the
-// connection closing.
+// watchControlLine keeps the registration alive only while the Mac answers
+// PING with PONG. A dead TCP path is evicted promptly so reconnect can take
+// over without waiting for an operating-system timeout.
 func (box *Box) watchControlLine(line *controlLine) {
-	discard := make([]byte, 1)
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(box.controlHeartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if err := line.sendHeartbeat(); err != nil {
+					line.close()
+					return
+				}
+			}
+		}
+	}()
+	reader := bufio.NewReaderSize(line.conn, 16)
+	_ = line.conn.SetReadDeadline(time.Now().Add(box.controlHeartbeatTimeout))
 	for {
-		if _, err := line.conn.Read(discard); err != nil {
+		message, err := reader.ReadString('\n')
+		if err != nil {
 			break
 		}
+		if strings.TrimRight(message, "\r\n") != "PONG" {
+			box.logger.Warn("[relaybox] control line message rejected", "branch_reason", "unexpected_control_message")
+			continue
+		}
+		_ = line.conn.SetReadDeadline(time.Now().Add(box.controlHeartbeatTimeout))
 	}
+	close(done)
+	line.close()
 	box.mu.Lock()
 	if box.control == line {
 		box.control = nil

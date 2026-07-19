@@ -3,6 +3,8 @@ package relayclient
 import (
 	"bufio"
 	"crypto/tls"
+	"fmt"
+	"io"
 	"strings"
 	"time"
 )
@@ -32,9 +34,16 @@ func (l *Listener) runControlLoop(conn *tls.Conn) {
 		}
 
 		line = strings.TrimRight(line, "\r\n")
-		token, ok := strings.CutPrefix(line, "SESSION ")
+		token, ok, err := handleControlCommand(conn, line)
+		if err != nil {
+			l.logger.Warn("[relayclient] control heartbeat reply failed")
+			_ = conn.Close()
+			continue
+		}
 		if !ok || token == "" {
-			l.logger.Warn("[relayclient] control line: unexpected line")
+			if line != "PING" {
+				l.logger.Warn("[relayclient] control line: unexpected line")
+			}
 			continue
 		}
 
@@ -47,6 +56,21 @@ func (l *Listener) runControlLoop(conn *tls.Conn) {
 			return
 		}
 	}
+}
+
+func handleControlCommand(writer io.Writer, line string) (token string, session bool, err error) {
+	if line == "PING" {
+		_, err := io.WriteString(writer, "PONG\n")
+		return "", false, err
+	}
+	token, ok := strings.CutPrefix(line, "SESSION ")
+	if !ok || token == "" {
+		return "", false, nil
+	}
+	if strings.ContainsAny(token, "\r\n") {
+		return "", false, fmt.Errorf("relayclient: invalid session token")
+	}
+	return token, true, nil
 }
 
 // reconnectControlLine retries dial+REGISTER, waiting cfg.reconnectDelay

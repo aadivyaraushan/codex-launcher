@@ -95,7 +95,7 @@ func TestWindowsFailsClosedUntilItsVerifiedDesktopConnectorExists(t *testing.T) 
 	}
 }
 
-func TestDesktopConnectionFailureCleansUpEveryStartedOwner(t *testing.T) {
+func TestDesktopConnectionFailureFallsBackToTheOwnedAppServer(t *testing.T) {
 	app := newFakeAppSession(nil)
 	desktop := &fakeDesktopConnector{connectErr: errors.New("desktop unavailable")}
 	var logs lockedBuffer
@@ -104,11 +104,18 @@ func TestDesktopConnectionFailureCleansUpEveryStartedOwner(t *testing.T) {
 		startAppServer: func(context.Context, process.Options) (appSession, error) { return app, nil },
 		newDesktop:     func(string, *slog.Logger) desktopConnector { return desktop },
 	})
-	if session != nil || err == nil {
+	if session == nil || err != nil {
 		t.Fatalf("session = %#v, error = %v", session, err)
 	}
-	if app.closeCount() != 1 || desktop.closeCount != 1 {
+	defer session.Close()
+	if app.closeCount() != 0 || desktop.closeCount != 1 {
 		t.Fatalf("cleanup counts: app = %d, desktop = %d", app.closeCount(), desktop.closeCount)
+	}
+	if _, err := session.Tasks().For(taskstate.Task{Source: taskstate.SourceAppServer}); err != nil {
+		t.Fatalf("app-server fallback = %v", err)
+	}
+	if _, err := session.Tasks().For(taskstate.Task{Source: taskstate.SourceDesktop}); !errors.Is(err, ErrDesktopUnavailable) {
+		t.Fatalf("desktop adapter error = %v", err)
 	}
 	if !strings.Contains(logs.String(), "error=\"desktop unavailable\"") {
 		t.Fatalf("connection log did not preserve the cause: %s", logs.String())

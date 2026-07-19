@@ -2,7 +2,11 @@ param(
   [Parameter(Mandatory = $true)][string]$Companion,
   [Parameter(Mandatory = $true)][string]$Replacement,
   [Parameter(Mandatory = $true)][string]$CodexBinary,
-  [Parameter(Mandatory = $true)][string]$TailscaleIP,
+  [Parameter(Mandatory = $true)][string]$BoxHost,
+  [Parameter(Mandatory = $true)][int]$MacPort,
+  [Parameter(Mandatory = $true)][int]$PhonePort,
+  [Parameter(Mandatory = $true)][string]$PinnedKey,
+  [Parameter(Mandatory = $true)][string]$RelaySecret,
   [Parameter(Mandatory = $true)][string]$ProjectDirectory
 )
 
@@ -44,8 +48,11 @@ try {
   & $Companion version
   & $Companion setup `
     --computer-name "Codex Launcher smoke" `
-    --listen-host $TailscaleIP `
-    --listen-port 19443 `
+    --box-host $BoxHost `
+    --mac-port $MacPort `
+    --phone-port $PhonePort `
+    --pinned-key $PinnedKey `
+    --relay-secret $RelaySecret `
     --codex-binary $CodexBinary `
     --project-id smoke `
     --project-name "Smoke project" `

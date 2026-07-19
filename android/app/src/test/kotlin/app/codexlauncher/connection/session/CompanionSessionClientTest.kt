@@ -33,8 +33,15 @@ import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.net.ConnectException
+import java.net.SocketException
 
 class CompanionSessionClientTest {
+	@Test
+	fun networkFailureClassificationSeparatesRelayReachabilityFromAnOfflineComputer() {
+		assertEquals(SessionFailure.BOX_UNREACHABLE, classifySessionFailure(ConnectException("refused"), null))
+		assertEquals(SessionFailure.CONNECTION_LOST, classifySessionFailure(SocketException("reset"), null))
+	}
     private val servers = mutableListOf<MockWebServer>()
 
     @After

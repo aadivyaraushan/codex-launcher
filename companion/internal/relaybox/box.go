@@ -17,6 +17,15 @@ const (
 	// open, waiting for the Mac to redeem the token it was given, before
 	// giving up and dropping the phone connection cheaply.
 	defaultPhoneWaitTimeout = 5 * time.Second
+	// defaultPhonePrefaceTimeout drops a public phone connection before it
+	// consumes a Mac slot unless it promptly starts its inner TLS handshake.
+	defaultPhonePrefaceTimeout      = 2 * time.Second
+	defaultMaxPendingPhones         = 8
+	defaultPerIPRateLimit           = 12
+	defaultGlobalRateLimit          = 120
+	defaultRateLimitWindow          = time.Minute
+	defaultControlHeartbeatInterval = 20 * time.Second
+	defaultControlHeartbeatTimeout  = 60 * time.Second
 	// macDoorHeaderTimeout bounds how long the box waits for the first line
 	// (REGISTER/REDEEM) on a new Mac-door connection before giving up.
 	macDoorHeaderTimeout = 5 * time.Second
@@ -51,14 +60,19 @@ var (
 // the two once the Mac claims a token. It never parses or decrypts the
 // phone<->Mac stream, and it holds none of their keys.
 type Box struct {
-	secret           []byte
-	cert             tls.Certificate
-	now              func() time.Time
-	tokenTTL         time.Duration
-	phoneWaitTimeout time.Duration
-	logger           *slog.Logger
+	secret              []byte
+	cert                tls.Certificate
+	now                 func() time.Time
+	tokenTTL            time.Duration
+	phoneWaitTimeout    time.Duration
+	phonePrefaceTimeout time.Duration
+	logger              *slog.Logger
 
-	tokens *tokenStore
+	tokens                   *tokenStore
+	pendingPhones            chan struct{}
+	phoneLimiter             *connectionLimiter
+	controlHeartbeatInterval time.Duration
+	controlHeartbeatTimeout  time.Duration
 
 	mu      sync.Mutex
 	control *controlLine
@@ -99,6 +113,46 @@ func WithPhoneWaitTimeout(timeout time.Duration) Option {
 	}
 }
 
+// WithPhonePrefaceTimeout controls how quickly an idle public phone must send
+// the first byte of its inner TLS handshake before the box drops it.
+func WithPhonePrefaceTimeout(timeout time.Duration) Option {
+	return func(b *Box) {
+		if timeout > 0 {
+			b.phonePrefaceTimeout = timeout
+		}
+	}
+}
+
+// WithMaxPendingPhones caps phone connections that have not yet acquired a
+// matching Mac data line. The default matches the companion's eight slots.
+func WithMaxPendingPhones(limit int) Option {
+	return func(b *Box) {
+		if limit > 0 {
+			b.pendingPhones = make(chan struct{}, limit)
+		}
+	}
+}
+
+// WithPhoneRateLimits sets the per-client and whole-box connection limits.
+func WithPhoneRateLimits(perIP, global int, window time.Duration) Option {
+	return func(b *Box) {
+		if perIP > 0 && global > 0 && window > 0 {
+			b.phoneLimiter = newConnectionLimiter(perIP, global, window)
+		}
+	}
+}
+
+// WithControlHeartbeat controls how often the box probes the Mac control line
+// and how long it waits without a PONG before evicting the stale registration.
+func WithControlHeartbeat(interval, timeout time.Duration) Option {
+	return func(b *Box) {
+		if interval > 0 && timeout > interval {
+			b.controlHeartbeatInterval = interval
+			b.controlHeartbeatTimeout = timeout
+		}
+	}
+}
+
 // WithLogger overrides the box's logger. Defaults to slog.Default().
 func WithLogger(logger *slog.Logger) Option {
 	return func(b *Box) {
@@ -122,16 +176,59 @@ func New(secret string, cert tls.Certificate, opts ...Option) (*Box, error) {
 		return nil, ErrMissingCertificate
 	}
 	box := &Box{
-		secret:           []byte(secret),
-		cert:             cert,
-		now:              time.Now,
-		tokenTTL:         defaultTokenTTL,
-		phoneWaitTimeout: defaultPhoneWaitTimeout,
-		logger:           slog.Default(),
-		tokens:           newTokenStore(),
+		secret:                   []byte(secret),
+		cert:                     cert,
+		now:                      time.Now,
+		tokenTTL:                 defaultTokenTTL,
+		phoneWaitTimeout:         defaultPhoneWaitTimeout,
+		phonePrefaceTimeout:      defaultPhonePrefaceTimeout,
+		logger:                   slog.Default(),
+		tokens:                   newTokenStore(),
+		pendingPhones:            make(chan struct{}, defaultMaxPendingPhones),
+		phoneLimiter:             newConnectionLimiter(defaultPerIPRateLimit, defaultGlobalRateLimit, defaultRateLimitWindow),
+		controlHeartbeatInterval: defaultControlHeartbeatInterval,
+		controlHeartbeatTimeout:  defaultControlHeartbeatTimeout,
 	}
 	for _, opt := range opts {
 		opt(box)
 	}
 	return box, nil
+}
+
+type rateWindow struct {
+	started time.Time
+	count   int
+}
+
+type connectionLimiter struct {
+	mu          sync.Mutex
+	perIP       int
+	global      int
+	window      time.Duration
+	globalState rateWindow
+	clients     map[string]rateWindow
+}
+
+func newConnectionLimiter(perIP, global int, window time.Duration) *connectionLimiter {
+	return &connectionLimiter{perIP: perIP, global: global, window: window, clients: make(map[string]rateWindow)}
+}
+
+func (limiter *connectionLimiter) allow(client string, now time.Time) bool {
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	if limiter.globalState.started.IsZero() || now.Sub(limiter.globalState.started) >= limiter.window {
+		limiter.globalState = rateWindow{started: now}
+		limiter.clients = make(map[string]rateWindow)
+	}
+	clientState := limiter.clients[client]
+	if clientState.started.IsZero() || now.Sub(clientState.started) >= limiter.window {
+		clientState = rateWindow{started: now}
+	}
+	if limiter.globalState.count >= limiter.global || clientState.count >= limiter.perIP {
+		return false
+	}
+	limiter.globalState.count++
+	clientState.count++
+	limiter.clients[client] = clientState
+	return true
 }

@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+
+# Relay box image — see planning/relay-box-build-plan.md.
+# Build context is the REPO ROOT (that is where go.mod lives). The box is pure
+# Go + stdlib, so the runtime image needs no libc, shell, or CA bundle.
+
+FROM golang:1.26.5-alpine AS build
+WORKDIR /src
+# Module files first so `go mod download` stays cached across source-only edits.
+COPY go.mod go.sum ./
+RUN go mod download
+# Only the Go source is needed; the box's imports are all under companion/.
+COPY companion/ ./companion/
+# Static, stripped, reproducible binary. CGO off => no libc in the runtime image.
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+    -o /out/relaybox ./companion/cmd/relaybox
+
+# Minimal runtime: no shell, no package manager. Runs as root (uid 0) so the box
+# can create its cert under the root-owned /data Fly volume; the Fly microVM is
+# the real isolation boundary.
+FROM gcr.io/distroless/static-debian12
+COPY --from=build /out/relaybox /relaybox
+# Phone door (raw passthrough) and Mac door (box-terminated TLS).
+EXPOSE 8443 9000
+ENTRYPOINT ["/relaybox"]

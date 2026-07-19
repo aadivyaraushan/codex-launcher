@@ -61,6 +61,24 @@ class ConnectionStateMachineTest {
     }
 
     @Test
+    fun boxUnreachableIsDistinctFromComputerOfflineAndStillRetries() {
+        val connecting = ConnectionStateMachine.reduce(ConnectionSnapshot.initial(), ConnectionEvent.ConnectRequested)
+        val unreachable = ConnectionStateMachine.reduce(connecting, ConnectionEvent.BoxUnreachable)
+
+        assertEquals(ConnectionPhase.BOX_UNREACHABLE, unreachable.phase)
+        assertEquals("Can't reach the relay box", unreachable.headline)
+        assertTrue(unreachable.canRetryAutomatically)
+        assertEquals(
+            ConnectionPhase.CONNECTING,
+            ConnectionStateMachine.reduce(unreachable, ConnectionEvent.RetryTimerFired).phase,
+        )
+
+        val offline = ConnectionStateMachine.reduce(connecting, ConnectionEvent.ConnectionLost)
+        assertEquals(ConnectionPhase.DISCONNECTED, offline.phase)
+        assertEquals("Computer offline", offline.headline)
+    }
+
+    @Test
     fun reconnectMustSyncAgainBeforeRestoringOnlineState() {
         val offline = ConnectionStateMachine.reduce(
             ConnectionSnapshot.initial().copy(selectedProjectId = "project-main"),

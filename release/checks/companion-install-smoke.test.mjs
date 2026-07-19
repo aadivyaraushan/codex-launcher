@@ -13,7 +13,11 @@ for (const [name, sourcePrefix, installedPrefix] of [
 	}
 	assert.match(script, new RegExp(sourcePrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${name} must invoke the supplied local companion for setup`);
 	assert.match(script, new RegExp(installedPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${name} must invoke the installed companion for lifecycle commands`);
+  for (const relayFlag of ["--box-host", "--mac-port", "--phone-port", "--pinned-key", "--relay-secret"]) {
+    assert.match(script, new RegExp(relayFlag), `${name} must configure ${relayFlag}`);
+  }
+  assert.doesNotMatch(script, /TailscaleIP|tailscale_ip|--listen-host|--listen-port/i, `${name} must not use the removed Tailscale setup`);
   assert.doesNotMatch(script, /curl|Invoke-WebRequest|https?:\/\//i, `${name} must not download a self-update`);
 }
 
-console.log("companion install smoke contract: 18 assertions passed");
+console.log("companion install smoke contract: 30 assertions passed");

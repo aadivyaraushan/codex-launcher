@@ -281,7 +281,7 @@ class EmulatorAudit {
 
 Date: ${new Date().toISOString()}
 
-Purpose: drive the Codex Launcher on a running Android emulator using Android UI dumps plus real tap, type, Back, and screenshot commands. The fixed-state activity renders production Compose surfaces with local synthetic data; it does not prove a live Tailscale or Codex account connection.
+Purpose: drive the Codex Launcher on a running Android emulator using Android UI dumps plus real tap, type, Back, and screenshot commands. The fixed-state activity renders production Compose surfaces with local synthetic data; it does not prove a live relay-box or Codex account connection.
 
 ## Environment
 
@@ -472,7 +472,7 @@ function runAudit() {
 
   audit.check("offline connection help", () => {
     audit.launchScenario("home_offline");
-    audit.expectText(audit.tap({ text: "Connection help" }), "Check that the computer, companion, and Tailscale are online.");
+    audit.expectText(audit.tap({ text: "Connection help" }), "Check that the relay box and computer companion are online.");
   }, "interaction-offline-help");
 
   audit.check("working task redirect and confirmed stop", () => {

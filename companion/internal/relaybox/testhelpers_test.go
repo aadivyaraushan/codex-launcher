@@ -99,4 +99,7 @@ func signalPhoneArrival(t *testing.T, box *Box) {
 		t.Fatalf("dial phone door: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
+	if _, err := conn.Write([]byte{0x16, 0x03}); err != nil {
+		t.Fatalf("write phone TLS preface: %v", err)
+	}
 }

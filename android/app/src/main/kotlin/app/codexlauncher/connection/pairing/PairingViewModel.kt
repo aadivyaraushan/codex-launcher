@@ -208,7 +208,7 @@ class PairingViewModel(
 
     private companion object {
         const val INVALID_LINK_MESSAGE = "That pairing link isn't valid."
-        const val PAIR_FAILED_MESSAGE = "Couldn't reach your computer securely. Check Tailscale and try again."
+        const val PAIR_FAILED_MESSAGE = "Couldn't reach the relay box securely. Check its address and try again."
         const val SAVE_FAILED_MESSAGE = "Your computer paired, but the phone couldn't save it."
     }
 }

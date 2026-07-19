@@ -1099,6 +1099,7 @@ class LauncherSessionViewModel(
             when (reason) {
                 SessionFailure.REVOKED -> ConnectionEvent.PairingRevoked
                 SessionFailure.INVALID_PROTOCOL -> ConnectionEvent.IncompatibleVersion
+                SessionFailure.BOX_UNREACHABLE -> ConnectionEvent.BoxUnreachable
                 SessionFailure.CONNECTION_LOST -> ConnectionEvent.ConnectionLost
             }
         mutableState.value = LauncherSessionState(ConnectionStateMachine.reduce(mutableState.value.connection, event))
@@ -1107,7 +1108,7 @@ class LauncherSessionViewModel(
             message = "companion session ended",
             fields = mapOf("failure_reason" to reason.name.lowercase(), "output_shape" to "content_cleared"),
         )
-        if (reason == SessionFailure.CONNECTION_LOST) {
+        if (reason == SessionFailure.CONNECTION_LOST || reason == SessionFailure.BOX_UNREACHABLE) {
             scheduleRetry()
         } else {
             cancelRetry(resetAttempts = true)

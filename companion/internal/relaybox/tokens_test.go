@@ -91,6 +91,9 @@ func triggerSessionToken(t *testing.T, box *Box, control net.Conn) string {
 		t.Fatalf("dial phone door: %v", err)
 	}
 	t.Cleanup(func() { _ = phone.Close() })
+	if _, err := phone.Write([]byte{0x16, 0x03}); err != nil {
+		t.Fatalf("write phone TLS preface: %v", err)
+	}
 
 	reader := bufio.NewReader(control)
 	control.SetReadDeadline(time.Now().Add(3 * time.Second))

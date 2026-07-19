@@ -1,15 +1,18 @@
 # Install the computer companion
 
-The companion runs Codex on your computer and exposes only the launcher's
-signed, paired protocol over your Tailscale network. It does not upload your
-ChatGPT sign-in or copy it to Android.
+The companion runs Codex on your computer and dials out to your relay box. The
+box passes the launcher's sealed TLS stream through without opening it. The
+companion does not upload your ChatGPT sign-in or copy it to Android.
 
 ## Before you start
 
 You need:
 
 - a macOS, Windows, or Linux computer that is normally on;
-- the official Tailscale client, signed in and connected;
+- a relay box you control, deployed from this repository's
+  `Dockerfile.relaybox` and `fly.toml` by following the
+  [relay-box deployment guide](relay-box.md);
+- the relay box host, pinned public key, and registration secret;
 - Codex installed and signed in on that computer;
 - one or more folders you are willing to let the phone select for Codex work;
 - the companion archive for your operating system and CPU.
@@ -39,13 +42,18 @@ Desktop archives are unsigned technical alpha builds. macOS Gatekeeper and
 Windows SmartScreen can warn when you open them. Do not disable either system
 globally. Continue only after the checksum matches a release you trust.
 
-## 2. Find the local values
+## 2. Find the setup values
 
-Find the Tailscale address owned by this computer:
+Get the box's public host from Fly:
 
 ```bash
-tailscale ip -4
+fly status --app YOUR_RELAY_APP
 ```
+
+Use the pinned key printed once by the relay box at its first start. Keep the
+registration secret out of source files, shell history, chat, and issue reports.
+It must be at least 16 characters and contain no control characters. Store it as
+a Fly secret named `RELAYBOX_SECRET`; do not put it in `fly.toml`.
 
 Find the Codex executable:
 
@@ -53,8 +61,8 @@ Find the Codex executable:
 command -v codex
 ```
 
-PowerShell equivalents are `tailscale ip -4` and `(Get-Command codex).Source`.
-Use absolute paths for Codex and every approved project folder.
+The PowerShell equivalent is `(Get-Command codex).Source`. Use absolute paths
+for Codex and every approved project folder.
 
 ## 3. Save setup and install the user service
 
@@ -64,8 +72,11 @@ additional folder:
 ```bash
 ./codex-launcher setup \
   --computer-name "My computer" \
-  --listen-host "100.64.0.10" \
-  --listen-port 9443 \
+  --box-host "YOUR_RELAY_APP.fly.dev" \
+  --mac-port 443 \
+  --phone-port 8443 \
+  --pinned-key "BASE64_PIN_FROM_RELAY_BOX" \
+  --relay-secret "SECRET_STORED_IN_FLY" \
   --codex-binary "/absolute/path/to/codex" \
   --project-id "main" \
   --project-name "Main project" \
@@ -82,8 +93,11 @@ current-folder prefix:
 ```powershell
 .\codex-launcher.exe setup `
   --computer-name "My computer" `
-  --listen-host "100.64.0.10" `
-  --listen-port 9443 `
+  --box-host "YOUR_RELAY_APP.fly.dev" `
+  --mac-port 443 `
+  --phone-port 8443 `
+  --pinned-key "BASE64_PIN_FROM_RELAY_BOX" `
+  --relay-secret "SECRET_STORED_IN_FLY" `
   --codex-binary "C:\absolute\path\to\codex.exe" `
   --project-id "main" `
   --project-name "Main project" `
@@ -94,16 +108,21 @@ current-folder prefix:
 .\codex-launcher.exe doctor
 ```
 
-Setup asks
-Tailscale to prove that the address belongs to this computer and checks the port
-before saving anything. Installation is per-user: LaunchAgent on macOS, systemd
-user service on Linux, and a limited current-user scheduled task on Windows.
+Setup checks that the relay box is reachable, its pinned key matches exactly,
+and it accepts the registration secret before saving anything. A mismatch fails
+closed; there is no direct-listener fallback. Installation is per-user:
+LaunchAgent on macOS, systemd user service on Linux, and a limited current-user
+scheduled task on Windows.
 
 Rerun `setup` with the complete folder list whenever you change the approved
 folders. A running service is stopped, updated, and restarted. If that restart
 fails, the prior config is restored.
 
 ## 4. Pair the phone
+
+If this phone was paired to the removed direct/Tailscale address, revoke that
+old device first. Re-pairing changes only the phone's saved route and keys; it
+does not delete Codex tasks on the computer.
 
 Create a one-time link:
 
@@ -165,11 +184,17 @@ Uninstalling the computer does not delete Codex tasks stored by Codex itself.
 
 ## Troubleshooting
 
-- `Tailscale is missing, disconnected, or does not own that address`: connect
-  Tailscale and rerun `tailscale ip -4`.
-- `Computer offline` on Android: confirm the computer is awake, Tailscale is
-  connected on both devices, and `./codex-launcher doctor` passes. On Windows
-  PowerShell, run `.\codex-launcher.exe doctor`.
+- `Can't reach the relay box` on Android: check the phone's internet connection
+  and `fly status --app YOUR_RELAY_APP`. Confirm the dedicated public address and
+  raw TCP services still point to Mac port 443 and phone port 8443.
+- `Computer offline` on Android: the phone reached the box, but the companion's
+  control line is absent. Confirm the computer is awake and
+  `./codex-launcher doctor` passes. On Windows PowerShell, run
+  `.\codex-launcher.exe doctor`.
+- `The relay box is unreachable, or its pinned key does not match`: check
+  `--box-host`, `--mac-port`, and `--pinned-key`. Never bypass the pin.
+- `The relay box rejected the registration secret`: set the same strong value in
+  Fly's `RELAYBOX_SECRET` and `--relay-secret`, then rerun setup.
 - `Desktop integration needs an update`: the installed ChatGPT Desktop build is
   outside the compatibility check. Update Codex Launcher or use a supported
   build; the launcher fails closed instead of controlling an unknown interface.

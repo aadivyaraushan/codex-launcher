@@ -1,8 +1,9 @@
 # Security and privacy model
 
-Codex Launcher is a direct, private bridge between one Android phone and one
-user-owned computer. It does not run a project cloud service, use Firebase, or
-ask the project maintainers to hold ChatGPT, Codex, or Tailscale credentials.
+Codex Launcher is a private bridge between one Android phone and one user-owned
+computer through a small relay box controlled by that user. It does not run a
+maintainer-owned project cloud service, use Firebase, or ask the project
+maintainers to hold ChatGPT, Codex, or relay credentials.
 
 ## What is protected
 
@@ -12,8 +13,12 @@ ask the project maintainers to hold ChatGPT, Codex, or Tailscale credentials.
   proof identity, a separate pinned P-256 TLS identity, and TLS. The TLS key is
   derived from the saved computer identity so both pins stay stable across
   restarts. Later requests must be signed by the paired phone.
-- The companion listens only on an address Tailscale confirms belongs to the
-  computer. It rejects public, loopback, and arbitrary LAN bind addresses.
+- The companion opens only outbound, box-pinned TLS connections. It never opens
+  a public listener or falls back to a direct local listener when the relay is
+  unavailable.
+- The phone accepts only a public relay address and checks resolved addresses
+  again at connection time. Loopback, private, link-local, metadata, CGNAT, and
+  unsafe IPv6 ranges fail closed.
 - Project choices are server-approved opaque IDs. The phone does not choose an
   arbitrary filesystem path.
 - Approvals, questions, interrupts, and other actions bind to the exact pending
@@ -28,9 +33,10 @@ ask the project maintainers to hold ChatGPT, Codex, or Tailscale credentials.
 
 ```text
 Android app
-  signed action + pinned TLS
+  signed action + pinned end-to-end TLS
         ↓
-Tailscale encrypted network
+Untrusted network + untrusted relay box
+  forwards sealed bytes; cannot open phone content
         ↓
 Companion paired protocol
   validates device, project, action, size, and sequence
@@ -41,8 +47,16 @@ Local Codex adapter
 Codex and the approved project folder on the computer
 ```
 
+The phone-to-computer TLS session is sealed end to end. The relay sees source
+addresses, connection timing, connection length, and byte counts, but not
+pairing messages, prompts, responses, actions, attachments, or computer identity
+keys. The Mac-to-box control and data connections have a separate pinned TLS
+layer; the relay opens that outer layer only to route a short-lived random token,
+while the inner phone-to-computer TLS remains sealed.
+
 The raw ChatGPT Desktop socket and raw Codex app-server protocol are never
-forwarded to the phone. The companion maps them to a smaller mobile contract.
+forwarded to the phone or relay. The companion maps them to a smaller mobile
+contract.
 
 ## Sensitive data on each device
 
@@ -60,13 +74,18 @@ attachment contents, local project paths, or raw Desktop frames.
 
 - Malware or an attacker already running as the same operating-system user can
   read or control data that user can access.
-- A rooted phone, compromised Android keystore, compromised Tailscale account,
-  or compromised computer can defeat the local trust boundary.
+- A rooted phone, compromised Android keystore, stolen relay registration
+  secret, compromised relay account, or compromised computer weakens or defeats
+  the corresponding trust boundary. A compromised relay can deny service and
+  observe traffic shape, but cannot decrypt phone content without also
+  compromising an endpoint.
 - The unsupported private ChatGPT Desktop interface can change without notice.
   Compatibility checks reduce accidental misuse but cannot turn it into a
   supported API.
-- Tailscale controls network membership. Review and remove lost devices in the
-  Tailscale admin console as well as revoking them in Codex Launcher.
+- The public phone door can be flooded. The relay limits connection attempts,
+  caps pending phones, requires an immediate TLS preface, and runs one fixed
+  machine so load cannot create surprise machines. These controls reduce denial
+  of service; they do not make a public port invisible.
 - Codex can modify files and run commands within its own permissions. The phone
   interface does not make those actions harmless; inspect approvals carefully.
 

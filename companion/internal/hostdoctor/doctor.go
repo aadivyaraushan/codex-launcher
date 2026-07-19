@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"strings"
@@ -23,11 +24,9 @@ type ValidateCodex func(context.Context, string) (string, error)
 type ServiceStatus func(context.Context) (hostinstall.ServiceStatus, error)
 type Dial func(string, string, time.Duration) (net.Conn, error)
 
-// DialRelay opens one pinned connection to the relay box's Mac door, used
-// only to prove the box is reachable and our pin matches — doctor must
-// never send REGISTER (see relayBoxCheck below), so this is the same shape
-// as hostsetup.DialRelay but doctor closes the connection immediately
-// instead of registering on it.
+// DialRelay opens one pinned connection to the relay box's Mac door. Doctor
+// sends CHECK (never REGISTER), which verifies the saved secret without taking
+// the live service's single control slot.
 type DialRelay func(ctx context.Context, addr string, pinnedPublicKey []byte) (net.Conn, error)
 
 type InspectState func(context.Context) (inspection.State, error)
@@ -155,12 +154,9 @@ func (doctor *Doctor) Run(ctx context.Context, config companionapp.Config) []cli
 	return checks
 }
 
-// relayBoxCheck proves the relay box is reachable and our pinned key still
-// matches it, by doing the pinned TLS handshake and then closing —
-// deliberately never sending REGISTER. Doctor can run while the real
-// service is live with its own control line registered; a REGISTER here
-// would present a fresher registration and evict that live control line,
-// which is exactly the outage a health check must never cause.
+// relayBoxCheck proves the relay is reachable and both saved credentials match.
+// CHECK is deliberately distinct from REGISTER, so doctor cannot evict the
+// service's live control line while testing the secret.
 func (doctor *Doctor) relayBoxCheck(ctx context.Context, relay companionapp.RelayConfig) cli.Check {
 	pinnedKey, err := base64.StdEncoding.DecodeString(relay.PinnedKey)
 	if err != nil || len(pinnedKey) == 0 {
@@ -171,8 +167,20 @@ func (doctor *Doctor) relayBoxCheck(ctx context.Context, relay companionapp.Rela
 	if err != nil {
 		return cli.Check{Name: "relay-box", OK: false, Detail: relayDialFailureDetail(err)}
 	}
-	_ = connection.Close()
-	return cli.Check{Name: "relay-box", OK: true, Detail: "box reachable, pinned key matches"}
+	defer connection.Close()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = connection.SetReadDeadline(deadline)
+	} else {
+		_ = connection.SetReadDeadline(time.Now().Add(2 * time.Second))
+	}
+	if _, err := connection.Write([]byte("CHECK " + relay.Secret + "\n")); err != nil {
+		return cli.Check{Name: "relay-box", OK: false, Detail: "box reachable, but registration secret check failed"}
+	}
+	reply := make([]byte, len("OK\n"))
+	if _, err := io.ReadFull(connection, reply); err != nil || string(reply) != "OK\n" {
+		return cli.Check{Name: "relay-box", OK: false, Detail: "box reachable, but registration secret does not match"}
+	}
+	return cli.Check{Name: "relay-box", OK: true, Detail: "box reachable, pinned key and registration secret match"}
 }
 
 // relayDialFailureDetail distinguishes "never reached the box" from

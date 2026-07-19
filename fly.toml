@@ -1,0 +1,65 @@
+# Relay box — see planning/relay-box-build-plan.md.
+#
+# CRITICAL (plan section 5): Fly must terminate TLS on NEITHER port. Both
+# services avoid Fly's `tls` and `http` handlers, so Fly never decrypts bytes.
+# The phone door uses only `proxy_proto`, which prepends the original client IP
+# for rate limiting; the box strips that line before forwarding the still-sealed
+# TLS stream. The box's own Go program is the ONLY thing that terminates TLS,
+# and only on the Mac door (with its pinned key).
+
+app = "codex-launcher-relay-ssdear"
+primary_region = "lax"
+
+[build]
+  dockerfile = "Dockerfile.relaybox"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[env]
+  RELAYBOX_PHONE_ADDR = ":8443"
+  RELAYBOX_MAC_ADDR = ":9000"
+  RELAYBOX_CERT_PATH = "/data/relaybox/box.pem"
+  # Fly prepends only the original client address on the phone door. This is
+  # not TLS termination; the box removes the PROXY line before relaying the
+  # phone's still-sealed TLS bytes.
+  RELAYBOX_PHONE_PROXY_PROTOCOL = "true"
+  # RELAYBOX_SECRET is deliberately NOT here — it is set with `fly secrets set`
+  # so the registration secret never lives in a version-controlled file.
+
+# Persist the box's TLS identity across restarts. Deleting this volume rotates
+# the box key and invalidates the Mac's pin (a deliberate reset lever).
+[[mounts]]
+  source = "relaybox_data"
+  destination = "/data"
+
+# Phone door: raw passthrough plus Fly's PROXY address header. `proxy_proto`
+# does not terminate TLS; it only lets the box enforce per-client rate limits.
+# The phone's sealed stream to the Mac still passes through untouched.
+[[services]]
+  internal_port = 8443
+  protocol = "tcp"
+  # Always-on: the box must never idle-stop, or the Mac's control line drops.
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 8443
+    handlers = ["proxy_proto"]
+
+# Mac door: also raw at the Fly edge (empty handlers). It uses standard public
+# port 443 so ordinary networks can reach it, then forwards unchanged bytes to
+# the box's internal port 9000. The box terminates its own pinned TLS inside the
+# Go program. Do NOT add a "tls" handler.
+[[services]]
+  internal_port = 9000
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 443
+    handlers = []

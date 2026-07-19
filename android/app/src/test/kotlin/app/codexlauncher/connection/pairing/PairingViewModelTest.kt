@@ -60,6 +60,21 @@ class PairingViewModelTest {
     }
 
     @Test
+    fun pairingFailureNamesTheRelayInsteadOfTailscale() = runBlocking {
+        val viewModel =
+            PairingViewModel(
+                pair = { _, _, _ -> error("relay unavailable") },
+                save = { true },
+                deviceId = { "android-1234" },
+                deviceName = "Pixel 9",
+                ioDispatcher = Dispatchers.Unconfined,
+            )
+
+        assertFalse(viewModel.pairScanned(validOffer()))
+        assertEquals("Couldn't reach the relay box securely. Check its address and try again.", viewModel.state.value.errorMessage)
+    }
+
+    @Test
     fun aUiSubmissionRunsInTheViewModelOwnedScope() {
         val calls = mutableListOf<String>()
         val viewModel =

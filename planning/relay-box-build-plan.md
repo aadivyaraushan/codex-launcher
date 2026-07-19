@@ -77,11 +77,28 @@ between them" — without changing any of the locks that keep it private.
 >   controlled), a materially higher bar than the well-known-prefix case, which is
 >   denied. Full Android JVM unit suite green (270 tests).
 >
-> **Not yet done — both explicitly gated, not startable autonomously:** 6b (deploy
-> the box to Fly — **costs money on the user's personal Fly account**, needs the
-> user's explicit OK) and 7 (a real phone against the deployed box — needs
-> hardware). Everything buildable and verifiable without a deploy or a device is
-> done and green.
+> **Fly deployment and automated proof complete 2026-07-19.** The approved
+> single 256 MB machine is running in `lax`, with one dedicated IPv4 and one
+> encrypted 1 GB volume in Fly organization `personal` (`ssdear@gmail.com`).
+> Public services are raw TCP: Mac `443 -> 9000` with no handler; phone
+> `8443 -> 8443` with PROXY protocol only. `fly config validate` passes. The
+> deployed stage-6b phone harness passed under `-race` in 9.058s after the
+> installed companion was briefly stopped so the single-computer relay slot
+> belonged only to the harness; the LaunchAgent was restored and `doctor`
+> returned 7/7 checks green. Full Go race/vet, Android unit/lint/debug/release
+> builds, release contracts, and protocol schema checks are green. The old phone
+> was revoked so migration cannot silently keep its stale address. **Only step 7
+> remains:** `adb devices -l` sees no physical Android device, so installing,
+> pairing, and running the final real phone task needs the Pixel connected and
+> unlocked with USB debugging enabled.
+> A final independent review found no confidentiality flaw and its four
+> completion gaps are closed: `doctor` now uses a non-evicting `CHECK` command
+> to verify both pin and secret; the external-test evidence is described as a
+> pin-based proof rather than a nonexistent Fly byte recording; clean deploy,
+> rotation, recovery, and re-pair steps live in `docs/setup/relay-box.md`; and
+> the control-blip test proves replacement acceptance by heartbeat plus the
+> configured reconnect delay. The phone door now also rejects a non-TLS preface
+> before consuming a Mac session slot.
 
 > How to read this: Sections 0–3 are the whole idea, skimmable in a minute.
 > Everything after is detail for completeness (and for the engineer and the
@@ -274,7 +291,7 @@ Recommended: a **tiny custom program we write** (Go, a few hundred lines) — it
 lets us *guarantee* the passthrough rule and keep the box holding zero key
 material. Alternative: reuse a self-host tunnel tool (`frp` etc.) — less code to
 own, but more config to get exactly right and we'd have to verify it passes TLS
-through rather than terminating it. **Open decision O1 (Section 10).**
+through rather than terminating it. **Resolved decision O1 (Section 10).**
 
 ### Piece 2 — the Mac companion (dial out instead of wait)
 
@@ -546,14 +563,13 @@ so. Nothing is lost on the computer side.
 
 ---
 
-## 10. Open decisions for you (only these need your input)
+## 10. Resolved decisions
 
-- **O1 — Build our own tiny box, or reuse a tunnel tool?** I lean **build our
-  own** (tiny; lets us *guarantee* passthrough and hold zero keys). Reuse (`frp`)
-  = less code to maintain, more config to get exactly right. Your call.
-- **O2 — Box address style:** a friendly name like `yourname.box.example.com`
-  (needs a cheap domain, ~$10/yr) **or** the plain Fly-provided address for free
-  to start? Doesn't block anything; free is fine for your testing.
+- **O1 — Build our own tiny box.** Implemented as the `relaybox` Go command so
+  raw passthrough and the zero-content-key boundary are covered by repository
+  tests instead of depending on a general tunnel tool's configuration.
+- **O2 — Use the free Fly address.** The deployed host is
+  `codex-launcher-relay-ssdear.fly.dev`; no custom domain is needed for V1.
 
 Everything else is implementation and is mine to decide.
 
@@ -587,7 +603,7 @@ TDD — failing test first, then code:
    not until a unit test goes green. Two stages:
    - **6a — local box (free, runs first):** the whole path on localhost. No Fly,
      no money. This is the cheap loop we iterate on.
-   - **6b — deployed Fly box (after you OK the ~$2/mo charge):** the same harness
+   - **6b — deployed Fly box (after approval of the estimated $4.20–$7/month):** the same harness
      against the actual deployed box, which is the only thing that can catch a
      TLS-terminating `fly.toml` a local run can't.
    - *Optional extra layer:* drive the phone-side Kotlin in an **Android emulator**
@@ -606,9 +622,13 @@ it actually work" gate — we do not call this done on green unit tests alone.
 
 ## 12. Cost & ops recap
 
-- Your own Fly.io account, ~$2/month, one small fixed machine, autoscaling off.
-- Nothing created or charged until you OK it and confirm it's your account.
-- Docs to update: threat-model (describe the box; state plainly what it and the
-  network path can/can't see; move the trust-boundary line off "Tailscale
-  WireGuard" onto "sealed TLS through an untrusted box") and setup (re-pair,
-  `fly.toml` passthrough).
+- Fly account `ssdear@gmail.com`, organization `personal`: estimated
+  $4.20–$7/month for one always-running 256 MB machine, one dedicated IPv4,
+  one 1 GB volume, and ordinary traffic. Autoscaling and high availability are
+  off, so load cannot create extra machines.
+- The user approved that account and estimate on 2026-07-19 before any paid
+  resource was created.
+- Docs updated: the README, companion setup, Android setup, compatibility guide,
+  and threat model now describe re-pairing, Fly raw-TCP forwarding, the separate
+  box-pinned Mac layer, and sealed TLS through an untrusted box. Release checks
+  reject the removed Tailscale setup flags and stale operational instructions.

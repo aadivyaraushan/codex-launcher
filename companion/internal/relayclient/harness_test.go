@@ -48,6 +48,10 @@ type relayNetwork struct {
 // startRelayNetwork spins up a Box with a phone door and a Mac door on
 // loopback, cancelling everything on test cleanup.
 func startRelayNetwork(t *testing.T) *relayNetwork {
+	return startRelayNetworkWithOptions(t)
+}
+
+func startRelayNetworkWithOptions(t *testing.T, options ...relaybox.Option) *relayNetwork {
 	t.Helper()
 
 	boxCert, err := relaybox.GenerateSelfSignedCertificate(rand.Reader, time.Now())
@@ -59,7 +63,7 @@ func startRelayNetwork(t *testing.T) *relayNetwork {
 		t.Fatalf("generate mac certificate: %v", err)
 	}
 
-	box, err := relaybox.New(testSecret, boxCert)
+	box, err := relaybox.New(testSecret, boxCert, options...)
 	if err != nil {
 		t.Fatalf("new box: %v", err)
 	}
@@ -100,6 +104,10 @@ func startRelayNetwork(t *testing.T) *relayNetwork {
 // HTTPS server (the inner TLS layer, using the Mac's pairing cert) on the
 // listener relayclient provides. handler decides the response.
 func startMacApp(t *testing.T, network *relayNetwork, handler http.Handler) {
+	startMacAppWithReconnectDelay(t, network, handler, 0)
+}
+
+func startMacAppWithReconnectDelay(t *testing.T, network *relayNetwork, handler http.Handler, reconnectDelay time.Duration) {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -109,6 +117,7 @@ func startMacApp(t *testing.T, network *relayNetwork, handler http.Handler) {
 		BoxAddr:         network.macDoorAddr,
 		Secret:          testSecret,
 		PinnedPublicKey: network.boxPinnedKey,
+		ReconnectDelay:  reconnectDelay,
 	})
 	if err != nil {
 		t.Fatalf("relayclient listen/register: %v", err)

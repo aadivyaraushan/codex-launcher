@@ -1,0 +1,8 @@
+# The Docker build context is the repo root, but the relay box build only reads
+# the Go module. Exclude every top-level entry, then re-include just what the
+# build needs — keeps android/, landing/, .git, node_modules, etc. out of the
+# context.
+*
+!go.mod
+!go.sum
+!companion

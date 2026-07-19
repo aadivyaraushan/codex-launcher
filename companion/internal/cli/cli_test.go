@@ -112,7 +112,7 @@ func TestDoctorAndUsageReturnDeterministicExitCodes(t *testing.T) {
 	runtime := newTestRuntime(t)
 	var output bytes.Buffer
 	doctor := func(context.Context, companionapp.Config) []Check {
-		return []Check{{Name: "codex", OK: true, Detail: "codex-cli 0.144.0-alpha.4"}, {Name: "tailscale", OK: false, Detail: "not connected"}}
+		return []Check{{Name: "codex", OK: true, Detail: "codex-cli 0.144.0-alpha.4"}, {Name: "relay-box", OK: false, Detail: "unreachable"}}
 	}
 	command := New(Options{Runtime: runtime, Output: &output, ErrorOutput: &output, Doctor: doctor})
 	if exitCode := command.Run(context.Background(), []string{"doctor"}); exitCode != 1 {

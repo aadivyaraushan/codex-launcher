@@ -71,6 +71,17 @@ func TestMapAppServerThreadUsesRuntimeFlagsAndStableMetadata(t *testing.T) {
 	}
 }
 
+func TestMapAppServerThreadSanitizesDisplayFieldsForThePhoneContract(t *testing.T) {
+	raw := json.RawMessage("{\"id\":\"thread-1\",\"name\":\"  Multi\\nline\\tname\\u0000  \",\"cwd\":\"/work/ project\\nname \",\"updatedAt\":1783900000,\"status\":{\"type\":\"idle\",\"activeFlags\":[]},\"turns\":[]}")
+	task, err := MapAppServerThread(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Title != "Multi line name" || task.ProjectLabel != "project name" {
+		t.Fatalf("sanitized display fields = title %q, project %q", task.Title, task.ProjectLabel)
+	}
+}
+
 func TestMapDesktopSnapshotFeedsTheSameStateMapper(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "desktopipc", "testdata", "snapshot.json"))
 	if err != nil {

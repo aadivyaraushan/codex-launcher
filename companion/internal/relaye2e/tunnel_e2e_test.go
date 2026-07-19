@@ -46,42 +46,72 @@ import (
 
 const relaySecret = "e2e-registration-secret"
 
+type externalRelay struct {
+	macDoorAddr   string
+	phoneDoorAddr string
+	secret        string
+	pinnedBoxSPKI []byte
+}
+
 // TestPhoneReachesCompanionThroughRelayBoxWithCiphertextOnly is the crux
 // verification: a real phone client, talking to a real Mac companion
 // (pairing.Service + transport.Server), with every byte routed through a
 // real relaybox.Box, proves (a) the tunnel actually works end to end and
 // (b) the box's view of the phone-door traffic is ciphertext only.
 func TestPhoneReachesCompanionThroughRelayBoxWithCiphertextOnly(t *testing.T) {
+	runPhoneReachesCompanionThroughRelayBox(t, nil)
+}
+
+// runPhoneReachesCompanionThroughRelayBox exercises the same real companion
+// and phone protocol against either an in-process box (target == nil) or the
+// deployed public box. The deployed path cannot inspect server memory, so its
+// ciphertext proof is the successful TLS session pinned to the Mac's key: the
+// Fly edge and box do not possess that private key and therefore cannot
+// terminate or read that session.
+func runPhoneReachesCompanionThroughRelayBox(t *testing.T, target *externalRelay) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// --- 1. The box: a phone door (recorded) and a Mac door, both real. ---
-	boxCert, err := relaybox.GenerateSelfSignedCertificate(rand.Reader, time.Now())
-	if err != nil {
-		t.Fatalf("generate box certificate: %v", err)
+	secret := relaySecret
+	var boxSPKI []byte
+	var macDoorAddr, phoneDoorAddr string
+	var recorded *recordedBytes
+	var macDoorDone, phoneDoorDone chan error
+	if target == nil {
+		boxCert, err := relaybox.GenerateSelfSignedCertificate(rand.Reader, time.Now())
+		if err != nil {
+			t.Fatalf("generate box certificate: %v", err)
+		}
+		box, err := relaybox.New(secret, boxCert, relaybox.WithLogger(logger))
+		if err != nil {
+			t.Fatalf("new box: %v", err)
+		}
+		macDoorListener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen mac door: %v", err)
+		}
+		rawPhoneDoorListener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen phone door: %v", err)
+		}
+		recorded = &recordedBytes{}
+		phoneDoorListener := &recordingListener{inner: rawPhoneDoorListener, seen: recorded}
+		boxSPKI = boxCert.Leaf.RawSubjectPublicKeyInfo
+		macDoorAddr = macDoorListener.Addr().String()
+		phoneDoorAddr = rawPhoneDoorListener.Addr().String()
+		macDoorDone = make(chan error, 1)
+		phoneDoorDone = make(chan error, 1)
+		go func() { macDoorDone <- box.ServeMacDoor(ctx, macDoorListener) }()
+		go func() { phoneDoorDone <- box.ServePhoneDoor(ctx, phoneDoorListener) }()
+	} else {
+		secret = target.secret
+		boxSPKI = target.pinnedBoxSPKI
+		macDoorAddr = target.macDoorAddr
+		phoneDoorAddr = target.phoneDoorAddr
 	}
-	box, err := relaybox.New(relaySecret, boxCert, relaybox.WithLogger(logger))
-	if err != nil {
-		t.Fatalf("new box: %v", err)
-	}
-	macDoorListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen mac door: %v", err)
-	}
-	rawPhoneDoorListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen phone door: %v", err)
-	}
-	recorded := &recordedBytes{}
-	phoneDoorListener := &recordingListener{inner: rawPhoneDoorListener, seen: recorded}
-	boxSPKI := boxCert.Leaf.RawSubjectPublicKeyInfo
-
-	macDoorDone := make(chan error, 1)
-	phoneDoorDone := make(chan error, 1)
-	go func() { macDoorDone <- box.ServeMacDoor(ctx, macDoorListener) }()
-	go func() { phoneDoorDone <- box.ServePhoneDoor(ctx, phoneDoorListener) }()
 
 	// --- 2. The real Mac companion: pairing.Service + transport.Server. ---
 	pairingService, err := pairing.NewServiceWithLogger(ctx, pairing.NewMemoryStore(), rand.Reader, logger)
@@ -114,12 +144,12 @@ func TestPhoneReachesCompanionThroughRelayBoxWithCiphertextOnly(t *testing.T) {
 			"sessionId":    marker,
 			"capabilities": []string{},
 			"limits": map[string]any{
-				"maxJsonBytes":         262144,
-				"maxAttachmentBytes":   20971520,
-				"maxDeviceUploads":     2,
-				"maxGlobalUploads":     4,
-				"maxTemporaryBytes":    104857600,
-				"uploadExpirySeconds":  900,
+				"maxJsonBytes":        262144,
+				"maxAttachmentBytes":  20971520,
+				"maxDeviceUploads":    2,
+				"maxGlobalUploads":    4,
+				"maxTemporaryBytes":   104857600,
+				"uploadExpirySeconds": 900,
 			},
 		})
 		if err != nil {
@@ -137,8 +167,8 @@ func TestPhoneReachesCompanionThroughRelayBoxWithCiphertextOnly(t *testing.T) {
 
 	// --- 3. The Mac dials OUT through the box; it never binds inbound. ---
 	relayListener, err := relayclient.Listen(ctx, relayclient.Config{
-		BoxAddr:         macDoorListener.Addr().String(),
-		Secret:          relaySecret,
+		BoxAddr:         macDoorAddr,
+		Secret:          secret,
 		PinnedPublicKey: boxSPKI,
 		Logger:          logger,
 	})
@@ -168,16 +198,18 @@ func TestPhoneReachesCompanionThroughRelayBoxWithCiphertextOnly(t *testing.T) {
 		// above), so any non-nil error here is a real shutdown fault, not the
 		// benign cancellation outcome — surface it rather than silently
 		// draining the channel.
-		if err := <-macDoorDone; err != nil && !errors.Is(err, context.Canceled) {
-			t.Errorf("box mac door shutdown: %v", err)
-		}
-		if err := <-phoneDoorDone; err != nil && !errors.Is(err, context.Canceled) {
-			t.Errorf("box phone door shutdown: %v", err)
+		if target == nil {
+			if err := <-macDoorDone; err != nil && !errors.Is(err, context.Canceled) {
+				t.Errorf("box mac door shutdown: %v", err)
+			}
+			if err := <-phoneDoorDone; err != nil && !errors.Is(err, context.Canceled) {
+				t.Errorf("box phone door shutdown: %v", err)
+			}
 		}
 	})
 
 	// --- 4. The phone client: raw TCP to the box PHONE door, inner TLS pinned to the Mac cert. ---
-	phoneHTTPClient := pinnedPhoneClient(rawPhoneDoorListener.Addr().String(), macSPKI)
+	phoneHTTPClient := pinnedPhoneClient(phoneDoorAddr, macSPKI)
 
 	offer, err := pairingService.BeginPairing(pairing.PairingTarget{Host: "100.64.0.10", Port: 9443, Protocol: 1}, time.Now())
 	if err != nil {
@@ -270,6 +302,9 @@ func TestPhoneReachesCompanionThroughRelayBoxWithCiphertextOnly(t *testing.T) {
 	}
 
 	// --- 6. The proof: everything the box saw on the phone door. ---
+	if target != nil {
+		return
+	}
 	seen := recorded.snapshot()
 
 	// 3a: the box actually handled real traffic.

@@ -4,6 +4,7 @@ private val opaqueProjectIdPattern = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 enum class ConnectionPhase {
     DISCONNECTED,
+    BOX_UNREACHABLE,
     CONNECTING,
     SYNCING,
     ONLINE,
@@ -19,6 +20,7 @@ sealed interface ConnectionEvent {
     data class ProjectSelected(val projectId: String) : ConnectionEvent
     data class ProjectUnavailable(val projectId: String) : ConnectionEvent
     data object ConnectionLost : ConnectionEvent
+    data object BoxUnreachable : ConnectionEvent
     data object IncompatibleVersion : ConnectionEvent
     data object PairingRevoked : ConnectionEvent
 }
@@ -31,6 +33,7 @@ data class ConnectionSnapshot(
     val headline: String
         get() = when (phase) {
             ConnectionPhase.DISCONNECTED -> "Computer offline"
+            ConnectionPhase.BOX_UNREACHABLE -> "Can't reach the relay box"
             ConnectionPhase.CONNECTING -> "Connecting"
             ConnectionPhase.SYNCING -> "Syncing"
             ConnectionPhase.ONLINE -> "Codex"
@@ -45,7 +48,7 @@ data class ConnectionSnapshot(
         get() = canShowComputerContent && !selectedProjectId.isNullOrBlank()
 
     val canRetryAutomatically: Boolean
-        get() = phase == ConnectionPhase.DISCONNECTED
+        get() = phase == ConnectionPhase.DISCONNECTED || phase == ConnectionPhase.BOX_UNREACHABLE
 
     companion object {
         fun initial(): ConnectionSnapshot = ConnectionSnapshot(
@@ -88,6 +91,7 @@ object ConnectionStateMachine {
             -> current
             else -> current.copy(phase = ConnectionPhase.DISCONNECTED, baseSequence = null)
         }
+        ConnectionEvent.BoxUnreachable -> current.copy(phase = ConnectionPhase.BOX_UNREACHABLE, baseSequence = null)
         ConnectionEvent.IncompatibleVersion -> current.copy(
             phase = ConnectionPhase.INCOMPATIBLE_VERSION,
             baseSequence = null,
@@ -100,7 +104,9 @@ object ConnectionStateMachine {
     }
 
     private fun ConnectionSnapshot.connect(): ConnectionSnapshot = when (phase) {
-        ConnectionPhase.DISCONNECTED -> copy(phase = ConnectionPhase.CONNECTING, baseSequence = null)
+        ConnectionPhase.DISCONNECTED,
+        ConnectionPhase.BOX_UNREACHABLE,
+        -> copy(phase = ConnectionPhase.CONNECTING, baseSequence = null)
         else -> this
     }
 }

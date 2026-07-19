@@ -314,7 +314,7 @@ class HomeScreenTest {
             }
         }
 
-        compose.onNodeWithText("Check that the computer, companion, and Tailscale are online.").assertIsDisplayed()
+        compose.onNodeWithText("Check that the relay box and computer companion are online.").assertIsDisplayed()
         compose.onNodeWithContentDescription("Launcher home").performTouchInput { swipeUp() }
 
         assertEquals(1, allAppsOpens)

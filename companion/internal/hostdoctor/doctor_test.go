@@ -1,6 +1,7 @@
 package hostdoctor
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -25,7 +26,7 @@ func TestRunReportsCodexRelayBoxReachabilityServiceIdentitySchemaAndLastError(t 
 		ValidateCodex: func(context.Context, string) (string, error) { return "codex-cli 0.144.0", nil },
 		DialRelay: func(_ context.Context, addr string, pinnedPublicKey []byte) (net.Conn, error) {
 			calls = append(calls, "dialRelay:"+addr)
-			return &doctorConnection{}, nil
+			return newDoctorConnection("OK\n"), nil
 		},
 		ServiceStatus: func(context.Context) (hostinstall.ServiceStatus, error) {
 			return hostinstall.ServiceStatus{Installed: true, Running: true, Detail: "launch agent is loaded"}, nil
@@ -43,7 +44,7 @@ func TestRunReportsCodexRelayBoxReachabilityServiceIdentitySchemaAndLastError(t 
 	checks := doctor.Run(context.Background(), config)
 	want := []cli.Check{
 		{Name: "codex", OK: true, Detail: "codex-cli 0.144.0"},
-		{Name: "relay-box", OK: true, Detail: "box reachable, pinned key matches"},
+		{Name: "relay-box", OK: true, Detail: "box reachable, pinned key and registration secret match"},
 		{Name: "service", OK: true, Detail: "launch agent is loaded"},
 		{Name: "reachability", OK: true, Detail: "relay box phone door accepts connections"},
 		{Name: "schema", OK: true, Detail: "state schema is compatible"},
@@ -59,15 +60,11 @@ func TestRunReportsCodexRelayBoxReachabilityServiceIdentitySchemaAndLastError(t 
 	}
 }
 
-// TestRelayBoxCheckNeverSendsRegister is the invariant that makes doctor
-// safe to run while the real service is live: registering on the relay box
-// while the service already holds a control line would present a fresher
-// registration and evict it, turning a health check into an outage. So the
-// relay-box check must only dial and close — it must never write anything
-// to the connection.
-func TestRelayBoxCheckNeverSendsRegister(t *testing.T) {
+// CHECK validates the saved registration secret without taking the live
+// service's single REGISTER slot.
+func TestRelayBoxCheckValidatesSecretWithoutRegistering(t *testing.T) {
 	config := doctorConfig(t)
-	connection := &doctorConnection{}
+	connection := newDoctorConnection("OK\n")
 	doctor := New(Options{
 		DiscoverCodex: func(path string) (string, error) { return path, nil },
 		ValidateCodex: func(context.Context, string) (string, error) { return "codex-cli 0.144.0", nil },
@@ -85,11 +82,25 @@ func TestRelayBoxCheckNeverSendsRegister(t *testing.T) {
 	})
 
 	doctor.Run(context.Background(), config)
-	if connection.wrote {
-		t.Fatal("relay-box check must never write to the connection (that would register, evicting the live control line)")
+	if got := connection.written.String(); got != "CHECK relay-secret-value\n" {
+		t.Fatalf("relay-box check wrote %q, want a non-registering CHECK", got)
 	}
 	if !connection.closed {
 		t.Fatal("relay-box check must close the connection it opened")
+	}
+}
+
+func TestRelayBoxCheckFailsWhenRegistrationSecretDoesNotMatch(t *testing.T) {
+	config := doctorConfig(t)
+	doctor := New(Options{
+		DialRelay: func(context.Context, string, []byte) (net.Conn, error) {
+			return newDoctorConnection("ERR\n"), nil
+		},
+	})
+
+	check := doctor.relayBoxCheck(context.Background(), config.Relay)
+	if check.OK || check.Detail != "box reachable, but registration secret does not match" {
+		t.Fatalf("relay check = %#v, want a failed secret-mismatch check", check)
 	}
 }
 
@@ -144,12 +155,20 @@ func doctorConfig(t *testing.T) companionapp.Config {
 
 type doctorConnection struct {
 	net.Conn
-	wrote  bool
-	closed bool
+	readBuffer *bytes.Reader
+	written    bytes.Buffer
+	closed     bool
+}
+
+func newDoctorConnection(response string) *doctorConnection {
+	return &doctorConnection{readBuffer: bytes.NewReader([]byte(response))}
 }
 
 func (connection *doctorConnection) Write(data []byte) (int, error) {
-	connection.wrote = true
-	return len(data), nil
+	return connection.written.Write(data)
 }
-func (connection *doctorConnection) Close() error { connection.closed = true; return nil }
+func (connection *doctorConnection) Read(data []byte) (int, error) {
+	return connection.readBuffer.Read(data)
+}
+func (connection *doctorConnection) SetReadDeadline(time.Time) error { return nil }
+func (connection *doctorConnection) Close() error                    { connection.closed = true; return nil }

@@ -1,10 +1,16 @@
 package relayclient_test
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"testing"
+	"time"
+
+	"github.com/codex-launcher/codex-launcher/companion/internal/relaybox"
+	"github.com/codex-launcher/codex-launcher/companion/internal/relayclient"
 )
 
 // TestEndToEndTunnelThroughBox is spec test A: a phone reaches the Mac's HTTPS
@@ -90,6 +96,75 @@ func TestBoxCannotReadTunnelBytes(t *testing.T) {
 	// content type 0x16 (handshake) then version bytes 0x03 0x01.
 	if !(seen[0] == 0x16 && len(seen) >= 3 && seen[1] == 0x03) {
 		t.Errorf("box's first phone-door bytes do not look like a TLS record: % x", seen[:min(8, len(seen))])
+	}
+}
+
+// TestControlLineBlipDoesNotDropActiveCall proves that the signalling line and
+// an already-redeemed phone data line have independent lifetimes. Replacing the
+// control registration must not interrupt a response already streaming through
+// the box, and the original listener must reconnect for the next phone.
+func TestControlLineBlipDoesNotDropActiveCall(t *testing.T) {
+	network := startRelayNetworkWithOptions(t, relaybox.WithControlHeartbeat(20*time.Millisecond, 200*time.Millisecond))
+	releaseResponse := make(chan struct{})
+
+	const reconnectDelay = 250 * time.Millisecond
+	startMacAppWithReconnectDelay(t, network, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/stream":
+			_, _ = io.WriteString(w, "before-control-blip\n")
+			w.(http.Flusher).Flush()
+			<-releaseResponse
+			_, _ = io.WriteString(w, "after-control-blip\n")
+		case "/v1/after":
+			_, _ = io.WriteString(w, "control-reconnected")
+		default:
+			http.NotFound(w, r)
+		}
+	}), reconnectDelay)
+
+	client := phoneClient(network)
+	resp := phoneDo(t, func() (*http.Response, error) {
+		return client.Get("https://mac.internal/v1/stream")
+	})
+	defer func() { _ = resp.Body.Close() }()
+	reader := bufio.NewReader(resp.Body)
+	first, err := reader.ReadString('\n')
+	if err != nil || first != "before-control-blip\n" {
+		t.Fatalf("read first streamed chunk: got %q, err=%v", first, err)
+	}
+
+	replacement, err := relayclient.Dial(context.Background(), network.macDoorAddr, network.boxPinnedKey)
+	if err != nil {
+		t.Fatalf("dial replacement control line: %v", err)
+	}
+	if _, err := replacement.Write([]byte("REGISTER " + testSecret + "\n")); err != nil {
+		_ = replacement.Close()
+		t.Fatalf("register replacement control line: %v", err)
+	}
+	_ = replacement.SetReadDeadline(time.Now().Add(time.Second))
+	if line, err := bufio.NewReader(replacement).ReadString('\n'); err != nil || line != "PING\n" {
+		_ = replacement.Close()
+		t.Fatalf("replacement control line was not accepted: heartbeat=%q err=%v", line, err)
+	}
+	_ = replacement.Close()
+
+	close(releaseResponse)
+	second, err := reader.ReadString('\n')
+	if err != nil || second != "after-control-blip\n" {
+		t.Fatalf("active call was dropped with the control line: got %q, err=%v", second, err)
+	}
+
+	reconnectStarted := time.Now()
+	after := phoneDo(t, func() (*http.Response, error) {
+		return client.Get("https://mac.internal/v1/after")
+	})
+	if elapsed := time.Since(reconnectStarted); elapsed < reconnectDelay/2 {
+		t.Fatalf("control line reconnected in %v, before configured backoff %v", elapsed, reconnectDelay)
+	}
+	defer func() { _ = after.Body.Close() }()
+	body, err := io.ReadAll(after.Body)
+	if err != nil || string(body) != "control-reconnected" {
+		t.Fatalf("request after control reconnect: got %q, err=%v", body, err)
 	}
 }
 

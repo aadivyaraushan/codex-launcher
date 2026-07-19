@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -126,7 +127,7 @@ func MapAppServerThread(raw json.RawMessage) (Task, error) {
 	} else if strings.TrimSpace(thread.Preview) != "" {
 		title = thread.Preview
 	}
-	return Task{ID: thread.ID, Title: bounded(title, 256), ProjectLabel: bounded(projectLabel(thread.CWD), 128), ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", UpdatedAtUnix: thread.UpdatedAt, Source: SourceAppServer,
+	return Task{ID: thread.ID, Title: safeDisplay(title, "Codex task", 256), ProjectLabel: safeDisplay(projectLabel(thread.CWD), "Project", 128), ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", UpdatedAtUnix: thread.UpdatedAt, Source: SourceAppServer,
 		State: Map(Signals{ThreadID: thread.ID, RuntimeStatus: thread.Status.Type, ActiveFlags: thread.Status.ActiveFlags, LastTurnStatus: lastTurnStatus})}, nil
 }
 
@@ -186,7 +187,7 @@ func MapDesktopConversationState(raw json.RawMessage) (Task, error) {
 		}
 	}
 	state := Map(Signals{ThreadID: conversationState.ID, RuntimeStatus: conversationState.RuntimeStatus.Type, ActiveFlags: conversationState.RuntimeStatus.ActiveFlags, LastTurnStatus: lastTurnStatus, PendingRequestKind: pendingKind, PendingRequestID: pendingID})
-	return Task{ID: conversationState.ID, Title: "Codex task", ProjectLabel: bounded(projectLabel(conversationState.CWD), 128), State: state, ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", Source: SourceDesktop}, nil
+	return Task{ID: conversationState.ID, Title: "Codex task", ProjectLabel: safeDisplay(projectLabel(conversationState.CWD), "Project", 128), State: state, ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", Source: SourceDesktop}, nil
 }
 
 func projectLabel(cwd string) string {
@@ -199,6 +200,20 @@ func bounded(value string, maximum int) string {
 	}
 	runes := []rune(value)
 	return string(runes[:maximum])
+}
+
+func safeDisplay(value, fallback string, maximum int) string {
+	value = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, value)
+	value = strings.Join(strings.Fields(value), " ")
+	if value == "" {
+		value = fallback
+	}
+	return bounded(value, maximum)
 }
 
 func MapItem(item Item) Activity {

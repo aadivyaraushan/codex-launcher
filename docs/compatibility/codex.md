@@ -49,7 +49,7 @@ but it remains experimental until native verification passes.
 
 ## Compatibility check
 
-After installing or updating Codex, ChatGPT Desktop, Tailscale, or the
+After installing or updating Codex, ChatGPT Desktop, the relay box, or the
 companion, run:
 
 ```bash
@@ -66,9 +66,10 @@ On Windows PowerShell:
 .\codex-launcher.exe status
 ```
 
-`doctor` checks the Codex version, Tailscale address ownership, service state,
-TCP reachability, local schema, pinned identity, and the last fixed service
-error code without starting the normal runtime or repairing state.
+`doctor` checks the Codex version, relay reachability, pinned key and registration
+secret, service state, phone-door reachability, local schema, pinned computer
+identity, and the last fixed service error code without taking the companion's
+live relay slot, starting the normal runtime, or repairing state.
 
 No paid model call is required for these checks. A true end-to-end task-start
 smoke can use the user's authenticated Codex account and may incur whatever

@@ -24,6 +24,9 @@
 //	RELAYBOX_MAC_ADDR    optional, default ":9000". Listen address for the
 //	                     Mac door. TLS, terminated by the box itself using
 //	                     the persisted certificate.
+//	RELAYBOX_PHONE_PROXY_PROTOCOL optional, default false. Set to "true" on
+//	                     Fly when its non-decrypting proxy_proto handler is
+//	                     enabled, so phone rate limits use the real client IP.
 //
 // Fly (or any host) must forward both RELAYBOX_PHONE_ADDR and
 // RELAYBOX_MAC_ADDR as raw TCP: this binary terminates TLS on neither port
@@ -57,10 +60,11 @@ const (
 // env vars inside run) is what lets run be unit-tested with arbitrary
 // values and no real environment.
 type Config struct {
-	Secret          string
-	CertPath        string
-	PhoneListenAddr string
-	MacListenAddr   string
+	Secret             string
+	CertPath           string
+	PhoneListenAddr    string
+	MacListenAddr      string
+	PhoneProxyProtocol bool
 }
 
 func main() {
@@ -86,6 +90,9 @@ func main() {
 		_ = macListener.Close()
 		os.Exit(1)
 	}
+	if cfg.PhoneProxyProtocol {
+		phoneListener = relaybox.NewProxyProtocolListener(phoneListener, 2*time.Second)
+	}
 
 	if err := run(ctx, cfg, macListener, phoneListener, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -97,10 +104,11 @@ func main() {
 // the package comment above.
 func configFromEnv() Config {
 	return Config{
-		Secret:          os.Getenv("RELAYBOX_SECRET"),
-		CertPath:        envOrDefault("RELAYBOX_CERT_PATH", defaultCertPath),
-		PhoneListenAddr: envOrDefault("RELAYBOX_PHONE_ADDR", defaultPhoneAddr),
-		MacListenAddr:   envOrDefault("RELAYBOX_MAC_ADDR", defaultMacAddr),
+		Secret:             os.Getenv("RELAYBOX_SECRET"),
+		CertPath:           envOrDefault("RELAYBOX_CERT_PATH", defaultCertPath),
+		PhoneListenAddr:    envOrDefault("RELAYBOX_PHONE_ADDR", defaultPhoneAddr),
+		MacListenAddr:      envOrDefault("RELAYBOX_MAC_ADDR", defaultMacAddr),
+		PhoneProxyProtocol: os.Getenv("RELAYBOX_PHONE_PROXY_PROTOCOL") == "true",
 	}
 }
 
@@ -140,6 +148,7 @@ func run(ctx context.Context, cfg Config, macListener, phoneListener net.Listene
 		"mac_addr", cfg.MacListenAddr,
 		"phone_addr", cfg.PhoneListenAddr,
 		"cert_path", cfg.CertPath,
+		"phone_proxy_protocol", cfg.PhoneProxyProtocol,
 	)
 
 	cert, err := relaybox.LoadOrCreateCertificate(cfg.CertPath, rand.Reader, time.Now())

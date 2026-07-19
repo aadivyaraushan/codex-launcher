@@ -217,7 +217,7 @@ private fun OfflineContent(
         if (connectionHelpVisible) {
             Spacer(Modifier.height(12.dp))
             Text(
-                "Check that the computer, companion, and Tailscale are online.",
+                "Check that the relay box and computer companion are online.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

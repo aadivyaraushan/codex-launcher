@@ -74,7 +74,7 @@ class UiScenarioActivityTest {
         show(ScenarioId.HOME_OFFLINE)
 
         compose.onNodeWithText("Connection help").performClick()
-        compose.onNodeWithText("Check that the computer, companion, and Tailscale are online.").assertIsDisplayed()
+        compose.onNodeWithText("Check that the relay box and computer companion are online.").assertIsDisplayed()
     }
 
     @Test

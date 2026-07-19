@@ -20,13 +20,30 @@ import okio.ByteString.Companion.toByteString
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 enum class SessionFailure {
     REVOKED,
     INVALID_PROTOCOL,
+    BOX_UNREACHABLE,
     CONNECTION_LOST,
+}
+
+internal fun classifySessionFailure(t: Throwable, response: Response?): SessionFailure {
+    if (response?.code == 403) return SessionFailure.REVOKED
+    var cause: Throwable? = t
+    while (cause != null) {
+        if (cause is UnknownHostException || cause is ConnectException || cause is NoRouteToHostException || cause is SocketTimeoutException) {
+            return SessionFailure.BOX_UNREACHABLE
+        }
+        cause = cause.cause
+    }
+    return SessionFailure.CONNECTION_LOST
 }
 
 interface SessionObserver {
@@ -278,7 +295,7 @@ class CompanionSessionClient private constructor(
                         error = t,
                         fields = mapOf("device_id" to paired.deviceId, "session_id" to sessionId, "http_status" to (response?.code ?: 0)),
                     )
-                    val reason = if (response?.code == 403) SessionFailure.REVOKED else SessionFailure.CONNECTION_LOST
+                    val reason = classifySessionFailure(t, response)
                     reportFailure(failureReported, observer, reason)
                     connection.stopAfterSocketEnd()
                 }

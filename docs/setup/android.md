@@ -7,9 +7,9 @@ part of the release test set.
 ## Before you start
 
 1. Complete the [computer companion setup](companion.md).
-2. Install the official Tailscale app from Google Play.
-3. Sign in to the same tailnet used by the computer and leave Tailscale on.
-4. Download the APK and verify it against `SHA256SUMS.android`.
+2. Confirm the relay box is running and the computer companion passes
+   `./codex-launcher doctor` (or `.\codex-launcher.exe doctor` in PowerShell).
+3. Download the APK and verify it against `SHA256SUMS.android`.
 
 The APK is signed by the release workflow. Android can still ask whether to
 allow installation from the app that opened the download. Grant that permission
@@ -48,7 +48,7 @@ system, Light, and Dark; text size, contrast, and motion follow Android settings
 
 Allow notifications if you want replies, approvals, questions, and failures to
 appear while the launcher is not visible. A persistent connection notification
-is required while the phone maintains its direct connection to the computer.
+is required while the phone maintains its sealed connection through the relay.
 
 ## Daily use
 
@@ -58,6 +58,8 @@ is required while the phone maintains its direct connection to the computer.
   paired computer.
 - When the computer cannot be reached, Home says `Computer offline`. Your
   unfinished draft remains on the phone, and normal app/settings access remains.
+- When the relay box itself cannot be reached, Home says
+  `Can't reach the relay box` and retries automatically.
 - Approval and question cards are tied to the exact pending Codex request. An
   expired or replayed action is rejected.
 

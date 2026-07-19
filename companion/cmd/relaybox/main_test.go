@@ -57,6 +57,13 @@ func TestRunRejectsEmptySecret(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnvEnablesFlyProxyProtocolOnThePhoneDoor(t *testing.T) {
+	t.Setenv("RELAYBOX_PHONE_PROXY_PROTOCOL", "true")
+	if cfg := configFromEnv(); !cfg.PhoneProxyProtocol {
+		t.Fatal("RELAYBOX_PHONE_PROXY_PROTOCOL=true did not enable the public client-IP wrapper")
+	}
+}
+
 // TestRunRejectsEmptyCertPath is spec test M1 (part 2): same guard for a
 // missing certificate path, since the box has nowhere to persist (or find)
 // its identity without one.

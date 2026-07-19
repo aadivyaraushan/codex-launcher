@@ -1,6 +1,8 @@
 package relaybox
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -43,6 +45,39 @@ func (box *Box) handlePhoneConn(ctx context.Context, conn net.Conn) {
 		_ = conn.Close()
 		return
 	}
+
+	client := conn.RemoteAddr().String()
+	if host, _, err := net.SplitHostPort(client); err == nil {
+		client = host
+	}
+	if !box.phoneLimiter.allow(client, box.now()) {
+		box.logger.Warn("[relaybox] phone connection dropped", "branch_reason", "rate_limited", "client_ip", client)
+		_ = conn.Close()
+		return
+	}
+	select {
+	case box.pendingPhones <- struct{}{}:
+		defer func() { <-box.pendingPhones }()
+	default:
+		box.logger.Warn("[relaybox] phone connection dropped", "branch_reason", "pending_cap_reached", "client_ip", client)
+		_ = conn.Close()
+		return
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(box.phonePrefaceTimeout))
+	preface := make([]byte, 2)
+	if _, err := io.ReadFull(conn, preface); err != nil {
+		box.logger.Warn("[relaybox] phone connection dropped", "branch_reason", "preface_timeout", "client_ip", client)
+		_ = conn.Close()
+		return
+	}
+	if preface[0] != 0x16 || preface[1] != 0x03 {
+		box.logger.Warn("[relaybox] phone connection dropped", "branch_reason", "invalid_tls_preface", "client_ip", client)
+		_ = conn.Close()
+		return
+	}
+	_ = conn.SetReadDeadline(time.Time{})
+	conn = &bufferedConn{Conn: conn, reader: bufio.NewReader(io.MultiReader(bytes.NewReader(preface), conn))}
 
 	token, pending, err := box.tokens.mint(box.now(), box.tokenTTL)
 	if err != nil {

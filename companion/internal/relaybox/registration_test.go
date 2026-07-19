@@ -90,6 +90,41 @@ func TestCorrectSecretReregistrationEvictsPriorControlLine(t *testing.T) {
 	}
 }
 
+func TestCheckValidatesSecretWithoutEvictingControlLine(t *testing.T) {
+	box, addr, pinnedKey := newTestBox(t, WithPhoneWaitTimeout(2*time.Second))
+	control := dialMacDoor(t, addr, pinnedKey)
+	defer control.Close()
+	if _, err := control.Write([]byte("REGISTER correct-secret-value\n")); err != nil {
+		t.Fatalf("register control line: %v", err)
+	}
+	waitForControlLine(t, box)
+
+	check := dialMacDoor(t, addr, pinnedKey)
+	defer check.Close()
+	if _, err := check.Write([]byte("CHECK correct-secret-value\n")); err != nil {
+		t.Fatalf("write check: %v", err)
+	}
+	_ = check.SetReadDeadline(time.Now().Add(time.Second))
+	if line, err := bufio.NewReader(check).ReadString('\n'); err != nil || line != "OK\n" {
+		t.Fatalf("check response = %q, %v; want OK", line, err)
+	}
+	wrong := dialMacDoor(t, addr, pinnedKey)
+	defer wrong.Close()
+	if _, err := wrong.Write([]byte("CHECK definitely-the-wrong-secret\n")); err != nil {
+		t.Fatalf("write wrong-secret check: %v", err)
+	}
+	_ = wrong.SetReadDeadline(time.Now().Add(time.Second))
+	if line, err := bufio.NewReader(wrong).ReadString('\n'); err != nil || line != "ERR\n" {
+		t.Fatalf("wrong-secret check response = %q, %v; want ERR", line, err)
+	}
+
+	signalPhoneArrival(t, box)
+	_ = control.SetReadDeadline(time.Now().Add(time.Second))
+	if line, err := bufio.NewReader(control).ReadString('\n'); err != nil || !strings.HasPrefix(line, "SESSION ") {
+		t.Fatalf("CHECK request evicted the live control line: line=%q err=%v", line, err)
+	}
+}
+
 func waitForControlLine(t *testing.T, box *Box) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
