@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
@@ -23,10 +24,11 @@ type AttachmentEvent struct {
 }
 
 type attachmentSession struct {
-	deviceID string
-	protocol *contract.Session
-	store    *attachments.Store
-	now      func() time.Time
+	deviceID   string
+	protocol   *contract.Session
+	protocolMu *sync.Mutex
+	store      *attachments.Store
+	now        func() time.Time
 }
 
 func newAttachmentSession(deviceID string, protocol *contract.Session, store *attachments.Store, now func() time.Time) *attachmentSession {
@@ -42,6 +44,10 @@ func newAttachmentSession(deviceID string, protocol *contract.Session, store *at
 func (session *attachmentSession) acceptText(message contract.Message) (*AttachmentEvent, error) {
 	if session == nil {
 		return nil, contract.ErrInvalidAttachment
+	}
+	if session.protocolMu != nil {
+		session.protocolMu.Lock()
+		defer session.protocolMu.Unlock()
 	}
 	switch message.Type {
 	case "attachment_offer":
@@ -95,6 +101,10 @@ func (session *attachmentSession) acceptBinary(frame []byte) error {
 	if session == nil {
 		return contract.ErrInvalidAttachment
 	}
+	if session.protocolMu != nil {
+		session.protocolMu.Lock()
+		defer session.protocolMu.Unlock()
+	}
 	chunk, err := session.protocol.AcceptAttachmentFrameChunk(frame)
 	if err != nil {
 		return err
@@ -106,6 +116,10 @@ func (session *attachmentSession) acceptBinary(frame []byte) error {
 func (session *attachmentSession) restoreRequested() ([]AttachmentEvent, error) {
 	if session == nil {
 		return nil, contract.ErrInvalidAttachment
+	}
+	if session.protocolMu != nil {
+		session.protocolMu.Lock()
+		defer session.protocolMu.Unlock()
 	}
 	requested := session.protocol.RequestedUploads()
 	events := make([]AttachmentEvent, 0, len(requested))

@@ -294,7 +294,11 @@ func (server *Server) handleSession(response http.ResponseWriter, request *http.
 		protocolSession = contract.NewSessionWithAttachments(attachmentKey[:], contract.NewAttachmentQuota(contract.DefaultAttachmentLimits()), sessionID, deviceID)
 	}
 	defer protocolSession.Close()
+	protocolMu := &sync.Mutex{}
 	attachmentState := newAttachmentSession(deviceID, protocolSession, server.attachments, server.now)
+	if attachmentState != nil {
+		attachmentState.protocolMu = protocolMu
+	}
 	connection.SetReadLimit(int64(contract.MaxAttachmentFrameBytes))
 	if err := wsjson.Write(request.Context(), connection, authenticatedBody{Type: "authenticated", DeviceID: deviceID, SessionID: sessionID}); err != nil {
 		return
@@ -311,7 +315,7 @@ func (server *Server) handleSession(response http.ResponseWriter, request *http.
 	server.logger.Info("[mobile-transport] session authenticated", "device_id", deviceID, "session_id", sessionID, "output_shape", "authenticated_websocket")
 	sender := &websocketMessageSender{
 		connection: connection, deviceID: deviceID, sessionID: sessionID,
-		connectionID: server.nextConnection.Add(1),
+		connectionID: server.nextConnection.Add(1), protocol: protocolSession, protocolMu: protocolMu,
 	}
 	server.readFrames(request.Context(), connection, protocolSession, attachmentState, sender)
 	authenticatedSession.Close()
@@ -333,7 +337,7 @@ func (server *Server) endPreauthentication() {
 	<-server.preauthSlots
 }
 
-func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn, session *contract.Session, attachmentState *attachmentSession, sender MessageSender) {
+func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn, session *contract.Session, attachmentState *attachmentSession, sender *websocketMessageSender) {
 	deviceID, sessionID := sender.DeviceID(), sender.SessionID()
 	initialized := false
 	for {
@@ -344,7 +348,9 @@ func (server *Server) readFrames(ctx context.Context, connection *websocket.Conn
 		}
 		switch messageType {
 		case websocket.MessageText:
+			sender.protocolMu.Lock()
 			message, acceptErr := session.AcceptText(frame)
+			sender.protocolMu.Unlock()
 			var resumedAttachments []AttachmentEvent
 			branchReason := ""
 			if acceptErr != nil {
@@ -430,6 +436,8 @@ type websocketMessageSender struct {
 	sessionID    string
 	connectionID uint64
 	writeMu      sync.Mutex
+	protocol     *contract.Session
+	protocolMu   *sync.Mutex
 }
 
 func (sender *websocketMessageSender) DeviceID() string { return sender.deviceID }
@@ -454,6 +462,14 @@ func (sender *websocketMessageSender) Send(ctx context.Context, message contract
 	}
 	sender.writeMu.Lock()
 	defer sender.writeMu.Unlock()
+	if sender.protocol != nil && sender.protocolMu != nil {
+		sender.protocolMu.Lock()
+		_, err = sender.protocol.AcceptText(encoded)
+		sender.protocolMu.Unlock()
+		if err != nil {
+			return err
+		}
+	}
 	return sender.connection.Write(ctx, websocket.MessageText, encoded)
 }
 

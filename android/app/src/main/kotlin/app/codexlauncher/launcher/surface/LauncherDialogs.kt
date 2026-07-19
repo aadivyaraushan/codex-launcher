@@ -29,6 +29,7 @@ internal fun LauncherLoadingScreen() {
 @Composable
 internal fun LocalStateRecoveryScreen(
     onRetry: () -> Unit,
+    onRemoveLocalData: () -> Unit,
     onAllApps: () -> Unit,
     onAndroidSettings: () -> Unit,
 ) {
@@ -39,6 +40,7 @@ internal fun LocalStateRecoveryScreen(
         Text("Finishing private data cleanup", style = MaterialTheme.typography.headlineSmall)
         Text("Codex Launcher could not safely finish removing local data. Try again before pairing.")
         Button(onClick = onRetry) { Text("Try again") }
+        OutlinedButton(onClick = onRemoveLocalData) { Text("Remove local data") }
         OutlinedButton(onClick = onAllApps) { Text("All apps") }
         OutlinedButton(onClick = onAndroidSettings) { Text("Android Settings") }
     }

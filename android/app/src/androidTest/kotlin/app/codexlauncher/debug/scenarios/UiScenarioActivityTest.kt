@@ -325,6 +325,10 @@ class UiScenarioActivityTest {
         compose.onNodeWithText("Try again").performClick()
         compose.onNodeWithText("Recovery retry requested").assertIsDisplayed()
 
+        show(ScenarioId.RECOVERY)
+        compose.onNodeWithText("Remove local data").performClick()
+        compose.onNodeWithText("Local data removal requested").assertIsDisplayed()
+
         show(ScenarioId.DIALOG_ATTACH)
         compose.onNodeWithText("Photo").performClick()
         compose.onNodeWithText("Attachment choice: photo").assertIsDisplayed()

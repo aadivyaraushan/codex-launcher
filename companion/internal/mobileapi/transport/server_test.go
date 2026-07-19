@@ -149,9 +149,17 @@ func TestPinnedTLSServerPairsAuthenticatesAndClosesARevokedPhone(t *testing.T) {
 	server, err := NewServerWithAttachments(pairingService, func(ctx context.Context, sender MessageSender, message contract.Message) error {
 		messages <- message
 		if message.Type == "hello" {
-			return sender.Send(ctx, contract.Message{
+			if err := sender.Send(ctx, contract.Message{
 				Version: contract.Version{Major: 1}, MessageID: "welcome-test", Sender: "companion", Type: "welcome",
 				Body: json.RawMessage(`{"sessionId":"session-1","capabilities":[],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}`),
+			}); err != nil {
+				return err
+			}
+			sequence := uint64(1)
+			attachmentSequence.Store(sequence)
+			return sender.Send(ctx, contract.Message{
+				Version: contract.Version{Major: 1}, MessageID: "snapshot-test", Sender: "companion", Type: "snapshot", Sequence: &sequence,
+				Body: json.RawMessage(`{"baseSeq":1,"computerName":"Studio Mac","projects":[],"tasks":[]}`),
 			})
 		}
 		return nil
@@ -340,6 +348,26 @@ func TestPinnedTLSServerPairsAuthenticatesAndClosesARevokedPhone(t *testing.T) {
 	welcome, err := contract.DecodeText(outbound)
 	if err != nil || welcome.Type != "welcome" || welcome.Sender != "companion" {
 		t.Fatalf("outbound welcome = %#v, error = %v", welcome, err)
+	}
+	messageType, outbound, err = connection.Read(ctx)
+	if err != nil || messageType != websocket.MessageText {
+		t.Fatalf("outbound snapshot frame type = %v, error = %v", messageType, err)
+	}
+	snapshot, err := contract.DecodeText(outbound)
+	if err != nil || snapshot.Type != "snapshot" || snapshot.Sequence == nil || *snapshot.Sequence != 1 {
+		t.Fatalf("outbound snapshot = %#v, error = %v", snapshot, err)
+	}
+	ack := []byte(`{"version":{"major":1,"minor":0},"messageId":"ack-snapshot","sender":"phone","type":"ack","body":{"throughSeq":1}}`)
+	if err := connection.Write(ctx, websocket.MessageText, ack); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case message := <-messages:
+		if message.Type != "ack" {
+			t.Fatalf("acknowledgement message = %#v", message)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("phone acknowledgement of the sent snapshot did not reach the handler")
 	}
 
 	attachmentPayload := []byte("from the phone")

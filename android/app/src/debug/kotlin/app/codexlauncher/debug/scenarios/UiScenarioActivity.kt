@@ -195,6 +195,7 @@ private fun RecoveryAndDialogScenario(scenario: ScenarioId) {
         ScenarioId.RECOVERY ->
             LocalStateRecoveryScreen(
                 onRetry = { status = "Recovery retry requested" },
+                onRemoveLocalData = { status = "Local data removal requested" },
                 onAllApps = { status = "All apps requested" },
                 onAndroidSettings = { status = "Android Settings requested" },
             )

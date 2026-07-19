@@ -258,6 +258,31 @@ class LauncherActivity : ComponentActivity() {
                     }
                 }
             }
+            val removeLocalData: () -> Unit = {
+                sessionViewModel.clearFollowUpDrafts()
+                sessionViewModel.disconnect()
+                CodexConnectionService.stop(applicationContext)
+                sessionViewModel.closeTask()
+                transcriptDetail = null
+                localStorageUiState = LocalStorageUiState.WIPING
+                pairingState = PairingRecordState.Loading
+                scope.launch {
+                    when (localState.wiper.wipe()) {
+                        WipeResult.Complete -> {
+                            pairingViewModel.resetAfterUnpair()
+                            localStorageUiState = LocalStorageUiState.READY
+                            pairingState = PairingRecordState.Loaded(null)
+                            destination = LauncherDestination.PAIRING
+                        }
+                        WipeResult.AlreadyInProgress,
+                        is WipeResult.Incomplete,
+                        -> {
+                            localStorageUiState = LocalStorageUiState.FAILED
+                            pairingState = PairingRecordState.RecoveryFailed
+                        }
+                    }
+                }
+            }
             val pairedComputer = (pairingState as? PairingRecordState.Loaded)?.record
             val lastConnectionEpoch by
                 remember(pairedComputer?.pairingGeneration) {
@@ -367,6 +392,7 @@ class LauncherActivity : ComponentActivity() {
                 if (pairingState == PairingRecordState.RecoveryFailed && destination !in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE)) {
                     LocalStateRecoveryScreen(
                         onRetry = { recoveryAttempt += 1 },
+                        onRemoveLocalData = removeLocalData,
                         onAllApps = { destination = LauncherDestination.APPS },
                         onAndroidSettings = ::openAndroidSettings,
                     )
@@ -601,31 +627,7 @@ class LauncherActivity : ComponentActivity() {
                         onDismiss = { unpairConfirmVisible = false },
                         onConfirm = {
                             unpairConfirmVisible = false
-                            sessionViewModel.clearFollowUpDrafts()
-                            sessionViewModel.disconnect()
-                            CodexConnectionService.stop(applicationContext)
-                            sessionViewModel.closeTask()
-                            transcriptDetail = null
-                            localStorageUiState = LocalStorageUiState.WIPING
-                            pairingState = PairingRecordState.Loading
-                            scope.launch {
-                                when (localState.wiper.wipe()) {
-                                    WipeResult.Complete -> {
-                                        pairingViewModel.resetAfterUnpair()
-                                        localStorageUiState = LocalStorageUiState.READY
-                                        pairingState = PairingRecordState.Loaded(null)
-                                        destination = LauncherDestination.PAIRING
-                                    }
-                                    WipeResult.AlreadyInProgress -> {
-                                        localStorageUiState = LocalStorageUiState.FAILED
-                                        pairingState = PairingRecordState.RecoveryFailed
-                                    }
-                                    is WipeResult.Incomplete -> {
-                                        localStorageUiState = LocalStorageUiState.FAILED
-                                        pairingState = PairingRecordState.RecoveryFailed
-                                    }
-                                }
-                            }
+                            removeLocalData()
                         },
                     )
                 }
