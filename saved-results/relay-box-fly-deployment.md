@@ -117,6 +117,12 @@ data line. A post-deploy pin check during Fly's rolling restart failed closed;
 the same check passed after the machine reached `started`, confirming the
 encrypted volume preserved the box identity.
 
+The final Mac companion artifact was built from commit
+`a3be5661b6e448425d2b34673e3020061d16f97a`, with SHA-256
+`b9d08189fab11ccbfee620f6433eabd882b8655dfd3b89d755cdb28416d3d9b4`.
+The verified replacement installer completed, the LaunchAgent returned to
+`running`, and the installed command's new secret-aware doctor passed 7/7.
+
 ## Physical-phone handoff
 
 The old Pixel 9 pairing was revoked as required for the address migration. The
