@@ -86,8 +86,83 @@ func TestLoadConfigAcceptsStrictOwnerOnlyConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.Version != 1 || config.ComputerName != "Aadi's Mac" || config.Relay.BoxHost != "relay.example.com" || config.Relay.MacPort != 9000 || config.Relay.PhonePort != 8443 || len(config.Projects) != 1 {
+	if config.Version != 2 || config.ComputerName != "Aadi's Mac" || config.Connection.Mode != ConnectionModeRelay || config.Relay.BoxHost != "relay.example.com" || config.Relay.MacPort != 9000 || config.Relay.PhonePort != 8443 || len(config.Projects) != 1 {
 		t.Fatalf("config = %#v", config)
+	}
+}
+
+func TestLoadConfigNormalizesRecognizedLegacyConfigsWithoutRewritingThem(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission-mode assertions are POSIX-specific")
+	}
+	projectPath := canonicalTempDir(t)
+	for name, encoded := range map[string]string{
+		"relay":     `{"version":1,"computerName":"Computer","codexBinary":` + quoted(absoluteCodexPath()) + `,"projects":[{"id":"main","displayName":"Main","path":` + quoted(projectPath) + `}],"relay":{"boxHost":"relay.example.com","macPort":9000,"phonePort":8443,"pinnedKey":"` + base64.StdEncoding.EncodeToString([]byte("pinned-key-bytes")) + `","secret":"relay-secret-value"}}`,
+		"tailscale": `{"version":1,"computerName":"Computer","codexBinary":` + quoted(absoluteCodexPath()) + `,"projects":[{"id":"main","displayName":"Main","path":` + quoted(projectPath) + `}],"listenHost":"100.64.0.10","listenPort":9443}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(secureTempDir(t), "config.json")
+			if err := os.WriteFile(path, []byte(encoded), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			config, source, err := loadConfigWithSource(path, filepath.Dir(path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if source == ConfigSourceV2 || config.Version != 2 {
+				t.Fatalf("source = %q, config = %#v", source, config)
+			}
+			if name == "relay" && config.Connection.Mode != ConnectionModeRelay {
+				t.Fatalf("relay legacy config mode = %q", config.Connection.Mode)
+			}
+			if name == "tailscale" && (config.Connection.Mode != ConnectionModeTailscale || config.Connection.Tailscale.Host != "100.64.0.10") {
+				t.Fatalf("tailscale legacy config = %#v", config.Connection)
+			}
+			got, err := os.ReadFile(path)
+			if err != nil || string(got) != encoded {
+				t.Fatalf("legacy config changed: got %q, error = %v", got, err)
+			}
+		})
+	}
+}
+
+func TestWriteConfigAlwaysPublishesVersion2ConnectionChoice(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission-mode assertions are POSIX-specific")
+	}
+	root := filepath.Join(t.TempDir(), "codex-launcher")
+	path := filepath.Join(root, "config.json")
+	legacy := Config{Version: 1, ComputerName: "Computer", Relay: testRelayConfig(), Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}}
+	if err := writeConfigAt(path, root, legacy); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"version": 2`) || !strings.Contains(string(encoded), `"connection"`) || strings.Contains(string(encoded), `"listenHost"`) {
+		t.Fatalf("new config did not use the version 2 connection shape: %s", encoded)
+	}
+}
+
+func TestConfigRejectsMixedAndInvalidTailscaleConnectionShapes(t *testing.T) {
+	base := Config{Version: 2, ComputerName: "Computer", Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: canonicalTempDir(t)}}, Connection: ConnectionConfig{Mode: ConnectionModeTailscale, Tailscale: TailscaleConfig{Host: "100.64.0.10", Port: 9443}}}
+	if err := base.Validate(); err != nil {
+		t.Fatalf("valid tailscale config rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*Config){
+		"outside tailscale range": func(config *Config) { config.Connection.Tailscale.Host = "100.63.255.255" },
+		"noncanonical host":       func(config *Config) { config.Connection.Tailscale.Host = "100.064.0.10" },
+		"relay mixed in":          func(config *Config) { config.Connection.Relay = testRelayConfig() },
+		"missing mode":            func(config *Config) { config.Connection.Mode = "" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			config := base
+			mutate(&config)
+			if err := config.Validate(); !errors.Is(err, ErrInvalidConfig) {
+				t.Fatalf("validation error = %v", err)
+			}
+		})
 	}
 }
 

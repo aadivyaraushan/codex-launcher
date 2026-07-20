@@ -94,8 +94,7 @@ func New(options Options) *Doctor {
 }
 
 func (doctor *Doctor) Run(ctx context.Context, config companionapp.Config) []cli.Check {
-	doctor.logger.Info("[host-doctor] checks started", "input_shape", "saved_config,local_tools,user_service,state",
-		"relay_box_host", config.Relay.BoxHost, "relay_mac_port", config.Relay.MacPort)
+	doctor.logger.Info("[host-doctor] checks started", "input_shape", "saved_config,local_tools,user_service,state", "connection_mode", config.ConnectionMode())
 	checks := make([]cli.Check, 0, 7)
 	binary, discoverErr := doctor.discoverCodex(config.CodexBinary)
 	if discoverErr != nil {
@@ -106,7 +105,18 @@ func (doctor *Doctor) Run(ctx context.Context, config companionapp.Config) []cli
 		checks = append(checks, cli.Check{Name: "codex", OK: true, Detail: version})
 	}
 
-	checks = append(checks, doctor.relayBoxCheck(ctx, config.Relay))
+	if config.ConnectionMode() == companionapp.ConnectionModeRelay {
+		relay, err := config.RelaySettings()
+		if err != nil {
+			checks = append(checks, cli.Check{Name: "relay-box", OK: false, Detail: "relay configuration is invalid"})
+		} else {
+			checks = append(checks, doctor.relayBoxCheck(ctx, relay))
+		}
+	} else if target, err := config.PairingTarget(); err != nil {
+		checks = append(checks, cli.Check{Name: "tailscale", OK: false, Detail: "configured Tailscale address is invalid"})
+	} else {
+		checks = append(checks, cli.Check{Name: "tailscale", OK: true, Detail: "configured Tailscale listener: " + net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))})
+	}
 
 	serviceState := hostinstall.ServiceStatus{}
 	serviceOK := false
@@ -124,17 +134,31 @@ func (doctor *Doctor) Run(ctx context.Context, config companionapp.Config) []cli
 		checks = append(checks, cli.Check{Name: "service", OK: serviceOK, Detail: detail})
 	}
 
-	// The reachability check dials the box's PHONE door, not the Mac door:
-	// it is asking "could a phone reach us through the box right now",
-	// which only means anything once the service itself is running.
-	address := net.JoinHostPort(config.Relay.BoxHost, fmt.Sprintf("%d", config.Relay.PhonePort))
+	// This is a local service check, not a claim that an Android device can
+	// reach the endpoint. Phone tailnet membership, ACLs, and host firewall
+	// policy remain explicit physical-device checks.
+	target, targetErr := config.PairingTarget()
+	address := ""
+	if targetErr == nil {
+		address = net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	}
 	if !serviceOK {
 		checks = append(checks, cli.Check{Name: "reachability", OK: false, Detail: "companion service is not running"})
+	} else if targetErr != nil {
+		checks = append(checks, cli.Check{Name: "reachability", OK: false, Detail: "configured endpoint is invalid"})
 	} else if connection, err := doctor.dial("tcp", address, 2*time.Second); err != nil {
-		checks = append(checks, cli.Check{Name: "reachability", OK: false, Detail: "relay box phone door is not reachable"})
+		detail := "configured companion endpoint is not reachable"
+		if config.ConnectionMode() == companionapp.ConnectionModeRelay {
+			detail = "relay box phone door is not reachable"
+		}
+		checks = append(checks, cli.Check{Name: "reachability", OK: false, Detail: detail})
 	} else {
 		_ = connection.Close()
-		checks = append(checks, cli.Check{Name: "reachability", OK: true, Detail: "relay box phone door accepts connections"})
+		detail := "configured companion endpoint accepts connections"
+		if config.ConnectionMode() == companionapp.ConnectionModeRelay {
+			detail = "relay box phone door accepts connections"
+		}
+		checks = append(checks, cli.Check{Name: "reachability", OK: true, Detail: detail})
 	}
 
 	state, stateErr := doctor.inspectState(ctx)

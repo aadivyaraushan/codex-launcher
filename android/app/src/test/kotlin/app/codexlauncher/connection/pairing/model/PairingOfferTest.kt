@@ -42,7 +42,6 @@ class PairingOfferTest {
             listOf(
                 validUri(host = "192.168.1.10"), // private LAN
                 validUri(host = "169.254.169.254"), // cloud metadata
-                validUri(host = "100.64.0.10"), // CGNAT (the old Tailscale-style host is now denied)
                 validUri().replace("v=1", "v=2"),
                 validUri().replace("port=9443", "port=0"),
                 validUri().replace("secret=${validSecret()}", "secret=short"),

@@ -31,9 +31,8 @@ assert.match(notice, /SIL Open Font License 1\.1/);
 const readme = read("README.md");
 assert.match(readme, /technical alpha/i);
 assert.match(readme, /Android 16/i);
-assert.match(readme, /relay box/i);
-assert.doesNotMatch(readme, /connects directly.*Tailscale/is);
-assert.match(readme, /Computer offline/);
+assert.match(readme, /Tailscale/i);
+assert.match(readme, /explicit paid/i);
 assert.match(readme, /does not copy.*ChatGPT.*credential/is);
 
 console.log("repository baseline: 21 assertions passed");

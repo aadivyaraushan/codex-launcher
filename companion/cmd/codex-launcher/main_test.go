@@ -66,7 +66,7 @@ func TestFirstTimeSetupAndInstallDoNotRequireAnExistingConfig(t *testing.T) {
 		installer: installer,
 	}
 	setupArgs := []string{
-		"setup", "--computer-name", "Studio Mac", "--box-host", "relay.example.com", "--pinned-key", testPinnedKeyFlag, "--relay-secret", "relay-secret-value",
+		"setup", "relay", "--computer-name", "Studio Mac", "--box-host", "relay.example.com", "--pinned-key", testPinnedKeyFlag, "--relay-secret", "relay-secret-value",
 		"--codex-binary", filepath.Join(t.TempDir(), "codex"),
 		"--project-id", "main", "--project-name", "Main", "--project-path", projectPath,
 	}
@@ -264,6 +264,47 @@ func TestServeUsesPersistentRuntimeAndTheOwnedCodexTaskSource(t *testing.T) {
 	}
 	if record, err := health.Read(); err != nil || record.AttemptID == "" || record.State != servicehealth.StateStopped || record.LastError != "" {
 		t.Fatalf("health after clean stop = %#v, error = %v", record, err)
+	}
+}
+
+func TestServeTailscaleBindsOnlyTheConfiguredLiteralWithoutRelayFallback(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{Version: 2, ComputerName: "Test computer", Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}}, Connection: companionapp.ConnectionConfig{Mode: companionapp.ConnectionModeTailscale, Tailscale: companionapp.TailscaleConfig{Host: "100.64.0.10", Port: 9443}}}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	owner := newFakeCodexOwner()
+	relayCalled := false
+	directCalled := ""
+	code := runWith(ctx, []string{"serve"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader, startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			relayCalled = true
+			return nil, errors.New("relay must not be used")
+		},
+		directListen: func(network, address string) (net.Listener, error) {
+			directCalled = network + ":" + address
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			go cancel()
+			return listener, err
+		},
+		now: time.Now,
+	})
+	if code != 0 || relayCalled || directCalled != "tcp:100.64.0.10:9443" {
+		t.Fatalf("serve exit = %d, relay called = %v, direct = %q", code, relayCalled, directCalled)
 	}
 }
 

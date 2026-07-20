@@ -29,7 +29,7 @@ class PinnedPairingTransport private constructor(
     override fun pair(offer: PairingOffer, request: PairingRequest): PairingResponse {
         val pin = offer.tlsIdentityPin()
         val client =
-            tlsClients.builder(pin)
+            tlsClients.builder(pin, offer.route)
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)

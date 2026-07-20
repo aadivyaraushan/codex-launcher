@@ -46,7 +46,7 @@ function Wait-Maintenance([string]$Operation) {
 
 try {
   & $Companion version
-  & $Companion setup `
+  & $Companion setup relay `
     --computer-name "Codex Launcher smoke" `
     --box-host $BoxHost `
     --mac-port $MacPort `

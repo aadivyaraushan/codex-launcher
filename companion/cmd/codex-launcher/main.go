@@ -69,14 +69,15 @@ func (owner liveCodexOwner) Done() <-chan struct{} { return owner.session.Done()
 func (owner liveCodexOwner) Close() error          { return owner.session.Close() }
 
 type liveDependencies struct {
-	random      io.Reader
-	startCodex  func(context.Context, string) (codexOwner, error)
-	relayListen func(context.Context, relayclient.Config) (net.Listener, error)
-	now         func() time.Time
-	setup       cli.Setup
-	installer   cli.Installer
-	doctor      cli.Doctor
-	health      *servicehealth.Store
+	random       io.Reader
+	startCodex   func(context.Context, string) (codexOwner, error)
+	relayListen  func(context.Context, relayclient.Config) (net.Listener, error)
+	directListen func(string, string) (net.Listener, error)
+	now          func() time.Time
+	setup        cli.Setup
+	installer    cli.Installer
+	doctor       cli.Doctor
+	health       *servicehealth.Store
 }
 
 func main() {
@@ -101,7 +102,8 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer, rand
 		relayListen: func(ctx context.Context, cfg relayclient.Config) (net.Listener, error) {
 			return relayclient.Listen(ctx, cfg)
 		},
-		now: time.Now,
+		directListen: net.Listen,
+		now:          time.Now,
 	}
 	if root, err := companionapp.ConfigRoot(); err == nil {
 		dependencies.health = servicehealth.New(filepath.Join(root, "health.json"), time.Now)
@@ -195,6 +197,13 @@ func defaultLocalHostOperations() (cli.Setup, cli.Installer, cli.Doctor, error) 
 		},
 	})
 	setup := func(ctx context.Context, config companionapp.Config) error {
+		if config.Connection.Mode == companionapp.ConnectionModeTailscale && config.Connection.Tailscale.Host == "" {
+			address, discoverErr := setupValidator.DiscoverTailscaleAddress(ctx, "")
+			if discoverErr != nil {
+				return discoverErr
+			}
+			config.Connection.Tailscale.Host = address
+		}
 		return installer.Reconfigure(ctx, func() error { return setupValidator.Save(ctx, config) })
 	}
 	doctor := hostdoctor.New(hostdoctor.Options{
@@ -297,7 +306,7 @@ func serve(ctx context.Context, config companionapp.Config, errorOutput io.Write
 		}
 	}
 	updateHealth(dependencies.health, attemptID, servicehealth.StateStarting, "")
-	if dependencies.random == nil || dependencies.startCodex == nil || dependencies.relayListen == nil || dependencies.now == nil {
+	if dependencies.random == nil || dependencies.startCodex == nil || dependencies.now == nil || (config.ConnectionMode() == companionapp.ConnectionModeRelay && dependencies.relayListen == nil) || (config.ConnectionMode() == companionapp.ConnectionModeTailscale && dependencies.directListen == nil) {
 		updateHealth(dependencies.health, attemptID, servicehealth.StateFailed, servicehealth.ErrorServiceDependencies)
 		_, _ = io.WriteString(errorOutput, "Companion service dependencies are unavailable.\n")
 		return 1
@@ -345,19 +354,39 @@ func serve(ctx context.Context, config companionapp.Config, errorOutput io.Write
 		_, _ = io.WriteString(errorOutput, "Companion TLS identity is unavailable.\n")
 		return 1
 	}
-	relayConfig, err := config.RelayClientConfig()
-	if err != nil {
+	var listener net.Listener
+	switch config.ConnectionMode() {
+	case companionapp.ConnectionModeRelay:
+		relayConfig, relayErr := config.RelayClientConfig()
+		if relayErr != nil {
+			updateHealth(dependencies.health, attemptID, servicehealth.StateFailed, servicehealth.ErrorListenUnavailable)
+			_, _ = io.WriteString(errorOutput, "Companion relay configuration is invalid.\n")
+			return 1
+		}
+		// The relay listener never falls back to a direct listener: if the box
+		// cannot register this Mac, the configured relay service fails closed.
+		listener, err = dependencies.relayListen(serviceContext, relayConfig)
+		if err != nil {
+			updateHealth(dependencies.health, attemptID, servicehealth.StateFailed, servicehealth.ErrorListenUnavailable)
+			_, _ = io.WriteString(errorOutput, "Companion could not register with the relay box.\n")
+			return 1
+		}
+	case companionapp.ConnectionModeTailscale:
+		target, targetErr := config.PairingTarget()
+		if targetErr != nil {
+			updateHealth(dependencies.health, attemptID, servicehealth.StateFailed, servicehealth.ErrorListenUnavailable)
+			_, _ = io.WriteString(errorOutput, "Companion Tailscale configuration is invalid.\n")
+			return 1
+		}
+		listener, err = dependencies.directListen("tcp", net.JoinHostPort(target.Host, strconv.Itoa(target.Port)))
+		if err != nil {
+			updateHealth(dependencies.health, attemptID, servicehealth.StateFailed, servicehealth.ErrorListenUnavailable)
+			_, _ = io.WriteString(errorOutput, "Companion could not bind the configured Tailscale address.\n")
+			return 1
+		}
+	default:
 		updateHealth(dependencies.health, attemptID, servicehealth.StateFailed, servicehealth.ErrorListenUnavailable)
-		_, _ = io.WriteString(errorOutput, "Companion relay configuration is invalid.\n")
-		return 1
-	}
-	// The relay listener never falls back to a plain net.Listen: if the box
-	// won't register us (bad secret, pin mismatch, box unreachable), the
-	// service must fail closed rather than come up unreachable-but-alive.
-	listener, err := dependencies.relayListen(serviceContext, relayConfig)
-	if err != nil {
-		updateHealth(dependencies.health, attemptID, servicehealth.StateFailed, servicehealth.ErrorListenUnavailable)
-		_, _ = io.WriteString(errorOutput, "Companion could not register with the relay box.\n")
+		_, _ = io.WriteString(errorOutput, "Companion connection mode is invalid.\n")
 		return 1
 	}
 	defer listener.Close()

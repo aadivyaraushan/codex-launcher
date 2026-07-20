@@ -7,7 +7,7 @@ part of the release test set.
 ## Before you start
 
 1. Complete the [computer companion setup](companion.md).
-2. Confirm the relay box is running and the computer companion passes
+2. Confirm the selected connection path is ready and the computer companion passes
    `./codex-launcher doctor` (or `.\codex-launcher.exe doctor` in PowerShell).
 3. Download the APK and verify it against `SHA256SUMS.android`.
 
@@ -48,7 +48,7 @@ system, Light, and Dark; text size, contrast, and motion follow Android settings
 
 Allow notifications if you want replies, approvals, questions, and failures to
 appear while the launcher is not visible. A persistent connection notification
-is required while the phone maintains its sealed connection through the relay.
+is required while the phone maintains its sealed connection to the companion.
 
 ## Daily use
 
@@ -58,8 +58,10 @@ is required while the phone maintains its sealed connection through the relay.
   paired computer.
 - When the computer cannot be reached, Home says `Computer offline`. Your
   unfinished draft remains on the phone, and normal app/settings access remains.
-- When the relay box itself cannot be reached, Home says
-  `Can't reach the relay box` and retries automatically.
+- When a relay route cannot be reached, Home says `Can't reach the relay box`.
+  When a Tailscale route cannot be reached, it shows the same-tailnet, Android
+  Tailscale app, access-rule, and Mac-firewall checklist. Neither case changes
+  transport automatically.
 - Approval and question cards are tied to the exact pending Codex request. An
   expired or replayed action is rejected.
 

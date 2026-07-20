@@ -113,7 +113,8 @@ class PairingViewModel(
             return false
         }
         val encoded = raw.trim()
-        if (runCatching { PairingOffer.parse(encoded) }.isFailure) {
+        val offer = runCatching { PairingOffer.parse(encoded) }.getOrNull()
+        if (offer == null) {
             mutableState.value = mutableState.value.copy(progress = PairingProgress.IDLE, errorMessage = INVALID_LINK_MESSAGE)
             return false
         }
@@ -138,7 +139,7 @@ class PairingViewModel(
                 error = error,
                 fields = mapOf("decision" to "show_safe_retry"),
             )
-            mutableState.value = mutableState.value.copy(progress = PairingProgress.IDLE, errorMessage = PAIR_FAILED_MESSAGE)
+            mutableState.value = mutableState.value.copy(progress = PairingProgress.IDLE, errorMessage = pairingFailureMessage(offer))
             false
         } finally {
             pairingMutex.unlock()
@@ -208,8 +209,14 @@ class PairingViewModel(
 
     private companion object {
         const val INVALID_LINK_MESSAGE = "That pairing link isn't valid."
-        const val PAIR_FAILED_MESSAGE = "Couldn't reach the relay box securely. Check its address and try again."
         const val SAVE_FAILED_MESSAGE = "Your computer paired, but the phone couldn't save it."
+
+        fun pairingFailureMessage(offer: PairingOffer): String = when (offer.route.kind) {
+            app.codexlauncher.connection.pairing.model.EndpointRoute.Kind.TAILSCALE ->
+                "Couldn't reach your computer over Tailscale. Check that both devices are signed in to the same tailnet and that the Mac firewall allows the companion."
+            app.codexlauncher.connection.pairing.model.EndpointRoute.Kind.PUBLIC ->
+                "Couldn't reach the relay securely. Check its address and try again."
+        }
     }
 }
 

@@ -178,7 +178,7 @@ func TestSetupBuildsOneStrictConfigFromExplicitComputerAndFolderFlags(t *testing
 		Setup: func(_ context.Context, config companionapp.Config) error { captured = config; return nil },
 	})
 	args := []string{
-		"setup", "--computer-name", "Studio Mac",
+		"setup", "relay", "--computer-name", "Studio Mac",
 		"--box-host", "relay.example.com", "--mac-port", "9000", "--phone-port", "8443",
 		"--pinned-key", testPinnedKeyFlag, "--relay-secret", "relay-secret-value", "--codex-binary", codexBinary,
 		"--project-id", "launcher", "--project-name", "Codex Launcher", "--project-path", projectOne,
@@ -188,18 +188,47 @@ func TestSetupBuildsOneStrictConfigFromExplicitComputerAndFolderFlags(t *testing
 	if exitCode := command.Run(context.Background(), args); exitCode != 0 {
 		t.Fatalf("setup exit = %d, output = %q", exitCode, output.String())
 	}
-	if captured.Version != 1 || captured.ComputerName != "Studio Mac" || captured.CodexBinary != codexBinary {
+	if captured.Version != 2 || captured.ComputerName != "Studio Mac" || captured.CodexBinary != codexBinary || captured.Connection.Mode != companionapp.ConnectionModeRelay {
 		t.Fatalf("setup config = %#v", captured)
 	}
-	if captured.Relay.BoxHost != "relay.example.com" || captured.Relay.MacPort != 9000 || captured.Relay.PhonePort != 8443 ||
-		captured.Relay.PinnedKey != testPinnedKeyFlag || captured.Relay.Secret != "relay-secret-value" {
-		t.Fatalf("setup relay config = %#v", captured.Relay)
+	if captured.Connection.Relay.BoxHost != "relay.example.com" || captured.Connection.Relay.MacPort != 9000 || captured.Connection.Relay.PhonePort != 8443 ||
+		captured.Connection.Relay.PinnedKey != testPinnedKeyFlag || captured.Connection.Relay.Secret != "relay-secret-value" {
+		t.Fatalf("setup relay config = %#v", captured.Connection.Relay)
 	}
 	if len(captured.Projects) != 2 || captured.Projects[0].ID != "launcher" || captured.Projects[0].DisplayName != "Codex Launcher" || captured.Projects[0].Path != projectOne || captured.Projects[1].ID != "notes" {
 		t.Fatalf("setup projects = %#v", captured.Projects)
 	}
 	if output.String() != "Companion setup saved. Run codex-launcher install next.\n" {
 		t.Fatalf("setup output = %q", output.String())
+	}
+}
+
+func TestSetupTailscaleUsesOnlyTailscaleFlagsAndBareSetupIsRejected(t *testing.T) {
+	projectPath := canonicalTempDirForCLI(t)
+	var captured companionapp.Config
+	var output bytes.Buffer
+	command := New(Options{Output: &output, ErrorOutput: &output, Setup: func(_ context.Context, config companionapp.Config) error {
+		captured = config
+		return nil
+	}})
+	common := []string{"--computer-name", "Studio Mac", "--codex-binary", filepath.Join(t.TempDir(), "codex"), "--project-id", "main", "--project-name", "Main", "--project-path", projectPath}
+	if code := command.Run(context.Background(), append([]string{"setup", "tailscale", "--tailscale-ip", "100.64.0.10", "--listen-port", "9443"}, common...)); code != 0 {
+		t.Fatalf("tailscale setup exit = %d, output = %q", code, output.String())
+	}
+	if captured.Version != 2 || captured.Connection.Mode != companionapp.ConnectionModeTailscale || captured.Connection.Tailscale.Host != "100.64.0.10" || captured.Connection.Tailscale.Port != 9443 {
+		t.Fatalf("tailscale setup config = %#v", captured)
+	}
+	output.Reset()
+	if code := command.Run(context.Background(), append([]string{"setup", "tailscale"}, common...)); code != 0 || captured.Connection.Tailscale.Host != "" || captured.Connection.Tailscale.Port != 9443 {
+		t.Fatalf("discovery candidate exit = %d, config = %#v, output = %q", code, captured, output.String())
+	}
+	output.Reset()
+	if code := command.Run(context.Background(), append([]string{"setup", "tailscale", "--box-host", "relay.example.com"}, common...)); code != 2 || !strings.HasPrefix(output.String(), "Usage:") {
+		t.Fatalf("cross-mode flags exit = %d, output = %q", code, output.String())
+	}
+	output.Reset()
+	if code := command.Run(context.Background(), append([]string{"setup"}, common...)); code != 2 || !strings.HasPrefix(output.String(), "Usage:") {
+		t.Fatalf("bare setup exit = %d, output = %q", code, output.String())
 	}
 }
 
@@ -211,7 +240,7 @@ func TestSetupRejectsIncompleteProjectTriplesBeforeWriting(t *testing.T) {
 		Setup: func(context.Context, companionapp.Config) error { writes++; return nil },
 	})
 	args := []string{
-		"setup", "--computer-name", "Studio Mac",
+		"setup", "relay", "--computer-name", "Studio Mac",
 		"--box-host", "relay.example.com", "--pinned-key", testPinnedKeyFlag, "--relay-secret", "relay-secret-value",
 		"--codex-binary", filepath.Join(t.TempDir(), "codex"), "--project-id", "main", "--project-name", "Main",
 	}
@@ -224,7 +253,7 @@ func TestSetupRejectsIncompleteProjectTriplesBeforeWriting(t *testing.T) {
 func TestSetupReportsWhichRequiredLocalDependencyFailed(t *testing.T) {
 	projectPath := canonicalTempDirForCLI(t)
 	baseArgs := []string{
-		"setup", "--computer-name", "Studio Mac",
+		"setup", "relay", "--computer-name", "Studio Mac",
 		"--box-host", "relay.example.com", "--pinned-key", testPinnedKeyFlag, "--relay-secret", "relay-secret-value",
 		"--codex-binary", filepath.Join(t.TempDir(), "codex"),
 		"--project-id", "main", "--project-name", "Main", "--project-path", projectPath,

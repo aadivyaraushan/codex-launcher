@@ -1,7 +1,8 @@
 # Security and privacy model
 
 Codex Launcher is a private bridge between one Android phone and one user-owned
-computer through a small relay box controlled by that user. It does not run a
+computer. Its default route is a shared Tailscale network; a user-controlled
+relay box is an explicit alternative for VPN-conflict cases. It does not run a
 maintainer-owned project cloud service, use Firebase, or ask the project
 maintainers to hold ChatGPT, Codex, or relay credentials.
 
@@ -13,12 +14,14 @@ maintainers to hold ChatGPT, Codex, or relay credentials.
   proof identity, a separate pinned P-256 TLS identity, and TLS. The TLS key is
   derived from the saved computer identity so both pins stay stable across
   restarts. Later requests must be signed by the paired phone.
-- The companion opens only outbound, box-pinned TLS connections. It never opens
-  a public listener or falls back to a direct local listener when the relay is
-  unavailable.
-- The phone accepts only a public relay address and checks resolved addresses
-  again at connection time. Loopback, private, link-local, metadata, CGNAT, and
-  unsafe IPv6 ranges fail closed.
+- The companion binds a direct listener only to its configured Tailscale literal,
+  never to a public, LAN-wide, or wildcard address. Relay mode instead uses the
+  existing box-pinned TLS connection. A failed relay never falls back to
+  Tailscale, and a failed Tailscale route never falls back to relay.
+- The phone accepts either a safe public relay address with DNS-rebinding
+  protection, or only the official Tailscale IPv4/IPv6 ranges as parsed
+  literals. Tailscale routes use no system DNS. Loopback, LAN-private,
+  link-local, metadata, and ambiguous routes fail closed.
 - Project choices are server-approved opaque IDs. The phone does not choose an
   arbitrary filesystem path.
 - Approvals, questions, interrupts, and other actions bind to the exact pending
@@ -33,7 +36,7 @@ maintainers to hold ChatGPT, Codex, or relay credentials.
 
 ```text
 Android app
-  signed action + pinned end-to-end TLS
+  signed action + pinned end-to-end sealed TLS
         ↓
 Untrusted network + untrusted relay box
   forwards sealed bytes; cannot open phone content

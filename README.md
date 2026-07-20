@@ -4,13 +4,11 @@ Codex Launcher is an open-source technical alpha for using Codex tasks running
 on your own computer from an Android home screen. The first release targets a
 Pixel 9 on Android 16, with a companion program for macOS, Windows, and Linux.
 
-The phone and computer both connect out to a small relay box. The box passes the
-phone's sealed TLS stream through without opening it; only the paired phone and
-computer hold the content keys. The computer remains fixed after pairing, while
-the approved project folder can be changed above the prompt. When the box cannot
-be reached, the launcher says `Can't reach the relay box`; when the box is up but
-the computer is not connected, it says `Computer offline`. All apps and Android
-Settings remain available in either state.
+The default connection is Tailscale: the phone connects to the paired computer's
+literal Tailscale address over pinned TLS. A Fly relay remains an explicit paid
+option for people who need another VPN at the same time; the launcher never
+switches between routes automatically. The computer remains fixed after pairing,
+while the approved project folder can be changed above the prompt.
 
 The launcher does not copy ChatGPT authentication credentials, API keys, or
 service credentials onto the phone. Codex and ChatGPT authentication remain on
@@ -32,7 +30,7 @@ security guides before installing it on a computer with important work.
 ## Start here
 
 - [Install the computer companion](docs/setup/companion.md)
-- [Deploy the Fly relay box](docs/setup/relay-box.md)
+- [Optional Fly relay setup](docs/setup/relay-box.md)
 - [Install and pair the Android launcher](docs/setup/android.md)
 - [Security and privacy model](docs/security/threat-model.md)
 - [Codex and platform compatibility](docs/compatibility/codex.md)

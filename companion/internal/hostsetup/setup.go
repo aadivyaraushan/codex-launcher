@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	companionapp "github.com/codex-launcher/codex-launcher/companion/internal/app"
@@ -21,6 +23,7 @@ var (
 	ErrCodexUnavailable      = errors.New("Codex is missing or broken")
 	ErrRelayUnavailable      = errors.New("the relay box is unreachable, or its pinned key does not match")
 	ErrRelayRegisterRejected = errors.New("the relay box rejected the registration secret")
+	ErrTailscaleUnavailable  = errors.New("Tailscale is unavailable, signed out, or has no unique owned address")
 	ErrConfigWrite           = errors.New("companion setup could not be saved")
 )
 
@@ -43,12 +46,14 @@ type ValidateCodex func(context.Context, string) (string, error)
 type DialRelay func(ctx context.Context, addr string, pinnedPublicKey []byte) (net.Conn, error)
 
 type WriteConfig func(companionapp.Config) error
+type TailscaleIPs func(context.Context, string) (string, error)
 
 type Options struct {
 	DiscoverCodex DiscoverCodex
 	ValidateCodex ValidateCodex
 	DialRelay     DialRelay
 	WriteConfig   WriteConfig
+	TailscaleIPs  TailscaleIPs
 	Logger        *slog.Logger
 	// RegisterReadTimeout overrides defaultRegisterReadTimeout. Tests use
 	// this to keep the registration check fast instead of waiting out the
@@ -61,6 +66,7 @@ type Setup struct {
 	validateCodex       ValidateCodex
 	dialRelay           DialRelay
 	writeConfig         WriteConfig
+	tailscaleIPs        TailscaleIPs
 	logger              *slog.Logger
 	registerReadTimeout time.Duration
 }
@@ -88,10 +94,56 @@ func New(options Options) *Setup {
 	if registerReadTimeout <= 0 {
 		registerReadTimeout = defaultRegisterReadTimeout
 	}
+	tailscaleIPs := options.TailscaleIPs
+	if tailscaleIPs == nil {
+		tailscaleIPs = func(ctx context.Context, family string) (string, error) {
+			output, err := exec.CommandContext(ctx, "tailscale", "ip", family).Output()
+			return string(output), err
+		}
+	}
 	return &Setup{
 		discoverCodex: discover, validateCodex: validate, dialRelay: dialRelay,
-		writeConfig: options.WriteConfig, logger: logger, registerReadTimeout: registerReadTimeout,
+		writeConfig: options.WriteConfig, tailscaleIPs: tailscaleIPs, logger: logger, registerReadTimeout: registerReadTimeout,
 	}
+}
+
+// DiscoverTailscaleAddress chooses a canonical local Tailscale literal from
+// the documented `tailscale ip -4` output, falling back to `-6` only when no
+// IPv4 address exists. An override must be one of those same local addresses.
+func (setup *Setup) DiscoverTailscaleAddress(ctx context.Context, override string) (string, error) {
+	addresses, err := setup.tailscaleAddressList(ctx, "-4")
+	if err != nil {
+		return "", ErrTailscaleUnavailable
+	}
+	if len(addresses) == 0 {
+		addresses, err = setup.tailscaleAddressList(ctx, "-6")
+	}
+	if err != nil || len(addresses) != 1 {
+		return "", ErrTailscaleUnavailable
+	}
+	if override != "" && override != addresses[0] {
+		return "", ErrTailscaleUnavailable
+	}
+	return addresses[0], nil
+}
+
+func (setup *Setup) tailscaleAddressList(ctx context.Context, family string) ([]string, error) {
+	output, err := setup.tailscaleIPs(ctx, family)
+	if err != nil {
+		return nil, err
+	}
+	var addresses []string
+	for _, line := range strings.Split(output, "\n") {
+		address := strings.TrimSpace(line)
+		if address == "" {
+			continue
+		}
+		if !companionapp.ValidTailscaleHost(address) {
+			return nil, ErrTailscaleUnavailable
+		}
+		addresses = append(addresses, address)
+	}
+	return addresses, nil
 }
 
 // Save validates a prospective config end to end — Codex is present and

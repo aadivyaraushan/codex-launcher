@@ -46,7 +46,7 @@ case "$(uname -s)" in
 esac
 
 "$companion" version
-"$companion" setup \
+"$companion" setup relay \
   --computer-name "Codex Launcher smoke" \
   --box-host "$box_host" \
   --mac-port "$mac_port" \

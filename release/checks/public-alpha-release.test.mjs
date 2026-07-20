@@ -143,13 +143,13 @@ for (const phrase of [
 ]) {
   assert.ok(combinedDocs.toLowerCase().includes(phrase.toLowerCase()), `documentation must cover ${phrase}`);
 }
-for (const staleInstruction of [
-  /official Tailscale client/i,
+for (const requiredTailscaleInstruction of [
   /tailscale ip -4/i,
-  /--listen-host/i,
-  /Tailscale address ownership/i,
+  /setup tailscale/i,
+  /same tailnet/i,
+  /automatic fallback/i,
 ]) {
-  assert.doesNotMatch(combinedDocs, staleInstruction, `documentation must not retain removed Tailscale setup: ${staleInstruction}`);
+  assert.match(combinedDocs, requiredTailscaleInstruction, `documentation must cover Tailscale setup: ${requiredTailscaleInstruction}`);
 }
 
 const companionSetup = read("docs/setup/companion.md");

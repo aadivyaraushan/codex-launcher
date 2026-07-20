@@ -119,6 +119,40 @@ func TestSaveFailsBeforeWritingForUnavailableDependencies(t *testing.T) {
 	}
 }
 
+func TestDiscoverTailscaleAddressUsesOneOwnedLiteralOrAnExactOverride(t *testing.T) {
+	addresses := func(_ context.Context, family string) (string, error) {
+		switch family {
+		case "-4":
+			return "100.64.0.10\n", nil
+		case "-6":
+			return "fd7a:115c:a1e0::10\n", nil
+		default:
+			return "", errors.New("unexpected family")
+		}
+	}
+	setup := New(Options{TailscaleIPs: addresses})
+	for _, override := range []string{"", "100.64.0.10"} {
+		got, err := setup.DiscoverTailscaleAddress(context.Background(), override)
+		if err != nil || got != "100.64.0.10" {
+			t.Fatalf("override = %q, address = %q, error = %v", override, got, err)
+		}
+	}
+	if _, err := setup.DiscoverTailscaleAddress(context.Background(), "100.64.0.11"); !errors.Is(err, ErrTailscaleUnavailable) {
+		t.Fatalf("unowned override error = %v", err)
+	}
+}
+
+func TestDiscoverTailscaleAddressFailsForMissingOrAmbiguousOutput(t *testing.T) {
+	for name, output := range map[string]string{"missing": "", "multiple": "100.64.0.10\n100.64.0.11\n", "malformed": "not-an-ip\n"} {
+		t.Run(name, func(t *testing.T) {
+			setup := New(Options{TailscaleIPs: func(context.Context, string) (string, error) { return output, nil }})
+			if _, err := setup.DiscoverTailscaleAddress(context.Background(), ""); !errors.Is(err, ErrTailscaleUnavailable) {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
 func passingOptions(t *testing.T) Options {
 	t.Helper()
 	return Options{

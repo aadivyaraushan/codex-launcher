@@ -16,7 +16,7 @@ for (const [name, sourcePrefix, installedPrefix] of [
   for (const relayFlag of ["--box-host", "--mac-port", "--phone-port", "--pinned-key", "--relay-secret"]) {
     assert.match(script, new RegExp(relayFlag), `${name} must configure ${relayFlag}`);
   }
-  assert.doesNotMatch(script, /TailscaleIP|tailscale_ip|--listen-host|--listen-port/i, `${name} must not use the removed Tailscale setup`);
+  assert.match(script, /setup\s+relay/, `${name} must explicitly select relay setup`);
   assert.doesNotMatch(script, /curl|Invoke-WebRequest|https?:\/\//i, `${name} must not download a self-update`);
 }
 

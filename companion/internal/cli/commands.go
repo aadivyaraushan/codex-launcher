@@ -24,11 +24,12 @@ func (values *repeatedStrings) Set(value string) error {
 }
 
 type statusOutput struct {
-	Computer      string                     `json:"computer"`
-	State         string                     `json:"state"`
-	PairedDevices int                        `json:"pairedDevices"`
-	Projects      int                        `json:"projects"`
-	Service       *hostinstall.ServiceStatus `json:"service,omitempty"`
+	Computer       string                     `json:"computer"`
+	ConnectionMode string                     `json:"connectionMode"`
+	State          string                     `json:"state"`
+	PairedDevices  int                        `json:"pairedDevices"`
+	Projects       int                        `json:"projects"`
+	Service        *hostinstall.ServiceStatus `json:"service,omitempty"`
 }
 
 func (command *CLI) version() int {
@@ -46,9 +47,12 @@ func (command *CLI) pair(ctx context.Context) int {
 		command.writeError("A phone is already paired. Revoke it before pairing another phone.\n")
 		return 1
 	}
-	offer, err := command.runtime.Pairing.BeginPairing(pairing.PairingTarget{
-		Host: command.runtime.Config.Relay.BoxHost, Port: command.runtime.Config.Relay.PhonePort, Protocol: pairing.ProtocolMajor,
-	}, command.now())
+	target, err := command.runtime.Config.PairingTarget()
+	if err != nil {
+		command.writeError("Companion setup is invalid.\n")
+		return 1
+	}
+	offer, err := command.runtime.Pairing.BeginPairing(pairing.PairingTarget{Host: target.Host, Port: target.Port, Protocol: pairing.ProtocolMajor}, command.now())
 	if err != nil {
 		command.writeError("Unable to create a pairing code.\n")
 		return 1
@@ -72,7 +76,7 @@ func (command *CLI) status(ctx context.Context) int {
 		command.writeError("Unable to read companion status.\n")
 		return 1
 	}
-	status := statusOutput{Computer: command.runtime.Config.ComputerName, State: "configured", PairedDevices: len(devices), Projects: len(command.runtime.Config.Projects)}
+	status := statusOutput{Computer: command.runtime.Config.ComputerName, ConnectionMode: string(command.runtime.Config.ConnectionMode()), State: "configured", PairedDevices: len(devices), Projects: len(command.runtime.Config.Projects)}
 	if command.installer != nil {
 		serviceStatus, statusErr := command.installer.Status(ctx)
 		if statusErr != nil {
@@ -115,20 +119,41 @@ func (command *CLI) runDoctor(ctx context.Context) int {
 }
 
 func (command *CLI) runSetup(ctx context.Context, args []string) int {
+	if len(args) == 0 {
+		return command.usage()
+	}
+	mode := args[0]
 	flags := flag.NewFlagSet("setup", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var projectIDs, projectNames, projectPaths repeatedStrings
 	computerName := flags.String("computer-name", "", "")
-	boxHost := flags.String("box-host", "", "")
-	macPort := flags.Int("mac-port", 9000, "")
-	phonePort := flags.Int("phone-port", 8443, "")
-	pinnedKey := flags.String("pinned-key", "", "")
-	relaySecret := flags.String("relay-secret", "", "")
 	codexBinary := flags.String("codex-binary", "", "")
 	flags.Var(&projectIDs, "project-id", "")
 	flags.Var(&projectNames, "project-name", "")
 	flags.Var(&projectPaths, "project-path", "")
-	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *computerName == "" || *boxHost == "" || *pinnedKey == "" || *relaySecret == "" || *codexBinary == "" || len(projectIDs) == 0 || len(projectIDs) != len(projectNames) || len(projectIDs) != len(projectPaths) {
+	var connection companionapp.ConnectionConfig
+	switch mode {
+	case string(companionapp.ConnectionModeRelay):
+		boxHost := flags.String("box-host", "", "")
+		macPort := flags.Int("mac-port", 9000, "")
+		phonePort := flags.Int("phone-port", 8443, "")
+		pinnedKey := flags.String("pinned-key", "", "")
+		relaySecret := flags.String("relay-secret", "", "")
+		if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || *boxHost == "" || *pinnedKey == "" || *relaySecret == "" {
+			return command.usage()
+		}
+		connection = companionapp.ConnectionConfig{Mode: companionapp.ConnectionModeRelay, Relay: companionapp.RelayConfig{BoxHost: *boxHost, MacPort: *macPort, PhonePort: *phonePort, PinnedKey: *pinnedKey, Secret: *relaySecret}}
+	case string(companionapp.ConnectionModeTailscale):
+		tailscaleIP := flags.String("tailscale-ip", "", "")
+		listenPort := flags.Int("listen-port", 9443, "")
+		if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
+			return command.usage()
+		}
+		connection = companionapp.ConnectionConfig{Mode: companionapp.ConnectionModeTailscale, Tailscale: companionapp.TailscaleConfig{Host: *tailscaleIP, Port: *listenPort}}
+	default:
+		return command.usage()
+	}
+	if *computerName == "" || *codexBinary == "" || len(projectIDs) == 0 || len(projectIDs) != len(projectNames) || len(projectIDs) != len(projectPaths) {
 		return command.usage()
 	}
 	configuredProjects := make([]projects.Config, len(projectIDs))
@@ -136,16 +161,13 @@ func (command *CLI) runSetup(ctx context.Context, args []string) int {
 		configuredProjects[index] = projects.Config{ID: projectIDs[index], DisplayName: projectNames[index], Path: projectPaths[index]}
 	}
 	config := companionapp.Config{
-		Version: 1, ComputerName: *computerName, CodexBinary: *codexBinary, Projects: configuredProjects,
-		Relay: companionapp.RelayConfig{
-			BoxHost: *boxHost, MacPort: *macPort, PhonePort: *phonePort, PinnedKey: *pinnedKey, Secret: *relaySecret,
-		},
+		Version: 2, ComputerName: *computerName, CodexBinary: *codexBinary, Projects: configuredProjects, Connection: connection,
 	}
 	if command.setup == nil {
 		command.writeError("Companion setup is unavailable.\n")
 		return 1
 	}
-	if err := config.Validate(); err != nil {
+	if err := config.Validate(); err != nil && !(config.Connection.Mode == companionapp.ConnectionModeTailscale && config.Connection.Tailscale.Host == "") {
 		command.writeError("Companion setup values are invalid.\n")
 		return 1
 	}
@@ -158,6 +180,8 @@ func (command *CLI) runSetup(ctx context.Context, args []string) int {
 			command.writeError("The relay box is unreachable, or its pinned key does not match. Check --box-host, --mac-port, and --pinned-key.\n")
 		case errors.Is(err, hostsetup.ErrRelayRegisterRejected):
 			command.writeError("The relay box rejected the registration secret. Check --relay-secret.\n")
+		case errors.Is(err, hostsetup.ErrTailscaleUnavailable):
+			command.writeError("Tailscale is unavailable, signed out, or has no unique address. Sign in, then retry with --tailscale-ip if needed.\n")
 		default:
 			command.writeError("Companion setup could not be saved.\n")
 		}
@@ -237,7 +261,7 @@ func (command *CLI) uninstall(ctx context.Context, args []string) int {
 }
 
 func (command *CLI) usage() int {
-	command.writeError("Usage: codex-launcher <setup FLAGS|install [--replace ARTIFACT]|rollback|uninstall|pair|devices|revoke DEVICE_ID|status|doctor|version>\n")
+	command.writeError("Usage: codex-launcher <setup tailscale|relay FLAGS|install [--replace ARTIFACT]|rollback|uninstall|pair|devices|revoke DEVICE_ID|status|doctor|version>\n")
 	return 2
 }
 

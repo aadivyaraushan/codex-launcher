@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import app.codexlauncher.connection.pairing.model.EndpointRoute
 import app.codexlauncher.connection.pairing.model.PairingValidation
 import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.connection.security.HostIdentityPin
@@ -133,7 +134,7 @@ class PairingRecordStore internal constructor(
     }
 
     private fun isValid(record: PairedComputer): Boolean =
-        PairingValidation.isSafePublicEndpoint(record.host) &&
+        EndpointRoute.classify(record.host) != null &&
             record.port in 1..65535 &&
             record.protocol == 1 &&
             runCatching { HostIdentityPin.parse(record.hostIdentity) }.isSuccess &&

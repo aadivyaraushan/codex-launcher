@@ -122,7 +122,7 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 	if dependencies.TaskEvents != nil {
 		go pumpTaskEvents(ctx, dependencies.TaskEvents, mobileHandler, logger)
 	}
-	logger.Info("[app] runtime ready", "input_shape", "pairing,projects,queue,journal,mobile_transport", "project_count", len(config.Projects), "relay_box_host", config.Relay.BoxHost, "relay_mac_port", config.Relay.MacPort)
+	logger.Info("[app] runtime ready", "input_shape", "pairing,projects,queue,journal,mobile_transport", "project_count", len(config.Projects), "connection_mode", config.ConnectionMode())
 	return runtime, nil
 }
 

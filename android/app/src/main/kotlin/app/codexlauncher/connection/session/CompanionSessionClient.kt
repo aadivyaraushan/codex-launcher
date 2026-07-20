@@ -2,6 +2,7 @@ package app.codexlauncher.connection.session
 
 import app.codexlauncher.connection.pairing.network.DevicePairingSigner
 import app.codexlauncher.connection.pairing.network.PairedComputer
+import app.codexlauncher.connection.pairing.model.EndpointRoute
 import app.codexlauncher.connection.protocol.MessageType
 import app.codexlauncher.connection.protocol.ProtocolCodec
 import app.codexlauncher.connection.protocol.ProtocolMessage
@@ -196,7 +197,7 @@ class CompanionSessionClient private constructor(
     ): SessionConnection {
         val handshake = SessionHandshake(paired, sessionId, signer)
         val client =
-            tlsClients.builder(paired.tlsIdentityPin())
+            tlsClients.builder(paired.tlsIdentityPin(), requireNotNull(EndpointRoute.classify(paired.host)) { "Stored companion route is invalid" })
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)

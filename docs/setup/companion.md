@@ -1,18 +1,18 @@
 # Install the computer companion
 
-The companion runs Codex on your computer and dials out to your relay box. The
-box passes the launcher's sealed TLS stream through without opening it. The
-companion does not upload your ChatGPT sign-in or copy it to Android.
+The companion runs Codex on your computer. By default, it listens only on its
+literal Tailscale address and the phone reaches it over pinned TLS. The companion
+does not upload your ChatGPT sign-in or copy it to Android. An explicit Fly relay
+mode remains available when another VPN conflicts with Tailscale; it is never an
+automatic fallback.
 
 ## Before you start
 
 You need:
 
 - a macOS, Windows, or Linux computer that is normally on;
-- a relay box you control, deployed from this repository's
-  `Dockerfile.relaybox` and `fly.toml` by following the
-  [relay-box deployment guide](relay-box.md);
-- the relay box host, pinned public key, and registration secret;
+- Tailscale installed and signed in on both the computer and Android phone, in
+  the same tailnet; and
 - Codex installed and signed in on that computer;
 - one or more folders you are willing to let the phone select for Codex work;
 - the companion archive for your operating system and CPU.
@@ -42,18 +42,15 @@ Desktop archives are unsigned technical alpha builds. macOS Gatekeeper and
 Windows SmartScreen can warn when you open them. Do not disable either system
 globally. Continue only after the checksum matches a release you trust.
 
-## 2. Find the setup values
+## 2. Save the default Tailscale setup
 
-Get the box's public host from Fly:
+Confirm the computer has one Tailscale address. The companion runs this command
+itself and uses the one returned literal; pass `--tailscale-ip` only when it asks
+you to choose:
 
 ```bash
-fly status --app YOUR_RELAY_APP
+tailscale ip -4
 ```
-
-Use the pinned key printed once by the relay box at its first start. Keep the
-registration secret out of source files, shell history, chat, and issue reports.
-It must be at least 16 characters and contain no control characters. Store it as
-a Fly secret named `RELAYBOX_SECRET`; do not put it in `fly.toml`.
 
 Find the Codex executable:
 
@@ -64,19 +61,14 @@ command -v codex
 The PowerShell equivalent is `(Get-Command codex).Source`. Use absolute paths
 for Codex and every approved project folder.
 
-## 3. Save setup and install the user service
+## 3. Install the user service
 
 Run setup from the extracted folder. Repeat all three project flags for each
 additional folder:
 
 ```bash
-./codex-launcher setup \
+./codex-launcher setup tailscale \
   --computer-name "My computer" \
-  --box-host "YOUR_RELAY_APP.fly.dev" \
-  --mac-port 443 \
-  --phone-port 8443 \
-  --pinned-key "BASE64_PIN_FROM_RELAY_BOX" \
-  --relay-secret "SECRET_STORED_IN_FLY" \
   --codex-binary "/absolute/path/to/codex" \
   --project-id "main" \
   --project-name "Main project" \
@@ -91,13 +83,8 @@ On Windows PowerShell, use PowerShell's backtick line continuation and the
 current-folder prefix:
 
 ```powershell
-.\codex-launcher.exe setup `
+.\codex-launcher.exe setup tailscale `
   --computer-name "My computer" `
-  --box-host "YOUR_RELAY_APP.fly.dev" `
-  --mac-port 443 `
-  --phone-port 8443 `
-  --pinned-key "BASE64_PIN_FROM_RELAY_BOX" `
-  --relay-secret "SECRET_STORED_IN_FLY" `
   --codex-binary "C:\absolute\path\to\codex.exe" `
   --project-id "main" `
   --project-name "Main project" `
@@ -108,15 +95,29 @@ current-folder prefix:
 .\codex-launcher.exe doctor
 ```
 
-Setup checks that the relay box is reachable, its pinned key matches exactly,
-and it accepts the registration secret before saving anything. A mismatch fails
-closed; there is no direct-listener fallback. Installation is per-user:
+Setup checks the signed-in local Tailscale client and selected literal before
+saving anything. It never binds broadly to a LAN address. Keep Shields Up off
+on the Mac, allow the companion through the host firewall, and confirm both
+devices use the same tailnet. Local doctor cannot prove the Android app is
+connected or that tailnet access rules permit the phone; that requires the
+physical-phone check. Installation is per-user:
 LaunchAgent on macOS, systemd user service on Linux, and a limited current-user
 scheduled task on Windows.
 
 Rerun `setup` with the complete folder list whenever you change the approved
 folders. A running service is stopped, updated, and restarted. If that restart
 fails, the prior config is restored.
+
+## Optional paid Fly relay
+
+Use `setup relay` only after you have separately identified the Fly account that
+will be charged, checked current Fly pricing, estimated the cost, and approved
+the charge. Local setup does not authenticate to Fly or create paid resources.
+Follow the [relay-box deployment guide](relay-box.md), then run the same command
+above with `setup relay` and the guide's `--box-host`, `--mac-port`,
+`--phone-port`, `--pinned-key`, and `--relay-secret` flags. Changing mode or
+endpoint requires revoking the paired phone and pairing it again; Codex task
+history stays on the computer.
 
 ## 4. Pair the phone
 

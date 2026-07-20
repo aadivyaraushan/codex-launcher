@@ -60,7 +60,7 @@ class PairingViewModelTest {
     }
 
     @Test
-    fun pairingFailureNamesTheRelayInsteadOfTailscale() = runBlocking {
+    fun pairingFailureNamesTheRelayRoute() = runBlocking {
         val viewModel =
             PairingViewModel(
                 pair = { _, _, _ -> error("relay unavailable") },
@@ -71,7 +71,7 @@ class PairingViewModelTest {
             )
 
         assertFalse(viewModel.pairScanned(validOffer()))
-        assertEquals("Couldn't reach the relay box securely. Check its address and try again.", viewModel.state.value.errorMessage)
+        assertEquals("Couldn't reach the relay securely. Check its address and try again.", viewModel.state.value.errorMessage)
     }
 
     @Test

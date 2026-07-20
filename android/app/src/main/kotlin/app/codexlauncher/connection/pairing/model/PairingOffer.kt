@@ -9,6 +9,7 @@ import java.util.Base64
 
 class PairingOffer private constructor(
     val host: String,
+    val route: EndpointRoute,
     val port: Int,
     val protocol: Int,
     val hostIdentity: String,
@@ -48,12 +49,14 @@ class PairingOffer private constructor(
             val identity = query.getValue("identity")
             val tlsIdentity = query.getValue("tls_identity")
             val secret = query.getValue("secret")
-            require(PairingValidation.isSafePublicEndpoint(host) && port in 1..65535 && protocol == 1) { "Invalid pairing offer" }
+            val route = requireNotNull(EndpointRoute.classify(host)) { "Invalid pairing offer" }
+            require(port in 1..65535 && protocol == 1) { "Invalid pairing offer" }
             HostIdentityPin.parse(identity)
             TlsIdentityPin.parse(tlsIdentity)
             require(PairingValidation.isCanonicalBase64Url(secret, decodedBytes = 16)) { "Invalid pairing offer" }
             return PairingOffer(
                 host = host,
+                route = route,
                 port = requireNotNull(port),
                 protocol = requireNotNull(protocol),
                 hostIdentity = identity,
