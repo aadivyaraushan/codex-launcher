@@ -1,0 +1,17 @@
+# Operator waitlist is landing + api only — keep deploys small
+android
+companion
+outputs
+docs
+protocol
+release
+gan-harness
+planning
+saved-results
+.gstack
+work
+.git
+.github
+*.qcow2
+*.vdi
+*.vmdk
