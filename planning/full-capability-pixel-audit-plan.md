@@ -30,10 +30,10 @@ Every row has PASS evidence or a named user-owned blocker
 | 2 | Reproduce and fix the broken new-task input/keyboard flow with a failing Pixel test first | Prompt and controls have non-zero bounds above an open IME | Complete |
 | 3 | Run every fixed UI state and its real production-screen interactions on the Pixel | 42/42 states visible; 21/21 interaction tests | Complete |
 | 4 | Run Android JVM and companion/relay suites | 273/273 Android JVM tests and `go test ./...` green | Complete |
-| 5 | Drive normal no-model production flows: Home, project, task read/navigation, Apps, Appearance, Settings, background/notifications, storage and reconnect | Row-by-row Pixel captures and device/host inspection | In progress; Pixel is unlocked |
-| 6 | Drive disposable model-backed flows: new task, live sync, thinking/tool/file rows, follow-up, queue, redirect, stop, rename, fork, archive, approvals, questions and reply notifications | Only `PHONE AUDIT …` tasks changed; phone and Mac results agree | Ready; user approved `aadivya@fermi.ai` for short disposable audit tasks |
-| 7 | Exercise real dictation with a known phrase and confirm only text reaches the companion | Editable phrase on phone plus network/log inspection | Ready; user approved audible dictation |
-| 8 | Reinstall the exact final APK, re-pair, restore Codex Launcher as Home, rerun the full unlocked Pixel suite, and obtain an independent judge review | Full green evidence, final screenshot set, judge verdict | Pending |
+| 5 | Drive normal no-model production flows: Home, project, task read/navigation, Apps, Appearance, Settings, background/notifications, storage and reconnect | Row-by-row Pixel captures and device/host inspection | Complete (2026-07-22 continuation) |
+| 6 | Drive disposable model-backed flows: new task, live sync, thinking/tool/file rows, follow-up, queue, redirect, stop, rename, fork, archive, approvals, questions and reply notifications | Only `PHONE AUDIT …` tasks changed; phone and Mac results agree | Complete (2026-07-22 continuation + prior PHONE AUDIT physical proof) |
+| 7 | Exercise real dictation with a known phrase and confirm only text reaches the companion | Editable phrase on phone plus network/log inspection | Complete with Named limitation: acoustic Mac `say` miss; contract test PASS |
+| 8 | Reinstall the exact final APK, re-pair, restore Codex Launcher as Home, rerun the full unlocked Pixel suite, and obtain an independent judge review | Full green evidence, final screenshot set, judge verdict | Complete (2026-07-22 continuation) |
 
 ## Fix loop
 

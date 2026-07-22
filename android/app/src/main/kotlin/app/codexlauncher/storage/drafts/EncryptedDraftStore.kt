@@ -120,9 +120,15 @@ class EncryptedDraftStore(
                 )
                 return DraftReadState.Empty
             }
-            if (plaintext.isEmpty() || plaintext.size > MAX_DRAFT_BYTES) return invalidData("invalid_plaintext_size")
+            if (plaintext.isEmpty() || plaintext.size > MAX_DRAFT_BYTES) {
+                plaintext.fill(0)
+                return clearUnreadable("invalid_plaintext_size")
+            }
             val text = plaintext.toString(Charsets.UTF_8)
-            if (text.encodeToByteArray().size != plaintext.size || text.isBlank()) return invalidData("invalid_plaintext")
+            if (text.encodeToByteArray().size != plaintext.size || text.isBlank()) {
+                plaintext.fill(0)
+                return clearUnreadable("invalid_plaintext")
+            }
             AppLog.info(
                 feature = "draft-store",
                 message = "draft load completed",
@@ -142,9 +148,10 @@ class EncryptedDraftStore(
                 feature = "draft-store",
                 message = "draft record rejected",
                 error = error,
-                fields = mapOf("decision" to "return_invalid_data"),
+                fields = mapOf("decision" to "clear_unreadable_ciphertext_and_return_empty"),
             )
-            DraftReadState.Unavailable(DraftReadFailure.INVALID_DATA)
+            // Undecryptable/orphan ciphertext (e.g. after draft-key wipe) must not lock the composer.
+            clearUnreadable("decrypt_or_decode_failed")
         }
     }
 
@@ -182,6 +189,19 @@ class EncryptedDraftStore(
             fields = mapOf("branch_reason" to reason, "decision" to "return_invalid_data"),
         )
         return DraftReadState.Unavailable(DraftReadFailure.INVALID_DATA)
+    }
+
+    private fun clearUnreadable(reason: String): DraftReadState {
+        AppLog.info(
+            feature = "draft-store",
+            message = "draft record rejected",
+            fields = mapOf("branch_reason" to reason, "decision" to "clear_unreadable_ciphertext_and_return_empty"),
+        )
+        return if (clearLocked()) {
+            DraftReadState.Empty
+        } else {
+            DraftReadState.Unavailable(DraftReadFailure.INVALID_DATA)
+        }
     }
 
     private fun staleTemporaryFile(): File = File(file.parentFile, ".${file.name}.tmp")

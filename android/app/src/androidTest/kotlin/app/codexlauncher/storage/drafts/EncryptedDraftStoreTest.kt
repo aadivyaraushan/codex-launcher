@@ -113,7 +113,8 @@ class EncryptedDraftStoreTest {
 
         draftFile.parentFile?.mkdirs()
         draftFile.writeBytes("private corrupt plaintext".encodeToByteArray())
-        assertEquals(DraftReadState.Unavailable(DraftReadFailure.INVALID_DATA), store.load(now))
+        assertEquals(DraftReadState.Empty, store.load(now))
+        assertFalse(draftFile.exists())
 
         assertTrue(store.save("future", now.plusSeconds(60)))
         assertEquals(DraftReadState.Unavailable(DraftReadFailure.INVALID_DATA), store.load(now))
@@ -137,15 +138,15 @@ class EncryptedDraftStoreTest {
     }
 
     @Test
-    fun tamperedExpiredTimestampIsRejectedWithoutDeletingAuthenticatedCiphertext() = runBlocking {
+    fun tamperedCiphertextIsClearedSoComposerCanRecover() = runBlocking {
         val store = store(maxAge = Duration.ofHours(2))
-        assertTrue(store.save("must survive unauthenticated expiry", now))
+        assertTrue(store.save("must not permanently lock composer", now))
         val tampered = draftFile.readBytes()
         ByteBuffer.wrap(tampered).putLong(5, now.minus(Duration.ofDays(30)).toEpochMilli())
         draftFile.writeBytes(tampered)
 
-        assertEquals(DraftReadState.Unavailable(DraftReadFailure.INVALID_DATA), store.load(now))
-        assertTrue("Unauthenticated metadata must not authorize deletion", draftFile.exists())
+        assertEquals(DraftReadState.Empty, store.load(now))
+        assertFalse("Undecryptable ciphertext must be cleared so the composer can recover", draftFile.exists())
     }
 
     @Test

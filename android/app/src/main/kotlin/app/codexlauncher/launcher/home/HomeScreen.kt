@@ -243,8 +243,13 @@ private fun OnlineContent(
     }
     val listState = rememberLazyListState()
     val composerRowIndex = state.tasks.size + 1
-    LaunchedEffect(promptFocused, imeBottomPx, newTaskMessage, attachmentMessage, newTaskNeedsReview, composerRowIndex) {
-        if (promptFocused && imeBottomPx > 0) {
+    val keepComposerVisible =
+        (promptFocused && imeBottomPx > 0) ||
+            newTaskNeedsReview ||
+            !newTaskMessage.isNullOrBlank() ||
+            !attachmentMessage.isNullOrBlank()
+    LaunchedEffect(keepComposerVisible, newTaskMessage, attachmentMessage, newTaskNeedsReview, composerRowIndex, imeBottomPx) {
+        if (keepComposerVisible) {
             listState.scrollToItem(composerRowIndex)
             listState.scrollBy(Float.MAX_VALUE)
         }

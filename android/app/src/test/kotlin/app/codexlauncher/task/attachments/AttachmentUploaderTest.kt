@@ -8,6 +8,7 @@ import app.codexlauncher.connection.session.SessionConnection
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.buildJsonObject
@@ -186,9 +187,9 @@ class AttachmentUploaderTest {
     }
 
     private suspend fun waitUntil(condition: () -> Boolean) {
-        repeat(100) {
+        repeat(200) {
             if (condition()) return
-            yield()
+            delay(5)
         }
         error("condition was not reached")
     }

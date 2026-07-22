@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.onRoot
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -100,8 +101,9 @@ class UiScenarioActivityTest {
             List(8) { "A long phone task description must leave every composer action reachable" }.joinToString(" "),
         )
         compose.waitUntil(timeoutMillis = 3_000) { imeBottomInset() > 0 }
-        val screenBottom = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.heightPixels
-        val keyboardTop = screenBottom - imeBottomInset()
+        compose.waitForIdle()
+        val rootBottom = compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom
+        val keyboardTop = rootBottom - imeBottomInset()
         val actionBottom = compose.onNodeWithContentDescription("Send prompt").fetchSemanticsNode().boundsInRoot.bottom
 
         assertTrue(
@@ -116,8 +118,9 @@ class UiScenarioActivityTest {
 
         compose.onNodeWithContentDescription("Follow-up message").performClick()
         compose.waitUntil(timeoutMillis = 3_000) { imeBottomInset() > 0 }
-        val screenBottom = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.heightPixels
-        val keyboardTop = screenBottom - imeBottomInset()
+        compose.waitForIdle()
+        val rootBottom = compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom
+        val keyboardTop = rootBottom - imeBottomInset()
         val actionBottom = compose.onNodeWithText("Send follow-up").fetchSemanticsNode().boundsInRoot.bottom
 
         assertTrue(
@@ -136,9 +139,9 @@ class UiScenarioActivityTest {
         compose.onNodeWithText("Full access").performClick()
         compose.onNodeWithText("Use all files available to the computer account.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Dictate prompt").performClick()
-        compose.onNodeWithText("Dictation requested").assertIsDisplayed()
+        compose.onNodeWithText("Dictation requested").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Attach file").performClick()
-        compose.onNodeWithText("Attachment picker requested").assertIsDisplayed()
+        compose.onNodeWithText("Attachment picker requested").performScrollTo().assertIsDisplayed()
 
         show(ScenarioId.HOME_ATTACHMENTS)
         compose.onNodeWithContentDescription("Remove sample-notes.txt").performClick()

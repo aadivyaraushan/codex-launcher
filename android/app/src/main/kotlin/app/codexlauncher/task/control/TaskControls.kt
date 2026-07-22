@@ -3,9 +3,13 @@ package app.codexlauncher.task.control
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
@@ -61,7 +65,13 @@ fun TaskControls(
     val followUpsBlocked = queueState == TaskQueueState.OUTCOME_UNKNOWN
 
     Column(
-        modifier = modifier.fillMaxWidth().imePadding().padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                // Keep actions above the larger of IME and gesture/nav bar; do not also pad
+                // navigation bars on the parent TaskScreen column or the composer sits ~1 row into Gboard.
+                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         when (queueState) {
