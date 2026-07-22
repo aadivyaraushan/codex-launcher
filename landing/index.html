@@ -228,7 +228,8 @@ body{
 @media (max-width: 900px){
   :root{
     --nav-h: 76px;
-    --device-band-h: min(32vh, 260px);
+    /* Tall enough for a portrait phone; old min(32vh, 260px) squashed phones flat. */
+    --device-band-h: min(48svh, 400px);
   }
   html{ scroll-padding-top: calc(var(--nav-h) + var(--device-band-h)); }
   .story__layout{
@@ -271,22 +272,27 @@ body{
   }
   .chapter__desc{ max-width: 42ch; }
   .device--morph{
-    width: min(100%, 280px);
-    max-height: calc(var(--device-band-h) - 36px);
+    max-width: min(100%, 300px);
+    max-height: calc(var(--device-band-h) - 44px);
   }
   .device[data-shape="phone"]{
-    width: min(100%, 168px);
-    height: min(320px, calc(var(--device-band-h) - 40px));
-    padding: 10px;
+    /* Height drives size; aspect-ratio keeps a real phone silhouette. */
+    width: auto;
+    height: min(340px, calc(var(--device-band-h) - 48px));
+    aspect-ratio: 9 / 19.5;
+    max-width: min(100%, 168px);
+    padding: 8px;
   }
   .device[data-shape="laptop"]{
     width: min(100%, 300px);
-    height: min(168px, calc(var(--device-band-h) - 40px));
+    height: min(168px, calc(var(--device-band-h) - 48px));
+    aspect-ratio: auto;
     padding: 8px 8px 14px;
   }
   .device[data-shape="duo"]{
     width: min(100%, 300px);
-    height: min(200px, calc(var(--device-band-h) - 40px));
+    height: min(200px, calc(var(--device-band-h) - 48px));
+    aspect-ratio: auto;
     padding: 10px;
   }
   .duo{
