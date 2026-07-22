@@ -222,6 +222,7 @@ func TestEmptyReasoningSummaryMapsToContentFreeActivityLabel(t *testing.T) {
 
 func TestIncompleteItemsMapToValidContentFreeActivityLabels(t *testing.T) {
 	raw := json.RawMessage(`{"thread":{"id":"thread-1","turns":[{"id":"turn-1","status":"inProgress","items":[
+		{"id":"agent-1","type":"agentMessage","text":"","phase":"commentary"},
 		{"id":"plan-1","type":"plan","text":""},
 		{"id":"file-1","type":"fileChange","status":"inProgress","changes":[]}
 	]}]}}`)
@@ -230,10 +231,13 @@ func TestIncompleteItemsMapToValidContentFreeActivityLabels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Entries) != 2 || page.Entries[0].Kind != KindPlan || page.Entries[0].Text != "Plan activity" {
+	if len(page.Entries) != 3 || page.Entries[0].Kind != KindActivity || page.Entries[0].Text != "Agent response in progress" {
+		t.Fatalf("incomplete agent message = %#v", page.Entries)
+	}
+	if page.Entries[1].Kind != KindPlan || page.Entries[1].Text != "Plan activity" {
 		t.Fatalf("incomplete plan entry = %#v", page.Entries)
 	}
-	if page.Entries[1].Kind != KindActivity || page.Entries[1].Text != "File activity" || page.Entries[1].Status != "" || len(page.Entries[1].Changes) != 0 {
-		t.Fatalf("incomplete file entry = %#v", page.Entries[1])
+	if page.Entries[2].Kind != KindActivity || page.Entries[2].Text != "File activity" || page.Entries[2].Status != "" || len(page.Entries[2].Changes) != 0 {
+		t.Fatalf("incomplete file entry = %#v", page.Entries[2])
 	}
 }

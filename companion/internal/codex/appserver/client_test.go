@@ -16,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 )
 
 func TestRealReadOnlyAppServerCompatibility(t *testing.T) {
@@ -51,6 +53,46 @@ func TestRealReadOnlyAppServerCompatibility(t *testing.T) {
 	if json.Unmarshal(result, &page) != nil || page.Data == nil {
 		t.Fatalf("unexpected thread/list result: %s", result)
 	}
+	threadID := os.Getenv("CODEX_APPSERVER_THREAD_ID")
+	if threadID == "" && len(page.Data) > 0 {
+		var listed struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(page.Data[0], &listed) != nil {
+			t.Fatal("latest thread has an invalid shape")
+		}
+		threadID = listed.ID
+	}
+	if threadID == "" {
+		t.Skip("the installed app-server has no task to read")
+	}
+	readResult, err := client.ReadThread(ctx, threadID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var read struct {
+		Thread json.RawMessage `json:"thread"`
+	}
+	if json.Unmarshal(readResult, &read) != nil || len(read.Thread) == 0 {
+		t.Fatal("thread/read result contains no thread")
+	}
+	var turnShape struct {
+		Turns []struct {
+			Status string `json:"status"`
+		} `json:"turns"`
+	}
+	if json.Unmarshal(read.Thread, &turnShape) != nil {
+		t.Fatal("thread/read turns have an invalid shape")
+	}
+	task, err := taskstate.MapAppServerThread(read.Thread)
+	if err != nil || task.ID != threadID {
+		t.Fatalf("thread/read task mapping failed: id_match=%v error=%v", task.ID == threadID, err)
+	}
+	statuses := make([]string, len(turnShape.Turns))
+	for index, turn := range turnShape.Turns {
+		statuses[index] = turn.Status
+	}
+	t.Logf("thread/read task state=%s has_active_turn=%v turn_statuses=%v", task.State, task.ActiveTurnID != "", statuses)
 }
 
 func TestClientInitializesThenUsesCurrentStableMethodsAndShapes(t *testing.T) {

@@ -6,10 +6,12 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performTextInput
@@ -31,6 +33,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -346,16 +349,38 @@ class HomeScreenTest {
         compose.setContent {
             QuietInstrumentTheme(AppearanceMode.DARK) {
                 HomeScreen(
-                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    state =
+                        onlineState(selectedProjectName = "Codex Launcher").copy(
+                            tasks =
+                                (1..4).map { index ->
+                                    HomeTask(
+                                        "thread-$index",
+                                        "Task $index",
+                                        "Working",
+                                    )
+                                },
+                        ),
+                    newTaskOptions = taskOptions(),
                     composerState = readyDraft(prompt),
                     onPromptChange = { prompt = it },
                 )
             }
         }
 
-        compose.onNodeWithContentDescription("Prompt").performClick().performTextInput("Check keyboard insets")
+        compose.onNodeWithContentDescription("Prompt").performClick()
+        compose.onNodeWithContentDescription("Prompt").performTextInput("Check keyboard insets")
         compose.waitUntil(timeoutMillis = 3_000) { isImeVisible() }
+        compose.waitUntil(timeoutMillis = 3_000) {
+            compose.onNodeWithContentDescription("Prompt").isDisplayed()
+        }
+        compose.onNodeWithContentDescription("Prompt").assertIsDisplayed()
         compose.onNodeWithContentDescription("Send prompt").assertIsDisplayed().assertIsEnabled()
+        val visibleBottom = compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom - imeBottomInset()
+        val actionBottom = compose.onNodeWithContentDescription("Send prompt").fetchSemanticsNode().boundsInRoot.bottom
+        assertTrue(
+            "new-task actions leave excessive space above the keyboard: visible=$visibleBottom actions=$actionBottom",
+            visibleBottom - actionBottom < 160f,
+        )
     }
 
     private fun isImeVisible(): Boolean {
@@ -370,6 +395,21 @@ class HomeScreenTest {
                     }
         }
         return visible
+    }
+
+    private fun imeBottomInset(): Int {
+        var bottom = 0
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            bottom =
+                ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)
+                    .firstNotNullOfOrNull { activity ->
+                        activity.window.decorView.rootWindowInsets
+                            ?.getInsets(WindowInsets.Type.ime())
+                            ?.bottom
+                    } ?: 0
+        }
+        return bottom
     }
 
     private fun offlineState() =

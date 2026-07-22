@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
 import org.junit.Assert.assertEquals
@@ -32,6 +33,25 @@ class AppDrawerScreenTest {
         compose.onNodeWithContentDescription("Search apps").performTextInput("cam")
         compose.onNodeWithText("Camera").assertIsDisplayed()
         compose.onAllNodesWithText("Authenticator").assertCountEquals(0)
+    }
+
+    @Test
+    fun restoredAllAppsStartsWithTheCompleteUnfilteredList() {
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            QuietInstrumentTheme(AppearanceMode.LIGHT) {
+                AppDrawerScreen(
+                    apps = listOf(InstalledApp("auth", "Authenticator"), InstalledApp("camera", "Camera")),
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Search apps").performTextInput("cam")
+        compose.onAllNodesWithText("Authenticator").assertCountEquals(0)
+
+        restoration.emulateSavedInstanceStateRestore()
+
+        compose.onNodeWithText("Authenticator").assertIsDisplayed()
+        compose.onNodeWithText("Camera").assertIsDisplayed()
     }
 
     @Test

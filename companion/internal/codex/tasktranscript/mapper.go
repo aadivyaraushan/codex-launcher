@@ -216,10 +216,14 @@ func mapItem(raw json.RawMessage, turnID string) (Entry, error) {
 		var item struct {
 			Text string `json:"text"`
 		}
-		if json.Unmarshal(raw, &item) != nil || item.Text == "" {
+		if json.Unmarshal(raw, &item) != nil {
 			return Entry{}, ErrInvalidTranscript
 		}
-		entry.Kind, entry.Text = KindAgent, item.Text
+		if item.Text == "" {
+			entry.Kind, entry.Text = KindActivity, "Agent response in progress"
+		} else {
+			entry.Kind, entry.Text = KindAgent, item.Text
+		}
 	case "reasoning":
 		var item struct {
 			Summary []string `json:"summary"`

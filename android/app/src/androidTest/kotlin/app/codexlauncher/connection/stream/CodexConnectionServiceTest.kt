@@ -34,6 +34,7 @@ class CodexConnectionServiceTest {
     fun setUp() {
         InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
         context.stopService(CodexConnectionService.stopIntent(context))
+        assertEventually("previous service stopped") { !CodexConnectionService.snapshot().running }
         CodexConnectionService.resetForTest()
         stream = FakeStreamClient()
         CodexConnectionService.installStreamClientForTest(stream)
@@ -42,6 +43,7 @@ class CodexConnectionServiceTest {
     @After
     fun tearDown() {
         context.stopService(CodexConnectionService.stopIntent(context))
+        assertEventually("service stopped during cleanup") { !CodexConnectionService.snapshot().running }
         CodexConnectionService.installStreamClientForTest(null)
     }
 

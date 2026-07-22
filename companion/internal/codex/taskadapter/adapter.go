@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
@@ -100,7 +101,6 @@ func NewAppServerOnly(appServer *appserver.Client) (Set, error) {
 }
 
 func (set *Set) configureExistingTaskControls() {
-	set.currentTask = set.reloadTask
 	if set.app != nil {
 		set.readAppTask = func(ctx context.Context, taskID string) (json.RawMessage, error) {
 			return set.app.ReadThread(ctx, taskID, true)
@@ -180,6 +180,7 @@ func (set *Set) configureExistingTaskControls() {
 			return "", taskstate.ErrUnresolvedTaskSource
 		}
 	}
+	set.currentTask = set.reloadTask
 }
 
 func (set Set) CurrentTaskFromSource(ctx context.Context, taskID string, source taskstate.Source) (taskstate.Task, error) {
@@ -246,9 +247,27 @@ func (set Set) reloadTask(ctx context.Context, taskID string) (taskstate.Task, e
 			continue
 		}
 		if task.Source == taskstate.SourceCatalog {
-			return set.ResolveDesktopOwner(ctx, taskID)
+			if set.desktop == nil {
+				return set.ResumeWithAppServer(ctx, taskID)
+			}
+			resolved, resolveErr := set.ResolveDesktopOwner(ctx, taskID)
+			if resolveErr == nil {
+				return resolved, nil
+			}
+			if errors.Is(resolveErr, desktopipc.ErrOwnerUnavailable) {
+				return set.ResumeWithAppServer(ctx, taskID)
+			}
+			return taskstate.Task{}, resolveErr
 		}
-		return task, nil
+		return set.CurrentTaskFromSource(ctx, taskID, task.Source)
+	}
+	if set.desktop == nil && set.readAppTask != nil {
+		slog.Default().Info(
+			"[codex-adapter] older task missing from bounded catalog; reading directly",
+			"task_id", taskID,
+			"branch_reason", "app_server_only_catalog_miss",
+		)
+		return set.CurrentTaskFromSource(ctx, taskID, taskstate.SourceAppServer)
 	}
 	return taskstate.Task{}, ErrUnknownCatalogTask
 }
@@ -385,13 +404,23 @@ func (set Set) InterruptExistingTurn(ctx context.Context, taskID string) (Existi
 	}
 	task, err := set.currentTask(ctx, taskID)
 	if err != nil {
+		slog.Default().Error("[codex-adapter] interrupt task reload failed", "task_id", taskID, "branch_reason", "reload_failed", "error", err, "error_class", fmt.Sprintf("%T", err))
 		return ExistingTaskResult{}, err
 	}
+	slog.Default().Info(
+		"[codex-adapter] interrupt task reloaded",
+		"task_id", taskID,
+		"source", task.Source,
+		"state", task.State,
+		"active_turn_id_present", task.ActiveTurnID != "",
+	)
 	if !taskHasActiveTurn(task) {
+		slog.Default().Info("[codex-adapter] interrupt task rejected", "task_id", taskID, "branch_reason", "no_active_turn")
 		return ExistingTaskResult{}, ErrTaskNotBusy
 	}
 	turnID, err := set.interruptExistingTurn(ctx, task)
 	if err != nil {
+		slog.Default().Error("[codex-adapter] interrupt write failed", "task_id", taskID, "source", task.Source, "error", err, "error_class", fmt.Sprintf("%T", err))
 		return ExistingTaskResult{}, err
 	}
 	if turnID == "" {

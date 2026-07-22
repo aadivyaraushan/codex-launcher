@@ -18,6 +18,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TaskActionBridgeTest {
+	@Test
+	fun confirmedForkReturnsTheNewTaskId() = runBlocking {
+		val bridge =
+			TaskActionBridge(
+				sendAction = { _, beforeBoundary ->
+					assertTrue(beforeBoundary())
+					ActionSendResult.SENT_UNKNOWN
+				},
+				journal = TaskRecordingJournal(),
+				nextActionId = { "action-fork" },
+			)
+		val pending = async { bridge.perform("thread-1", TaskAction.Fork) }
+		yield()
+
+		bridge.accept(
+			ProtocolCodec.decodeText(
+				"""{"version":{"major":1,"minor":0},"messageId":"fork-result","sender":"companion","type":"action_result","seq":10,"body":{"actionId":"action-fork","state":"confirmed","forkTaskId":"fork-1"}}""",
+			),
+		)
+
+		assertEquals(TaskActionOutcome.Forked("fork-1"), pending.await())
+	}
+
     @Test
     fun approvedTaskActionsCrossTheDurableBoundaryAndWaitForTheirResult() = runBlocking {
         val cases =
@@ -57,11 +80,18 @@ class TaskActionBridgeTest {
             }
             bridge.accept(
                 ProtocolCodec.decodeText(
-                    """{"version":{"major":1,"minor":0},"messageId":"result-$index","sender":"companion","type":"action_result","seq":${10 + index},"body":{"actionId":"$actionId","state":"confirmed"}}""",
+                    if (taskAction == TaskAction.Fork) {
+                        """{"version":{"major":1,"minor":0},"messageId":"result-$index","sender":"companion","type":"action_result","seq":${10 + index},"body":{"actionId":"$actionId","state":"confirmed","forkTaskId":"fork-1"}}"""
+                    } else {
+                        """{"version":{"major":1,"minor":0},"messageId":"result-$index","sender":"companion","type":"action_result","seq":${10 + index},"body":{"actionId":"$actionId","state":"confirmed"}}"""
+                    },
                 ),
             )
 
-            assertEquals(TaskActionOutcome.Complete, pending.await())
+            assertEquals(
+                if (taskAction == TaskAction.Fork) TaskActionOutcome.Forked("fork-1") else TaskActionOutcome.Complete,
+                pending.await(),
+            )
             assertEquals(
                 listOf("prepared:${resultCode.wireName}", "sent_unknown", "socket", "received:$actionId:${10 + index}", "confirmed:${resultCode.wireName}", "stored:$actionId:${10 + index}:true:false"),
                 events,

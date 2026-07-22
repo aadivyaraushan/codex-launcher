@@ -116,7 +116,15 @@ func (catalog *Catalog) ReadTranscript(ctx context.Context, taskID string, optio
 	options.TaskID = taskID
 	candidate, err := catalog.candidate(taskID)
 	if err != nil {
-		return tasktranscript.Page{}, err
+		if !errors.Is(err, ErrUnknownCatalogTask) || catalog.readAppTranscript == nil {
+			return tasktranscript.Page{}, err
+		}
+		candidate = taskstate.Task{ID: taskID, Source: taskstate.SourceAppServer}
+		catalog.logger.Info(
+			"[codex-adapter] transcript task missing from bounded catalog; reading directly",
+			"task_id", taskID,
+			"branch_reason", "shared_catalog_pending",
+		)
 	}
 	catalog.logger.Debug("[codex-adapter] transcript requested", "task_id", taskID, "source", candidate.Source, "input_limit", options.Limit, "has_cursor", options.BeforeEntryID != "")
 	var page tasktranscript.Page

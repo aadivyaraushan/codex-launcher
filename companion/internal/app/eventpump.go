@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
@@ -35,6 +36,10 @@ func pumpTaskEvents(ctx context.Context, events <-chan taskstate.MobileEvent, pu
 				published.Reset()
 				snapshotGeneration = currentGeneration
 			}
+			if previous, exists := published.Last(event.TaskID); exists && isTerminalTaskState(previous.State) && event.State == taskstate.Working && !event.StartsTurn {
+				logger.Info("[app] late task activity skipped", "thread_id", event.TaskID, "event_kind", event.Kind, "previous_state", previous.State, "branch_reason", "terminal_state_is_newer")
+				continue
+			}
 			if published.Contains(event) {
 				continue
 			}
@@ -61,9 +66,9 @@ func pumpTaskEvents(ctx context.Context, events <-chan taskstate.MobileEvent, pu
 }
 
 const maxTaskEventPublishAttempts = 3
+const taskCatalogRefreshDelay = 50 * time.Millisecond
 
 func publishTaskEvent(ctx context.Context, publisher taskEventPublisher, event taskstate.MobileEvent, logger *slog.Logger) error {
-	refreshed := false
 	var lastErr error
 	for attempt := 1; attempt <= maxTaskEventPublishAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
@@ -76,12 +81,18 @@ func publishTaskEvent(ctx context.Context, publisher taskEventPublisher, event t
 		if lastErr == nil {
 			return nil
 		}
-		if errors.Is(lastErr, mobilesession.ErrUnknownTaskEvent) && !refreshed {
+		if errors.Is(lastErr, mobilesession.ErrUnknownTaskEvent) && attempt < maxTaskEventPublishAttempts {
 			if refreshErr := publisher.RefreshTaskSnapshot(ctx); refreshErr != nil {
 				return fmt.Errorf("refresh task snapshot: %w", refreshErr)
 			}
-			refreshed = true
-			logger.Info("[app] mobile task catalog refreshed", "thread_id", event.TaskID, "branch_reason", "unknown_live_task")
+			logger.Info("[app] mobile task catalog refreshed", "thread_id", event.TaskID, "branch_reason", "unknown_live_task", "attempt", attempt)
+			timer := time.NewTimer(taskCatalogRefreshDelay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
 			continue
 		}
 		logger.Warn("[app] live task event publish retry", "thread_id", event.TaskID, "event_kind", event.Kind, "attempt", attempt, "error_class", fmt.Sprintf("%T", lastErr))
@@ -104,6 +115,11 @@ func (cache *publishedEventCache) Contains(event taskstate.MobileEvent) bool {
 	return exists && previous == event
 }
 
+func (cache *publishedEventCache) Last(taskID string) (taskstate.MobileEvent, bool) {
+	event, exists := cache.entries[taskID]
+	return event, exists
+}
+
 func (cache *publishedEventCache) Record(event taskstate.MobileEvent) {
 	if _, exists := cache.entries[event.TaskID]; exists {
 		cache.entries[event.TaskID] = event
@@ -120,4 +136,8 @@ func (cache *publishedEventCache) Record(event taskstate.MobileEvent) {
 func (cache *publishedEventCache) Reset() {
 	clear(cache.entries)
 	cache.order = cache.order[:0]
+}
+
+func isTerminalTaskState(state taskstate.State) bool {
+	return state == taskstate.IdleAfterReply || state == taskstate.Failed || state == taskstate.Interrupted
 }

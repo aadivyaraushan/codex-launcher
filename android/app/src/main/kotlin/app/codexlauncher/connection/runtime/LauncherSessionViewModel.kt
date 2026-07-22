@@ -108,6 +108,7 @@ class LauncherSessionViewModel(
     private val pendingTaskAcknowledgements = ConcurrentHashMap<String, TaskAcknowledgement>()
     private val retainedUnknownActionIds = ConcurrentHashMap.newKeySet<String>()
     private var pendingTranscript: PendingTranscriptRequest? = null
+    private var pendingForkTaskId: String? = null
     private var transcriptRefreshQueued = false
     private var pendingDecisionRead: PendingDecisionRequest? = null
     private val acknowledgementGate = SequenceAcknowledgementGate()
@@ -512,10 +513,29 @@ class LauncherSessionViewModel(
     private suspend fun performTaskAction(taskId: String, action: TaskAction): TaskActionOutcome {
         val request = currentTaskActionRequest(taskId) ?: return TaskActionOutcome.Unavailable
         val outcome = request.bridge.perform(taskId, action)
-        if (action == TaskAction.Fork && outcome != TaskActionOutcome.Complete) {
-            publishUnconfirmedForks(request.generation, request.bridge.unresolvedForkTaskIds())
+        if (action == TaskAction.Fork) {
+            if (outcome is TaskActionOutcome.Forked) {
+                pendingForkTaskId = outcome.taskId
+                openPendingForkIfAvailable()
+            } else {
+                publishUnconfirmedForks(request.generation, request.bridge.unresolvedForkTaskIds())
+            }
         }
         return outcome
+    }
+
+    @Synchronized
+    private fun openPendingForkIfAvailable() {
+        val taskId = pendingForkTaskId ?: return
+        if (mutableState.value.snapshot?.tasks?.none { it.id == taskId } != false) return
+        if (openTask(taskId)) {
+            pendingForkTaskId = null
+            AppLog.info(
+                feature = "task-management",
+                message = "confirmed fork opened",
+                fields = mapOf("task_id" to taskId, "decision" to "show_fork_transcript"),
+            )
+        }
     }
 
     @Synchronized
@@ -996,6 +1016,7 @@ class LauncherSessionViewModel(
                 unconfirmedControlTaskIds = mutableState.value.unconfirmedControlTaskIds,
                 followUpDraft = nextFollowUpDraft,
             )
+        openPendingForkIfAvailable()
         AppLog.info(
             feature = "connection-runtime",
             message = "snapshot and queued task events published",
@@ -1169,6 +1190,7 @@ class LauncherSessionViewModel(
         pendingTaskAcknowledgements.clear()
         retainedUnknownActionIds.clear()
         pendingTranscript = null
+        pendingForkTaskId = null
         pendingDecisionRead = null
         decisionViewModel.clear()
         acknowledgementGate.reset()
@@ -1267,6 +1289,7 @@ class LauncherSessionViewModel(
         pendingTaskAcknowledgements.clear()
         retainedUnknownActionIds.clear()
         pendingTranscript = null
+        pendingForkTaskId = null
         acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
         pendingTaskEvents.clear()

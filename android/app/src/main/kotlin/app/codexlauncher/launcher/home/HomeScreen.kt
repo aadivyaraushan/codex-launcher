@@ -2,6 +2,7 @@ package app.codexlauncher.launcher.home
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -29,6 +29,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -91,8 +92,7 @@ fun HomeScreen(
                 Modifier
                     .fillMaxSize()
                     .padding(insets)
-                    .padding(horizontal = 20.dp, vertical = if (compactForIme) 0.dp else 16.dp)
-                    .imePadding(),
+                    .padding(horizontal = 20.dp, vertical = if (compactForIme) 0.dp else 16.dp),
         ) {
             if (!compactForIme) {
                 Header(state, onManageComputer)
@@ -228,7 +228,7 @@ private fun OnlineContent(
     imeBottomPx: Int,
     modifier: Modifier,
 ) {
-    var promptFocused by rememberSaveable { mutableStateOf(false) }
+    var promptFocused by remember { mutableStateOf(false) }
     var selectedModelId by rememberSaveable(newTaskOptionsKey) { mutableStateOf("") }
     var selectedReasoningId by rememberSaveable(newTaskOptionsKey) { mutableStateOf("") }
     var selectedPermissionId by rememberSaveable(newTaskOptionsKey) { mutableStateOf("") }
@@ -242,9 +242,12 @@ private fun OnlineContent(
         }
     }
     val listState = rememberLazyListState()
-    val actionRowIndex = state.tasks.size + 2
-    LaunchedEffect(promptFocused, imeBottomPx, actionRowIndex) {
-        if (promptFocused) listState.scrollToItem(actionRowIndex)
+    val composerRowIndex = state.tasks.size + 1
+    LaunchedEffect(promptFocused, imeBottomPx, newTaskMessage, attachmentMessage, newTaskNeedsReview, composerRowIndex) {
+        if (promptFocused && imeBottomPx > 0) {
+            listState.scrollToItem(composerRowIndex)
+            listState.scrollBy(Float.MAX_VALUE)
+        }
     }
     LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
         items(state.tasks, key = { it.id }) { task ->
@@ -296,7 +299,7 @@ private fun OnlineContent(
                         .onFocusChanged { promptFocused = it.isFocused }
                         .semantics { contentDescription = "Prompt" },
                 minLines = 2,
-                maxLines = 5,
+                maxLines = if (imeBottomPx > 0) 3 else 5,
                 shape = RoundedCornerShape(6.dp),
             )
             if (attachments.isNotEmpty()) {
@@ -333,8 +336,6 @@ private fun OnlineContent(
                         color = MaterialTheme.colorScheme.error,
                     )
             }
-        }
-        item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,

@@ -400,6 +400,50 @@ class LauncherSessionViewModelTest {
         assertEquals(listOf(actionId), journal.acknowledged)
     }
 
+	@Test
+	fun confirmedForkOpensTheNewTaskAfterTheFreshSnapshot() = runBlocking {
+		lateinit var observer: SessionObserver
+		val connection = FakeSessionConnection()
+		val viewModel =
+			LauncherSessionViewModel(
+				connect = { _, _, nextObserver -> observer = nextObserver; connection },
+				loadProject = { null },
+				saveProject = { true },
+				clearProject = { true },
+				actionJournal = FakeActionJournal(),
+				nextSessionId = { "session-1" },
+				workScope = CoroutineScope(Dispatchers.Unconfined),
+			)
+		viewModel.connect(pairedComputer())
+		observer.onReady(connection, ByteArray(32))
+		observer.onMessage(welcome(capabilities = listOf("set_project", "task_transcripts", "task_management")))
+		observer.onMessage(snapshotWithTask(1, "Original title"))
+		assertTrue(viewModel.openTask("thread-1"))
+
+		val fork = async { viewModel.forkTask("thread-1") }
+		val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+		val actionId = action.body.getValue("actionId").jsonPrimitive.content
+		observer.onMessage(
+			decode(
+				"""{"version":{"major":1,"minor":0},"messageId":"fork-result","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed","forkTaskId":"fork-1"}}""",
+			),
+		)
+		assertEquals(app.codexlauncher.task.management.TaskActionOutcome.Forked("fork-1"), fork.await())
+		observer.onMessage(
+			decode(
+				"""{"version":{"major":1,"minor":0},"messageId":"snapshot-3","sender":"companion","type":"snapshot","seq":3,"body":{"baseSeq":3,"computerName":"Studio Mac","projects":[],"tasks":[{"taskId":"thread-1","title":"Original title","projectLabel":"uf-u","state":"idle_after_reply","lastActivityAt":"2026-07-13T10:02:00Z"},{"taskId":"fork-1","title":"Forked title","projectLabel":"uf-u","state":"idle_after_reply","lastActivityAt":"2026-07-13T10:03:00Z"}]}}""",
+			),
+		)
+
+		assertEquals("fork-1", viewModel.state.value.transcript?.taskId)
+		assertEquals("Forked title", viewModel.state.value.transcript?.title)
+		val read =
+			connection.sent
+				.map(ProtocolCodec::decodeText)
+				.last { it.type.wireName == "task_read" }
+		assertEquals("fork-1", read.body.getValue("taskId").jsonPrimitive.content)
+	}
+
     @Test
     fun authenticatedSnapshotAndProjectResultDriveTruthfulLauncherState() = runBlocking {
         lateinit var observer: SessionObserver

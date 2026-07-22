@@ -117,10 +117,13 @@ class TaskScreenTest {
 
         compose.onNodeWithContentDescription("Follow-up message").performClick().performTextInput("Keyboard check")
         compose.waitUntil(timeoutMillis = 3_000) { isImeVisible() }
-        val rootBottom = compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom
+        val visibleBottom = compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom - imeBottomInset()
         val actionBottom = compose.onNodeWithText("Send follow-up").fetchSemanticsNode().boundsInRoot.bottom
 
-        assertTrue("follow-up actions leave excessive space above the keyboard", rootBottom - actionBottom < 160f)
+        assertTrue(
+            "follow-up actions leave excessive space above the keyboard: visible=$visibleBottom actions=$actionBottom",
+            visibleBottom - actionBottom < 160f,
+        )
     }
 
     @Test
@@ -436,5 +439,20 @@ class TaskScreenTest {
                     }
         }
         return visible
+    }
+
+    private fun imeBottomInset(): Int {
+        var bottom = 0
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            bottom =
+                ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)
+                    .firstNotNullOfOrNull { activity ->
+                        activity.window.decorView.rootWindowInsets
+                            ?.getInsets(AndroidWindowInsets.Type.ime())
+                            ?.bottom
+                    } ?: 0
+        }
+        return bottom
     }
 }

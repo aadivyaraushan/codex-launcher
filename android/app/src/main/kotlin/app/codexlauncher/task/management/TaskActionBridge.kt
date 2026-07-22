@@ -32,6 +32,8 @@ sealed interface TaskAction {
 sealed interface TaskActionOutcome {
     data object Complete : TaskActionOutcome
 
+    data class Forked(val taskId: String) : TaskActionOutcome
+
     data object Invalid : TaskActionOutcome
 
     data object Unavailable : TaskActionOutcome
@@ -97,6 +99,8 @@ class TaskActionBridge(
             if (!stored) return TaskActionOutcome.Unavailable
             onTerminalStored(actionId, terminal.sequence, terminal.state == "confirmed", retainUnresolved)
             when {
+                terminal.state == "confirmed" && action == TaskAction.Fork ->
+                    terminal.forkTaskId?.let { TaskActionOutcome.Forked(it) } ?: TaskActionOutcome.Unavailable
                 terminal.state == "confirmed" -> TaskActionOutcome.Complete
                 retainUnresolved -> TaskActionOutcome.NeedsReview
                 terminal.state == "failed" || terminal.state == "outcome_unknown" -> TaskActionOutcome.Failed(error)
@@ -122,6 +126,7 @@ class TaskActionBridge(
                     sequence = sequence,
                     state = state,
                     errorCode = message.body["error"]?.jsonObject?.get("code")?.jsonPrimitive?.content,
+                    forkTaskId = message.body["forkTaskId"]?.jsonPrimitive?.content,
                 ),
             )
         }
@@ -198,6 +203,7 @@ class TaskActionBridge(
         val sequence: Long,
         val state: String,
         val errorCode: String?,
+        val forkTaskId: String?,
     )
 
     private companion object {

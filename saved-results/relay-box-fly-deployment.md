@@ -173,3 +173,31 @@ The adjacent provenance file names that exact source commit. After verified
 replacement, the installed binary and rebuilt artifact had the same SHA-256,
 the LaunchAgent was running, the paired-device count remained one, and doctor
 again passed 7/7.
+
+## Fresh operational verification — 2026-07-21
+
+Read-only Fly and companion checks confirmed that the deployed state still
+matches the approved single-machine design:
+
+```text
+fly auth whoami: ssdear@gmail.com
+Fly owner: personal
+Machine d8d05eda5d3958: started, version 4, region lax
+Volume vol_rkgw1j7jkmkxjk64: 1 GB, encrypted, attached
+TCP 8443 => 8443: PROXY protocol only, one machine
+TCP 443 => 9000: no handler, one machine
+fly config validate: Configuration is valid
+```
+
+The installed companion also remained configured and running with one approved
+project and one paired Pixel record. `doctor` completed seven checks with zero
+failures, including `box reachable, pinned key and registration secret match`
+and `relay box phone door accepts connections`. This confirms the live box,
+pin, secret, service, public phone route, schema, and host identity without
+making a paid test call or replacing the live Mac control connection.
+
+The complete current companion tree then passed `go test -race ./...` across
+all 38 tested packages and `go vet ./...`. A clean default Go build from the
+current tree had SHA-256
+`dcd0ba29d63374151b6cfa44dd3929f67e20c560ae574322236cd5dc2b3f8f80`,
+exactly matching the running installed companion binary.

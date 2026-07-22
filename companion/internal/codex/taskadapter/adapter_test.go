@@ -300,6 +300,78 @@ func TestStopCanInterruptATurnWaitingForApprovalOrAnswer(t *testing.T) {
 	}
 }
 
+func TestStopRefreshesTheFullAppServerTaskBeforeInterrupting(t *testing.T) {
+	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[{"id":"thread-1","name":"Phone audit","preview":"","cwd":"/work/project","updatedAt":42,"status":{"type":"active","activeFlags":[]},"turns":[]}]}`), nil
+	}, nil, nil)
+	set := Set{
+		catalog: catalog,
+		readAppTask: func(context.Context, string) (json.RawMessage, error) {
+			return json.RawMessage(`{"thread":{"id":"thread-1","name":"Phone audit","preview":"","cwd":"/work/project","updatedAt":43,"status":{"type":"active","activeFlags":[]},"turns":[{"id":"turn-live","status":"inProgress"}]}}`), nil
+		},
+		interruptExistingTurn: func(_ context.Context, task taskstate.Task) (string, error) {
+			if task.ActiveTurnID != "turn-live" {
+				t.Fatalf("active turn ID = %q", task.ActiveTurnID)
+			}
+			return task.ActiveTurnID, nil
+		},
+	}
+	set.currentTask = set.reloadTask
+
+	result, err := set.InterruptExistingTurn(context.Background(), "thread-1")
+	if err != nil || result.TurnID != "turn-live" {
+		t.Fatalf("InterruptExistingTurn() = %#v, %v", result, err)
+	}
+}
+
+func TestAppServerOnlyTaskControlReadsAnOlderTaskMissingFromTheRecentCatalog(t *testing.T) {
+	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[]}`), nil
+	}, nil, nil)
+	set := Set{
+		catalog: catalog,
+		readAppTask: func(_ context.Context, taskID string) (json.RawMessage, error) {
+			return json.RawMessage(`{"thread":{"id":"` + taskID + `","name":"Phone audit","preview":"","cwd":"/work/project","updatedAt":43,"status":{"type":"idle","activeFlags":[]},"turns":[]}}`), nil
+		},
+		startExistingTurn: func(_ context.Context, task taskstate.Task, text string) (string, error) {
+			if task.ID != "older-thread" || task.Source != taskstate.SourceAppServer || text != "Resume it" {
+				t.Fatalf("older task start = %#v, %q", task, text)
+			}
+			return "turn-started", nil
+		},
+	}
+	set.currentTask = set.reloadTask
+
+	result, err := set.StartExistingTurn(context.Background(), "older-thread", "Resume it")
+	if err != nil || result.TurnID != "turn-started" {
+		t.Fatalf("StartExistingTurn() = %#v, %v", result, err)
+	}
+}
+
+func TestUserTaskControlResumesAnUnownedCatalogTaskWithTheAppServer(t *testing.T) {
+	desktopChecks := 0
+	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[{"id":"thread-1","name":"Phone audit","preview":"","cwd":"/work/project","updatedAt":42,"status":{"type":"notLoaded","activeFlags":[]},"turns":[]}]}`), nil
+	}, func(context.Context, string) error {
+		desktopChecks++
+		return desktopipc.ErrOwnerUnavailable
+	}, func(string) (json.RawMessage, error) {
+		return nil, errors.New("Desktop state must not be read without ownership")
+	})
+	catalog.resume = func(context.Context, string) (json.RawMessage, error) {
+		return json.RawMessage(`{"thread":{"id":"thread-1","name":"Phone audit","preview":"","cwd":"/work/project","updatedAt":43,"status":{"type":"idle","activeFlags":[]},"turns":[]}}`), nil
+	}
+	set := Set{catalog: catalog, desktop: &desktopipc.Client{}}
+
+	task, err := set.reloadTask(context.Background(), "thread-1")
+	if err != nil || task.ID != "thread-1" || task.Source != taskstate.SourceAppServer {
+		t.Fatalf("reloadTask() = %#v, %v", task, err)
+	}
+	if desktopChecks != 2 {
+		t.Fatalf("Desktop ownership checks = %d, want 2", desktopChecks)
+	}
+}
+
 func TestCatalogListsBoundedCandidatesWithoutClaimingRuntimeOwnership(t *testing.T) {
 	requestedLimit := 0
 	catalog := newCatalog(
@@ -714,6 +786,19 @@ func TestAppServerOnlySetSupportsLinuxWithoutDesktop(t *testing.T) {
 	}
 }
 
+func TestConfiguredAppServerOnlyControlsCaptureTheTaskReader(t *testing.T) {
+	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[{"id":"thread-1","preview":"Phone audit","cwd":"/work/project","updatedAt":42,"status":{"type":"active","activeFlags":[]},"turns":[{"id":"turn-1","status":"inProgress"}]}]}`), nil
+	}, nil, nil)
+	set := Set{app: &appserver.Client{}, catalog: catalog}
+	set.configureExistingTaskControls()
+
+	_, err := set.currentTask(context.Background(), "thread-1")
+	if !errors.Is(err, appserver.ErrNotInitialized) || errors.Is(err, ErrDesktopUnavailable) {
+		t.Fatalf("configured app-server reader error = %v", err)
+	}
+}
+
 func TestSetProvidesTheMobileRecentTaskSourceContract(t *testing.T) {
 	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
 		return json.RawMessage(`{"data":[{"id":"task-1","preview":"Build launcher","cwd":"/work/launcher","updatedAt":42,"status":{"type":"active","activeFlags":[]},"turns":[{"id":"turn-1","status":"inProgress"}]}]}`), nil
@@ -925,6 +1010,26 @@ func TestCatalogReadsCatalogCandidateThroughAppServerWithoutClaimingDesktopOwner
 	}
 	if readTaskID != "catalog-1" || len(page.Entries) != 1 || page.Entries[0].Text != "Saved reply" {
 		t.Fatalf("catalog transcript = %#v, read task = %q", page, readTaskID)
+	}
+}
+
+func TestCatalogReadsAConfirmedNewTaskBeforeTheSharedCatalogCatchesUp(t *testing.T) {
+	catalog := newCatalog(func(context.Context, int) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":[]}`), nil
+	}, nil, nil)
+	catalog.readAppTranscript = func(_ context.Context, taskID string) (json.RawMessage, error) {
+		return json.RawMessage(`{"thread":{"id":"` + taskID + `","turns":[{"id":"turn-live","status":"inProgress","items":[{"id":"agent-1","type":"agentMessage","text":"Running the command"}]}]}}`), nil
+	}
+	if _, err := catalog.ListRecent(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := catalog.ReadTranscript(context.Background(), "new-thread", tasktranscript.PageOptions{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.TaskID != "new-thread" || len(page.Entries) != 1 || page.Entries[0].Text != "Running the command" {
+		t.Fatalf("new task transcript = %#v", page)
 	}
 }
 

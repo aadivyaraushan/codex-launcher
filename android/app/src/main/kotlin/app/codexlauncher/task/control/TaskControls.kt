@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -59,7 +60,10 @@ fun TaskControls(
     val scope = rememberCoroutineScope()
     val followUpsBlocked = queueState == TaskQueueState.OUTCOME_UNKNOWN
 
-    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        modifier = modifier.fillMaxWidth().imePadding().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         when (queueState) {
             TaskQueueState.QUEUED -> Text("Follow-up queued on your computer")
             TaskQueueState.OUTCOME_UNKNOWN -> {

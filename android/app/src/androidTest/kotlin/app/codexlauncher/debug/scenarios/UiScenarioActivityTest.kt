@@ -3,6 +3,7 @@ package app.codexlauncher.debug.scenarios
 import android.Manifest
 import android.content.ComponentName
 import android.os.ParcelFileDescriptor
+import android.view.WindowInsets
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
@@ -17,6 +18,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -86,6 +89,41 @@ class UiScenarioActivityTest {
         compose.onNodeWithContentDescription("Prompt").assertTextContains("Run the sample checks")
         compose.onNodeWithContentDescription("Send prompt").performClick()
         compose.onNodeWithText("Sample prompt sent").assertIsDisplayed()
+    }
+
+    @Test
+    fun onlineHomeKeepsComposerActionsNextToTheRealKeyboard() {
+        show(ScenarioId.HOME_ONLINE)
+
+        compose.onNodeWithContentDescription("Prompt").performClick()
+        compose.onNodeWithContentDescription("Prompt").performTextInput(
+            List(8) { "A long phone task description must leave every composer action reachable" }.joinToString(" "),
+        )
+        compose.waitUntil(timeoutMillis = 3_000) { imeBottomInset() > 0 }
+        val screenBottom = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.heightPixels
+        val keyboardTop = screenBottom - imeBottomInset()
+        val actionBottom = compose.onNodeWithContentDescription("Send prompt").fetchSemanticsNode().boundsInRoot.bottom
+
+        assertTrue(
+            "new-task actions leave excessive space above the keyboard: keyboard=$keyboardTop actions=$actionBottom",
+            actionBottom <= keyboardTop && keyboardTop - actionBottom < 160f,
+        )
+    }
+
+    @Test
+    fun taskKeepsFollowUpActionsNextToTheRealKeyboard() {
+        show(ScenarioId.TASK_CONTROLS_IDLE)
+
+        compose.onNodeWithContentDescription("Follow-up message").performClick()
+        compose.waitUntil(timeoutMillis = 3_000) { imeBottomInset() > 0 }
+        val screenBottom = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.heightPixels
+        val keyboardTop = screenBottom - imeBottomInset()
+        val actionBottom = compose.onNodeWithText("Send follow-up").fetchSemanticsNode().boundsInRoot.bottom
+
+        assertTrue(
+            "follow-up actions are not directly above the keyboard: keyboard=$keyboardTop actions=$actionBottom",
+            actionBottom <= keyboardTop && keyboardTop - actionBottom < 160f,
+        )
     }
 
     @Test
@@ -368,6 +406,21 @@ class UiScenarioActivityTest {
                 false
             }
         }
+    }
+
+    private fun imeBottomInset(): Int {
+        var bottom = 0
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            bottom =
+                ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)
+                    .firstNotNullOfOrNull { activity ->
+                        activity.window.decorView.rootWindowInsets
+                            ?.getInsets(WindowInsets.Type.ime())
+                            ?.bottom
+                    } ?: 0
+        }
+        return bottom
     }
 
     private fun shell(command: String): String {

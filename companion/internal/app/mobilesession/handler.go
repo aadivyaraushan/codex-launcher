@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
@@ -513,7 +515,7 @@ func (handler *Handler) handleHello(ctx context.Context, sender transport.Messag
 	return handler.send(ctx, sender, "snapshot", &sequence, bodyBytes)
 }
 
-func (handler *Handler) refreshTaskSnapshot(ctx context.Context) (eventjournal.Snapshot, error) {
+func (handler *Handler) refreshTaskSnapshot(ctx context.Context, provisionalTasks ...snapshotTask) (eventjournal.Snapshot, error) {
 	if handler.taskSource == nil {
 		return handler.journal.Snapshot(handler.now())
 	}
@@ -521,6 +523,9 @@ func (handler *Handler) refreshTaskSnapshot(ctx context.Context) (eventjournal.S
 	if err != nil {
 		handler.logger.Error("[mobile-session] task refresh failed", "branch_reason", "catalog_unavailable", "error_class", fmt.Sprintf("%T", err))
 		return eventjournal.Snapshot{}, err
+	}
+	for _, provisional := range provisionalTasks {
+		tasks = mergeProvisionalTask(tasks, provisional)
 	}
 	state := snapshotState{ComputerName: handler.computerName, Projects: handler.projects.List(), Tasks: tasks}
 	if _, err := validatedSnapshotBody(1, state); err != nil {
@@ -538,6 +543,50 @@ func (handler *Handler) refreshTaskSnapshot(ctx context.Context) (eventjournal.S
 	handler.snapshotGen.Add(1)
 	handler.logger.Info("[mobile-session] task snapshot refreshed", "task_count", len(tasks), "base_sequence", snapshot.BaseSequence, "output_shape", "safe_task_summaries")
 	return snapshot, nil
+}
+
+func mergeProvisionalTask(tasks []snapshotTask, provisional snapshotTask) []snapshotTask {
+	for index := range tasks {
+		if tasks[index].TaskID == provisional.TaskID {
+			tasks[index].State = provisional.State
+			tasks[index].ActiveTurnID = provisional.ActiveTurnID
+			tasks[index].CanRedirect = provisional.CanRedirect
+			tasks[index].QueueState = provisional.QueueState
+			tasks[index].LastActivityAt = provisional.LastActivityAt
+			return tasks
+		}
+	}
+	merged := make([]snapshotTask, 0, min(len(tasks)+1, taskstate.MaxHomeTasks))
+	merged = append(merged, provisional)
+	remaining := min(len(tasks), taskstate.MaxHomeTasks-1)
+	return append(merged, tasks[:remaining]...)
+}
+
+func provisionalTaskTitle(prompt string) string {
+	prompt = strings.Map(func(value rune) rune {
+		if unicode.IsControl(value) {
+			return ' '
+		}
+		return value
+	}, prompt)
+	prompt = strings.Join(strings.Fields(prompt), " ")
+	runes := []rune(prompt)
+	if len(runes) > 256 {
+		prompt = string(runes[:256])
+	}
+	if prompt == "" {
+		return "Codex task"
+	}
+	return prompt
+}
+
+func (handler *Handler) projectDisplayName(projectID string) string {
+	for _, choice := range handler.projects.List() {
+		if choice.ID == projectID {
+			return choice.DisplayName
+		}
+	}
+	return "Project"
 }
 
 func (handler *Handler) RefreshTaskSnapshot(ctx context.Context) error {
@@ -601,6 +650,7 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	}
 	result := map[string]any{"actionId": action.ActionID, "state": "confirmed"}
 	refreshTasks := false
+	var provisionalTask *snapshotTask
 	switch action.Kind {
 	case "start_turn":
 		if action.TaskID != "" {
@@ -612,6 +662,15 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		switch handler.startNewTask(ctx, sender.DeviceID(), action.ActionID, action.ProjectID, action.Text, action.ModelID, action.ReasoningID, action.PermissionModeID, action.AttachmentIDs) {
 		case newTaskConfirmed:
 			refreshTasks = true
+			if confirmed, confirmedErr := handler.promptQueue.Entry(ctx, action.ActionID); confirmedErr == nil && confirmed.Result.ThreadID != "" && confirmed.Result.TurnID != "" {
+				task := snapshotTask{
+					TaskID: confirmed.Result.ThreadID, Title: provisionalTaskTitle(action.Text), ProjectLabel: handler.projectDisplayName(action.ProjectID),
+					State: string(taskstate.Working), ActiveTurnID: confirmed.Result.TurnID, CanRedirect: true,
+					QueueState: string(promptqueue.QueueEmpty), LastActivityAt: handler.now().UTC().Format(time.RFC3339),
+				}
+				provisionalTask = &task
+				handler.logger.Info("[mobile-session] provisional new task prepared", "task_id", task.TaskID, "turn_id", task.ActiveTurnID, "branch_reason", "shared_catalog_pending")
+			}
 		case newTaskOutcomeUnknown:
 			setActionOutcomeUnknown(result)
 		case newTaskFailed:
@@ -708,7 +767,11 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 				}
 			}
 		case "fork_task":
-			_, err = handler.managementSource.ForkToAppServer(ctx, action.TaskID)
+			var forked taskstate.Task
+			forked, err = handler.managementSource.ForkToAppServer(ctx, action.TaskID)
+			if err == nil {
+				result["forkTaskId"] = forked.ID
+			}
 		}
 		if err != nil {
 			handler.logger.Error("[mobile-session] task management action failed", "device_id", sender.DeviceID(), "task_id", action.TaskID, "action_kind", action.Kind, "error_class", fmt.Sprintf("%T", err))
@@ -737,7 +800,13 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	handler.logger.Info("[mobile-session] action resolved", "device_id", sender.DeviceID(), "action_kind", action.Kind, "task_id", action.TaskID, "project_id", action.ProjectID, "result_state", result["state"])
 	handler.queueDelivery("action_result", sequence, body, []transport.MessageSender{sender})
 	if refreshTasks {
-		snapshot, refreshErr := handler.refreshTaskSnapshot(ctx)
+		var snapshot eventjournal.Snapshot
+		var refreshErr error
+		if provisionalTask == nil {
+			snapshot, refreshErr = handler.refreshTaskSnapshot(ctx)
+		} else {
+			snapshot, refreshErr = handler.refreshTaskSnapshot(ctx, *provisionalTask)
+		}
 		if refreshErr != nil {
 			handler.logger.Error("[mobile-session] confirmed task action snapshot refresh failed", "device_id", sender.DeviceID(), "action_kind", action.Kind, "task_id", action.TaskID, "decision", "schedule_bounded_refresh", "error_class", fmt.Sprintf("%T", refreshErr))
 			handler.scheduleTaskSnapshotRefresh()
@@ -817,6 +886,7 @@ func (handler *Handler) startExistingTask(ctx context.Context, deviceID, actionI
 	}
 	task, err := handler.existingTaskSource.CurrentTask(ctx, taskID)
 	if err != nil || task.ID != taskID {
+		handler.logger.Error("[mobile-session] existing task preflight failed", "task_id", taskID, "action_id", actionID, "action_kind", kind, "branch_reason", existingTaskErrorCode(err, task.ID == taskID), "error_class", fmt.Sprintf("%T", err))
 		return existingTaskFailed, ""
 	}
 	if err := handler.claimActionAttachments(deviceID, attachmentIDs, actionID); err != nil {
@@ -848,14 +918,18 @@ func (handler *Handler) startExistingTask(ctx context.Context, deviceID, actionI
 			controlled, controlErr = handler.startQueuedExistingTurn(ctx, queued)
 		}
 		if errors.Is(controlErr, taskadapter.ErrTaskBusy) || errors.Is(controlErr, taskadapter.ErrTaskNotBusy) || errors.Is(controlErr, taskadapter.ErrRedirectUnsupported) || errors.Is(controlErr, taskadapter.ErrTaskLookupTransient) {
+			handler.logger.Info("[mobile-session] existing task control deferred", "task_id", queued.ThreadID, "action_id", actionID, "action_kind", kind, "branch_reason", existingTaskErrorCode(controlErr, true))
 			return promptqueue.Result{}, promptqueue.ErrSendDeferred
 		}
 		if writeOutcomeUnknown(controlErr) {
+			handler.logger.Warn("[mobile-session] existing task control outcome unknown", "task_id", queued.ThreadID, "action_id", actionID, "action_kind", kind, "error_class", fmt.Sprintf("%T", controlErr))
 			return promptqueue.Result{}, promptqueue.ErrSendOutcomeUnknown
 		}
 		if controlErr != nil {
+			handler.logger.Error("[mobile-session] existing task control failed", "task_id", queued.ThreadID, "action_id", actionID, "action_kind", kind, "branch_reason", existingTaskErrorCode(controlErr, true), "error_class", fmt.Sprintf("%T", controlErr))
 			return promptqueue.Result{}, promptqueue.ErrSendNotSent
 		}
+		handler.logger.Info("[mobile-session] existing task control confirmed", "task_id", controlled.ThreadID, "turn_id", controlled.TurnID, "action_id", actionID, "action_kind", kind, "result_code", code)
 		return promptqueue.Result{Code: code, ThreadID: controlled.ThreadID, TurnID: controlled.TurnID}, nil
 	}, nil, handler.now())
 	if errors.Is(dispatchErr, promptqueue.ErrSendDeferred) {
@@ -870,6 +944,35 @@ func (handler *Handler) startExistingTask(ctx context.Context, deviceID, actionI
 	}
 	handler.releaseActionAttachments(entry)
 	return existingTaskAccepted, result.Code
+}
+
+func existingTaskErrorCode(err error, idMatches bool) string {
+	if err == nil {
+		if !idMatches {
+			return "task_id_mismatch"
+		}
+		return "none"
+	}
+	switch {
+	case errors.Is(err, taskadapter.ErrTaskBusy):
+		return "task_busy"
+	case errors.Is(err, taskadapter.ErrTaskNotBusy):
+		return "task_not_busy"
+	case errors.Is(err, taskadapter.ErrRedirectUnsupported):
+		return "redirect_unsupported"
+	case errors.Is(err, taskadapter.ErrTaskUnavailable):
+		return "task_unavailable"
+	case errors.Is(err, taskadapter.ErrTaskLookupTransient):
+		return "task_lookup_transient"
+	case errors.Is(err, taskadapter.ErrInvalidTaskControl):
+		return "invalid_task_control"
+	case errors.Is(err, taskadapter.ErrPartialNewTask):
+		return "partial_turn_result"
+	case errors.Is(err, appserver.ErrInvalidInput):
+		return "app_server_invalid_input"
+	default:
+		return "unclassified"
+	}
 }
 
 func (handler *Handler) stopExistingTask(ctx context.Context, actionID string, taskID string) (existingTaskOutcome, string) {
@@ -910,11 +1013,14 @@ func (handler *Handler) stopExistingTask(ctx context.Context, actionID string, t
 	result, err := handler.promptQueue.DispatchNext(ctx, queueKey, func(ctx context.Context, queued promptqueue.Entry) (promptqueue.Result, error) {
 		controlled, interruptErr := handler.existingTaskSource.InterruptExistingTurn(ctx, queued.ThreadID)
 		if writeOutcomeUnknown(interruptErr) {
+			handler.logger.Warn("[mobile-session] task interrupt outcome unknown", "task_id", queued.ThreadID, "action_id", actionID, "error_class", fmt.Sprintf("%T", interruptErr))
 			return promptqueue.Result{}, promptqueue.ErrSendOutcomeUnknown
 		}
 		if interruptErr != nil {
+			handler.logger.Error("[mobile-session] task interrupt failed", "task_id", queued.ThreadID, "action_id", actionID, "branch_reason", existingTaskErrorCode(interruptErr, true), "error", interruptErr, "error_class", fmt.Sprintf("%T", interruptErr))
 			return promptqueue.Result{}, promptqueue.ErrSendNotSent
 		}
+		handler.logger.Info("[mobile-session] task interrupt confirmed", "task_id", controlled.ThreadID, "turn_id", controlled.TurnID, "action_id", actionID)
 		return promptqueue.Result{Code: "interrupted", ThreadID: controlled.ThreadID, TurnID: controlled.TurnID}, nil
 	}, nil, handler.now())
 	if errors.Is(err, promptqueue.ErrOutcomeUnknown) {

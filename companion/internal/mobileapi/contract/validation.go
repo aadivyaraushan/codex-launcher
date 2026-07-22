@@ -573,9 +573,12 @@ func validateBody(message Message) error {
 		}
 	case "action_result":
 		state := stringValue(body["state"])
-		if message.Sender != "companion" || message.Sequence == nil || !onlyAllowedKeys(body, "actionId", "state", "resultCode", "error") ||
+		resultCode := stringValue(body["resultCode"])
+		forkTaskID := stringValue(body["forkTaskId"])
+		if message.Sender != "companion" || message.Sequence == nil || !onlyAllowedKeys(body, "actionId", "state", "resultCode", "error", "forkTaskId") ||
 			!validID(stringValue(body["actionId"])) || !knownActionState(state) ||
-			(body["resultCode"] != nil && !knownActionResultCode(stringValue(body["resultCode"]))) ||
+			(body["resultCode"] != nil && !knownActionResultCode(resultCode)) ||
+			(body["forkTaskId"] != nil && (!validID(forkTaskID) || state != "confirmed")) ||
 			!validateOptionalError(body["error"], state == "failed" || state == "outcome_unknown") {
 			return ErrInvalidActionState
 		}

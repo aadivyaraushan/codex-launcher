@@ -13,7 +13,7 @@ func TestProjectNotificationProducesOnlyStableMobileSummaries(t *testing.T) {
 		params string
 		want   MobileEvent
 	}{
-		{name: "turn started", method: "turn/started", params: `{"threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress","items":[]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "activity", State: Working, Summary: "Codex is working"}},
+		{name: "turn started", method: "turn/started", params: `{"threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress","items":[]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "activity", State: Working, Summary: "Codex is working", StartsTurn: true}},
 		{name: "reply", method: "turn/completed", params: `{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "reply", State: IdleAfterReply, Summary: "Codex replied"}},
 		{name: "failure", method: "turn/completed", params: `{"threadId":"thread-1","turn":{"id":"turn-1","status":"failed","items":[]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "failure", State: Failed, Summary: "Codex hit an error"}},
 		{name: "interrupted", method: "turn/completed", params: `{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted","items":[]}}`, want: MobileEvent{TaskID: "thread-1", Kind: "interrupted", State: Interrupted, Summary: "Codex was interrupted"}},

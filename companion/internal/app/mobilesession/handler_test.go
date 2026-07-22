@@ -722,6 +722,43 @@ func TestNewTaskActionReloadsOptionsResolvesProjectAndUsesDurableQueue(t *testin
 	}
 }
 
+func TestConfirmedNewTaskAppearsWorkingBeforeTheSharedCatalogCatchesUp(t *testing.T) {
+	source := &newTaskSource{catalog: testTaskOptionsCatalog(), delayStartedTaskCatalog: true}
+	handler, sender := newTestHandlerWithTaskQueue(t, source, promptqueue.NewMemoryStore())
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-new","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 2)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"start-new","sender":"phone","type":"action","body":{"actionId":"action-1","kind":"start_turn","projectId":"main","text":"Fix it","modelId":"public-model","reasoningId":"high","permissionModeId":"workspace-write"}}`)
+
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	_ = awaitSentMessage(t, sender.sent)
+	snapshot := awaitSentMessage(t, sender.sent)
+	var body struct {
+		Tasks []snapshotTask `json:"tasks"`
+	}
+	if err := json.Unmarshal(snapshot.Body, &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Tasks) != 1 || body.Tasks[0].TaskID != "thread-created" || body.Tasks[0].Title != "Fix it" || body.Tasks[0].State != string(taskstate.Working) || body.Tasks[0].ActiveTurnID != "turn-created" || !body.Tasks[0].CanRedirect {
+		t.Fatalf("provisional new task = %#v", body.Tasks)
+	}
+}
+
+func TestProvisionalNewTaskPromotesAStaleCatalogEntryToWorking(t *testing.T) {
+	tasks := []snapshotTask{{TaskID: "thread-created", Title: "Catalog title", ProjectLabel: "Main", State: string(taskstate.IdleAfterReply), QueueState: string(promptqueue.QueueEmpty)}}
+	provisional := snapshotTask{TaskID: "thread-created", Title: "Prompt title", ProjectLabel: "Main", State: string(taskstate.Working), ActiveTurnID: "turn-created", CanRedirect: true, QueueState: string(promptqueue.QueueEmpty), LastActivityAt: sessionNow.Format(time.RFC3339)}
+
+	merged := mergeProvisionalTask(tasks, provisional)
+
+	if len(merged) != 1 || merged[0].Title != "Catalog title" || merged[0].State != string(taskstate.Working) || merged[0].ActiveTurnID != "turn-created" || !merged[0].CanRedirect {
+		t.Fatalf("merged provisional task = %#v", merged)
+	}
+}
+
 func TestNewTaskDuplicateActionIDMustMatchTheOriginalRequest(t *testing.T) {
 	source := &newTaskSource{catalog: testTaskOptionsCatalog()}
 	handler, sender := newTestHandlerWithTaskQueue(t, source, promptqueue.NewMemoryStore())
@@ -977,6 +1014,29 @@ func TestStopReloadsTaskAndReturnsInterruptedOnlyAfterHostConfirmation(t *testin
 	replayed := awaitSentMessage(t, sender.sent)
 	if !bytes.Contains(replayed.Body, []byte(`"resultCode":"interrupted"`)) || !slices.Equal(source.calls, []string{"stop"}) {
 		t.Fatalf("duplicate stop result = %s, calls = %#v", replayed.Body, source.calls)
+	}
+}
+
+func TestExistingTaskErrorCodeUsesOnlyStableSafeCategories(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		idMatches bool
+		want      string
+	}{
+		{name: "matching", idMatches: true, want: "none"},
+		{name: "mismatched", want: "task_id_mismatch"},
+		{name: "busy", err: taskadapter.ErrTaskBusy, idMatches: true, want: "task_busy"},
+		{name: "unavailable", err: taskadapter.ErrTaskUnavailable, idMatches: true, want: "task_unavailable"},
+		{name: "invalid app server input", err: appserver.ErrInvalidInput, idMatches: true, want: "app_server_invalid_input"},
+		{name: "unknown", err: errors.New("private remote detail"), idMatches: true, want: "unclassified"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := existingTaskErrorCode(test.err, test.idMatches); got != test.want {
+				t.Fatalf("existingTaskErrorCode() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
@@ -1285,6 +1345,27 @@ func TestTaskManagementFailureReturnsSafeErrorWithoutPublishingStaleSnapshot(t *
 	}
 }
 
+func TestConfirmedForkReturnsTheNewTaskID(t *testing.T) {
+	source := &taskManagementSource{
+		tasks: []taskstate.Task{{ID: "thread-1", Title: "Original", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}},
+	}
+	handler, sender := newTestHandlerWithTasks(t, source)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-fork-id","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 2)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"fork-id","sender":"phone","type":"action","body":{"actionId":"action-fork-id","kind":"fork_task","taskId":"thread-1"}}`)
+
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if result.Type != "action_result" || !bytes.Contains(result.Body, []byte(`"state":"confirmed"`)) || !bytes.Contains(result.Body, []byte(`"forkTaskId":"fork-1"`)) {
+		t.Fatalf("fork result = %s", result.Body)
+	}
+}
+
 func TestOutcomeUnknownTaskMutationIsNeverReportedAsRetryableFailure(t *testing.T) {
 	source := &taskManagementSource{
 		tasks: []taskstate.Task{{ID: "thread-1", Title: "Original", ProjectLabel: "Main", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()}},
@@ -1533,6 +1614,7 @@ type newTaskSource struct {
 	changeCatalogAfterHello bool
 	optionCalls             int
 	starts                  []taskadapter.NewTaskRequest
+	delayStartedTaskCatalog bool
 	tasks                   []taskstate.Task
 	startErr                error
 }
@@ -1695,9 +1777,11 @@ func (source *newTaskSource) StartNewTask(_ context.Context, request taskadapter
 	if source.startErr != nil {
 		return taskadapter.NewTaskResult{}, source.startErr
 	}
-	source.tasks = append(source.tasks, taskstate.Task{
-		ID: "thread-created", Title: "Fix it", ProjectLabel: "Main", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix(),
-	})
+	if !source.delayStartedTaskCatalog {
+		source.tasks = append(source.tasks, taskstate.Task{
+			ID: "thread-created", Title: "Fix it", ProjectLabel: "Main", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix(),
+		})
+	}
 	return taskadapter.NewTaskResult{ThreadID: "thread-created", TurnID: "turn-created"}, nil
 }
 

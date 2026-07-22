@@ -28,6 +28,21 @@ func TestPumpTaskEventsPublishesEveryProjectedUpdate(t *testing.T) {
 	}
 }
 
+func TestPumpTaskEventsDoesNotReopenTerminalTaskForLateActivity(t *testing.T) {
+	events := make(chan taskstate.MobileEvent, 3)
+	events <- taskstate.MobileEvent{TaskID: "thread-1", Kind: "interrupted", State: taskstate.Interrupted, Summary: "Codex was interrupted"}
+	events <- taskstate.MobileEvent{TaskID: "thread-1", Kind: "activity", State: taskstate.Working, Summary: "Running a command"}
+	events <- taskstate.MobileEvent{TaskID: "thread-1", Kind: "activity", State: taskstate.Working, Summary: "Codex is working", StartsTurn: true}
+	close(events)
+	publisher := &recordingTaskEventPublisher{}
+
+	pumpTaskEvents(context.Background(), events, publisher, nil)
+
+	if len(publisher.events) != 2 || publisher.events[0].State != taskstate.Interrupted || !publisher.events[1].StartsTurn {
+		t.Fatalf("published = %#v, want terminal event then explicit new turn", publisher.events)
+	}
+}
+
 func TestPumpTaskEventsDoesNotHoldAuthorizationWhileWaitingForPublisher(t *testing.T) {
 	authorization := taskstate.NewEventAuthorization()
 	events := make(chan taskstate.MobileEvent, 1)
@@ -100,6 +115,22 @@ func TestPumpTaskEventsRefreshesUnknownTaskAndRetries(t *testing.T) {
 
 	if publisher.refreshes != 1 || len(publisher.events) != 2 {
 		t.Fatalf("refreshes=%d publish attempts=%d", publisher.refreshes, len(publisher.events))
+	}
+}
+
+func TestPumpTaskEventsKeepsRefreshingUntilANewTaskEntersTheCatalog(t *testing.T) {
+	events := make(chan taskstate.MobileEvent, 1)
+	events <- taskstate.MobileEvent{TaskID: "thread-new", Kind: "activity", State: taskstate.Working, Summary: "Codex is working"}
+	close(events)
+	publisher := &recordingTaskEventPublisher{publishErrors: []error{
+		mobilesession.ErrUnknownTaskEvent,
+		mobilesession.ErrUnknownTaskEvent,
+	}}
+
+	pumpTaskEvents(context.Background(), events, publisher, nil)
+
+	if publisher.refreshes != 2 || len(publisher.events) != 3 {
+		t.Fatalf("refreshes=%d publish attempts=%d, want one catalog refresh before each retry", publisher.refreshes, len(publisher.events))
 	}
 }
 

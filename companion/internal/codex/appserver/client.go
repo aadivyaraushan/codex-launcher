@@ -361,7 +361,17 @@ func (client *Client) InterruptTurn(ctx context.Context, threadID, turnID string
 	if !validID(threadID) || !validID(turnID) {
 		return nil, ErrInvalidInput
 	}
-	return client.call(ctx, "turn/interrupt", map[string]any{"threadId": threadID, "turnId": turnID}, false)
+	client.logger.Info("[codex-adapter] turn interrupt requested", "task_id", threadID, "turn_id", turnID)
+	result, err := client.call(ctx, "turn/interrupt", map[string]any{"threadId": threadID, "turnId": turnID}, false)
+	if err != nil {
+		remoteCode := 0
+		var remote *rpcError
+		if errors.As(err, &remote) {
+			remoteCode = remote.Code
+		}
+		client.logger.Error("[codex-adapter] turn interrupt rejected", "task_id", threadID, "turn_id", turnID, "remote_code", remoteCode, "error_class", fmt.Sprintf("%T", err))
+	}
+	return result, err
 }
 
 func (client *Client) RespondCommandApproval(ctx context.Context, threadID string, id json.RawMessage, decision ApprovalDecision) error {

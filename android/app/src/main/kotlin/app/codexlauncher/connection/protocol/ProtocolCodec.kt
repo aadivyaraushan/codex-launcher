@@ -173,9 +173,12 @@ object ProtocolCodec {
             MessageType.DECISION_PAGE -> if (sender != Sender.COMPANION || !validDecisionPage(body)) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.ACTION_RESULT -> {
                 val state = optionalString(body, "state")
-                if (sender != Sender.COMPANION || sequence == null || body.keys.any { it !in setOf("actionId", "state", "resultCode", "error") } ||
+                val resultCode = optionalString(body, "resultCode")
+                val forkTaskId = optionalString(body, "forkTaskId")
+                if (sender != Sender.COMPANION || sequence == null || body.keys.any { it !in setOf("actionId", "state", "resultCode", "error", "forkTaskId") } ||
                     !optionalString(body, "actionId").isValidId() || state !in actionStates ||
-                    body["resultCode"] != null && optionalString(body, "resultCode") !in actionResultCodes ||
+                    body["resultCode"] != null && resultCode !in actionResultCodes ||
+                    body["forkTaskId"] != null && (!forkTaskId.isValidId() || state != "confirmed") ||
                     !validOptionalError(body["error"], state in setOf("failed", "outcome_unknown"))
                 ) fail(ProtocolError.INVALID_ACTION_STATE)
             }

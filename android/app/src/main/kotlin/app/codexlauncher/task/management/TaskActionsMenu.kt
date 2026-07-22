@@ -67,7 +67,7 @@ fun TaskActionsMenu(
                 busy = true
                 scope.launch {
                     failureVisible = when (onFork()) {
-                        TaskActionOutcome.Complete, TaskActionOutcome.NeedsReview -> false
+                        TaskActionOutcome.Complete, is TaskActionOutcome.Forked, TaskActionOutcome.NeedsReview -> false
                         else -> true
                     }
                     busy = false

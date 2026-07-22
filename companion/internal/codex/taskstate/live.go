@@ -17,6 +17,7 @@ type MobileEvent struct {
 	Kind          string
 	State         State
 	Summary       string
+	StartsTurn    bool
 	Authorization *EventAuthorization
 }
 
@@ -87,7 +88,9 @@ func ProjectNotification(method string, params json.RawMessage) (MobileEvent, er
 		if err != nil {
 			return MobileEvent{}, fmt.Errorf("%w: %s", ErrInvalidLiveNotification, method)
 		}
-		return mobileEvent(envelope.ThreadID, "activity", Map(updated), "Codex is working"), nil
+		event := mobileEvent(envelope.ThreadID, "activity", Map(updated), "Codex is working")
+		event.StartsTurn = true
+		return event, nil
 	case "turn/completed":
 		var value struct {
 			Turn struct {
