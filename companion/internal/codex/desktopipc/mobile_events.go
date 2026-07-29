@@ -3,7 +3,7 @@ package desktopipc
 import (
 	"encoding/json"
 
-	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 )
 
 const maxPendingMobileTasks = 20

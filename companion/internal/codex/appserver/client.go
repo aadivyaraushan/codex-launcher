@@ -16,7 +16,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 )
 
 const (

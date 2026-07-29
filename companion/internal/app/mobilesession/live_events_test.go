@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 )
 

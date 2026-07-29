@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 )
 
 func TestRealReadOnlyAppServerCompatibility(t *testing.T) {

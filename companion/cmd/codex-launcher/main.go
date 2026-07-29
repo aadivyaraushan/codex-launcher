@@ -25,7 +25,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/cli"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	codexruntime "github.com/codex-launcher/codex-launcher/companion/internal/codex/runtime"
-	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/hostdoctor"
 	"github.com/codex-launcher/codex-launcher/companion/internal/hostinstall"

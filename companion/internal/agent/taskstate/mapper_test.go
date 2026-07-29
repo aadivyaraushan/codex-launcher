@@ -83,7 +83,7 @@ func TestMapAppServerThreadSanitizesDisplayFieldsForThePhoneContract(t *testing.
 }
 
 func TestMapDesktopSnapshotFeedsTheSameStateMapper(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "desktopipc", "testdata", "snapshot.json"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "codex", "desktopipc", "testdata", "snapshot.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

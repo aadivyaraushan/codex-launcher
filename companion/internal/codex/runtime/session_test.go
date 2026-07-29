@@ -14,7 +14,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver/process"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
-	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 )
 
 func TestDarwinSessionCombinesDesktopAndAppServerAdapters(t *testing.T) {
