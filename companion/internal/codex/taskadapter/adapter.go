@@ -8,11 +8,11 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
-	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskoptions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/agent/tasktranscript"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 )
 
 type Set struct {

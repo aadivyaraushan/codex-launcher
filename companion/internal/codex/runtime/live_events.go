@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
-	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 )
 
 func projectAppServerEvents(

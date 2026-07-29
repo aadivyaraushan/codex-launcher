@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 )
 

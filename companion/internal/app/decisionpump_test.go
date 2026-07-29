@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
-	"github.com/codex-launcher/codex-launcher/companion/internal/agent/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
 )
 
