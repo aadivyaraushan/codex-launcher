@@ -75,6 +75,10 @@ const (
 	SourceDesktop   Source = "desktop"
 	SourceAppServer Source = "app_server"
 	SourceCatalog   Source = "catalog_candidate"
+	// SourceClaudeCode marks a task owned by the Claude Code CLI backend. It is
+	// persisted with queued prompts, so recovery after a restart can route a
+	// follow-up back to the backend that owns the task.
+	SourceClaudeCode Source = "claude_code"
 )
 
 type Task struct {

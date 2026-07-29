@@ -38,7 +38,7 @@ func (client *Client) queueMobileStateLocked(threadID string, materialized json.
 		client.logger.Debug("[desktop-ipc] mobile state projection skipped", "thread_id", threadID, "branch_reason", "state_not_mobile_safe")
 		return false
 	}
-	event, err := taskstate.ProjectTaskState(task.ID, task.State)
+	event, err := taskstate.ProjectTaskState(taskstate.LabelCodex, task.ID, task.State)
 	if err != nil {
 		client.logger.Debug("[desktop-ipc] mobile state projection skipped", "thread_id", threadID, "branch_reason", "state_not_mobile_safe")
 		return false

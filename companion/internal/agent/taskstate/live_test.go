@@ -58,15 +58,43 @@ func TestProjectTaskStateProducesOnlyFixedMobileSummaries(t *testing.T) {
 		{IdleAfterReply, MobileEvent{TaskID: "thread-1", Kind: "reply", State: IdleAfterReply, Summary: "Codex replied"}},
 	}
 	for _, test := range tests {
-		got, err := ProjectTaskState("thread-1", test.state)
+		got, err := ProjectTaskState(LabelCodex, "thread-1", test.state)
 		if err != nil || got != test.want {
 			t.Fatalf("ProjectTaskState(%q) = %#v, %v; want %#v", test.state, got, err, test.want)
 		}
 	}
-	if _, err := ProjectTaskState("", Working); err == nil {
+	if _, err := ProjectTaskState(LabelCodex, "", Working); err == nil {
 		t.Fatal("empty task ID was accepted")
 	}
-	if _, err := ProjectTaskState("thread-1", State("future")); err == nil {
+	if _, err := ProjectTaskState(LabelCodex, "thread-1", State("future")); err == nil {
 		t.Fatal("unknown task state was accepted")
+	}
+}
+
+// The summary reaches the launcher verbatim, so a non-Codex backend must not
+// tell the owner that Codex is doing the work.
+func TestProjectTaskStateNamesTheAgentThatOwnsTheTask(t *testing.T) {
+	tests := []struct {
+		state State
+		want  string
+	}{
+		{Working, "Claude is working"},
+		{IdleAfterReply, "Claude replied"},
+		{Failed, "Claude hit an error"},
+		{Interrupted, "Claude was interrupted"},
+	}
+	for _, test := range tests {
+		got, err := ProjectTaskState(LabelClaudeCode, "session-1", test.state)
+		if err != nil || got.Summary != test.want {
+			t.Fatalf("ProjectTaskState(%q, %q).Summary = %q, %v; want %q", LabelClaudeCode, test.state, got.Summary, err, test.want)
+		}
+	}
+	// Decision prompts are about the owner, not the agent, so they stay fixed.
+	for _, state := range []State{WaitingForApproval, WaitingForAnswer} {
+		codex, _ := ProjectTaskState(LabelCodex, "session-1", state)
+		claude, _ := ProjectTaskState(LabelClaudeCode, "session-1", state)
+		if codex.Summary != claude.Summary {
+			t.Fatalf("decision summary for %q differs by agent: %q vs %q", state, codex.Summary, claude.Summary)
+		}
 	}
 }
