@@ -71,6 +71,34 @@ func TestProjectTaskStateProducesOnlyFixedMobileSummaries(t *testing.T) {
 	}
 }
 
+// Two agents doing the same thing must describe it to the owner with the same
+// words, so the activity vocabulary is shared rather than per-backend.
+func TestActivitySummaryIsTheSameForEveryAgent(t *testing.T) {
+	shared := map[string]string{
+		ActivityReply:   "Writing a reply",
+		ActivityCommand: "Running a command",
+		ActivityFile:    "Editing files",
+		ActivityPlan:    "Updating the plan",
+		ActivityDiff:    "Reviewing changes",
+		ActivityRead:    "Reading files",
+	}
+	for kind, want := range shared {
+		for _, label := range []AgentLabel{LabelCodex, LabelClaudeCode} {
+			if got := ActivitySummary(label, kind); got != want {
+				t.Fatalf("ActivitySummary(%q, %q) = %q; want %q", label, kind, got, want)
+			}
+		}
+	}
+	// An unknown kind falls back to the agent's generic line rather than
+	// leaking a raw tool or item name to the launcher.
+	if got := ActivitySummary(LabelClaudeCode, "mcp__something__private"); got != "Claude is working" {
+		t.Fatalf("unknown kind summary = %q", got)
+	}
+	if got := ActivitySummary(LabelCodex, ""); got != "Codex is working" {
+		t.Fatalf("empty kind summary = %q", got)
+	}
+}
+
 // The summary reaches the launcher verbatim, so a non-Codex backend must not
 // tell the owner that Codex is doing the work.
 func TestProjectTaskStateNamesTheAgentThatOwnsTheTask(t *testing.T) {

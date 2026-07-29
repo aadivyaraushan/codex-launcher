@@ -149,7 +149,7 @@ func ProjectNotification(method string, params json.RawMessage) (MobileEvent, er
 			}
 			return MobileEvent{}, ErrUnsupportedLiveNotification
 		}
-		return mobileEvent(envelope.ThreadID, "activity", Working, mobileActivitySummary(LabelCodex, activity.Kind)), nil
+		return mobileEvent(envelope.ThreadID, "activity", Working, ActivitySummary(LabelCodex, activity.Kind)), nil
 	}
 }
 
@@ -179,18 +179,34 @@ func ProjectTaskState(label AgentLabel, taskID string, state State) (MobileEvent
 	}
 }
 
-func mobileActivitySummary(label AgentLabel, kind string) string {
+// Activity kinds shared by every backend. They exist so two agents doing the
+// same thing describe it to the owner with the same words.
+const (
+	ActivityReply   = "reply"
+	ActivityCommand = "command"
+	ActivityFile    = "file"
+	ActivityPlan    = "plan"
+	ActivityDiff    = "diff"
+	ActivityRead    = "read"
+)
+
+// ActivitySummary is the phone-visible line for an activity kind. An
+// unrecognised kind falls back to the agent's generic working summary rather
+// than leaking a raw tool or item name to the launcher.
+func ActivitySummary(label AgentLabel, kind string) string {
 	switch kind {
-	case "reply":
+	case ActivityReply:
 		return "Writing a reply"
-	case "command":
+	case ActivityCommand:
 		return "Running a command"
-	case "file":
+	case ActivityFile:
 		return "Editing files"
-	case "plan":
+	case ActivityPlan:
 		return "Updating the plan"
-	case "diff":
+	case ActivityDiff:
 		return "Reviewing changes"
+	case ActivityRead:
+		return "Reading files"
 	default:
 		return workingSummary(label)
 	}
