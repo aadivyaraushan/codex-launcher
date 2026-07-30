@@ -164,3 +164,48 @@ func (responder *recordingResponder) Respond(_ context.Context, response Respons
 	responder.responses = append(responder.responses, response)
 	return responder.err
 }
+
+func (responder *recordingResponder) last() Response {
+	responder.mu.Lock()
+	defer responder.mu.Unlock()
+	if len(responder.responses) == 0 {
+		return Response{}
+	}
+	return responder.responses[len(responder.responses)-1]
+}
+
+// Answers must survive the router's defensive copy on the way to the request
+// owner. They were previously dropped, which silently emptied every answer the
+// owner received for a question.
+func TestRespondDeliversAnswersToTheOwner(t *testing.T) {
+	responder := &recordingResponder{}
+	router := NewRouter(responder, nil)
+	expires := time.Now().Add(time.Minute)
+	request := Request{
+		ID: "req-1", ThreadID: "thread-1", TurnID: "turn-1", ItemID: "item-1", Kind: KindQuestion,
+		ComputerName: "mac", ProjectLabel: "launcher", ExpiresAt: expires,
+		Questions: []Question{{ID: "q0", Header: "Database", Prompt: "Which database?", Options: []string{"Postgres", "SQLite"}}},
+	}
+	if err := router.Add(request); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	response := Response{
+		RequestID: "req-1", ThreadID: "thread-1", TurnID: "turn-1", ItemID: "item-1", Kind: KindQuestion,
+		Answers: map[string][]string{"q0": {"Postgres"}},
+	}
+	if err := router.Respond(context.Background(), response, time.Now()); err != nil {
+		t.Fatalf("Respond() error = %v", err)
+	}
+	delivered := responder.last()
+	if len(delivered.Answers) != 1 {
+		t.Fatalf("owner received %d answers; want 1", len(delivered.Answers))
+	}
+	if got := delivered.Answers["q0"]; len(got) != 1 || got[0] != "Postgres" {
+		t.Fatalf("owner received answers = %#v", delivered.Answers)
+	}
+	// Still a copy: mutating the caller's slice must not reach the owner.
+	response.Answers["q0"][0] = "mutated"
+	if delivered.Answers["q0"][0] != "Postgres" {
+		t.Fatal("router handed the owner the caller's own slice")
+	}
+}

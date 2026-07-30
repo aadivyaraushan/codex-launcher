@@ -303,10 +303,10 @@ func cloneResponse(response Response) Response {
 	if response.Answers == nil {
 		return response
 	}
-	response.Answers = make(map[string][]string, len(response.Answers))
-	for id, answers := range response.Answers {
-		response.Answers[id] = append([]string(nil), answers...)
-	}
+	// Build into a separate map. Assigning the new map to response.Answers
+	// first and then ranging over it copied nothing, so every answer was
+	// silently dropped on the way to the request owner.
+	response.Answers = cloneAnswers(response.Answers)
 	return response
 }
 
