@@ -9,6 +9,12 @@ enum class TaskState(val wireName: String) {
     FAILED("failed"),
     INTERRUPTED("interrupted"),
     IDLE_AFTER_REPLY("idle_after_reply"),
+
+    // Capability-aware states (see capability.outcome.StateMark): a task can
+    // finish one tap short of the irreversible step, or hand off to another
+    // app entirely, without that being WORKING, FAILED, or a reply.
+    ONE_TAP_LEFT("one_tap_left"),
+    HANDED_OFF("handed_off"),
     ;
 
     companion object {

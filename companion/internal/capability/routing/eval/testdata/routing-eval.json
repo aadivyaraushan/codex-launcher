@@ -1,0 +1,170 @@
+{
+  "_note": "The eval set. Utterances mapped to the (adapter, verb, must_ask) they must land on. It runs as an ordinary test, offline, in seconds. The `reply` on each case is a RECORDED stage-1 model reply: changing the prompt is the only thing that costs a live call, and a scheduled live run re-records these. Every new adapter adds its own utterances plus three adversarial ones aimed at stealing traffic from a neighbouring adapter.",
+
+  "adapters": [
+    { "id": "sms", "verbs": ["send", "read"] },
+    { "id": "whatsapp", "verbs": ["send", "read"] },
+    { "id": "notion", "verbs": ["read", "write"] },
+    { "id": "apple-notes", "verbs": ["read", "write"] }
+  ],
+
+  "classes": {
+    "messaging": { "adapters": ["sms", "whatsapp"], "addressed_to_person": true },
+    "notes": { "adapters": ["notion", "apple-notes"] }
+  },
+
+  "contacts": [
+    { "person": "Maya K", "adapter": "whatsapp", "handle": "+15550000001", "last_seen_days": 2, "source": "observed" },
+    { "person": "Maya K", "adapter": "sms", "handle": "+15550000001", "last_seen_days": 400, "source": "observed" },
+    { "person": "Devansh R", "adapter": "sms", "handle": "+15550000002", "last_seen_days": 3, "source": "observed" },
+    { "person": "Devansh R", "adapter": "whatsapp", "handle": "+15550000002", "last_seen_days": 30, "source": "observed" },
+    { "person": "Priya S", "adapter": "sms", "handle": "+15550000003", "last_seen_days": null, "source": "addressbook" },
+    { "person": "Ravi K", "adapter": "whatsapp", "handle": "+15550000004", "last_seen_days": 5, "source": "observed" },
+    { "person": "Ravi T", "adapter": "sms", "handle": "+15550000005", "last_seen_days": 6, "source": "observed" }
+  ],
+
+  "cases": [
+    {
+      "utterance": "text Maya I'm running ten minutes late",
+      "reply": { "verb": "send", "app_class": "messaging", "subject": "Maya", "body": "I'm running ten minutes late", "confidence": 0.96 },
+      "expect": { "adapter": "whatsapp", "verb": "send", "must_ask": false },
+      "why": "one Maya, one surface used in the last 14 days and nothing else inside 90"
+    },
+    {
+      "utterance": "message Maya on sms that I'll call her later",
+      "reply": { "verb": "send", "app_class": "messaging", "app_named": "sms", "subject": "Maya", "body": "I'll call her later", "confidence": 0.95 },
+      "expect": { "adapter": "sms", "verb": "send", "must_ask": false },
+      "why": "the utterance names the app, which beats recency"
+    },
+    {
+      "utterance": "text Devansh about dinner tonight",
+      "reply": { "verb": "send", "app_class": "messaging", "subject": "Devansh", "body": "dinner tonight?", "confidence": 0.95 },
+      "expect": { "must_ask": true },
+      "why": "two surfaces both used inside 90 days; picking is a guess"
+    },
+    {
+      "utterance": "text Priya the address",
+      "reply": { "verb": "send", "app_class": "messaging", "subject": "Priya", "body": "the address", "confidence": 0.94 },
+      "expect": { "adapter": "sms", "verb": "send", "must_ask": false },
+      "why": "exactly one candidate, so no history is needed"
+    },
+    {
+      "utterance": "message Ravi",
+      "reply": { "verb": "send", "app_class": "messaging", "subject": "Ravi", "body": "", "confidence": 0.93 },
+      "expect": { "must_ask": true },
+      "why": "two different people share the name; never guess between humans"
+    },
+    {
+      "utterance": "tell Ravi K I'm on my way",
+      "reply": { "verb": "send", "app_class": "messaging", "subject": "Ravi K", "body": "I'm on my way", "confidence": 0.95 },
+      "expect": { "adapter": "whatsapp", "verb": "send", "must_ask": false },
+      "why": "the full name narrows it to one person with one surface"
+    },
+    {
+      "utterance": "what did Maya say",
+      "reply": { "verb": "read", "app_class": "messaging", "subject": "Maya", "confidence": 0.92 },
+      "expect": { "adapter": "whatsapp", "verb": "read", "must_ask": false },
+      "why": "reading is not a send, and the same recency rule applies"
+    },
+    {
+      "utterance": "do the thing",
+      "reply": { "verb": "send", "app_class": "messaging", "subject": "", "confidence": 0.21 },
+      "expect": { "must_ask": true },
+      "why": "below the confidence floor; a low-confidence route asks and never executes"
+    },
+    {
+      "utterance": "note down that the router runs in two stages",
+      "reply": { "verb": "write", "app_class": "notes", "body": "the router runs in two stages", "confidence": 0.96 },
+      "expect": { "must_ask": true },
+      "why": "two note surfaces and nothing in the words chooses between them"
+    },
+    {
+      "utterance": "add that to my Notion",
+      "reply": { "verb": "write", "app_class": "notes", "app_named": "notion", "body": "that", "confidence": 0.97 },
+      "expect": { "adapter": "notion", "verb": "write", "must_ask": false },
+      "why": "the utterance names the app"
+    },
+    {
+      "utterance": "put this in Apple Notes",
+      "reply": { "verb": "write", "app_class": "notes", "app_named": "apple-notes", "body": "this", "confidence": 0.97 },
+      "expect": { "adapter": "apple-notes", "verb": "write", "must_ask": false },
+      "why": "the utterance names the app"
+    },
+    {
+      "utterance": "what's in my Notion meeting notes",
+      "reply": { "verb": "read", "app_class": "notes", "app_named": "notion", "subject": "meeting notes", "confidence": 0.94 },
+      "expect": { "adapter": "notion", "verb": "read", "must_ask": false },
+      "why": "named app plus a read"
+    },
+
+    {
+      "utterance": "make a note to text Maya tomorrow",
+      "reply": { "verb": "write", "app_class": "notes", "body": "text Maya tomorrow", "confidence": 0.91 },
+      "expect": { "must_ask": true },
+      "adversarial": "notes vs messaging",
+      "why": "the sentence contains 'text Maya' but the request is a note; it must not become a send"
+    },
+    {
+      "utterance": "send Maya a note about tomorrow",
+      "reply": { "verb": "send", "app_class": "messaging", "subject": "Maya", "body": "a note about tomorrow", "confidence": 0.93 },
+      "expect": { "adapter": "whatsapp", "verb": "send", "must_ask": false },
+      "adversarial": "messaging vs notes",
+      "why": "the word 'note' must not pull a message into the notes app"
+    },
+    {
+      "utterance": "write down Priya's number",
+      "reply": { "verb": "write", "app_class": "notes", "body": "Priya's number", "confidence": 0.9 },
+      "expect": { "must_ask": true },
+      "adversarial": "notes vs messaging",
+      "why": "a contact name in the body must not turn a note into a message to that contact"
+    },
+    {
+      "utterance": "read me the Notion page about Devansh",
+      "reply": { "verb": "read", "app_class": "notes", "app_named": "notion", "subject": "Devansh", "confidence": 0.92 },
+      "expect": { "adapter": "notion", "verb": "read", "must_ask": false },
+      "adversarial": "notes vs messaging",
+      "why": "a person's name inside a notes request must not route through the contact graph"
+    },
+    {
+      "utterance": "whatsapp Devansh the meeting link",
+      "reply": { "verb": "send", "app_class": "messaging", "app_named": "whatsapp", "subject": "Devansh", "body": "the meeting link", "confidence": 0.95 },
+      "expect": { "adapter": "whatsapp", "verb": "send", "must_ask": false },
+      "adversarial": "whatsapp vs sms",
+      "why": "naming the app resolves what would otherwise be an ambiguous contact"
+    },
+    {
+      "utterance": "sms Devansh the meeting link",
+      "reply": { "verb": "send", "app_class": "messaging", "app_named": "sms", "subject": "Devansh", "body": "the meeting link", "confidence": 0.95 },
+      "expect": { "adapter": "sms", "verb": "send", "must_ask": false },
+      "adversarial": "sms vs whatsapp",
+      "why": "the neighbouring adapter must not steal a request that names this one"
+    },
+    {
+      "utterance": "text Maya on Signal",
+      "reply": { "verb": "send", "app_class": "messaging", "app_named": "signal", "subject": "Maya", "body": "", "confidence": 0.94 },
+      "expect": { "must_ask": true },
+      "adversarial": "sms vs whatsapp",
+      "why": "an app we do not have must ask rather than quietly substituting a neighbour"
+    },
+    {
+      "utterance": "cancel my note",
+      "reply": { "verb": "cancel", "app_class": "notes", "confidence": 0.6 },
+      "expect": { "must_ask": true },
+      "adversarial": "verb confusion",
+      "why": "no notes adapter offers cancel, and below-floor confidence asks anyway"
+    },
+    {
+      "utterance": "pay Maya twenty dollars",
+      "reply": { "verb": "send", "app_class": "payments", "subject": "Maya", "body": "twenty dollars", "confidence": 0.88 },
+      "expect": { "must_ask": true },
+      "adversarial": "payments",
+      "why": "there is no payments class and no pay verb; money movement never routes automatically"
+    },
+    {
+      "utterance": "reply to Maya saying yes",
+      "reply": { "verb": "send", "app_class": "messaging", "subject": "Maya", "body": "yes", "confidence": 0.96 },
+      "expect": { "adapter": "whatsapp", "verb": "send", "must_ask": false },
+      "why": "'reply' is a send, not a new verb"
+    }
+  ]
+}

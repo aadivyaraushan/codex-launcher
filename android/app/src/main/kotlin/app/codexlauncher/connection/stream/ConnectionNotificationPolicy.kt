@@ -30,6 +30,9 @@ class ConnectionNotificationPolicy {
             TaskState.WAITING_FOR_APPROVAL -> ConnectionNotice("Codex needs your approval", "Open Codex Launcher to review it.")
             TaskState.WAITING_FOR_ANSWER -> ConnectionNotice("Codex needs your answer", "Open Codex Launcher to respond.")
             TaskState.FAILED -> ConnectionNotice("Codex needs attention", "Open Codex Launcher to review the task.")
-            TaskState.WORKING, TaskState.INTERRUPTED -> null
+            TaskState.ONE_TAP_LEFT -> ConnectionNotice("One tap left", "Open Codex Launcher to finish it.")
+            // A hand-off is a fact about where control went, not something
+            // that needs the user's attention right now — no notice.
+            TaskState.WORKING, TaskState.INTERRUPTED, TaskState.HANDED_OFF -> null
         }
 }

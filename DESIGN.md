@@ -2,11 +2,11 @@
 
 ## Product Context
 
-- **What this is:** A personal Android launcher for a Pixel 9 whose primary surface is remote Codex work running on the user's computer.
-- **Who it is for:** One technically capable owner using their phone to start, monitor, redirect, approve, and resume computer-based Codex tasks.
-- **Product category:** Android launcher, remote agent client, and task inbox.
+- **What this is:** Operator — an Android launcher that carries out requests across the apps already on the phone, and runs Codex work on the user's computer as one of those capabilities.
+- **Who it is for:** Amended 2026-07-31. **A consumer who will not read a threat model.** The original "one technically capable owner" is retired as a design constraint. That change is what makes the consent screens, the honesty about ceilings, and the mandatory previews load-bearing rather than polite — none of them can assume a user who understands what a token is.
+- **Product category:** Android launcher, personal assistant across installed apps, remote agent client, and task inbox.
 - **Memorable idea:** “My phone is a quiet interface to my work, not a grid of apps.”
-- **Primary hierarchy:** Codex tasks first, prompt second, ordinary apps and launcher settings as a quiet utility layer.
+- **Primary hierarchy:** Requests and tasks first, prompt second, ordinary apps and launcher settings as a quiet utility layer. Codex-on-your-computer keeps its place on Home because it is the only capability that runs arbitrary work, but it is one capability among many rather than the reason the launcher exists.
 
 ## Aesthetic Direction
 
@@ -104,6 +104,14 @@ State shapes are fixed across Home, task lists, notifications, and detail screen
 - **Replied:** outlined muted circle containing a check; paired with `Replied` after Codex sends a response and is no longer working.
 - **Failed:** outlined error-color square containing an X; always paired with `Failed` and a recovery action.
 
+The three marks below were added on 2026-07-31 for Operator, which acts inside other people's apps rather than only running work on the owner's computer. A request that reaches another app can stop in three places that "replied" and "failed" cannot describe, and a user who cannot tell them apart cannot tell whether their message was sent.
+
+- **One tap left:** solid warning-color half-circle (flat edge right), paired with `One tap left`. Operator did the work and is holding it at the last irreversible step for the user to confirm. The thing has **not** happened yet. Always accompanied by the preview of what will happen and the control that finishes it.
+- **Handed off:** outlined muted circle with an arrow leaving through its right edge, paired with `Handed off`. Operator has opened the app with the work loaded and can no longer see what happens. Never claim success after this mark, and never claim failure — say what was handed over and to which app.
+- **Unverified:** outlined muted triangle containing a dot, paired with `Unverified` or `Degraded`. The adapter's ceiling has never been proven against the live service, or a scheduled check demoted it. Shown next to the capability, not next to the task.
+
+**One tap left and handed off must never look alike.** They are the two states a user is most likely to confuse, and the cost of confusing them is believing a message was sent when it was not. One is filled and warm and asks for a thumb; the other is outlined and muted and asks for nothing. Both carry their words.
+
 Do not invent new state marks in later screens. Paused, queued, and interrupted states need explicit additions to this mapping before implementation.
 
 ### Home
@@ -153,6 +161,16 @@ Do not invent new state marks in later screens. Paused, queued, and interrupted 
 - Appearance contains no notification or other behavior controls.
 - Manual appearance selection persists until the user chooses Follow system again.
 
+### Notification access
+
+Added 2026-07-31. This is the screen that asks for the sensitive permission, so it says what is actually read rather than a softened version of it.
+
+- Say plainly: Operator reads the sender, the conversation, and the text of messages from the apps the user picks, so it can offer a reply.
+- Say where it goes: the text is sent to a model to compose a reply. Say so before the permission is granted, not in a settings page afterwards.
+- Say how long it is kept: only until the reply is sent or dropped.
+- The app list is the user's, per app, and each one can be switched off later without turning the whole permission off.
+- Deny is present and never visually hidden, and denying leaves the launcher fully usable — every app still opens with the reply drafted.
+
 ### Offline
 
 - Say that tasks remain on the computer; do not claim their latest state is safe or current while disconnected.
@@ -187,7 +205,9 @@ Do not invent new state marks in later screens. Paused, queued, and interrupted 
 | 2026-07-12 | Deep Charcoal is the preferred presentation | The user selected the dark direction as the stronger everyday appearance. |
 | 2026-07-12 | Direction 3 was removed | Dynamic recoloring weakened the product identity and duplicated the light direction. |
 | 2026-07-12 | Ordinary notifications remain in Android's shade | Keeps the launcher focused on Codex work and avoids building a second notification center. |
-| 2026-07-12 | Notification count requires optional listener access | Preserves privacy and makes the permission's limited purpose explicit. |
+| 2026-07-12 | ~~Notification count requires optional listener access~~ **Superseded 2026-07-31** | Was accurate when the launcher only counted notifications. It is no longer what the product does — see the row below. |
+| 2026-07-31 | Notification access reads message content, not a count | Operator replies to messages. That needs the sender, the thread, and the text of the message, sent to a model to compose a reply and held until the reply is sent. Describing this as a count would understate it in the product's own design document. |
+| 2026-07-31 | Three state marks added: one tap left, handed off, unverified | Operator stops in places a launcher never did. Without these marks a user cannot tell a sent message from a drafted one. |
 
 ## Source Artifact
 

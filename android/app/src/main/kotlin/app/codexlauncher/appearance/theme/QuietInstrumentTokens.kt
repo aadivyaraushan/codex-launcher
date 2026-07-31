@@ -54,6 +54,8 @@ object QuietInstrumentTokens {
     const val repliedLabel = "Replied"
     const val failedLabel = "Failed"
     const val interruptedLabel = "Interrupted"
+    const val oneTapLeftLabel = "One tap left"
+    const val handedOffLabel = "Handed off"
 
     val spacingDp = listOf(4, 8, 12, 16, 24, 32)
     const val minimumTouchTargetDp = 44

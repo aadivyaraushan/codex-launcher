@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
+import app.codexlauncher.capability.outcome.StateMark
 import app.codexlauncher.task.configuration.NewTaskOptionControls
 import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
@@ -265,7 +266,30 @@ private fun OnlineContent(
             ) {
                 Text(task.title, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
-                Text(task.stateLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val mark = task.mark
+                if (mark != null) {
+                    // StateMark draws the shape and its own label together —
+                    // DESIGN.md requires the two never separate. When the
+                    // row's own words are exactly that label (no status line
+                    // has overridden them), showing task.stateLabel next to
+                    // it would say "One tap left" twice; skip the plain text
+                    // in that case rather than duplicate it. A statusSummary
+                    // that reads differently (e.g. "Sent to Maya") carries
+                    // real information the mark's fixed label doesn't, so it
+                    // stays visible alongside the mark.
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StateMark(mark = mark)
+                        if (task.stateLabel != mark.label) {
+                            Text(
+                                task.stateLabel,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    Text(task.stateLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         }

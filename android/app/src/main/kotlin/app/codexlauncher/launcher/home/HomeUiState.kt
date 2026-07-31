@@ -1,5 +1,6 @@
 package app.codexlauncher.launcher.home
 
+import app.codexlauncher.capability.outcome.StateMark
 import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
@@ -10,7 +11,31 @@ data class HomeTask(
     val id: String,
     val title: String,
     val stateLabel: String,
+    // Defaults to null so the debug scenario screen and older call sites
+    // that only ever meant "no mark" keep compiling without being rewritten;
+    // toHomeTask() below always supplies it explicitly from real task state.
+    val mark: StateMark? = null,
 )
+
+/**
+ * Which [StateMark] a row carries, decided by [TaskState] alone.
+ *
+ * This is a `when` with no `else` branch on purpose: a new TaskState added
+ * later fails to compile here until someone decides its mark, rather than
+ * silently carrying no mark (or the wrong one) because it fell through.
+ */
+private fun TaskState.toStateMark(): StateMark? =
+    when (this) {
+        TaskState.ONE_TAP_LEFT -> StateMark.ONE_TAP_LEFT
+        TaskState.HANDED_OFF -> StateMark.HANDED_OFF
+        TaskState.FAILED -> StateMark.FAILED
+        TaskState.WORKING,
+        TaskState.WAITING_FOR_APPROVAL,
+        TaskState.WAITING_FOR_ANSWER,
+        TaskState.INTERRUPTED,
+        TaskState.IDLE_AFTER_REPLY,
+        -> null
+    }
 
 internal fun TaskSummary.toHomeTask(): HomeTask =
     HomeTask(
@@ -24,8 +49,14 @@ internal fun TaskSummary.toHomeTask(): HomeTask =
                 TaskState.FAILED -> QuietInstrumentTokens.failedLabel
                 TaskState.INTERRUPTED -> QuietInstrumentTokens.interruptedLabel
                 TaskState.IDLE_AFTER_REPLY -> QuietInstrumentTokens.repliedLabel
+                TaskState.ONE_TAP_LEFT -> QuietInstrumentTokens.oneTapLeftLabel
+                TaskState.HANDED_OFF -> QuietInstrumentTokens.handedOffLabel
             }
         },
+        // Decided from `state`, never from `statusSummary`: a status line
+        // arriving from off-device is free text and must not get a say in
+        // whether the mark for "not actually done yet" is shown.
+        mark = state.toStateMark(),
     )
 
 data class HomeUiState(
