@@ -151,14 +151,14 @@ object ReplyAdapter {
         return if (distinctConversations.size == 1) handles.first() else null
     }
 
-    /** Turns a plan and whether it actually delivered into what the user is told. */
-    fun outcome(plan: ReplyPlan, delivered: Boolean): CapabilityOutcome =
+    /** Turns a plan and whether it was actually handed to the app into what the user is told. */
+    fun outcome(plan: ReplyPlan, handedToApp: Boolean): CapabilityOutcome =
         when (plan) {
-            // A Send that didn't deliver is a failure, never dressed up as a
-            // hand-off — no app is named because Operator itself was the one
-            // attempting the irreversible step, not the other app.
+            // A Send that never reached the app is a failure, never dressed up
+            // as a hand-off — no app is named because Operator itself was the
+            // one attempting the irreversible step, not the other app.
             is ReplyPlan.Send ->
-                CapabilityOutcome.of(ceiling = plan.ceiling, done = delivered, detail = plan.preview, app = null)
+                CapabilityOutcome.of(ceiling = plan.ceiling, done = handedToApp, detail = plan.preview, app = null)
 
             // A hand-off claims neither success nor failure: past this point
             // we stopped being able to see what happened.

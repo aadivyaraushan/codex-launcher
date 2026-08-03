@@ -1,5 +1,10 @@
 # Sandbox approach — a per-user browser the agent drives
 
+> **Superseded for release behavior (2026-08-02):** Operator does not drive a
+> logged-in Instagram browser. Personal Instagram is draft-and-open only under
+> [consumer-app-implementation-plan.md](consumer-app-implementation-plan.md).
+> The material below is retained as historical research, not a build plan.
+
 **Date:** 2026-07-29
 **Replaces:** draft-and-open as the Instagram path. Draft-and-open was rejected
 for making the user do too much manual work — see

@@ -17,13 +17,13 @@
     },
     "messageId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9._:-]+$" },
     "sender": { "enum": ["phone", "companion"] },
-    "type": { "enum": ["hello", "welcome", "snapshot", "event", "task_read", "task_page", "decision_read", "decision_page", "action", "action_result", "ack", "attachment_offer", "attachment_cancel", "attachment_complete", "attachment_ack", "error"] },
+    "type": { "enum": ["hello", "welcome", "snapshot", "event", "task_read", "task_page", "decision_read", "decision_page", "capability_preview", "capability_result", "device_action", "device_action_result", "action", "action_result", "ack", "attachment_offer", "attachment_cancel", "attachment_complete", "attachment_ack", "error"] },
     "seq": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 },
     "body": { "type": "object" }
   },
   "allOf": [
     {
-      "if": { "properties": { "type": { "enum": ["snapshot", "event", "action_result", "attachment_ack"] } }, "required": ["type"] },
+      "if": { "properties": { "type": { "enum": ["snapshot", "event", "action_result", "attachment_ack", "capability_result"] } }, "required": ["type"] },
       "then": { "required": ["seq"] },
       "else": { "not": { "required": ["seq"] } }
     },
@@ -114,6 +114,52 @@
       "then": { "properties": { "sender": { "const": "phone" }, "body": { "type": "object", "additionalProperties": false, "required": ["throughSeq"], "properties": { "throughSeq": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 } } } } }
     },
     {
+      "if": { "properties": { "type": { "const": "task_read" } }, "required": ["type"] },
+      "then": {
+        "properties": {
+          "sender": { "const": "phone" },
+          "body": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requestId", "taskId", "limit"],
+            "properties": {
+              "requestId": { "$ref": "#/$defs/id" },
+              "taskId": { "$ref": "#/$defs/id" },
+              "limit": { "type": "integer", "minimum": 1, "maximum": 64 },
+              "beforeEntryId": { "$ref": "#/$defs/id" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "task_page" } }, "required": ["type"] },
+      "then": {
+        "properties": {
+          "sender": { "const": "companion" },
+          "body": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requestId", "taskId", "entries", "truncated"],
+            "properties": {
+              "requestId": { "$ref": "#/$defs/id" },
+              "taskId": { "$ref": "#/$defs/id" },
+              "entries": { "type": "array", "maxItems": 64, "items": { "$ref": "event.schema.json#/$defs/transcriptEntry" } },
+              "earlierCursor": { "$ref": "#/$defs/id" },
+              "truncated": { "type": "boolean" },
+              "error": { "$ref": "event.schema.json#/$defs/error" }
+            },
+            "allOf": [
+              {
+                "if": { "required": ["error"] },
+                "then": { "properties": { "entries": { "maxItems": 0 } }, "not": { "required": ["earlierCursor"] } }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "type": { "const": "decision_read" } }, "required": ["type"] },
       "then": { "properties": { "sender": { "const": "phone" }, "body": { "type": "object", "additionalProperties": false, "required": ["requestId", "taskId"], "properties": { "requestId": { "$ref": "#/$defs/id" }, "taskId": { "$ref": "#/$defs/id" } } } } }
     },
@@ -136,6 +182,86 @@
     {
       "if": { "properties": { "type": { "const": "attachment_ack" } }, "required": ["type"] },
       "then": { "required": ["seq"], "properties": { "sender": { "const": "companion" }, "body": { "type": "object", "additionalProperties": false, "required": ["uploadId", "state", "receivedBytes", "sha256", "nextChunk"], "properties": { "uploadId": { "$ref": "#/$defs/id" }, "state": { "enum": ["accepted", "complete", "cancelled"] }, "receivedBytes": { "type": "integer", "minimum": 0, "maximum": 20971520 }, "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }, "nextChunk": { "type": "integer", "minimum": 0, "maximum": 2147483647 } } } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "capability_preview" } }, "required": ["type"] },
+      "then": {
+        "properties": {
+          "sender": { "const": "companion" },
+          "body": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requestId", "adapterId", "verb", "headline", "lines", "confirmLabel", "fingerprint"],
+            "properties": {
+              "requestId": { "$ref": "#/$defs/id" },
+              "adapterId": { "$ref": "#/$defs/id" },
+              "verb": { "enum": ["read", "compose", "send", "order", "book", "play", "write", "cancel", "modify"] },
+              "headline": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
+              "lines": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" } },
+              "confirmLabel": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
+              "fingerprint": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "capability_result" } }, "required": ["type"] },
+      "then": {
+        "required": ["seq"],
+        "properties": {
+          "sender": { "const": "companion" },
+          "body": {
+            "$comment": "The Go validator (validateBody in companion/internal/mobileapi/contract/validation.go) enforces cross-field rules this schema cannot express: handedOffTo must be non-empty exactly when ceiling is \"hands_off\" and done is true, and must be empty otherwise; when non-empty, handedOffTo must also pass the same non-blank / no-control-character check as detail. This schema only bounds handedOffTo's length.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requestId", "ceiling", "done", "detail", "handedOffTo"],
+            "properties": {
+              "requestId": { "$ref": "#/$defs/id" },
+              "ceiling": { "enum": ["completes", "one_tap", "hands_off"] },
+              "done": { "type": "boolean" },
+              "detail": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
+              "handedOffTo": { "type": "string", "maxLength": 128 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "device_action" } }, "required": ["type"] },
+      "then": {
+        "properties": {
+          "sender": { "const": "companion" },
+          "body": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requestId", "kind", "handle", "text"],
+            "properties": {
+              "requestId": { "$ref": "#/$defs/id" },
+              "kind": { "enum": ["notification_reply"] },
+              "handle": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
+              "text": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?!\\s*$)[\\s\\S]+$" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "device_action_result" } }, "required": ["type"] },
+      "then": {
+        "properties": {
+          "sender": { "const": "phone" },
+          "body": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requestId", "outcome"],
+            "properties": {
+              "requestId": { "$ref": "#/$defs/id" },
+              "outcome": { "enum": ["handed_to_the_app", "notification_gone", "failed", "refused"] }
+            }
+          }
+        }
+      }
     }
   ],
   "$defs": {

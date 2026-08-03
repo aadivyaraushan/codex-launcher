@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
 import app.codexlauncher.capability.outcome.StateMark
+import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.task.configuration.NewTaskOptionControls
 import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
@@ -64,6 +66,10 @@ fun HomeScreen(
     composerState: DraftComposerState = DraftComposerState(phase = DraftComposerPhase.READY),
     onPromptChange: (String) -> Unit = {},
     onSend: (String, NewTaskSelection?) -> Unit = { _, _ -> },
+    promptDestination: PromptDestination = PromptDestination.AUTO,
+    capabilityBusy: Boolean = false,
+    capabilityMessage: String? = null,
+    onPromptDestinationChange: (PromptDestination) -> Unit = {},
     newTaskNeedsReview: Boolean = false,
     newTaskMessage: String? = null,
     onDismissNewTaskReview: () -> Unit = {},
@@ -116,6 +122,10 @@ fun HomeScreen(
                     onPromptChange = onPromptChange,
                     onChooseProject = onChooseProject,
                     onSend = onSend,
+                    promptDestination = promptDestination,
+                    capabilityBusy = capabilityBusy,
+                    capabilityMessage = capabilityMessage,
+                    onPromptDestinationChange = onPromptDestinationChange,
                     newTaskNeedsReview = newTaskNeedsReview,
                     newTaskMessage = newTaskMessage,
                     onDismissNewTaskReview = onDismissNewTaskReview,
@@ -217,6 +227,10 @@ private fun OnlineContent(
     onPromptChange: (String) -> Unit,
     onChooseProject: () -> Unit,
     onSend: (String, NewTaskSelection?) -> Unit,
+    promptDestination: PromptDestination,
+    capabilityBusy: Boolean,
+    capabilityMessage: String?,
+    onPromptDestinationChange: (PromptDestination) -> Unit,
     newTaskNeedsReview: Boolean,
     newTaskMessage: String?,
     onDismissNewTaskReview: () -> Unit,
@@ -305,6 +319,13 @@ private fun OnlineContent(
         }
         item {
             Spacer(Modifier.height(8.dp))
+            PromptDestinationControl(
+                destination = promptDestination,
+                computerName = state.computerName,
+                enabled = !capabilityBusy,
+                onDestinationChange = onPromptDestinationChange,
+            )
+            Spacer(Modifier.height(8.dp))
             if (newTaskOptions != null && selection != null) {
                 NewTaskOptionControls(
                     options = newTaskOptions,
@@ -336,6 +357,9 @@ private fun OnlineContent(
             }
             attachmentMessage?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            }
+            capabilityMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             when {
                 newTaskNeedsReview -> {
@@ -385,14 +409,83 @@ private fun OnlineContent(
                 }
                 IconButton(
                     onClick = { onSend(composerState.text, selection) },
-                    enabled = state.canSend && composerState.canEdit && composerState.text.isNotBlank() && !newTaskNeedsReview,
-                    modifier = Modifier.size(48.dp).semantics { contentDescription = "Send prompt" },
+                    enabled =
+                        state.canSend &&
+                            composerState.canEdit &&
+                            composerState.text.isNotBlank() &&
+                            composerState.version != null &&
+                            selection != null &&
+                            !newTaskNeedsReview &&
+                            !capabilityBusy,
+                    modifier =
+                        Modifier.size(48.dp).semantics {
+                            contentDescription = "Send prompt using ${promptDestination.displayName}"
+                        },
                 ) {
                     Text("↑")
                 }
             }
         }
     }
+}
+
+private val PromptDestination.displayName: String
+    get() = if (this == PromptDestination.AUTO) "Auto" else "Computer"
+
+@Composable
+private fun PromptDestinationControl(
+    destination: PromptDestination,
+    computerName: String,
+    enabled: Boolean,
+    onDestinationChange: (PromptDestination) -> Unit,
+) {
+    Text(
+        "Run on",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(4.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PromptDestination.entries.forEach { option ->
+            val selected = destination == option
+            val buttonModifier =
+                Modifier
+                    .weight(1f)
+                    .height(QuietInstrumentTokens.securityActionHeightDp.dp)
+                    .semantics {
+                        contentDescription =
+                            "${option.displayName} destination${if (selected) " selected" else ""}"
+                    }
+            if (selected) {
+                Button(
+                    onClick = { onDestinationChange(option) },
+                    enabled = enabled,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = buttonModifier,
+                ) { Text(option.displayName) }
+            } else {
+                OutlinedButton(
+                    onClick = { onDestinationChange(option) },
+                    enabled = enabled,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = buttonModifier,
+                ) { Text(option.displayName) }
+            }
+        }
+    }
+    Spacer(Modifier.height(4.dp))
+    Text(
+        if (destination == PromptDestination.AUTO) {
+            "Apps first · Codex on $computerName if none match"
+        } else {
+            "Send directly to Codex on $computerName"
+        },
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

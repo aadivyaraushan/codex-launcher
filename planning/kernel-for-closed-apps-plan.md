@@ -1,5 +1,12 @@
 # Can Kernel cover the apps we marked impossible?
 
+> **Superseded for release behavior (2026-08-02):** This remains historical
+> browser research. The release route is controlled by
+> [consumer-app-implementation-plan.md](consumer-app-implementation-plan.md).
+> In particular, a Discord bot is a separate user and is not a route for
+> controlling the authenticated user's Discord account; Discord is
+> prepare-and-open only.
+
 **Date:** 2026-07-31
 **Extends:** [consumer-app-coverage-plan.md](consumer-app-coverage-plan.md) — specifically
 every row whose Route is **none**, **don't**, or **excluded on purpose**.
@@ -84,7 +91,7 @@ floor below.**
 | **Venmo, Cash App** | Web login works; whether the web can actually *send* is contradictory across sources and I did not settle it. | Moot. Moving money is a prohibited action class regardless of what the API or the web allows. Draft-and-open stays the answer, and it is the *right* answer — you want the user's thumb on that button. |
 | **Zelle, banks, Robinhood, Coinbase** | Bank web works. | Same rule. Not a technology question. |
 | **Tinder** | Yes — tinder.com is a live, full web client. | Highest ban risk on the page for the least product value. The judgement in the original plan doesn't change because a door turned out to be open. |
-| **Discord DMs** | Yes, via the web app. | That is a self-bot, which Discord bans for. Use the approved bot scope. |
+| **Discord DMs** | Yes, via the web app. | That is a self-bot, which Discord bans. A separate bot is not the authenticated user either, so prepare the message and open Discord. |
 
 ### One more bucket worth naming: "gated" is not "impossible"
 

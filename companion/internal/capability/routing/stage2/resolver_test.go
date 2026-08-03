@@ -64,8 +64,8 @@ func testResolver(t *testing.T, entries ...contacts.Entry) (*Resolver, *registry
 	// Whether a class is addressed to a person is declared, not guessed. A
 	// note can mention someone's name without being a message to them.
 	classes := ClassMap{
-		"messaging": {Adapters: []string{"sms", "whatsapp"}, AddressedToPerson: true},
-		"notes":     {Adapters: []string{"notion", "apple-notes"}},
+		"messaging": {Adapters: []string{"sms", "whatsapp"}, Addressing: ToAPerson},
+		"notes":     {Adapters: []string{"notion", "apple-notes"}, Addressing: ToAThing},
 	}
 	return New(reg, graph, classes, manifest.PlatformAndroid), reg, graph
 }
@@ -216,5 +216,23 @@ func TestADecisionForAnIrreversibleVerbAlwaysCarriesThePreviewRequirement(t *tes
 	read, _ := r.Resolve(context.Background(), route(manifest.Read, "messaging", "Maya", 0.95))
 	if read.RequiresPreview {
 		t.Error("a read carries a preview requirement")
+	}
+}
+
+func TestNamedSlotsSurviveIntoTheDecision(t *testing.T) {
+	// Stage 2 chooses the adapter; it must not drop the slots stage 1 found
+	// on the way, or an adapter needing two of them can never be reached.
+	resolver, _, _ := testResolver(t)
+	decision, err := resolver.Resolve(context.Background(), stage1.Route{
+		Verb: manifest.Read, AppClass: "notes", AppNamed: "notion",
+		Subject:    "directions to the airport",
+		Fields:     map[string]string{"origin": "home", "destination": "SFO"},
+		Confidence: 0.95,
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if decision.Fields["origin"] != "home" || decision.Fields["destination"] != "SFO" {
+		t.Fatalf("decision fields=%v, want both endpoints", decision.Fields)
 	}
 }

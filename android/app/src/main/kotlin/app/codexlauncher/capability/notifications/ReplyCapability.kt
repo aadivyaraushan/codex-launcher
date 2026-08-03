@@ -48,6 +48,15 @@ data class ReplyFinding(
     val source: ReplySource,
     val replyLabel: String?,
     val remoteInputKey: String?,
+    /**
+     * Where the chosen action sits in the list it came from — the shade list
+     * when [source] is SHADE, the watch-extender list when it is
+     * WEARABLE_EXTENDER. Null whenever there is no usable reply box, since an
+     * index of 0 would otherwise look like "the first action" instead of
+     * "nothing to point at". The listener needs this to reach back into the
+     * live Android action later; see the note on [ReplyCapability.classify].
+     */
+    val replyActionIndex: Int?,
     val cannedOnlyActionCount: Int,
     val shadeActionCount: Int,
     val wearableActionCount: Int,
@@ -70,10 +79,17 @@ object ReplyCapability {
      * The shade wins over the watch extender when both have one, because the
      * shade action is the one Android itself draws and is the more stable of
      * the two.
+     *
+     * The index carried on the result is not decoration: firing a reply means
+     * holding the real Android action, and only the notification listener can
+     * see those — it gets a list and has to pick the same one out of it that
+     * this function already picked. Re-deriving the rule in the listener would
+     * be a second copy that can drift silently, so classify names the position
+     * instead and the listener just counts to it.
      */
     fun classify(sighting: NotificationSighting): ReplyFinding {
-        val shadeReply = sighting.shadeActions.firstNotNullOfOrNull { it.usableReply() }
-        val wearReply = sighting.wearableActions.firstNotNullOfOrNull { it.usableReply() }
+        val shadeReply = sighting.shadeActions.findUsableReply()
+        val wearReply = sighting.wearableActions.findUsableReply()
 
         val chosen = shadeReply ?: wearReply
         val source = when {
@@ -89,8 +105,9 @@ object ReplyCapability {
             packageName = sighting.packageName,
             canReply = chosen != null,
             source = source,
-            replyLabel = chosen?.first,
-            remoteInputKey = chosen?.second?.resultKey,
+            replyLabel = chosen?.label,
+            remoteInputKey = chosen?.input?.resultKey,
+            replyActionIndex = chosen?.index,
             cannedOnlyActionCount = cannedOnly,
             shadeActionCount = sighting.shadeActions.size,
             wearableActionCount = sighting.wearableActions.size,
@@ -106,6 +123,17 @@ object ReplyCapability {
     private fun ProbeAction.usableReply(): Pair<String, ProbeRemoteInput>? {
         val input = remoteInputs.firstOrNull { it.allowFreeFormInput } ?: return null
         return label to input
+    }
+
+    /** The usable reply box in a list, plus where it sits in that same list. */
+    private data class ChosenReply(val index: Int, val label: String, val input: ProbeRemoteInput)
+
+    private fun List<ProbeAction>.findUsableReply(): ChosenReply? {
+        forEachIndexed { index, action ->
+            val reply = action.usableReply() ?: return@forEachIndexed
+            return ChosenReply(index, reply.first, reply.second)
+        }
+        return null
     }
 }
 

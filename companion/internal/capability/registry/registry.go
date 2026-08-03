@@ -20,6 +20,10 @@ var ErrUnknownAdapter = errors.New("unknown adapter")
 // locally or by the remote kill list.
 var ErrAdapterDisabled = errors.New("adapter disabled")
 
+// ErrUnknownCeiling is returned when something tries to record a measured
+// ceiling that is not one of the three real ones.
+var ErrUnknownCeiling = errors.New("measured ceiling is not a real ceiling")
+
 type entry struct {
 	a        adapter.Adapter
 	disabled bool
@@ -162,6 +166,23 @@ func (r *Registry) Disabled(id string) (reason string, off bool) {
 	return e.reason, e.disabled
 }
 
+// AdapterIDs returns the id of every adapter currently registered,
+// enabled or not, in no particular order. It exists so a background
+// watcher — the alert sweep in internal/capability/verification/alerts,
+// today — can enumerate what to check without reaching past the registry
+// into the adapters themselves. The return value is a fresh copy, not the
+// registry's own map keys, so a caller mutating it cannot reach into the
+// registry's internal state.
+func (r *Registry) AdapterIDs() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ids := make([]string, 0, len(r.entries))
+	for id := range r.entries {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // KillEntry names one adapter the remote kill list wants switched off, and
 // why.
 type KillEntry struct {
@@ -239,6 +260,16 @@ func (r *Registry) EffectiveCeiling(id string) (ceiling manifest.Ceiling, proven
 // repeat of the level already shown — resets the count to zero, because
 // good-bad-good is not two good runs, it is an adapter still failing.
 func (r *Registry) RecordMeasuredCeiling(id string, measured manifest.Ceiling) error {
+	// Refuse anything that is not one of the three real ceilings, before it
+	// touches the record. This is not tidiness. Rank() scores an unrecognised
+	// value as 0, below every real ceiling, so a bad measurement reads as a
+	// fall and is stored as a permanent demotion — and unlike a real fall,
+	// nothing about it is true. Every path that measures an adapter comes
+	// through here, so this is the one place that has to hold.
+	if !measured.Valid() {
+		return fmt.Errorf("%w: %s reported %q", ErrUnknownCeiling, id, measured)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	e, ok := r.entries[id]

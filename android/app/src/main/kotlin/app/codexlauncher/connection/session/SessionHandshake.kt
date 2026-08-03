@@ -28,6 +28,7 @@ class SessionHandshake(
     private val paired: PairedComputer,
     private val sessionId: String,
     private val signer: DevicePairingSigner,
+    private val resumeThroughSequence: Long? = null,
     private val nowSeconds: () -> Long = { System.currentTimeMillis() / 1_000 },
     private val messageId: () -> String = { UUID.randomUUID().toString() },
 ) {
@@ -171,14 +172,29 @@ class SessionHandshake(
                     buildJsonObject {
                         put("clientInstanceId", paired.deviceId)
                         put("supportedMajors", buildJsonArray { add(paired.protocol) })
-                        put("resume", buildJsonObject { put("mode", "no_local_state") })
+                        put(
+                            "resume",
+                            if (resumeThroughSequence != null && resumeThroughSequence > 0) {
+                                buildJsonObject {
+                                    put("mode", "warm")
+                                    put("lastAck", resumeThroughSequence)
+                                }
+                            } else {
+                                buildJsonObject { put("mode", "no_local_state") }
+                            },
+                        )
                     },
                 )
             }.toString()
         AppLog.info(
             feature = "session-handshake",
             message = "session authenticated",
-            fields = mapOf("device_id" to paired.deviceId, "session_id" to sessionId, "output_shape" to "cold_hello,attachment_key"),
+            fields = mapOf(
+                "device_id" to paired.deviceId,
+                "session_id" to sessionId,
+                "resume_mode" to if (resumeThroughSequence != null && resumeThroughSequence > 0) "warm" else "no_local_state",
+                "output_shape" to "hello,attachment_key",
+            ),
         )
         return Output.Ready(helloJson = hello, attachmentKey = key)
     }

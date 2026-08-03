@@ -85,8 +85,12 @@ enum class StateMark(
     // on you".
     HANDED_OFF("Handed off", MarkShape.CIRCLE_WITH_EXIT_ARROW, MarkFill.OUTLINED, MarkTone.MUTED),
 
-    // Sits next to the capability, not the task: it says "we do not know",
-    // which is a different claim from any task state above.
+    // The one mark for "we cannot vouch for this", which is a different claim
+    // from any task state above. It sits in two places and says a slightly
+    // different thing in each: next to a capability it means the ceiling was
+    // never proven, and next to a task row it means that one run's outcome was
+    // lost before anyone could see whether it landed. They never appear about
+    // the same thing at once, and the words differ, so one mark carries both.
     UNVERIFIED("Unverified", MarkShape.CIRCLE_WITH_QUESTION_MARK, MarkFill.OUTLINED, MarkTone.MUTED),
 }
 
@@ -99,10 +103,11 @@ enum class StateMark(
  * row's state and the mark beside it — always come from the same field and
  * cannot drift apart from each other. The `when` has no catch-all: it names
  * every [StateMark] `CapabilityOutcome.of` can actually produce, and fails
- * loudly for the three it can't (`WORKING`, `WAITING_FOR_USER`,
- * `UNVERIFIED` describe other things entirely — a capability's live state
- * and a badge's confidence, not a finished run) rather than silently
- * guessing a TaskState for a mark this function should never see.
+ * loudly for the two it can't (`WORKING` and `WAITING_FOR_USER` describe a
+ * capability's live state, not a finished run) rather than silently guessing
+ * a TaskState for a mark this function should never see. `UNVERIFIED` used to
+ * sit in that unreachable group too; `of(certain = false)` now produces it,
+ * so it has its own honest mapping below instead.
  */
 fun CapabilityOutcome.toTaskState(): TaskState =
     when (mark) {
@@ -110,12 +115,17 @@ fun CapabilityOutcome.toTaskState(): TaskState =
         StateMark.ONE_TAP_LEFT -> TaskState.ONE_TAP_LEFT
         StateMark.HANDED_OFF -> TaskState.HANDED_OFF
         StateMark.FAILED -> TaskState.FAILED
-        // CapabilityOutcome.of never produces these three, so this branch is
+        // We asked and never found out. Not WORKING (the run is over, one
+        // way or another), not FAILED (it may well have gone through), and
+        // not a reply (we cannot claim it landed) — its own state so the
+        // home list says the same "we don't know" the sheet's mark says.
+        StateMark.UNVERIFIED -> TaskState.UNVERIFIED
+        // CapabilityOutcome.of never produces these two, so this branch is
         // unreachable today. It answers WORKING rather than throwing because
         // this runs on the home screen: crashing the launcher is a worse
-        // outcome than saying "still going", and all three of these mean the
-        // run has not claimed anything yet, so none of them can mislead.
-        StateMark.WORKING, StateMark.WAITING_FOR_USER, StateMark.UNVERIFIED -> TaskState.WORKING
+        // outcome than saying "still going", and both of these mean the run
+        // has not claimed anything yet, so neither can mislead.
+        StateMark.WORKING, StateMark.WAITING_FOR_USER -> TaskState.WORKING
     }
 
 /**
@@ -144,8 +154,45 @@ data class CapabilityOutcome(
          * A run that did not finish is FAILED regardless of the ceiling it was
          * attempted at — the ceiling describes how far a *successful* run
          * carries a request, and says nothing once the run has not completed.
+         *
+         * `certain` defaults to true so every existing caller — all of which
+         * mean "we know what happened" — keeps producing exactly the result
+         * it always has. Pass `certain = false` when the phone lost touch
+         * with the run before it could learn the answer: some capabilities
+         * are decided on the Mac but executed here, so the phone can drop
+         * off mid-flight, and a reply that timed out may well have been
+         * sent. Uncertainty is checked first, ahead of `done` and `ceiling`
+         * both, because not knowing outranks any claim either of them would
+         * otherwise make.
          */
-        fun of(ceiling: Ceiling, done: Boolean, detail: String, app: String?): CapabilityOutcome {
+        fun of(
+            ceiling: Ceiling,
+            done: Boolean,
+            detail: String,
+            app: String?,
+            certain: Boolean = true,
+        ): CapabilityOutcome {
+            if (!certain) {
+                // Neither "Try again" nor "Open <app> and try again" is safe
+                // here: retrying a send that may already have gone through
+                // sends it twice, and the other person gets the message
+                // twice with no idea why. Point at checking instead of
+                // repeating.
+                val recovery =
+                    if (app.isNullOrBlank()) "Check to see if it went through" else "Check $app to see if it sent"
+                return CapabilityOutcome(
+                    ceiling = ceiling,
+                    mark = StateMark.UNVERIFIED,
+                    label = StateMark.UNVERIFIED.label,
+                    detail = detail,
+                    handedOffToApp = null,
+                    confirmControl = null,
+                    recoveryAction = recovery,
+                    claimsSuccess = false,
+                    claimsFailure = false,
+                )
+            }
+
             if (!done) {
                 // A failure always carries a recovery action: telling someone
                 // something broke without telling them what to do about it

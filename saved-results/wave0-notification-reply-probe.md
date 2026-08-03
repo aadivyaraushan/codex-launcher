@@ -151,3 +151,21 @@ adb shell cmd notification allow_listener app.codexlauncher/app.codexlauncher.ca
 Re-issuing `disallow_listener` then `allow_listener` forces a reconnect, which
 re-sweeps the shade — the cheapest way to re-measure without waiting for a new
 message.
+
+## Re-check 2026-08-03 — still 2 of 5, and why
+
+Ran `adb shell pm list packages` against the Pixel (`4B230DLAQ001Z5`) to see whether
+the three unanswered rows had become measurable. They have not:
+
+| App | Package | On the phone today? | What the row still needs |
+|---|---|---|---|
+| Google Messages | `com.google.android.apps.messaging` | **yes** | One inbound SMS. `SMS_RECEIVED` is a protected broadcast, so no command can fake one — someone has to text the phone |
+| Messenger | `com.facebook.orca` / `.mlite` | **no** | Install under the owner's own Play account |
+| Signal | `org.thoughtcrime.securesms` | **no** | Install under the owner's own Play account |
+
+Instagram (`com.instagram.android`) is back on the phone after the owner reinstalled it
+on 2026-08-03, which is what unblocked the Instagram feed hand-off row elsewhere in this
+push. It does not change this probe: Instagram already answered `CAN_REPLY`.
+
+So the score stays **2 of 5**, and all three remaining rows are owner acts rather than
+work an agent can finish.

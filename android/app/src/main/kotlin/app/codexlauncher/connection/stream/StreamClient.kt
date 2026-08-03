@@ -3,6 +3,7 @@ package app.codexlauncher.connection.stream
 import app.codexlauncher.connection.runtime.LauncherSessionViewModel
 import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.task.summary.TaskState
+import app.codexlauncher.task.summary.effectiveState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -24,7 +25,7 @@ class LauncherStreamClient(
         session.state.map { state ->
             StreamState(
                 phase = state.connection.phase,
-                tasks = state.snapshot?.tasks?.associate { it.id to it.state }.orEmpty(),
+                tasks = state.snapshot?.tasks?.associate { it.id to it.effectiveState() }.orEmpty(),
             )
         }
 

@@ -22,6 +22,9 @@ import (
 	"time"
 
 	companionapp "github.com/codex-launcher/codex-launcher/companion/internal/app"
+	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
+	capabilityadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
+	capabilityflow "github.com/codex-launcher/codex-launcher/companion/internal/capability/flow"
 	"github.com/codex-launcher/codex-launcher/companion/internal/cli"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
@@ -267,6 +270,649 @@ func TestServeUsesPersistentRuntimeAndTheOwnedCodexTaskSource(t *testing.T) {
 	}
 }
 
+// TestServeBuildsANonNilCapabilityFlowFromTheProductionSeamWhenARouterIsAvailable
+// closes the actual gap this file was written to fix: plain `serve` calls
+// serve(...) directly and, before this change, never assigned
+// dependencies.capabilityFlow at all — every serve-<name>-proof branch did,
+// but plain serve did not, so every real phone got its capability requests
+// refused by handler.go's nil check no matter how many adapters existed.
+// This proves the plain "serve" branch now calls the injected production
+// seam and carries its non-nil result into the run, the same way every
+// proof branch already proves it carries its own.
+func TestServeBuildsANonNilCapabilityFlowFromTheProductionSeamWhenARouterIsAvailable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	var built mobilesession.CapabilityFlow
+	code := runWith(ctx, []string{"serve"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startProductionFlow: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			built = capability
+			return capability, nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || built == nil || !owner.closed {
+		t.Fatalf("exit=%d capability_flow_built=%v owner_closed=%t", code, built != nil, owner.closed)
+	}
+}
+
+// TestServeKeepsRunningWhenTheProductionCapabilityFlowCannotBeBuilt is the
+// other half: a missing router (no OPENAI_API_KEY in real use) must not
+// crash the whole companion. Codex sessions, pairing, and everything else
+// plain serve does have nothing to do with capability routing, so serve
+// must still come up clean with capabilityFlow left nil.
+func TestServeKeepsRunningWhenTheProductionCapabilityFlowCannotBeBuilt(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	attempted := false
+	code := runWith(ctx, []string{"serve"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startProductionFlow: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			attempted = true
+			return nil, errors.New("no OPENAI_API_KEY: stage 1 router unavailable")
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !attempted || !owner.closed {
+		t.Fatalf("exit=%d attempted=%t owner_closed=%t", code, attempted, owner.closed)
+	}
+}
+
+func TestTodoistProofServeUsesAndClosesTheEphemeralCapabilityFlow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	closed := false
+	code := runWith(ctx, []string{"serve-todoist-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startTodoistProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error) {
+			return capability, closeFunc(func() error { closed = true; return nil }), nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !closed || !owner.closed {
+		t.Fatalf("exit=%d capability_closed=%t owner_closed=%t", code, closed, owner.closed)
+	}
+}
+
+func TestSlackProofServeUsesTheCapabilityFlow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	closed := false
+	code := runWith(ctx, []string{"serve-slack-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startSlackProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error) {
+			return capability, closeFunc(func() error { closed = true; return nil }), nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !closed || !owner.closed {
+		t.Fatalf("exit=%d capability_closed=%t owner_closed=%t", code, closed, owner.closed)
+	}
+}
+
+func TestGoogleProofServeUsesTheCapabilityFlow(t *testing.T) {
+	// Callers: cmd test suite. User: serve-google-proof wiring.
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	closed := false
+	code := runWith(ctx, []string{"serve-google-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startGoogleProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error) {
+			return capability, closeFunc(func() error { closed = true; return nil }), nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !closed || !owner.closed {
+		t.Fatalf("exit=%d capability_closed=%t owner_closed=%t", code, closed, owner.closed)
+	}
+}
+
+func TestMicrosoftProofServeUsesTheCapabilityFlow(t *testing.T) {
+	// Callers: cmd test suite. User: serve-microsoft-proof wiring.
+	// Instruction: "Prefer mirroring Todoist/Slack proving shape: serve-microsoft-proof"
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	closed := false
+	code := runWith(ctx, []string{"serve-microsoft-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startMicrosoftProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error) {
+			return capability, closeFunc(func() error { closed = true; return nil }), nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !closed || !owner.closed {
+		t.Fatalf("exit=%d capability_closed=%t owner_closed=%t", code, closed, owner.closed)
+	}
+}
+
+func TestMSTeamsProofServeUsesTheCapabilityFlow(t *testing.T) {
+	// Callers: cmd test suite. User: serve-msteams-proof wiring (Teams work chat).
+	// Mirrors serve-microsoft-proof on port 9196 / AuthorizeChat.
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	closed := false
+	code := runWith(ctx, []string{"serve-msteams-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startMSTeamsProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error) {
+			return capability, closeFunc(func() error { closed = true; return nil }), nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !closed || !owner.closed {
+		t.Fatalf("exit=%d capability_closed=%t owner_closed=%t", code, closed, owner.closed)
+	}
+}
+
+func TestInstagramProofServeUsesTheCapabilityFlow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	started := false
+	code := runWith(ctx, []string{"serve-instagram-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startInstagramProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			started = true
+			return capability, nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !started || !owner.closed {
+		t.Fatalf("exit=%d started=%t owner_closed=%t", code, started, owner.closed)
+	}
+}
+
+func TestInstagramProofServeFailsWhenStartupIsUnavailable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	var errorOutput bytes.Buffer
+	code := runWith(context.Background(), []string{"serve-instagram-proof"}, io.Discard, &errorOutput, liveDependencies{
+		random: rand.Reader,
+		startInstagramProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			return nil, errors.New("missing openai key")
+		},
+	})
+	if code != 1 || !strings.Contains(errorOutput.String(), "Instagram proof") {
+		t.Fatalf("exit=%d stderr=%q", code, errorOutput.String())
+	}
+}
+
+// Callers: go test; CLI serve-podcasts-proof. User ask: wire Podcasts RSS serve proof (no OAuth).
+func TestPodcastsProofServeUsesTheCapabilityFlow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	started := false
+	code := runWith(ctx, []string{"serve-podcasts-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startPodcastsProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			started = true
+			return capability, nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !started || !owner.closed {
+		t.Fatalf("exit=%d started=%t owner_closed=%t", code, started, owner.closed)
+	}
+}
+
+// Callers: go test; CLI serve-podcasts-proof failure path (mirror Instagram).
+// User ask: judge residual — missing failure-path test for podcasts proof serve.
+func TestPodcastsProofServeFailsWhenStartupIsUnavailable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	var errorOutput bytes.Buffer
+	code := runWith(context.Background(), []string{"serve-podcasts-proof"}, io.Discard, &errorOutput, liveDependencies{
+		random: rand.Reader,
+		startPodcastsProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			return nil, errors.New("missing openai key")
+		},
+	})
+	if code != 1 || !strings.Contains(errorOutput.String(), "Podcasts proof") {
+		t.Fatalf("exit=%d stderr=%q", code, errorOutput.String())
+	}
+}
+
+// Callers: go test; real startPodcastsProof env gate.
+// User ask: judge residual — cover real starter PODCASTS_FEED_URL required path.
+func TestStartPodcastsProofRequiresFeedURL(t *testing.T) {
+	t.Setenv("PODCASTS_FEED_URL", "   ")
+	t.Setenv("OPENAI_API_KEY", "sk-test-not-used")
+	flow, err := startPodcastsProof(context.Background(), io.Discard)
+	if flow != nil || err == nil || !strings.Contains(err.Error(), "PODCASTS_FEED_URL") {
+		t.Fatalf("flow=%v err=%v", flow, err)
+	}
+}
+
+// Callers: go test; CLI serve-maps-proof. User ask: close the Maps
+// places/directions Pixel row — wire the real Places/Routes API answer into
+// an Operator session preview (mirrors Podcasts, no OAuth).
+func TestMapsProofServeUsesTheCapabilityFlow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	started := false
+	code := runWith(ctx, []string{"serve-maps-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startMapsProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			started = true
+			return capability, nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !started || !owner.closed {
+		t.Fatalf("exit=%d started=%t owner_closed=%t", code, started, owner.closed)
+	}
+}
+
+func TestMapsProofServeFailsWhenStartupIsUnavailable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	var errorOutput bytes.Buffer
+	code := runWith(context.Background(), []string{"serve-maps-proof"}, io.Discard, &errorOutput, liveDependencies{
+		random: rand.Reader,
+		startMapsProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			return nil, errors.New("missing google maps key")
+		},
+	})
+	if code != 1 || !strings.Contains(errorOutput.String(), "Maps proof") {
+		t.Fatalf("exit=%d stderr=%q", code, errorOutput.String())
+	}
+}
+
+// Callers: go test; real startMapsProof env gate.
+// User ask: cover the real starter GOOGLE_MAPS_API_KEY required path.
+func TestStartMapsProofRequiresAPIKey(t *testing.T) {
+	t.Setenv("GOOGLE_MAPS_API_KEY", "   ")
+	t.Setenv("OPENAI_API_KEY", "sk-test-not-used")
+	flow, err := startMapsProof(context.Background(), io.Discard)
+	if flow != nil || err == nil || !strings.Contains(err.Error(), "GOOGLE_MAPS_API_KEY") {
+		t.Fatalf("flow=%v err=%v", flow, err)
+	}
+}
+
+// Callers: go test; CLI serve-deeplink-proof. User ask: wire deep-link pack live serve after Instagram.
+func TestDeepLinkProofServeStartsEphemeralCapabilityFlow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	started := false
+	code := runWith(ctx, []string{"serve-deeplink-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startDeepLinkProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			started = true
+			return capability, nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !started || !owner.closed {
+		t.Fatalf("exit=%d started=%t owner_closed=%t", code, started, owner.closed)
+	}
+}
+
+func TestDeepLinkProofServeFailsWhenStartupIsUnavailable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	var errorOutput bytes.Buffer
+	code := runWith(context.Background(), []string{"serve-deeplink-proof"}, io.Discard, &errorOutput, liveDependencies{
+		random: rand.Reader,
+		startDeepLinkProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			return nil, errors.New("missing openai key")
+		},
+	})
+	if code != 1 || !strings.Contains(errorOutput.String(), "Deep-link proof") {
+		t.Fatalf("exit=%d stderr=%q", code, errorOutput.String())
+	}
+}
+
 func TestServeRecordsOnlyASafeCodeWhenCodexCannotStart(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	root, err := companionapp.ConfigRoot()
@@ -426,6 +1072,24 @@ type fakeCodexOwner struct {
 	closed bool
 }
 
+type fakeCapabilityFlow struct{}
+
+func (*fakeCapabilityFlow) Prepare(context.Context, string, string, string) (capabilityflow.Preview, error) {
+	return capabilityflow.Preview{}, nil
+}
+
+func (*fakeCapabilityFlow) Confirm(context.Context, string, string, string) (capabilityadapter.Outcome, error) {
+	return capabilityadapter.Outcome{}, nil
+}
+
+func (*fakeCapabilityFlow) Cancel(string, string, string) error { return nil }
+
+func (*fakeCapabilityFlow) Disconnect(context.Context, string) error { return nil }
+
+type closeFunc func() error
+
+func (f closeFunc) Close() error { return f() }
+
 func newFakeCodexOwner() *fakeCodexOwner {
 	return &fakeCodexOwner{events: make(chan taskstate.MobileEvent), done: make(chan struct{})}
 }
@@ -447,3 +1111,158 @@ func (owner *fakeCodexOwner) Close() error {
 type emptyTaskSource struct{}
 
 func (emptyTaskSource) ListRecent(context.Context, int) ([]taskstate.Task, error) { return nil, nil }
+
+func TestYouTubeProofServeUsesTheCapabilityFlow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	started := false
+	code := runWith(ctx, []string{"serve-youtube-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startYouTubeProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			started = true
+			return capability, nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	if code != 0 || !started || !owner.closed {
+		t.Fatalf("exit=%d started=%t owner_closed=%t", code, started, owner.closed)
+	}
+}
+
+func TestYouTubeProofServeFailsWhenStartupIsUnavailable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	var errorOutput bytes.Buffer
+	code := runWith(context.Background(), []string{"serve-youtube-proof"}, io.Discard, &errorOutput, liveDependencies{
+		random: rand.Reader,
+		startYouTubeProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error) {
+			return nil, errors.New("missing youtube key")
+		},
+	})
+	// The message must not repeat the key or the failure detail back to the terminal.
+	if code != 1 || !strings.Contains(errorOutput.String(), "YouTube proof") {
+		t.Fatalf("exit=%d stderr=%q", code, errorOutput.String())
+	}
+}
+
+func TestSpotifyProofServeUsesAndClosesTheSignInConnection(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	owner := newFakeCodexOwner()
+	capability := &fakeCapabilityFlow{}
+	connectionClosed := false
+	code := runWith(ctx, []string{"serve-spotify-proof"}, io.Discard, io.Discard, liveDependencies{
+		random: rand.Reader,
+		startSpotifyProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error) {
+			return capability, closeFunc(func() error { connectionClosed = true; return nil }), nil
+		},
+		startCodex: func(context.Context, string) (codexOwner, error) { return owner, nil },
+		relayListen: func(context.Context, relayclient.Config) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+			return listener, listenErr
+		},
+		now: time.Now,
+	})
+	// The OAuth listener holds a port and a token in memory; leaving it open
+	// after the proof would outlive the reason it exists.
+	if code != 0 || !connectionClosed || !owner.closed {
+		t.Fatalf("exit=%d connection_closed=%t owner_closed=%t", code, connectionClosed, owner.closed)
+	}
+}
+
+func TestSpotifyProofServeFailsWhenSignInCannotStart(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := companionapp.ConfigRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	projectPath, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := companionapp.Config{
+		Version: 1, ComputerName: "Test computer", Relay: testRelayConfig(),
+		Projects: []projects.Config{{ID: "main", DisplayName: "Main", Path: projectPath}},
+	}
+	if err := companionapp.WriteConfig(filepath.Join(root, "config.json"), config); err != nil {
+		t.Fatal(err)
+	}
+	var errorOutput bytes.Buffer
+	code := runWith(context.Background(), []string{"serve-spotify-proof"}, io.Discard, &errorOutput, liveDependencies{
+		random: rand.Reader,
+		startSpotifyProof: func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error) {
+			return nil, nil, errors.New("missing spotify client secret")
+		},
+	})
+	if code != 1 || !strings.Contains(errorOutput.String(), "Spotify proof") {
+		t.Fatalf("exit=%d stderr=%q", code, errorOutput.String())
+	}
+	if strings.Contains(errorOutput.String(), "secret") {
+		t.Fatalf("stderr repeated the credential failure back to the terminal: %q", errorOutput.String())
+	}
+}

@@ -35,6 +35,7 @@ type Dependencies struct {
 	DecisionOwner           *decisions.AppServerOwner
 	DecisionRequests        <-chan appserver.ServerRequest
 	DesktopDecisionRequests <-chan appserver.ServerRequest
+	CapabilityFlow          mobilesession.CapabilityFlow
 }
 
 type PersistentDependencies struct {
@@ -45,16 +46,18 @@ type PersistentDependencies struct {
 	DecisionOwner           *decisions.AppServerOwner
 	DecisionRequests        <-chan appserver.ServerRequest
 	DesktopDecisionRequests <-chan appserver.ServerRequest
+	CapabilityFlow          mobilesession.CapabilityFlow
 }
 
 type Runtime struct {
-	Config      Config
-	Pairing     *pairing.Service
-	Projects    *projects.Service
-	Queue       *promptqueue.Queue
-	Journal     *eventjournal.Journal
-	Mobile      *transport.Server
-	Attachments *attachments.Store
+	Config       Config
+	Pairing      *pairing.Service
+	Projects     *projects.Service
+	Queue        *promptqueue.Queue
+	Journal      *eventjournal.Journal
+	Mobile       *transport.Server
+	Attachments  *attachments.Store
+	Capabilities mobilesession.CapabilityFlow
 }
 
 func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (*Runtime, error) {
@@ -100,6 +103,9 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 			go pumpDecisionRequests(ctx, dependencies.DesktopDecisionRequests, dependencies.DecisionOwner, router, decisionTasks, mobileHandler, config.ComputerName, logger, time.Now, true)
 		}
 	}
+	if dependencies.CapabilityFlow != nil {
+		mobileHandler.EnableCapabilities(dependencies.CapabilityFlow)
+	}
 	var mobileServer *transport.Server
 	if dependencies.AttachmentStore != nil {
 		mobileServer, err = transport.NewServerWithAttachments(pairingService, mobileHandler.Handle, dependencies.AttachmentStore, mobileHandler.PublishAttachmentAck, logger)
@@ -111,13 +117,14 @@ func NewRuntime(ctx context.Context, config Config, dependencies Dependencies) (
 		return nil, err
 	}
 	runtime := &Runtime{
-		Config:      config,
-		Pairing:     pairingService,
-		Projects:    projectService,
-		Queue:       promptQueue,
-		Journal:     journal,
-		Mobile:      mobileServer,
-		Attachments: dependencies.AttachmentStore,
+		Config:       config,
+		Pairing:      pairingService,
+		Projects:     projectService,
+		Queue:        promptQueue,
+		Journal:      journal,
+		Mobile:       mobileServer,
+		Attachments:  dependencies.AttachmentStore,
+		Capabilities: dependencies.CapabilityFlow,
 	}
 	if dependencies.TaskEvents != nil {
 		go pumpTaskEvents(ctx, dependencies.TaskEvents, mobileHandler, logger)
@@ -155,6 +162,7 @@ func openPersistentRuntimeAt(ctx context.Context, config Config, dependencies Pe
 		PairingStore: store, PromptStore: store, EventStore: store, Random: dependencies.Random, Logger: logger,
 		TaskSource: dependencies.TaskSource, TaskEvents: dependencies.TaskEvents, AttachmentStore: attachmentStore,
 		DecisionOwner: dependencies.DecisionOwner, DecisionRequests: dependencies.DecisionRequests, DesktopDecisionRequests: dependencies.DesktopDecisionRequests,
+		CapabilityFlow: dependencies.CapabilityFlow,
 	})
 	if err != nil {
 		_ = store.Close()

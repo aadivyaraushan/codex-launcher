@@ -25,6 +25,14 @@ import androidx.compose.ui.unit.dp
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
 import app.codexlauncher.appearance.settings.AppearanceScreen
+import app.codexlauncher.capability.interaction.CapabilityInteractionState
+import app.codexlauncher.capability.interaction.CapabilityPhase
+import app.codexlauncher.capability.interaction.CapabilityPreview
+import app.codexlauncher.capability.interaction.CapabilitySheet
+import app.codexlauncher.capability.outcome.CapabilityOutcome
+import app.codexlauncher.capability.outcome.Ceiling
+import app.codexlauncher.capability.outcome.StateMark
+import app.codexlauncher.capability.reply.guard.ThreadKey
 import app.codexlauncher.connection.pairing.PairingInputMode
 import app.codexlauncher.connection.pairing.PairingProgress
 import app.codexlauncher.connection.pairing.PairingScreen
@@ -42,6 +50,8 @@ import app.codexlauncher.launcher.home.HomeUiState
 import app.codexlauncher.launcher.surface.AttachmentChoiceDialog
 import app.codexlauncher.launcher.surface.BackgroundConnectionWarningDialog
 import app.codexlauncher.launcher.surface.LocalStateRecoveryScreen
+import app.codexlauncher.launcher.surface.NotificationAccessDialog
+import app.codexlauncher.launcher.surface.ReplyStopOfferRow
 import app.codexlauncher.launcher.surface.UnpairConfirmationDialog
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.project.selection.ProjectSelectionProgress
@@ -49,6 +59,7 @@ import app.codexlauncher.project.selection.ProjectSelectionUiState
 import app.codexlauncher.project.selection.ProjectSelector
 import app.codexlauncher.task.composer.DraftComposerPhase
 import app.codexlauncher.task.composer.DraftComposerState
+import app.codexlauncher.task.composer.DraftVersion
 import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.PermissionModeOption
 import app.codexlauncher.task.configuration.ReasoningOption
@@ -180,6 +191,17 @@ private fun DebugScenarioHost(scenario: ScenarioId) {
         ScenarioId.DIALOG_BACKGROUND_WARNING,
         ScenarioId.DIALOG_UNPAIR,
         -> RecoveryAndDialogScenario(scenario)
+        ScenarioId.REPLY_ACCESS_ASK,
+        ScenarioId.REPLY_STOP_OFFER,
+        ScenarioId.REPLY_STOPPED_LIST,
+        ScenarioId.CAPABILITY_CONFIRM,
+        -> ReplyConsentScenario(scenario)
+        ScenarioId.CAPABILITY_RUNNING,
+        ScenarioId.CAPABILITY_RESULT_UNKNOWN,
+        ScenarioId.CAPABILITY_FAILED,
+        ScenarioId.CAPABILITY_QUESTION,
+        ScenarioId.CAPABILITY_UNRESOLVED_CHECK,
+        -> CapabilitySheetLaterPhaseScenario(scenario)
         ScenarioId.CATALOG -> PlaceholderScenario(scenario)
     }
 }
@@ -217,6 +239,129 @@ private fun RecoveryAndDialogScenario(scenario: ScenarioId) {
             )
         else -> error("not a recovery or dialog scenario")
     }
+}
+
+// A stand-in conversation, never a real person. Every one of these four
+// screens is shown as though Operator had just replied to the same message
+// from "Maya" on WhatsApp, so a person auditing the four together sees one
+// consistent story rather than four unrelated fixtures.
+private val sampleReplyThread = ThreadKey(packageName = "com.whatsapp", person = "Maya")
+
+@Composable
+private fun ReplyConsentScenario(scenario: ScenarioId) {
+    var status by remember(scenario) { mutableStateOf<String?>(null) }
+    if (status != null) {
+        Box(Modifier.fillMaxSize().padding(20.dp)) { Text(requireNotNull(status)) }
+        return
+    }
+    when (scenario) {
+        ScenarioId.REPLY_ACCESS_ASK ->
+            NotificationAccessDialog(
+                onOpenSettings = { status = "Notification settings requested" },
+                onDismiss = { status = "Notification ask dismissed" },
+            )
+        ScenarioId.REPLY_STOP_OFFER ->
+            ReplyStopOfferRow(
+                key = sampleReplyThread,
+                appLabel = "WhatsApp",
+                onStop = { status = "Stop requested for ${sampleReplyThread.person}" },
+                onDismiss = { status = "Stop offer dismissed" },
+            )
+        ScenarioId.REPLY_STOPPED_LIST ->
+            AppearanceScreen(
+                mode = AppearanceMode.FOLLOW_SYSTEM,
+                stoppedConversations = listOf(sampleReplyThread),
+                appLabel = { "WhatsApp" },
+                onResume = { key -> status = "Replies resumed for ${key.person}" },
+            )
+        ScenarioId.CAPABILITY_CONFIRM ->
+            CapabilitySheet(
+                state =
+                    CapabilityInteractionState(
+                        phase = CapabilityPhase.PREVIEW,
+                        preview =
+                            CapabilityPreview(
+                                requestId = "sample-request",
+                                // "notification_reply" is the one adapter id that maps to
+                                // "This phone" (AdapterLabel.kt) rather than an app name —
+                                // this sheet cannot know which app the reply will land in
+                                // until after it is confirmed.
+                                adapterId = "notification_reply",
+                                verb = "send",
+                                headline = "Reply to ${sampleReplyThread.person}",
+                                lines = listOf("Sounds good, see you soon!"),
+                                confirmLabel = "Send reply",
+                                fingerprint = "sample-fingerprint",
+                            ),
+                    ),
+                onRespond = { confirmed -> status = if (confirmed) "Capability confirmed" else "Capability declined" },
+            )
+        else -> error("not a reply consent scenario")
+    }
+}
+
+// The other half of the same sheet: everything it shows after the user says
+// yes to the CAPABILITY_CONFIRM preview above. Same "Maya" / WhatsApp
+// stand-in story, never a real conversation.
+@Composable
+private fun CapabilitySheetLaterPhaseScenario(scenario: ScenarioId) {
+    var status by remember(scenario) { mutableStateOf<String?>(null) }
+    if (status != null) {
+        Box(Modifier.fillMaxSize().padding(20.dp)) { Text(requireNotNull(status)) }
+        return
+    }
+    val state =
+        when (scenario) {
+            ScenarioId.CAPABILITY_RUNNING ->
+                CapabilityInteractionState(phase = CapabilityPhase.EXECUTING)
+            ScenarioId.CAPABILITY_RESULT_UNKNOWN ->
+                CapabilityInteractionState(
+                    phase = CapabilityPhase.RESULT,
+                    outcome =
+                        CapabilityOutcome(
+                            // Built directly rather than through CapabilityOutcome.of,
+                            // the same way CapabilityInteraction.unverifiedOutcome()
+                            // does for this exact ending: the real ceiling would have
+                            // arrived on the capability_result we never got, so
+                            // HANDS_OFF here is an arbitrary placeholder, not a claim.
+                            // CapabilitySheet never reads `ceiling` off an UNVERIFIED
+                            // outcome -- only `mark` does -- so the placeholder cannot
+                            // leak into what is shown.
+                            ceiling = Ceiling.HANDS_OFF,
+                            mark = StateMark.UNVERIFIED,
+                            label = StateMark.UNVERIFIED.label,
+                            detail = "The phone lost touch before it learned whether this landed.",
+                            handedOffToApp = null,
+                            confirmControl = null,
+                            recoveryAction = "Check WhatsApp before sending it again.",
+                            claimsSuccess = false,
+                            claimsFailure = false,
+                        ),
+                )
+            ScenarioId.CAPABILITY_FAILED ->
+                CapabilityInteractionState(phase = CapabilityPhase.FAILED)
+            ScenarioId.CAPABILITY_QUESTION ->
+                CapabilityInteractionState(phase = CapabilityPhase.QUESTION, message = "Which Maya did you mean?")
+            ScenarioId.CAPABILITY_UNRESOLVED_CHECK ->
+                CapabilityInteractionState(
+                    phase = CapabilityPhase.IDLE,
+                    unresolvedCheck = "Operator could not confirm the reply to Maya.",
+                )
+            else -> error("not a later-phase capability scenario")
+        }
+    CapabilitySheet(
+        state = state,
+        onDismiss = {
+            status =
+                when (scenario) {
+                    ScenarioId.CAPABILITY_RESULT_UNKNOWN -> "Result dismissed"
+                    ScenarioId.CAPABILITY_FAILED -> "Failure dismissed"
+                    ScenarioId.CAPABILITY_QUESTION -> "Question acknowledged"
+                    else -> error("not a dismissible later-phase capability scenario")
+                }
+        },
+        onCheckDone = { status = "Unresolved check cleared" },
+    )
 }
 
 @Composable
@@ -318,6 +463,11 @@ private fun OnlineHomeScenario(scenario: ScenarioId) {
                 text = prompt,
                 phase = DraftComposerPhase.READY,
                 saveFailed = scenario == ScenarioId.HOME_DRAFT_ERROR,
+                // Send is gated on a non-null version, and a READY draft out of
+                // DraftComposerViewModel always has one (it is set on every path
+                // that reaches READY). Leaving it null here made the send button
+                // permanently dead in this harness and nowhere else.
+                version = DraftVersion(generation = 1, revision = 1),
             ),
         onPromptChange = { prompt = it; message = null },
         onSend = { _, _ -> message = "Sample prompt sent" },

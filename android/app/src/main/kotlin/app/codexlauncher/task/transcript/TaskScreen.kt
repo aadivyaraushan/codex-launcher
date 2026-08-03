@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -62,9 +64,9 @@ fun TaskScreen(
     onViewFileChange: (TranscriptEntry, TranscriptFileChange) -> Unit = { _, _ -> },
     taskActionsAvailable: Boolean = false,
     unresolvedFork: Boolean = false,
-    onRenameTask: suspend (String) -> TaskActionOutcome = { TaskActionOutcome.Unavailable },
-    onArchiveTask: suspend () -> TaskActionOutcome = { TaskActionOutcome.Unavailable },
-    onForkTask: suspend () -> TaskActionOutcome = { TaskActionOutcome.Unavailable },
+    onRenameTask: suspend (String) -> TaskActionOutcome = { TaskActionOutcome.NotSent },
+    onArchiveTask: suspend () -> TaskActionOutcome = { TaskActionOutcome.NotSent },
+    onForkTask: suspend () -> TaskActionOutcome = { TaskActionOutcome.NotSent },
     onDismissUnresolvedFork: suspend () -> Boolean = { false },
     taskState: TaskState? = null,
     canRedirect: Boolean = false,
@@ -92,8 +94,10 @@ fun TaskScreen(
         modifier =
             Modifier
                 .fillMaxSize()
-                // Bottom inset is owned by TaskControls (ime ∪ navigationBars) so follow-up
-                // actions clear Gboard without a second navigation-bar pad on this column.
+                // Bottom inset is owned by whatever sits at the foot of this column,
+                // never by the column itself: TaskControls (ime ∪ navigationBars) when
+                // there are controls, and a plain navigation-bar spacer when there are
+                // not. Padding it here as well would double the pad under Gboard.
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
     ) {
         Row(
@@ -216,6 +220,13 @@ fun TaskScreen(
                     }
                 }
         }
+        }
+        // Exactly one thing owns the bottom inset. Normally that is TaskControls
+        // (ime ∪ navigationBars, see line 95). A task with no controls has no
+        // TaskControls, and before this the transcript simply ran on underneath
+        // the navigation bar.
+        if (taskState == null) {
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
         }
         taskState?.let { current ->
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)

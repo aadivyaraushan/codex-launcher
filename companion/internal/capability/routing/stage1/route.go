@@ -35,12 +35,21 @@ var forbiddenKeys = []string{"handle", "phone", "number", "email", "address", "t
 // Route is everything stage 1 is allowed to hand to the on-device half. No
 // field's name may contain a forbidden substring — enforced structurally
 // by a reflection test, not just by convention.
+//
+// What that does and does not buy: the screen is on key names, not on
+// values. It catches a reply that presents a value *as* a handle, which is
+// the thing stage 1 must never do. It does not catch a phone number the
+// user themself typed into their own sentence, which then rides along in
+// Subject, Body or a slot. That is fine — stage 1 never sees the contact
+// graph, so it cannot look a name up; it can only echo back what it was
+// given. Turning a name into a handle is stage 2's job and stage 2's alone.
 type Route struct {
 	Verb       manifest.Verb
 	AppClass   string
 	AppNamed   string
 	Subject    string
 	Body       string
+	Fields     map[string]string
 	Confidence float64
 }
 
@@ -52,12 +61,26 @@ func (r Route) MustAsk() bool {
 
 // replyPayload is the wire shape of a stage-1 model reply.
 type replyPayload struct {
-	Verb       string  `json:"verb"`
-	AppClass   string  `json:"app_class"`
-	AppNamed   string  `json:"app_named"`
-	Subject    string  `json:"subject"`
-	Body       string  `json:"body"`
-	Confidence float64 `json:"confidence"`
+	Verb       string            `json:"verb"`
+	AppClass   string            `json:"app_class"`
+	AppNamed   string            `json:"app_named"`
+	Subject    string            `json:"subject"`
+	Body       string            `json:"body"`
+	Fields     map[string]string `json:"fields"`
+	Confidence float64           `json:"confidence"`
+}
+
+// screenKey rejects a key whose name could hold a resolved handle, wrapping
+// ErrHandleInRoute. Used against both the reply's top-level keys and the
+// keys nested inside its fields map.
+func screenKey(key string) error {
+	lower := strings.ToLower(key)
+	for _, bad := range forbiddenKeys {
+		if strings.Contains(lower, bad) {
+			return fmt.Errorf("stage1: reply field %q: %w", key, ErrHandleInRoute)
+		}
+	}
+	return nil
 }
 
 // ParseRoute decodes a model reply into a Route, refusing anything that
@@ -70,10 +93,25 @@ func ParseRoute(data []byte) (Route, error) {
 	}
 
 	for key := range raw {
-		lower := strings.ToLower(key)
-		for _, bad := range forbiddenKeys {
-			if strings.Contains(lower, bad) {
-				return Route{}, fmt.Errorf("stage1: reply field %q: %w", key, ErrHandleInRoute)
+		if err := screenKey(key); err != nil {
+			return Route{}, err
+		}
+	}
+
+	// Fields is a fixed, named set of slots on the live path (see routeFormat
+	// in the openai package), not a free-form map — strict-mode JSON schemas
+	// cannot express a free-form object. Its keys still sit one level below
+	// the ones just screened above and would otherwise slip past that loop.
+	// The same screen has to apply inside it, or a nested key becomes the
+	// obvious way around the rule that stage 1 never returns a resolved
+	// handle.
+	if fieldsRaw, ok := raw["fields"]; ok {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(fieldsRaw, &fields); err == nil {
+			for key := range fields {
+				if err := screenKey(key); err != nil {
+					return Route{}, err
+				}
 			}
 		}
 	}
@@ -94,8 +132,32 @@ func ParseRoute(data []byte) (Route, error) {
 		AppNamed:   payload.AppNamed,
 		Subject:    payload.Subject,
 		Body:       payload.Body,
+		Fields:     nonEmptyFields(payload.Fields),
 		Confidence: payload.Confidence,
 	}, nil
+}
+
+// nonEmptyFields returns a new map holding only the slots whose value is
+// non-blank after trimming whitespace. Strict mode makes the model send
+// every named slot on every reply, filling the ones the user did not name
+// with null or an empty string; an adapter that tests presence with
+// `if v, ok := in.Fields["x"]; ok` would otherwise read an unused slot as
+// set. Returns nil rather than an empty map when nothing survives, so a
+// reply with no slots filled looks the same as a reply with no fields at
+// all.
+func nonEmptyFields(in map[string]string) map[string]string {
+	var out map[string]string
+	for key, value := range in {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]string, len(in))
+		}
+		out[key] = trimmed
+	}
+	return out
 }
 
 // ModelFunc asks the model for a raw reply to an utterance. Every caller in

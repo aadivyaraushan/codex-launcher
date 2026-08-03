@@ -134,6 +134,12 @@ func (a *Adapter) Describe() manifest.Manifest {
 		// android, not both: no iPhone has run any part of this yet.
 		Platform:      manifest.PlatformAndroid,
 		ProvesCeiling: "TestTheFirstWriteCreatesTheAdaptersOwnFolder",
+		Unshipped: "no build registers this adapter; the only place it is constructed is the " +
+			"owner-only proveadapter command (cmd/proveadapter/main.go:114, :218). It drives " +
+			"Notes.app through osascript, which macOS refuses until someone clicks Allow in the " +
+			"Automation privacy pane on the Mac itself, and an unattended serve has no way to " +
+			"obtain that click. Written down here so a finished, tested adapter that no user can " +
+			"reach is a stated decision rather than something nobody noticed.",
 	}
 }
 

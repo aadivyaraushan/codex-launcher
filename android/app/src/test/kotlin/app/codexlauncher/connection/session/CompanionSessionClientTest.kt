@@ -150,6 +150,56 @@ class CompanionSessionClientTest {
     }
 
     @Test
+    fun reconnectSendsTheStoredWarmCursorAndDeliversTheReplayedCapabilityResult() {
+        val hostKey = TestHostCertificate.keyPair()
+        val signer = TestSigner()
+        val paired = pairedComputer(hostKey.public.encoded)
+        val helloReceived = CountDownLatch(1)
+        val resultReceived = CountDownLatch(1)
+        val snapshotReceived = CountDownLatch(1)
+        val capturedHello = AtomicReference<kotlinx.serialization.json.JsonObject?>()
+        val server =
+            webSocketServer(
+                hostKey = hostKey,
+                signer = signer,
+                paired = paired,
+                expiresAt = System.currentTimeMillis() / 1_000 + 60,
+                helloReceived = helloReceived,
+                capturedHello = capturedHello,
+                secondCompanionFrame =
+                    """{"version":{"major":1,"minor":0},"messageId":"replayed-capability","sender":"companion","type":"capability_result","seq":10,"body":{"requestId":"request-1","ceiling":"completes","done":true,"detail":"Created Todoist task","handedOffTo":""}}""",
+                thirdCompanionFrame =
+                    """{"version":{"major":1,"minor":0},"messageId":"snapshot-after-replay","sender":"companion","type":"snapshot","seq":11,"body":{"baseSeq":11,"computerName":"Test computer","projects":[],"tasks":[]}}""",
+            ).apply { start() }
+        val endpoint = server.url("/v1/session?deviceId=pixel-9&sessionId=session-1").toString().replaceFirst("https://", "wss://")
+        val observer =
+            object : SessionObserver {
+                override fun onReady(connection: SessionConnection, attachmentKey: ByteArray) = Unit
+
+                override fun onMessage(message: ProtocolMessage) {
+                    if (message.type == MessageType.CAPABILITY_RESULT && message.sequence == 10L) resultReceived.countDown()
+                    if (message.type == MessageType.SNAPSHOT && message.sequence == 11L) snapshotReceived.countDown()
+                }
+
+                override fun onFailure(reason: SessionFailure) = Unit
+
+                override fun onClosed() = Unit
+            }
+
+        val connection =
+            CompanionSessionClient(signer, endpoint, loadResumeCursor = { 9L })
+                .connect(paired, "session-1", observer)
+
+        assertTrue("server did not receive warm hello", helloReceived.await(3, TimeUnit.SECONDS))
+        val resume = capturedHello.get()!!.getValue("body").jsonObject.getValue("resume").jsonObject
+        assertEquals("warm", resume.getValue("mode").jsonPrimitive.content)
+        assertEquals(9L, resume.getValue("lastAck").jsonPrimitive.content.toLong())
+        assertTrue("phone did not deliver replayed capability result", resultReceived.await(3, TimeUnit.SECONDS))
+        assertTrue("phone did not deliver the fresh snapshot after replay", snapshotReceived.await(3, TimeUnit.SECONDS))
+        connection.close()
+    }
+
+    @Test
     fun closesWhenTheCompanionSkipsWelcomeAndSendsStateFirst() {
         val hostKey = TestHostCertificate.keyPair()
         val signer = TestSigner()
@@ -195,8 +245,11 @@ class CompanionSessionClientTest {
         expiresAt: Long,
         helloReceived: CountDownLatch,
         allowWelcome: CountDownLatch? = null,
+        capturedHello: AtomicReference<kotlinx.serialization.json.JsonObject?>? = null,
         firstCompanionFrame: String =
             """{"version":{"major":1,"minor":0},"messageId":"welcome-1","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":["set_project"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900}}}""",
+        secondCompanionFrame: String? = null,
+        thirdCompanionFrame: String? = null,
     ): MockWebServer {
         val certificates = HandshakeCertificates.Builder().heldCertificate(TestHostCertificate.held()).build()
         return MockWebServer().also { server ->
@@ -239,9 +292,12 @@ class CompanionSessionClientTest {
                             } else {
                                 val hello = Json.parseToJsonElement(text).jsonObject
                                 if (hello.getValue("type").jsonPrimitive.content == "hello") {
+                                    capturedHello?.set(hello)
                                     helloReceived.countDown()
                                     allowWelcome?.await(3, TimeUnit.SECONDS)
                                     webSocket.send(firstCompanionFrame)
+                                    secondCompanionFrame?.let(webSocket::send)
+                                    thirdCompanionFrame?.let(webSocket::send)
                                 }
                             }
                         }

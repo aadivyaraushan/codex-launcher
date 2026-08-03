@@ -257,7 +257,7 @@ class TaskScreenTest {
                 TaskScreen(
                     state = populatedState(),
                     taskActionsAvailable = true,
-                    onRenameTask = { TaskActionOutcome.Unavailable },
+                    onRenameTask = { TaskActionOutcome.Unresolved },
                 )
             }
         }
@@ -268,6 +268,25 @@ class TaskScreenTest {
         compose.onNodeWithText("Task action unconfirmed").assertIsDisplayed()
         compose.onNodeWithText("Check Codex on your computer before trying again.", substring = true).assertIsDisplayed()
         compose.onNodeWithContentDescription("New task title").assertDoesNotExist()
+    }
+
+    @Test
+    fun taskActionThatNeverLeftThePhoneSaysNothingChangedNotUnconfirmed() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                TaskScreen(
+                    state = populatedState(),
+                    taskActionsAvailable = true,
+                    onRenameTask = { TaskActionOutcome.NotSent },
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Task actions").performClick()
+        compose.onNodeWithText("Rename task").performClick()
+        compose.onNodeWithText("Save").performClick()
+
+        compose.onNodeWithText("Nothing changed").assertIsDisplayed()
+        compose.onNodeWithText("Task action unconfirmed").assertDoesNotExist()
     }
 
     @Test

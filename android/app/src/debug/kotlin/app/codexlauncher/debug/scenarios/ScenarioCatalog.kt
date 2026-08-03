@@ -46,6 +46,22 @@ enum class ScenarioId(
     DIALOG_ATTACH("dialog_attach", "Attach"),
     DIALOG_BACKGROUND_WARNING("dialog_background_warning", "Background connection unavailable"),
     DIALOG_UNPAIR("dialog_unpair", "Remove computer"),
+    // The four consent surfaces of a reply. Each one shipped unit-tested but
+    // never seen on a real screen — the connected audit only walks this
+    // catalogue, so nothing outside it has ever been rendered on a phone.
+    REPLY_ACCESS_ASK("reply_access_ask", "Let Operator reply for you"),
+    REPLY_STOP_OFFER("reply_stop_offer", "Stop replying to Maya"),
+    REPLY_STOPPED_LIST("reply_stopped_list", "Turn replies back on"),
+    CAPABILITY_CONFIRM("capability_confirm", "Reply to Maya"),
+    // Everything the same sheet shows after the user says yes. Two of these
+    // five exist to say "we do not know", which is the hardest thing on the
+    // screen to get right and the last thing that should go unseen on a real
+    // phone.
+    CAPABILITY_RUNNING("capability_running", "Running app action"),
+    CAPABILITY_RESULT_UNKNOWN("capability_result_unknown", "Unverified"),
+    CAPABILITY_FAILED("capability_failed", "App action failed"),
+    CAPABILITY_QUESTION("capability_question", "One more thing"),
+    CAPABILITY_UNRESOLVED_CHECK("capability_unresolved_check", "I checked"),
 }
 
 object ScenarioCatalog {

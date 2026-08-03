@@ -122,6 +122,14 @@ type Vault interface {
 	Has(ctx context.Context, adapterID string) (bool, error)
 }
 
+// NoVault is a vault that holds nothing. It is what a runtime passes when
+// it stores no tokens at all, so a revoke over it honestly reports
+// "there was nothing here" instead of panicking on a nil interface.
+type NoVault struct{}
+
+func (NoVault) Delete(context.Context, string) error      { return nil }
+func (NoVault) Has(context.Context, string) (bool, error) { return false, nil }
+
 // Requires reports whether a consent class needs a per-app screen at all.
 // Only class B does: class A is the official route and needs none, and no
 // screen can cure a class C.

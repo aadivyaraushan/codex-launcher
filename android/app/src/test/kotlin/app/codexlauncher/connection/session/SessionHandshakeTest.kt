@@ -70,6 +70,33 @@ class SessionHandshakeTest {
     }
 
     @Test
+    fun emitsAWarmHelloWithTheDurableAcknowledgementCursor() {
+        val host = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+        val paired = pairedComputer(host)
+        val handshake =
+            SessionHandshake(
+                paired = paired,
+                sessionId = "session-2",
+                signer = TestSigner(),
+                resumeThroughSequence = 9,
+                nowSeconds = { 1_000 },
+                messageId = { "hello-warm" },
+            )
+
+        handshake.receive(challenge(host, paired, "session-2", expiresAt = 1_060))
+        val ready =
+            handshake.receive("""{"type":"authenticated","deviceId":"pixel-9","sessionId":"session-2"}""")
+                as SessionHandshake.Output.Ready
+        val resume =
+            Json.parseToJsonElement(ready.helloJson).jsonObject
+                .getValue("body").jsonObject
+                .getValue("resume").jsonObject
+
+        assertEquals("warm", resume.getValue("mode").jsonPrimitive.content)
+        assertEquals(9L, resume.getValue("lastAck").jsonPrimitive.content.toLong())
+    }
+
+    @Test
     fun anyInvalidChallengeClosesTheHandshakePermanently() {
         val host = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
         val paired = pairedComputer(host)

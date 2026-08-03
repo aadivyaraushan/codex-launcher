@@ -69,14 +69,27 @@ func (owner liveCodexOwner) Done() <-chan struct{} { return owner.session.Done()
 func (owner liveCodexOwner) Close() error          { return owner.session.Close() }
 
 type liveDependencies struct {
-	random      io.Reader
-	startCodex  func(context.Context, string) (codexOwner, error)
-	relayListen func(context.Context, relayclient.Config) (net.Listener, error)
-	now         func() time.Time
-	setup       cli.Setup
-	installer   cli.Installer
-	doctor      cli.Doctor
-	health      *servicehealth.Store
+	random              io.Reader
+	startCodex          func(context.Context, string) (codexOwner, error)
+	startTodoistProof   func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error)
+	startSpotifyProof   func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error)
+	startSlackProof     func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error)
+	startGoogleProof    func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error)
+	startMicrosoftProof func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error)
+	startMSTeamsProof   func(context.Context, io.Writer) (mobilesession.CapabilityFlow, io.Closer, error)
+	startInstagramProof func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error)
+	startPodcastsProof  func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error)
+	startMapsProof      func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error)
+	startYouTubeProof   func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error)
+	startDeepLinkProof  func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error)
+	startProductionFlow func(context.Context, io.Writer) (mobilesession.CapabilityFlow, error)
+	capabilityFlow      mobilesession.CapabilityFlow
+	relayListen         func(context.Context, relayclient.Config) (net.Listener, error)
+	now                 func() time.Time
+	setup               cli.Setup
+	installer           cli.Installer
+	doctor              cli.Doctor
+	health              *servicehealth.Store
 }
 
 func main() {
@@ -90,7 +103,19 @@ func run(ctx context.Context, args []string, output, errorOutput io.Writer, rand
 		return runMaintenance(ctx, args[1:], errorOutput)
 	}
 	dependencies := liveDependencies{
-		random: random,
+		random:              random,
+		startTodoistProof:   startTodoistProof,
+		startSpotifyProof:   startSpotifyProof,
+		startSlackProof:     startSlackProof,
+		startGoogleProof:    startGoogleProof,
+		startMicrosoftProof: startMicrosoftProof,
+		startMSTeamsProof:   startMSTeamsProof,
+		startInstagramProof: startInstagramProof,
+		startPodcastsProof:  startPodcastsProof,
+		startMapsProof:      startMapsProof,
+		startYouTubeProof:   startYouTubeProof,
+		startDeepLinkProof:  startDeepLinkProof,
+		startProductionFlow: startProductionCapabilityFlow,
 		startCodex: func(ctx context.Context, binary string) (codexOwner, error) {
 			session, err := codexruntime.Start(ctx, codexruntime.Options{Binary: binary, ExperimentalQuestions: true})
 			if err != nil {
@@ -133,7 +158,209 @@ func runWith(ctx context.Context, args []string, output, errorOutput io.Writer, 
 		_, _ = io.WriteString(errorOutput, "Companion setup is incomplete.\n")
 		return 1
 	}
+	if len(args) == 1 && args[0] == "serve-todoist-proof" {
+		if dependencies.startTodoistProof == nil {
+			_, _ = io.WriteString(errorOutput, "Todoist proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, connection, startErr := dependencies.startTodoistProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil || connection == nil {
+			slog.Error("[todoist-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil, "missing_connection", connection == nil)
+			_, _ = io.WriteString(errorOutput, "Todoist proof sign-in could not start.\n")
+			return 1
+		}
+		defer func() {
+			if closeErr := connection.Close(); closeErr != nil {
+				slog.Error("[todoist-proof-serve] token cleanup failed", "error_class", fmt.Sprintf("%T", closeErr))
+			}
+		}()
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
+	if len(args) == 1 && args[0] == "serve-spotify-proof" {
+		if dependencies.startSpotifyProof == nil {
+			_, _ = io.WriteString(errorOutput, "Spotify proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, connection, startErr := dependencies.startSpotifyProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil || connection == nil {
+			slog.Error("[spotify-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil, "missing_connection", connection == nil)
+			_, _ = io.WriteString(errorOutput, "Spotify proof sign-in could not start.\n")
+			return 1
+		}
+		defer func() {
+			if closeErr := connection.Close(); closeErr != nil {
+				slog.Error("[spotify-proof-serve] token cleanup failed", "error_class", fmt.Sprintf("%T", closeErr))
+			}
+		}()
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
+	if len(args) == 1 && args[0] == "serve-slack-proof" {
+		if dependencies.startSlackProof == nil {
+			_, _ = io.WriteString(errorOutput, "Slack proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, connection, startErr := dependencies.startSlackProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil || connection == nil {
+			slog.Error("[slack-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil, "missing_connection", connection == nil)
+			_, _ = io.WriteString(errorOutput, "Slack proof sign-in could not start.\n")
+			return 1
+		}
+		defer func() {
+			if closeErr := connection.Close(); closeErr != nil {
+				slog.Error("[slack-proof-serve] token cleanup failed", "error_class", fmt.Sprintf("%T", closeErr))
+			}
+		}()
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
+	if len(args) == 1 && args[0] == "serve-google-proof" {
+		if dependencies.startGoogleProof == nil {
+			_, _ = io.WriteString(errorOutput, "Google proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, connection, startErr := dependencies.startGoogleProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil || connection == nil {
+			slog.Error("[google-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil, "missing_connection", connection == nil)
+			_, _ = io.WriteString(errorOutput, "Google proof sign-in could not start.\n")
+			return 1
+		}
+		defer func() {
+			if closeErr := connection.Close(); closeErr != nil {
+				slog.Error("[google-proof-serve] token cleanup failed", "error_class", fmt.Sprintf("%T", closeErr))
+			}
+		}()
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
+	if len(args) == 1 && args[0] == "serve-microsoft-proof" {
+		if dependencies.startMicrosoftProof == nil {
+			_, _ = io.WriteString(errorOutput, "Microsoft proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, connection, startErr := dependencies.startMicrosoftProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil || connection == nil {
+			slog.Error("[microsoft-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil, "missing_connection", connection == nil)
+			_, _ = io.WriteString(errorOutput, "Microsoft proof sign-in could not start.\n")
+			return 1
+		}
+		defer func() {
+			if closeErr := connection.Close(); closeErr != nil {
+				slog.Error("[microsoft-proof-serve] token cleanup failed", "error_class", fmt.Sprintf("%T", closeErr))
+			}
+		}()
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
+	if len(args) == 1 && args[0] == "serve-msteams-proof" {
+		if dependencies.startMSTeamsProof == nil {
+			_, _ = io.WriteString(errorOutput, "Microsoft Teams proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, connection, startErr := dependencies.startMSTeamsProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil || connection == nil {
+			slog.Error("[msteams-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil, "missing_connection", connection == nil)
+			_, _ = io.WriteString(errorOutput, "Microsoft Teams proof sign-in could not start.\n")
+			return 1
+		}
+		defer func() {
+			if closeErr := connection.Close(); closeErr != nil {
+				slog.Error("[msteams-proof-serve] token cleanup failed", "error_class", fmt.Sprintf("%T", closeErr))
+			}
+		}()
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
+	if len(args) == 1 && args[0] == "serve-instagram-proof" {
+		if dependencies.startInstagramProof == nil {
+			_, _ = io.WriteString(errorOutput, "Instagram proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, startErr := dependencies.startInstagramProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil {
+			slog.Error("[instagram-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil)
+			_, _ = io.WriteString(errorOutput, "Instagram proof serve could not start.\n")
+			return 1
+		}
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
+	if len(args) == 1 && args[0] == "serve-podcasts-proof" {
+		if dependencies.startPodcastsProof == nil {
+			_, _ = io.WriteString(errorOutput, "Podcasts proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, startErr := dependencies.startPodcastsProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil {
+			slog.Error("[podcasts-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil)
+			_, _ = io.WriteString(errorOutput, "Podcasts proof serve could not start.\n")
+			return 1
+		}
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
+	if len(args) == 1 && args[0] == "serve-maps-proof" {
+		if dependencies.startMapsProof == nil {
+			_, _ = io.WriteString(errorOutput, "Maps proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, startErr := dependencies.startMapsProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil {
+			slog.Error("[maps-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil)
+			_, _ = io.WriteString(errorOutput, "Maps proof serve could not start.\n")
+			return 1
+		}
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
+	if len(args) == 1 && args[0] == "serve-youtube-proof" {
+		if dependencies.startYouTubeProof == nil {
+			_, _ = io.WriteString(errorOutput, "YouTube proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, startErr := dependencies.startYouTubeProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil {
+			slog.Error("[youtube-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil)
+			_, _ = io.WriteString(errorOutput, "YouTube proof serve could not start.\n")
+			return 1
+		}
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
+	if len(args) == 1 && args[0] == "serve-deeplink-proof" {
+		if dependencies.startDeepLinkProof == nil {
+			_, _ = io.WriteString(errorOutput, "Deep-link proof dependencies are unavailable.\n")
+			return 1
+		}
+		capabilityFlow, startErr := dependencies.startDeepLinkProof(ctx, output)
+		if startErr != nil || capabilityFlow == nil {
+			slog.Error("[deeplink-proof-serve] startup failed", "error_class", fmt.Sprintf("%T", startErr), "missing_flow", capabilityFlow == nil)
+			_, _ = io.WriteString(errorOutput, "Deep-link proof serve could not start.\n")
+			return 1
+		}
+		dependencies.capabilityFlow = capabilityFlow
+		return serve(ctx, config, errorOutput, dependencies)
+	}
 	if len(args) == 1 && args[0] == "serve" {
+		// Plain `serve` is what every real phone actually talks to — the
+		// `serve-<name>-proof` commands above only ever ran for the owner,
+		// one adapter at a time, by hand. Without this, dependencies.capabilityFlow
+		// stayed nil here forever and handler.go refused every capability
+		// request a phone could send, no matter how many adapters were
+		// finished. A missing router (no OPENAI_API_KEY) is not fatal to the
+		// rest of the service — Codex sessions, pairing, and everything else
+		// must keep working — so this only warns and leaves capabilityFlow
+		// nil; it does not stop serve from starting.
+		if dependencies.startProductionFlow != nil {
+			capabilityFlow, buildErr := dependencies.startProductionFlow(ctx, output)
+			if buildErr != nil || capabilityFlow == nil {
+				slog.Warn("[production-serve] capability flow unavailable; capability requests will be refused",
+					"error_class", fmt.Sprintf("%T", buildErr))
+			} else {
+				dependencies.capabilityFlow = capabilityFlow
+			}
+		}
 		return serve(ctx, config, errorOutput, dependencies)
 	}
 	if len(args) == 1 && args[0] == "doctor" {
@@ -278,7 +505,7 @@ func validateCompanionBinary(path string) error {
 func needsConfiguredRuntime(args []string) bool {
 	if len(args) == 1 {
 		switch args[0] {
-		case "pair", "devices", "status", "doctor", "serve":
+		case "pair", "devices", "status", "doctor", "serve", "serve-todoist-proof", "serve-spotify-proof", "serve-slack-proof", "serve-google-proof", "serve-microsoft-proof", "serve-msteams-proof", "serve-instagram-proof", "serve-podcasts-proof", "serve-maps-proof", "serve-youtube-proof", "serve-deeplink-proof":
 			return true
 		}
 	}
@@ -321,6 +548,7 @@ func serve(ctx context.Context, config companionapp.Config, errorOutput io.Write
 	}
 	runtime, state, err := companionapp.OpenPersistentRuntime(serviceContext, config, companionapp.PersistentDependencies{
 		Random: dependencies.random, TaskSource: owner.TaskSource(), TaskEvents: owner.TaskEvents(), DecisionOwner: owner.DecisionOwner(), DecisionRequests: owner.DecisionRequests(), DesktopDecisionRequests: owner.DesktopDecisionRequests(),
+		CapabilityFlow: dependencies.capabilityFlow,
 	})
 	if err != nil {
 		cancelService()

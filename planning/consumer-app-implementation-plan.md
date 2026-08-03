@@ -1,6 +1,6 @@
 # Consumer app implementation — building all of it
 
-**Date:** 2026-07-31
+**Date:** 2026-07-31 (messaging COMPLETE fork embedded 2026-08-02)
 **Turns into a build:** [consumer-app-coverage-plan.md](consumer-app-coverage-plan.md),
 which established *which door* each app has. This plan establishes *what we
 write*, in what order, and how we know it works.
@@ -9,22 +9,254 @@ write*, in what order, and how we know it works.
 flow), [phase0-ios-capability-ceiling.md](../saved-results/phase0-ios-capability-ceiling.md)
 (why iOS is different), [kernel-for-closed-apps-plan.md](kernel-for-closed-apps-plan.md)
 (which "impossible" apps a browser rescues, and the open-the-app floor).
+**Messaging COMPLETE fork:** [operator-complete-messaging-plan.md](operator-complete-messaging-plan.md) (2026-08-02) — phone-local Beeper Server → localhost Desktop API. COMPLETE only after green on-phone smoke; else HAND-OFF for that net.
+
+> ### ⚠ CORRECTED 2026-08-03 — this block outranks every messaging HAND-OFF line below it
+>
+> **Owner instruction, verbatim:** *"we agreed NOT to do a hand off for instagram
+> remember. our goal was to use the beeper cli."* **Do not design, offer, or ask
+> questions about an Instagram hand-off UX.**
+>
+> Later on 2026-08-03 the Beeper spike's central claim was disproved. It said
+> *"Beeper's only Linux build is an AppImage."* Beeper in fact publishes
+> `beeper-server-nightly-4.3.8-linux-arm64.tar.gz` (171 MB, 2026-08-03 18:25Z):
+> the tarball holds **two entries**, one aarch64 console binary whose whole
+> dependency list is `libc, libstdc++, libm, libgcc_s, libpthread, libdl` —
+> **no Chromium, no GTK, no X11.** The spike ran the Desktop Electron AppImage
+> instead, and skipped `proot-distro` on Electron-vs-ptrace grounds that cannot
+> apply to a binary containing no Electron. There is also an official
+> **`beeper-cli`** (npm v0.6.2) that installs and supervises that server and links
+> networks by QR from the shell.
+>
+> **Consequence.** Every line in this file that demotes **Instagram DM, Discord,
+> or Google Messages** to HAND-OFF *because the Beeper spike failed* — including
+> those near lines 40, 463, 489, 992, 1656 and 1805 — is **withdrawn**. Those
+> three nets are **UNPROVEN, not HAND-OFF, and not COMPLETE**: whether
+> `beeper-server` runs under proot-distro on the Pixel is untested, and nothing
+> has sent a message. Correction header:
+> `saved-results/beeper-server-phone-linux-spike.md`.
+**Media/Maps execute (folded 2026-08-02):** Spotify Web API route approved COMPLETE, **ships `unverified` as of 2026-08-03** (adapter/OAuth built and tested, but no user token exists yet, so playback has never been driven); YouTube **DEMOTED to hands_off 2026-08-03, whole adapter** — both `read`/search and `play` go through the same `search.list` call, and the live key returns `403 PERMISSION_DENIED` because its Google Cloud project is restricted, so nothing has ever been carried to the end through this adapter. The earlier "video played on the Pixel" evidence was a hand-typed `am start -a VIEW` intent that never touched the adapter or the capability flow, so it shows Android can open a video, not that Operator can; Maps places/directions COMPLETE (both device-verified 2026-08-03); **nav-intent HAND-OFF as of 2026-08-03** (it names Google Maps as the app it handed to, and only a hand-off may do that); saved-places write HAND-OFF. **Netflix out of this implementation push** (Owner 2026-08-02). Detail absorbed from operator-execute-media-maps-plan.md.
 
 ---
+
+
+## This implementation push — Pixel 9 self-verification (required)
+
+**Owner lock (2026-08-03):** For **everything in this push**, the implementer/agent **self-verifies by driving the Pixel 9** (`adb`, real apps, Owner accounts). Unit tests and API-only checks are not enough to claim COMPLETE or a working HAND-OFF.
+
+**In this push**
+
+| Surface | Drive on Pixel — pass | Fail |
+|---|---|---|
+| Messaging COMPLETE (IG, Discord, Google Messages) — **DEMOTION WITHDRAWN 2026-08-03 (later same day); now UNPROVEN, not HAND-OFF** | The demotion rested on "Beeper's Linux build is an AppImage that will not start under Termux's bionic C library." **That is false.** Beeper publishes a headless `beeper-server-nightly-4.3.8-linux-arm64.tar.gz` (171 MB, 2026-08-03 18:25Z): two entries in the tarball, one aarch64 console binary needing only `libc/libstdc++/libm/libgcc_s/libpthread/libdl` — no Chromium, no GTK, no X11. The spike ran the Desktop AppImage instead, and skipped `proot-distro` citing Electron-vs-ptrace problems that cannot apply to a binary with no Electron in it. There is also an official **`beeper-cli`** (npm v0.6.2) that installs and supervises that server and links networks by QR from the shell. Read-only against the Mac's Beeper 4.3.0: IG/Discord/Google Messages all `connected`, 66 threads with addressable ids. Evidence + correction header: `saved-results/beeper-server-phone-linux-spike.md` | **Open, untested either way** — whether `beeper-server` runs under proot-distro on the Pixel is unmeasured, and nothing has sent a message. Do not record these three as HAND-OFF on the old evidence, and do not record them COMPLETE either. **Owner instruction: the route is the Beeper CLI, not a hand-off.** |
+| Spotify search + play — **`unverified` 2026-08-03** | Search then **playback starts on the Pixel** (active Spotify device = this phone). Clear “no active device” = **fail**, not COMPLETE | Adapter, OAuth flow and 19 tests are green; **no token exists**, so playback was never driven. Ships `unverified` until the owner approves one consent screen. Evidence: `saved-results/wave1-spotify-complete.md`. **2026-08-03: the app credentials themselves are now confirmed live** — Spotify's client-credentials grant returned a real Bearer token, so the only thing missing is the user's consent, not the registration. `saved-results/what-oauth-can-be-tested-without-the-owner.md` |
+| YouTube — **DEMOTED to hands_off 2026-08-03 (whole adapter, corrected)** | The "open COMPLETE" claim was withdrawn on 2026-08-03: the video that played on the Pixel was started by a hand-typed `am start -a VIEW` intent that never touched the adapter or the capability flow, so it shows Android can open a video, not that Operator can | `read`/search and `play` both go through the same `search.list` call, which fails live with `403 PERMISSION_DENIED`. This is a **restriction on the API key's GCP project, not a code bug** — the adapter is written and tested. Needs console access to fix |
+| Maps places / directions — **COMPLETE 2026-08-03 (device-verified)** | Answer visible in Operator on phone session | Both rows were driven end to end on the Pixel 9. Places: "Find Blue Bottle Coffee on Google Maps" → real Places API result on the preview sheet, then the terminal card. Directions: "Directions from Blue Bottle Coffee Oakland to SFO" → `[maps] resolve ... has_destination=true` (the two named places actually reached the adapter), `POST /directions/v2:computeRoutes`, phone showed "Blue Bottle Coffee Oakland to SFO: 19.9 km, 48 mins" on the preview and again on the terminal card. Directions had been blocked because the router could not carry two named places; that gap was closed 2026-08-03. Evidence: `saved-results/wave3-maps-directions-pixel.md` |
+| Maps navigation intent — **HAND-OFF 2026-08-03 (was COMPLETE)** | Maps opens with the route | The `google.navigation:` intent brought `MapsActivity` to the foreground with the destination loaded, so the door works. But Corrected 2026-08-03: navigation is a **HAND-OFF**, not COMPLETE. The adapter named Google Maps as the app it passed control to while also reporting `completes`, and the phone's own codec throws that combination away (`ProtocolCodec.kt:187` — only a `hands_off` result may name an app). So this result had never actually rendered through the capability flow; the passing evidence came from a hand-typed `am start` intent. Operator computes the route and opens Maps with it loaded; Maps does the navigating |
+| Maps saved-places write — **COMPLETE as HAND-OFF 2026-08-03** | HAND-OFF: prepare + Maps opens; user would finish save — no “saved” claim | Verified: `geo:` intent opened Maps to the place; a test now enforces that the copy never says "saved" |
+| Pay + sensitive bookings/orders HAND-OFF | **Minimum set (Owner 2026-08-03):** Uber, DoorDash, Venmo. Prepare + official app opens on Pixel; no paid/booked claim. The booking/order app (OpenTable / Airbnb / Resy) is **out of MVP scope** — none is installed on the Pixel and the row is not worth an install to clear. Its deep-link adapter stays built and tested; only the Pixel evidence is deferred | Fix before ship that row |
+| Instagram feed post/reel/story HAND-OFF — **VERIFIED 2026-08-03** | Prepare caption/content + Instagram opens on Pixel; no “posted” claim | Verified after the owner reinstalled Instagram: the app opened to its real feed and the copy contains no completion verb. Evidence: `saved-results/wave1-handoff-pixel-evidence.md` |
+| Invisible Beeper setup (when built) | Link sheet only; no Beeper tour/terminal for the user path | Do not claim invisible setup |
+
+**Evidence:** write/update `saved-results/` for each row (command, what was observed, Pixel model, date). Manifest / capability ceiling must match the Pixel result.
+
+**Out of this push (no Pixel COMPLETE claim):** Netflix, WhatsApp, Messenger / Facebook personal, Signal/iMessage COMPLETE, dating, Amazon. **Added 2026-08-03 (Owner):** the booking/order hand-off row (OpenTable / Airbnb / Resy) — out of MVP scope, adapter built but Pixel evidence deferred.
+
+**Discord route (Owner 2026-08-03):** Discord COMPLETE goes through the **Beeper bridge**, not an Operator-owned bot. This is now a decision, not just an absence: `companion/internal/capability/adapters/deeplink/adapter.go:60` already states "no bot, webhook, self-bot, or token" for Discord, and the plan's own capacity row says bot and self-bot routes do not act as the authenticated user. Consequence for the capacity gate: Discord's bot-verification and privileged-intent thresholds **do not apply to us**, so there is no vendor application to file. Discord's ceiling therefore rides entirely on the Beeper spike — green smoke means COMPLETE, otherwise it stays prepare-and-open. **Outcome, 2026-08-03: the spike failed** (Beeper's only Linux build is an AppImage that will not start on the phone, so the send smoke never ran), so Discord is **HAND-OFF today**, not COMPLETE.
+
+**Scope of the table above:** load-bearing set for **this push**. Separately, Wave 1 / any other shipped adapter still must be Pixel-driven or marked `unverified` / not shipped — the table does not waive that.
+
+**Wave exit language still applies:** any adapter not driven on the Pixel ships `unverified` or not at all.
 
 ## Decisions locked before writing this
 
 | Question | Answer |
 |---|---|
-| What counts as "working" for hand-off-only apps | Hand-off is the natural, wanted behaviour for booking a ride or paying a person. Say so plainly in the UI; don't build machinery around apologising for it. |
-| Where integrations run | **Both.** A router picks the runtime per app. |
-| ToS-risky routes (Instagram sandbox, WhatsApp, Signal, iMessage) | **Ship, behind an explicit per-app consent screen** naming that specific app's risk. |
+| What counts as "working" for hand-off-only apps | Hand-off is the natural, wanted behaviour for **paying**, and for **sensitive bookings/orders** (rides, restaurants, grocery checkout, stays). Say so plainly in the UI; don't apologise for it. Everyday **messaging send** is not in that bucket — see messaging COMPLETE fork. |
+| Launch routes | **Android cloud route, plus an optional paired-computer route.** A tester can self-onboard and use the cloud path without owning or pairing a computer. Pairing adds the Computer destination; it is not an onboarding requirement. |
+| Personal Instagram (DMs) | **Planned COMPLETE via on-device Beeper Server** under [operator-complete-messaging-plan.md](operator-complete-messaging-plan.md) (consent + per-send confirm + on-phone smoke). Feed post/reel/story stays prepare-and-open unless a later row says otherwise. ~~**HAND-OFF as of 2026-08-03** — the Beeper smoke failed (Beeper's only Linux build is an AppImage that will not start on the phone), so Instagram DM demoted to HAND-OFF.~~ **WITHDRAWN 2026-08-03 (later same day).** "Beeper's only Linux build is an AppImage" is false — a headless `beeper-server` linux-arm64 build exists (171 MB, no Chromium/GTK/X11) and the spike never ran it. **Owner instruction, verbatim: *"we agreed NOT to do a hand off for instagram remember. our goal was to use the beeper cli."*** Instagram DM is therefore **UNPROVEN, not HAND-OFF** — do not build hand-off UX for it. Route: `beeper-cli` → `beeper send text`. Remaining test: does `beeper-server` run under proot-distro on the Pixel. See the correction header in `saved-results/beeper-server-phone-linux-spike.md`. |
+| Acting identity | **Keep direct action when the official route acts on behalf of the authenticated user.** If a bot, service account, Page, organization, merchant account, or another identity performs the action, Operator prepares the action and opens the official app or site for the user to finish. Slack stays direct because its official MCP uses user OAuth tokens and acts on behalf of the authenticated user. Messaging COMPLETE via Beeper acts as the **user's linked accounts**, with explicit consent. |
+| Unofficial or insufficiently scoped routes | **No direct action**, **except** the explicit messaging exception: headless **Beeper Server** on-device (Desktop API `:23373`) for the COMPLETE messaging rows in that fork. Consent does not otherwise turn an unofficial route into execution. Undeclared scrapers, Amazon browsers, dating automation stay class H / C. |
 | Platform | **Adapters stay platform-neutral from day one. The iOS client is DEFERRED until after Wave 1.** Settled 2026-07-31: there is no iPhone to test on, and the simulator cannot answer either iOS question (see below). Android ships first; iOS resumes when a device exists. |
-| Browser runtime | **Both RT-6 and RT-5.** Companion-local is the default; the Kernel cloud browser is the paid fallback, because computer-less users are in scope for launch. Kernel needs its own account named before its first run. |
+| Browser runtime | **Not a launch execution route** for personal accounts. Messaging COMPLETE uses **Beeper Server**, not Browserbase, unless Owner reopens Browserbase after a defined spike-fail. A paired computer may run Codex work, but it does not automate personal accounts through a browser by default. |
 | Model behind the router's stage 1 | **An LLM (OpenAI).** Account named and approved in [operator-agent-billing-account.md](../saved-results/operator-agent-billing-account.md). Approved at $500/month but the account holds **~$50**, which is the real limit — and a better one, since prepaid credits fail closed at zero rather than billing a card. It makes the offline eval loop load-bearing rather than merely tidy. |
+| Wave 1 account owner | **Aadivya.** Aadivya owns developer registrations and the recurring sign-ins needed to keep test accounts working. |
+| Android home prompt | **Auto by default:** try the app-action router first, then fall back to a Codex task on the paired computer when no app action applies. The composer also shows an explicit **Auto / Computer** control; Computer bypasses app routing and starts a Codex task directly. |
+| Spotify | **Route approved COMPLETE via Spotify Web API** (2026-08-02 Owner reopen): search + start playback with user OAuth. **Ships `unverified` as of 2026-08-03** — adapter and OAuth flow are built and green in tests, but no user token exists yet, so playback has never actually been driven. One owner consent click away. Playlist/library write stays out of v1 unless a later row says otherwise. See [operator-execute-media-maps-plan.md](operator-execute-media-maps-plan.md). |
+| Pixel 9 self-verification (this push) | **Required.** Implementer/agent drives the Pixel 9 to prove every COMPLETE and HAND-OFF surface in this push. No COMPLETE / “works” claim without on-device evidence in `saved-results/`. Messaging details: [operator-complete-messaging-plan.md](operator-complete-messaging-plan.md) Pixel section. |
+| Snapchat | **Dropped.** Do not probe or build Snapchat in this plan unless the owner explicitly adds it back later. |
+| Kernel and legal work | **Deferred until after this Wave 1 run.** No Kernel account, paid Kernel session, legal booking, or Wave 4 work is part of the current implementation. |
 
 Assumed, say if wrong: Operator is a **commercial** product. That is why Reddit's
 free tier, Splitwise's free tier and Strava are unusable regardless of price.
+
+---
+
+## Launch slice — locked for the first external Android test
+
+```
+  CLOSED PLAY LINK
+         |
+         v
+  ANDROID SELF-SERVE ONBOARDING --------> SUPPORT FALLBACK
+         |
+         +-------------------+
+         |                   |
+         v                   v
+  OPERATOR CLOUD         PAIRED COMPUTER
+  default route          optional second route
+         |                   |
+         +---------+---------+
+                   v
+       DIRECT ACTION ONLY WHEN THE ROUTE IS
+       OFFICIAL + AUTHORIZED + CORRECTLY SCOPED
+                   |
+          otherwise prepare + hand off
+```
+
+### Distribution, onboarding and cost
+
+- **Android only.** Distribute through one closed Google Play testing link. No
+  iOS build or public Play listing is part of this test.
+- **Self-serve first.** A new tester must be able to install, create or connect
+  the required Operator account, reach the cloud route and complete a first
+  task without the owner. Put a plain support link on every failed onboarding
+  state; support is the fallback, not a required setup call.
+- **The paired computer is optional for ordinary use but required by this
+  launch proof.** The first qualifying Reddit tester must pair one compatible
+  computer and complete one task through **Computer**, in addition to one task
+  through the cloud route.
+- **The test is free.** There is no tester billing, subscription, checkout or
+  payment credential. When a task itself involves a purchase or payment,
+  Operator may prepare permitted non-sensitive details and open the vendor's
+  official app or site; the user reviews and completes every payment.
+- **First-month cloud hard cap: $100.** Cloud actions stop before spend can go
+  above the cap and fall back to a clear message rather than silently billing.
+  Send budget alerts before the stop. The exact alert thresholds and recipient
+  are an owner-only decision listed below.
+
+### Release-wide action rule
+
+This rule supersedes every more-permissive runtime or app row later in this
+document, **except** the explicit messaging COMPLETE carve-out below:
+
+```
+  DIRECT ACTION ALLOWED ONLY IF ALL THREE ARE TRUE
+    1. the interface is official;
+    2. this user explicitly authorized Operator to use it;
+    3. the granted scope explicitly covers this exact action.
+
+  OTHERWISE
+    prepare only permitted, non-sensitive information;
+    show the prepared result to the user;
+    open the official app or site;
+    let the user review and finish the action there.
+
+  MESSAGING COMPLETE EXCEPTION (2026-08-02)
+    On-device Beeper Server (Desktop API :23373) may COMPLETE send for the
+    nets listed in operator-complete-messaging-plan.md after user consent,
+    per-send confirm, and green on-phone smoke. This is not a blank cheque
+    for other unofficial browsers, scrapers, or bake-ins.
+```
+
+An unofficial browser, undeclared bridge, scraped session, notification access without an
+app-provided action, or broad login is not made acceptable by a consent screen alone.
+Unsupported posts, bookings, orders and playback stay user-completed unless a row
+says otherwise. Payments always stay user-completed. Do not read private account
+data merely to improve a hand-off.
+
+**Spotify's approved route is COMPLETE via the official Web API** (user OAuth; search +
+start playback), which satisfies the three-part rule (official interface + authorization
++ scoped action). **It ships `unverified` as of 2026-08-03**: the code is written and its
+tests pass, but no user token exists yet, so no playback has been driven.
+Playlist/library edits stay out of v1 unless added later. See operator-execute-media-maps-plan.md.
+
+### Feedback and diagnostics
+
+- Put a feedback form in the app. It emails the owner the tester's supplied
+  contact details and written feedback. A diagnostic report is attached only
+  after a separate, plain consent choice on that submission.
+- Show what the one-off report contains before consent. Redact tokens, message
+  or prompt content, contact data not typed into the form, file contents and
+  precise local paths on the device before the report leaves it.
+- Detailed trace upload is a separate opt-in, off by default. Redaction happens
+  on the Android device before every upload. The tester can turn upload off at
+  any time; turning it off stops new uploads without breaking either route.
+- A feedback submission must say which route was used, the app version, the
+  outcome ceiling, and whether onboarding needed support. These fixed fields
+  make the first-tester success test auditable without exposing task content.
+
+### Reddit recruitment and launch exit
+
+Use open, inviting copy; do not present the build as finished:
+
+> I'm looking for a few people to try an early Android test of Operator. It can
+> run supported actions through the cloud, and you can optionally pair a
+> computer for broader Codex work. Setup is self-serve through a closed Google
+> Play testing link. I'm especially looking for honest feedback and one short
+> feedback call after you have used it. If that sounds useful, reply or message
+> me and I'll send the test link.
+
+The launch slice exits only when **one tester recruited from Reddit**, without
+owner-assisted setup, has completed all five steps:
+
+1. installed from the closed Play link and self-onboarded;
+2. completed one supported task through the cloud route;
+3. paired a computer and completed one task through the Computer route;
+4. submitted the in-app feedback form; and
+5. completed a feedback call with the owner.
+
+Support may recover later use, but an owner-led onboarding session does not
+satisfy step 1. Record evidence for each step without saving task content.
+
+### Remaining owner-only launch decisions
+
+1. Name the support/feedback recipient address and the contact details shown to
+   testers, plus the link or method used to book the feedback call.
+2. Set the cloud-budget alert thresholds and who receives them. The hard stop is
+   already fixed at $100.
+3. Set the retention period for consented diagnostic reports and opt-in detailed
+   traces, and name who may access them.
+
+**Four code-level decisions, each measured 2026-08-03 so the decision is about
+something real.** These were previously carried as "needs owner input on the
+values". In three of the four cases the measurement changed what the question is.
+
+4. **`Cost`, `Capacity`, `Region` — decide whether to enforce them or delete
+   them, before deciding any values.** All three are declared on all 18 adapters
+   and read by nothing: `Region` has zero non-test readers, `Capacity.Admits`
+   has no callers at all, and `Cost` is checked only for being one of three
+   legal words. Supplying a budget, a rate limit and a region list today would
+   change nothing at runtime. A declared-and-ignored restriction reads like a
+   guarantee, which is why this is worth settling rather than leaving.
+   **And it is already live, not hypothetical:** `spotify` declares a cap of 25
+   and `youtube` a cap of 100, both with `Gates: [GateNone]`, so both limits are
+   ignored today. `maps` is the counter-example that shows the shape of the fix
+   — its `CostPerCall` sits next to `Gates: [GateBilling]`, and billing gates
+   are really enforced. A ratchet test now pins the two unenforced caps so the
+   number cannot grow, and a tripwire fires the day any adapter narrows its
+   region. `saved-results/cost-capacity-region-are-decoration.md`
+5. **`CapabilityOutcome.toTaskState()` — a pure product call, and the mechanism
+   under it is sound.** Checked rather than assumed: the mapping is exhaustive
+   over `StateMark` with no `else`, and it keeps the three-way split this
+   codebase cares about — "we don't know" maps to its own `TaskState.UNVERIFIED`
+   rather than collapsing into success or failure (`CapabilityOutcome.kt:122`).
+   Zero production callers, confirmed. One thing a wirer must know: `TaskState`
+   is a bare enum, so `detail` and `recoveryAction` do not travel with it and
+   must be carried separately or the row shows a correct colour with no words.
+6. **Whether a wipe clears the reply stop list — and the sharper question
+   underneath it.** A wipe clears ten stores and not this one. The stop list is
+   persisted with **a person's name in plain text** (`ReplyStopStore.kt:56-61`),
+   so a wipe leaves real names on the device — against a rule this codebase
+   wrote down elsewhere for exactly this data. The apparent trade (keep stops
+   *or* keep names off disk) is not real: the stored name is never displayed —
+   its only read in `app/src/main` is the line that writes it — so a one-way
+   hash would do both. What makes it an owner call is the migration, whose
+   wrong answer silently resumes conversations the user had stopped. Current
+   behaviour is pinned by tests so it cannot drift while this is open.
+   `saved-results/the-wipe-leaves-names-behind.md`
+7. **The rate cap's two numbers** — still purely an owner input; the mechanism
+   is shipped and reachable.
 
 ---
 
@@ -61,10 +293,9 @@ cannot tell which product they are in:
    flow in this plan assumes a consumer who will not read a threat model. That
    is what makes the consent screens, the ceiling honesty and the mandatory
    previews load-bearing rather than polite.
-3. **The repo stays Apache-2.0 and self-hostable.** Class B adapters are exactly
-   the ones a self-hoster would want and exactly the ones with vendor risk, and
-   they run on the user's own hardware in both configurations, so the hosted
-   product and the self-hosted one are the same code.
+3. **The repo stays Apache-2.0 and self-hostable.** Self-hosting does not weaken
+   the release-wide action rule: unofficial account automation remains a
+   hand-off even when the code runs on the user's own computer.
 
 **DESIGN.md is inherited, not replaced.** Quiet Instrument, both appearance
 modes, the spacing and type scales, and the approval-sheet shape all carry over
@@ -105,19 +336,13 @@ manifests**. An app is data, not code, wherever it possibly can be.
    Connector    API      Commerce     Device    Sandbox    Companion
    (cloud)    (cloud)     (cloud)     (phone)   (cloud)     (local)
         |          |          |           |          |          |
-   remote MCP  OAuth +    ACP / UCP   notification Kernel   the user's
+   remote MCP  OAuth +    ACP / UCP   notification research the user's
    servers     REST       checkout    reply (SMS   browser  own machine
    Notion,     Telegram,  Shopify,    ONLY),       PAID     dd-cli,
-   Slack,      Google,    Etsy,       deep link,   FALLBACK iMessage,
-   Spotify,    Threads,   Target,     App Intents  for      Apple Notes,
-   Uber,       Todoist,   Walmart     ~all apps    users    signal-cli,
-   Resy...     Graph...   Nike...     as fallback  with no  whatsapp-mcp,
-                                                   computer BROWSER:
-                                                            Instagram,
-                                                            Messenger,
-                                                            Airbnb,
-                                                            Grubhub,
-                                                            Snapchat, web
+   Slack,      Google,    Etsy,       deep link,   only; no  paired Codex
+   Notion,     Threads,   Target,     App Intents  release   work; no
+   Uber,       Todoist,   Walmart     ~all apps    account   personal-account
+   Resy...     Graph...   Nike...     as fallback  control   automation
         |          |          |           |          |          |
         +----------+----------+-----+-----+----------+----------+
                                     |
@@ -205,6 +430,18 @@ file does not exist, in any worktree or anywhere in git history. The probe,
 its watch list covers only Messages, WhatsApp and Instagram, and its docstring
 still poses the question as open.
 
+> Stale as of 2026-08-03, in the direction of underselling the code. The
+> missing `phase0-notification-reply-capability.md` is still genuinely missing —
+> that half stands. The probe is neither untracked nor half-written: `git
+> ls-files` lists it, `git log` shows it committed in `5cb0831` on 2026-07-31,
+> and current `git status` marks it `M` rather than `??`. It is 305 lines of
+> working `NotificationListenerService` — lifecycle, a sweep of already-posted
+> notifications, ledger written to disk, reply action and reply box tracked
+> live — and it is registered in `AndroidManifest.xml:36`, so Android can
+> actually start it. The watch list covers all five apps, not three (see the
+> note below). What is unfinished is the *measuring*, not the *building*, and
+> measuring needs a phone with those apps on it.
+
 **So Wave 0 finishes the probe and writes the answer down, per app, with a
 date** — settling the WhatsApp disagreement on the record rather than by memory.
 The plan proceeds on the owner's answer, because the owner has the phone and the
@@ -217,62 +454,68 @@ its watch list and then made to *fire* — install the app, get a real message
 sent to it, catch the notification. Budget the probe as most of a day, not half
 of one, and expect the Messenger and Signal answers to arrive last.
 
+> Half of this is now stale, checked 2026-08-03. The *watch list* part is done:
+> `ReplyCapability.kt:142-150` already lists `com.facebook.orca` and
+> `com.facebook.mlite` as "messenger" and `org.thoughtcrime.securesms` as
+> "signal", alongside the three named above. Adding a package to that map is a
+> one-line change and it was never the hard part. The *fire* part is untouched
+> and is the whole remaining cost: it needs those two apps installed on a real
+> phone and a real message arriving in each, which nothing here can do on its
+> own. Until then both read `NOT_MEASURED`, which is the honest answer and not
+> a bug — the ledger is built so a never-seen app cannot be rendered as an
+> answer.
+
 **If WhatsApp turns out to have a reply box, that is good news worth catching:**
 it becomes a free RT-4 row and drops out of Wave 3, taking its bridge, its
 consent screen and its share of the legal exposure with it. That is precisely
 why the probe is a Wave 0 exit condition and not a footnote.
 
-What follows from the negative result, and it is the important part:
+What follows from the negative result is narrower than the older sandbox plan
+claimed:
 
 ```
-  IF INSTAGRAM/WHATSAPP HAD           WHAT IS ACTUALLY TRUE
-  REPLY BOXES                         --------------------------------------
-  ---------------------------         they do not, so the closed social apps
-  they would be RT-4 rows:            need a real runtime: a browser acting
-  free, on-device, no browser,        as the user (Instagram, Messenger) or
-  no class B screen, no legal         a linked-device bridge (WhatsApp,
-  gate. Wave 3 would mostly           Signal). Wave 3 is NOT optional and
-  evaporate.                          NOT deferrable - it is the only path
-                                      to the apps people actually use most.
+  INSTAGRAM                           WHATSAPP, SIGNAL, MESSENGER
+  ---------------------------         --------------------------------------
+  no account automation at all.       their separate Wave 3 routes remain as
+  Operator prepares the words,        planned until they are changed by their
+  shows them, and opens Instagram.     own product decisions and measurements.
+  The user reviews and sends.
 ```
 
-**This is why Wave 3 carries the legal gate, the custody question and the
-consent screens rather than being the risky optional wave.** Instagram alone
-settles it — its negative result is the one both documents agree on, and it has
-no cheaper route. The plan does not get to choose the safe version; it only gets
-to choose whether the expensive version is done carefully.
+Instagram **feed** post/reel/story stays prepare-and-open (`hands_off` for post).
+Instagram **DM send** depends on the messaging COMPLETE fork (Beeper Server), not
+Wave 3 browser automation. **HAND-OFF as of 2026-08-03** — that fork's Beeper
+Server spike failed before any send, so Instagram DM sits at HAND-OFF today (see
+the Pixel table at the top of this file).
 
 The narrow thing RT-4 *does* buy stays valuable and should not be talked down:
 SMS and RCS reply directly, which is the highest-volume messaging surface on an
-Android phone, and every app on the phone can still be opened pre-filled.
+Android phone, and every installed app can still be opened. Pre-filling is only
+claimed where an app's supported link contract has been checked.
 
-### Where the risky things run is a deliberate legal position
+### Unofficial account automation is not a release route
 
-The user's answers put official routes in our cloud and unofficial routes on the
-user's own hardware. That is not an accident of convenience — it is the best
-available posture:
+The completed policy audit replaces the older theory that unofficial routes
+become acceptable when they run on the user's hardware. Runtime location does
+not supply vendor authorization or a missing action scope:
 
 ```
-  OFFICIAL (RT-1/2/3)          UNOFFICIAL (RT-6, and see below for RT-5)
-  ------------------------     ----------------------------------------
-  our cloud, our tokens,       the user's computer, the user's account,
-  our contract with the        the user's home IP, their informed
-  vendor                       consent, our code
+  OFFICIAL + AUTHORIZED +      ANY CHECK MISSING
+  CORRECTLY SCOPED             ----------------------------------------
+  ------------------------     prepare permitted non-sensitive data,
+  direct action may run        open the official app/site, user finishes
 ```
 
-Perplexity lost its injunction as *the party operating the agent against
-Amazon's servers*. When `whatsapp-mcp` runs on the user's laptop against the
-user's own account with a consent screen, the shape looks different. **How much
-that difference is worth is a lawyer's question and open question 6 says so** —
-so do not lean on it. Prefer RT-6 over cloud on the two grounds that hold
-without legal advice: it is free, and it is safer on every ban-risk axis the
-sandbox plan named. The legal argument is a bonus if it survives, not the
-reason.
+Consent is still required wherever Operator receives account access, but it is
+not a substitute for authorization. RT-5 and RT-6 browser or linked-device
+control are therefore retired as release execution routes.
 
-**This extends to Instagram, and it is the biggest change this plan makes to the
-sandbox plan.** The sandbox plan budgeted $2–6/user/month for a pinned
-residential IP whose whole purpose was to look like the user's home connection.
-The companion *is* the user's home connection.
+**Personal Instagram DMs** are **HAND-OFF as of 2026-08-03** — the Beeper Server
+spike failed before any send (see the Pixel table at the top of this file). They
+were *planned* as COMPLETE via Beeper Server (not a logged-in
+Operator browser), and revert to that plan only if the Android VM path is tested green. The older sandbox "browser logged in as the user" route stays
+retired: no Operator-hosted Instagram browser session. Feed post/reel/story remains
+prepare-and-open. The browser comparison below applies only to other browser-backed rows.
 
 ```
                         KERNEL CLOUD SANDBOX      COMPANION-LOCAL BROWSER
@@ -290,13 +533,9 @@ The companion *is* the user's home connection.
   computer at all
 ```
 
-**Build companion-local first.** It is free, strictly safer on every ban-risk
-axis the sandbox plan named, and it needs no money approval, so it cannot be
-blocked. **And build RT-5 too, in Wave 4** — settled 2026-07-31: computer-less
-users are in scope at launch, and the bottom row of that table is the whole
-argument. Without RT-5 those users lose every browser-only app outright. The
-code above the two runtimes is identical, because both sit behind the same
-adapter contract; the difference is a per-hour bill and its own money gate.
+**Do not build either browser as an account-control runtime.** The paired
+computer remains useful for ordinary Codex work. The launch cloud route covers
+official adapters; closed apps use prepare-and-open hand-offs.
 
 ### The floor: every app opens, no exceptions
 
@@ -328,25 +567,22 @@ decline to open it.** Plain launch-by-package already works in this repo. The
 plain launch first, treat every pre-fill as an upgrade that must be verified on
 a real device, and fall back to plain launch when it fails.
 
-### What a browser rescues from the "no door" pile
+### What the retired browser proposal taught us
 
-The Kernel plan asked, app by app, whether a browser gets into the rows the
-coverage plan marked *none*. Its answer transfers directly to the
-companion-local browser — the three gates are about the web client and the
-rules, not about whose datacenter the Chromium sits in, and the companion is
-better on the login gate because a home IP is not a datacenter IP.
+The Kernel plan found pages a browser could technically reach. Those findings
+do not create shippable execution routes. The rows below now use hand-off even
+where a logged-in page could be scripted.
 
 ```
   RESCUED BY A BROWSER       NO WEB CLIENT EXISTS       RULE, NOT TECHNOLOGY
   (gate 1 clears)            (browser cannot help)      (a browser makes it WORSE)
   --------------------       --------------------       ------------------------
-  Snapchat chat  ****        Hinge                      Amazon
-  Google Maps    ***         Bumble (web switched       Strava
-   saved places               off 10 Jun 2026)          Venmo / Cash App / Zelle
-  Netflix My List **         Lyft booking               banks, Robinhood, Coinbase
-  Facebook        *          Apple Health               Tinder
-   personal posts            Snapchat Stories,          Discord self-bot DMs
-                              Memories, Snap Map
+  Google Maps    ***         Hinge                      Amazon
+   saved places                                         Venmo / Cash App / Zelle
+  Netflix My List **         Bumble (web switched       Strava
+                              off 10 Jun 2026)           banks, Robinhood, Coinbase
+  Facebook        *          Lyft booking               Tinder
+   personal posts            Apple Health               Discord self-bot DMs
 ```
 
 The third column is the one that matters most and is easiest to get wrong: when
@@ -358,18 +594,15 @@ checkout, Instacart): a browser routes around every one of those paywalls and
 approvals, and we do not, because paying is what makes those integrations
 durable.
 
-The honest headline: of the twelve-ish apps marked impossible, a browser
-genuinely rescues **one and a half** — Snapchat properly, Maps and Netflix
-partially. The rest split evenly between "no web client to point at" and "the
-wall is a lawyer."
+The honest headline: a browser partially rescues Maps and Netflix and enables
+Facebook personal posting. The rest split between "no web client to point at"
+and "the wall is a lawyer." Snapchat is intentionally absent because the owner
+dropped it from scope.
 
-**Two untested assumptions gate all four rescued rows**, and both are one
+**One untested assumption gates the Google-backed rescued rows**, and it is one
 session's work inside Wave 3:
 
-1. Snapchat serves web only to Chrome, Safari and Edge. Does its web client
-   accept the companion's Chromium, or bounce a bare user-agent? This decides
-   the whole Snapchat row and must be answered before the capability is promised.
-2. Google account login from an automated browser profile, held across sessions.
+1. Google account login from an automated browser profile, held across sessions.
    Maps saved places and Netflix My List both depend on it. The home IP helps
    here in a way a datacenter IP does not.
 
@@ -397,8 +630,9 @@ One interface. Every adapter implements it. Every field is testable.
                 none
   cost          free | per_call | metered budget + gating
   gates         none | approval | billing what blocks it shipping
-  capacity      none | capped:<n> |       Spotify is 5 users, Gmail is
-                pending_application       100 before the audit bites.
+  capacity      none | capped:<n> |       Gmail is 100 before the audit
+                pending_application       bites. Spotify Web API is self-serve OAuth;
+                                          its release path is hand-off.
                                           The capacity gate reads this
                                           field; without it the gate is
                                           a paragraph, not a check
@@ -470,12 +704,9 @@ An adapter whose smoke test has never passed ships as `unverified` and the UI
 says so. This is the mechanism that keeps "treat every connector as discovery
 until proven otherwise" true a year from now, when nobody remembers the rule.
 
-**But half the adapters have no account we can test with.** RT-1/2/3 run on
-credentials we hold, so a nightly unattended run against an Operator-owned test
-account is fine. RT-5 and RT-6 are bound to one specific user's account and
-hardware, and an unattended job that sends a real WhatsApp message on a real
-user's account would break both "acts only when told" and the entire ban-risk
-posture. So verification splits in two.
+Official RT-1/2/3 routes can run against Operator-owned test accounts. Class H
+routes hold no third-party account session and are verified at the hand-off
+boundary instead of by sending through a personal account.
 
 ```
   TIER 1 -- SHARED CREDENTIAL (RT-1, RT-2, RT-3)
@@ -514,29 +745,17 @@ posture. So verification splits in two.
   and the failure it prevents - a nightly job quietly editing
   somebody's real document - is silent, repeating and hard to undo.
 
-  TIER 2 -- ACCOUNT-BOUND (RT-5, RT-6). Nothing unattended. Ever.
+  TIER 2 -- HAND-OFF ROUTES. Nothing crosses the app boundary.
   ----------------------------------------------------------------------
-  a) SELF-DIRECTED LOOP, once, at connect time
-     Send to the user's own account - Saved Messages, Note to Self,
-     their own number. Proves send end-to-end, reaches no third party,
-     and happens inside a flow the user just started while watching.
-     THIS is where an account-bound adapter's ceiling is captured.
-
-  b) READ-ONLY HEARTBEAT, at wake
-     The cheapest non-mutating call the adapter has: is the session
-     alive? The sandbox plan already wanted exactly this - "check at
-     wake, not mid-task" - so failing at second 0.2 with a clean login
-     prompt beats dying at second 8. Never sends anything.
-
-  c) OUTCOME TELEMETRY from real use
-     execute() already reports the ceiling it actually reached. Aggregate
-     it. Demotion driven by real traffic is better evidence than a
-     synthetic test, and costs nothing extra.
+  a) PREPARE from permitted non-sensitive user input.
+  b) SHOW the exact prepared information before hand-off.
+  c) OPEN the official app/site and stop. Verify `hands_off`; never infer
+     that the user sent, posted, booked, paid or started playback.
 ```
 
 Tier 2 gives up nightly certainty and buys back the product's central promise.
-It is the right trade: a Class B adapter that quietly rots is caught by (b) at
-the next wake and by (c) within a handful of real uses.
+It applies only to official, authorized, scoped account connections. A class H
+hand-off has no account session to keep alive.
 
 ---
 
@@ -636,37 +855,25 @@ cases where a low-confidence route executes instead of asking.**
 ## Seven gates that block shipping
 
 ```
-  CONSENT GATE         MONEY GATE           CEILING GATE      CAPACITY GATE
+  POLICY GATE          MONEY GATE           CEILING GATE      CAPACITY GATE
   ----------------     ----------------     --------------    --------------
-  class B adapters     any billed route     every adapter     an adapter that
-  cannot be            cannot be enabled    ships with its    works but cannot
-  connected without    until the charging   smoke result      serve the user
-  a per-app screen     account is NAMED     shown; no         base ships to a
-  naming THAT app's    (literal email/id,   result means      capped cohort
-  specific risk and    personal vs work),   the UI says       and says so, or
-  what could happen    estimated, and       "unverified",     not at all
-  to that account      approved by you      not a confident
+  direct action needs  cannot be enabled    ships with its    works but cannot
+  official route +     until the charging   smoke result      serve the user
+  user authorization + account is NAMED     shown; no         base ships to a
+  exact action scope;  (literal email/id,   result means      capped cohort
+  otherwise hand off   personal vs work),   the UI says       and says so, or
+                       estimated, and       "unverified",     not at all
                        in writing, then     claim
                        recorded in
                        saved-results/
 
-  LEGAL GATE
+  AUTHORIZATION GATE
   --------------------------------------------------------------------
-  NO CLASS B ADAPTER REACHES A USER WHO IS NOT YOU until a lawyer has
-  reviewed the class B position. Blocks all of Wave 3 and the class B
-  iMessage row sitting in Wave 1. Open question 6 states the review;
-  this gate is what makes it stop a ship rather than sit in a list.
-
-  What the lawyer is asked, specifically:
-    - Is the C1/B line ("is it OUR contract to break") sound?
-    - Does user-hardware + user-account + informed consent actually
-      change our exposure versus the Perplexity fact pattern, or is
-      that wishful?
-    - Is the consent copy sufficient, and does it need a signature
-      rather than a tap?
-  Recorded like the money gate: a dated saved-results file naming who
-  reviewed it and what they said. "We read some articles" is not a
-  cleared gate.
+  NO DIRECT ACTION SHIPS until its official interface, user grant and
+  exact action scope are recorded, and the action is performed on behalf of
+  the authenticated user. A missing check or a separate acting identity demotes
+  the verb to class H hands_off. This is a code and manifest gate, not a
+  warning screen or a legal-risk acceptance.
 
   CUSTODY GATE
   --------------------------------------------------------------------
@@ -674,7 +881,7 @@ cases where a low-confidence route executes instead of asking.**
   has a written security model. This gate exists because the plan's own
   words are "our cloud, our tokens" - which means Operator custodies
   live OAuth credentials for Gmail, Calendar, Drive, Slack, Notion,
-  Outlook, Spotify and Uber, for every user, in one place.
+  Outlook, Uber, and Spotify (user OAuth), for every user, in one place.
 
   That store is the single most valuable target in the product. One
   breach is not "an incident" - it is simultaneous access to dozens of
@@ -700,9 +907,8 @@ cases where a low-confidence route executes instead of asking.**
   written, because there is no third party to protect yet. The gate
   binds at the first token that is not the owner's.
 
-  Class B is deliberately outside this gate too, and that is the point -
-  those credentials never leave the user's own hardware. The gate is
-  the price of the OFFICIAL routes being the convenient ones.
+  Class H hand-offs are outside this gate because they hold no account
+  credential and read no private account data.
 
   DISTRIBUTION GATE
   --------------------------------------------------------------------
@@ -736,10 +942,13 @@ The capacity gate exists because several adapters are technically free and
 practically unshippable:
 
 ```
-  Spotify    5 users total in Developer Mode, all must be Premium
+  Spotify    Web API `unverified` 2026-08-03 (adapter + OAuth built, tests green;
+             no user token exists yet, so playback has never been driven — one
+             owner consent click away); OAuth + premium/device rules per Spotify docs
   Gmail      100 production users before the CASA assessment bites
   YouTube    10,000 quota units/day = about 100 searches, for everyone
-  Discord    DM scope needs Discord's approval before any user gets DMs
+  Discord    bot and self-bot routes do not control the authenticated user;
+             release route is prepare-and-open only
   Splitwise  self-serve tier is explicitly not for commercial projects
 ```
 
@@ -774,74 +983,52 @@ Wave 0 has to answer this on Notion specifically, since the owner's test account
 will be on the free plan and the adapter must not silently claim a ceiling that
 only a paying workspace has.
 
-### Consent classes, and the rule that assigns them
+### Authorization classes, after the completed policy audit
 
-Class C and Class B look similar from a distance — a vendor said no in both
-cases — so the rule has to be stated, not felt:
-
-```
-  C1  WE would be breaching a contract WE signed.
-      We hold a developer credential, we accepted terms, and those terms
-      forbid this use. Non-negotiable, no consent screen can cure it.
-      -> Strava (policy names context-window ingestion), Reddit's free
-         tier and Splitwise's free tier for commercial use.
-      The user cannot consent their way out of C1, but the OTHER PARTY
-      can lift it, because it is their contract. Reddit and Splitwise
-      are C1 on the terms we hold TODAY and stop being C1 the day they
-      grant us different ones - so both appear later as "email them,
-      build only if granted." Strava has no such route: the prohibition
-      is in the policy every tier signs, so there is nobody to ask.
-
-  C2  A court has enjoined this exact conduct, or the action class is
-      prohibited outright regardless of what any API allows.
-      -> Amazon (the Perplexity injunction), banks, trades and transfers.
-
-  C3  Judgment call, stated as one. No contract on our side, but the
-      ban risk is the highest on the list and the product value is the
-      lowest, and the terms name legal action by name.
-      -> Hinge, Tinder, Bumble.
-
-  B   No contract on our side. No credential we hold. The route runs on
-      the user's own hardware, against the user's own account, and the
-      risk that exists lands on that account with their informed consent.
-      -> Instagram, Messenger, WhatsApp, Signal, iMessage, OpenTable,
-         Airbnb, Grubhub.
-```
-
-WhatsApp and Strava sit on opposite sides of that line for a concrete reason,
-not a vibe: Strava would hand us an API key and a contract we would then break,
-while `whatsapp-mcp` speaks the WhatsApp Web protocol as the user's own linked
-device, on the user's laptop, with no Operator credential anywhere in it. Meta
-still does not want it, which is why it needs the screen. It is not our contract
-to break.
-
-**Class A — official.** OAuth or a published API. Normal connect flow, no extra
-screen. Most of the list.
-
-**Class B — account risk, per-app consent required.** The screen names the
-specific situation, not a generic warning:
+The old class B rule treated user consent as permission to run an unofficial
+browser or bridge. That rule is retired. User consent is necessary for account
+access, but it cannot replace vendor authorization or a scope that covers the
+requested action.
 
 ```
-  Instagram   Meta's terms prohibit automated access. This runs a browser
-              logged in as you. Your account could be actioned.
-  WhatsApp    Meta banned third-party AI assistants from WhatsApp on
-              15 January 2026. This is against Meta's wishes today.
-              (EU proceedings may change it; the screen updates if so.)
-  Signal      Runs as a linked device via signal-cli. Self-hosted, no
-              official API exists.
-  iMessage    Reads your local message database and sends via AppleScript.
-              Only while your Mac is awake and unlocked.
-  OpenTable   Unofficial client. Bookings could fail or be cancelled.
-  Airbnb,     Browser acting as you on a site with no public API.
-  Grubhub
-  Messenger   Same as Instagram. (ASSUMED from Instagram, not measured -
-              Wave 0's probe checks it directly.)
+  A   official interface + user authorization + action covered by scope
+      -> direct action is eligible, with preview where the verb requires it
+
+  H   any one of those three checks is missing
+      -> prepare permitted non-sensitive information and hand off to the
+         official app or site; no account reading or direct action
+
+  C1  Operator would breach a contract it accepted
+  C2  the action class is prohibited or specifically blocked
+  C3  the stated product-risk decision is never to support it
+      -> no integration; give the user the reason and open the official app
+         only when doing so is itself permitted
 ```
 
-Reusing DESIGN.md's approval-sheet shape: names the runtime, the account, what
-access is granted, what could go wrong, and a Deny that is never hidden.
-Revocable from Launcher settings, and revoke must be *proven* by a contract test
-that asserts the tokens and local state are gone.
+The former class B rows — OpenTable's unofficial client, Airbnb and Grubhub
+browser scripts — stay class H unless a later audit finds an official interface,
+confirms the user's authorization and maps the exact action to an allowed scope.
+A per-app warning screen does not promote them to direct action. Browser cookies,
+undeclared `whatsapp-mcp` / `signal-cli` bake-ins, local message-database reads
+and scripted page clicks are not release execution routes under this rule.
+
+**Exception (2026-08-02; amended 2026-08-03) — CURRENTLY DORMANT.** The conditional
+language below did its job: the on-phone smoke was attempted on 2026-08-03 and failed
+before any send, so **all three nets are HAND-OFF today and this exception grants
+nothing**. It is left in place, not deleted, because it revives automatically if the
+Android VM path is tested and goes green. Instagram DM, Discord DMs/servers
+(as the user), and Google Messages SMS/RCS **send** may COMPLETE via on-device
+**Beeper Server** (Desktop API) per
+[operator-complete-messaging-plan.md](operator-complete-messaging-plan.md).
+Ceiling is COMPLETE only after green on-phone smoke; else HAND-OFF for that net.
+WhatsApp and Messenger / Facebook personal are **out of v1**. Signal and iMessage
+remain SKIP / hands_off. Beeper Android Content Provider is not the agent path.
+
+Class A is checked per action, not per vendor. An official read scope does not
+authorize send; search does not authorize booking; a playback interface does
+not automatically authorize library changes. The manifest records the allowed
+scope for each verb, and an unsupported verb resolves to class H rather than
+borrowing a neighboring scope.
 
 **Class C — never shipped.** Every Class C app gets a manifest entry with its
 reason, and an honest in-product answer — "Operator doesn't do this, here's
@@ -856,37 +1043,36 @@ why" — not a silent absence, because a user who asks twice deserves a reason.
                                    terms name suspension and legal action
   Venmo API, Cash App, Zelle       not C - no door exists at all. Different
   Hinge, Bumble, Lyft booking      copy: "no way in", not "we won't". All
-  Apple Health, Snap Stories       still open the app.
+  Apple Health                     still open the app.
 ```
 
 That last row matters for the copy. "We chose not to" and "there is no API"
 should never read the same to a user, because only one of them might change.
 
-**Class B now covers more than messaging.** Snapchat chat, Google Maps saved
-places, Netflix My List and Facebook personal posting all arrive through the
-same companion browser as Instagram, so they inherit the same class, the same
-consent screen shape and the same legal gate. Maps and Netflix are the mildest
-rows on the list — a logged-in page, read and write, no adversary and no
-injunction — but they are still automated access to an account, so they get a
-screen. Their copy says what is true and no more:
+**Browser-only account actions are class H, not a softer direct-action class.**
+Google Maps saved places, Netflix My List and Facebook personal posting were
+previously planned through logged-in browser automation. They now prepare and
+hand off, or remain unavailable when no permitted non-sensitive preparation is
+useful. Their copy says what is true and no more:
 
 ```
-  Snapchat    Snap has no API for chat. This runs a browser logged in as
-              you on snapchat.com. Your account could be actioned.
-  Google Maps Runs a browser logged in as your Google account to read and
-              edit your saved lists. Google's API cannot see them.
-  Netflix     Runs a browser logged in as you to manage My List. It cannot
-              play anything - Netflix blocks playback outside its own
-              signed browser builds.
-  Facebook    Personal-profile posting has had no API since 2018. Same
-   (profile)  browser, same Meta risk as Instagram.
+  Google Maps "I can prepare this place or route and open Google Maps. You'll
+               save it to your lists there."
+  Netflix     "I can prepare the title and open Netflix. You'll manage My List
+               or start playback there."
+  Facebook    "I can prepare the post and open Facebook. You'll review and
+   (profile)   publish it there."
 ```
 
-### The money gate has an unpaid debt right now
+### The money gate is cleared for the Wave 1 router
 
 The sandbox plan cites `saved-results/operator-agent-billing-account.md` for the
-OpenAI account. **That file does not exist.** No model-provider account has
-actually been named and recorded. Nothing that costs money proceeds until it is.
+OpenAI account. **That account is now named and approved:** `ssdear@gmail.com`,
+OpenAI organization `org-oC0Cx9jwKVEEvRlRlqdQzTwE`, with an approved ceiling of
+$500/month and about $50 in prepaid credit as the practical hard stop. The
+credential source was verified as the main checkout's gitignored `.env` on
+2026-07-31. Kernel and every other paid vendor still need their own separate
+account approval before use.
 
 ```
   ACCOUNT NEEDED     FOR                          WHEN
@@ -911,19 +1097,8 @@ actually been named and recorded. Nothing that costs money proceeds until it is.
   one-off            Access declaration that      one that actually
                      rides on it                  ships first, so this
                                                   clock starts first
-  Kernel             RT-5 cloud sandbox, which    WAVE 4, AND IT IS
-                     is IN SCOPE - computer-      HAPPENING. Needs its
-                     less users are in scope      own money-gate naming
-                     at launch, and RT-6 needs    and its own approval:
-                     a computer                   the $500 OpenAI cap
-                                                  does NOT cover it.
-                                                  Bills by the hour
-                                                  (~$0.48/headful hr)
-                                                  so nothing runs on it
-                                                  until the account is
-                                                  named in writing
-  proxy vendor       RT-5's pinned IPs, $2-6      SAME AS KERNEL - same
-                     per month per IP             wave, same gate
+  Kernel/proxies     retired personal-account     no release account or
+                     browser automation route     recurring spend
   X / Twitter        posting, $0.20 per link      Wave 4, if at all
   Yelp               ~$8-15 per 1k calls          Wave 4, if at all
   Reddit commercial  $0.24 per 1k calls           Wave 4, if at all
@@ -966,24 +1141,375 @@ where the work is unlike anything after it.
   |   review it before issuing credentials. It is an afternoon per
   |   service, it is nobody's idea of engineering, and it is on the
   |   critical path for every single OAuth adapter in Wave 1.
+  |   CORRECTED 2026-08-03 - "on the critical path for every single
+  |   OAuth adapter" is wrong on both halves, and nothing had ever
+  |   checked. Measured against the real providers; full writeup in
+  |   saved-results/what-oauth-can-be-tested-without-the-owner.md,
+  |   tests in companion/internal/capability/oauth/liveconnection/.
+  |     1. NOT EVERY ADAPTER NEEDS A REGISTRATION. Todoist supports
+  |        dynamic client registration - the app asks Todoist for a
+  |        client id at run time and uses PKCE instead of a secret.
+  |        todoist/flow.go:190 already does this. Proved end to end
+  |        against the live service: register 201, authorize 302 to
+  |        the sign-in page, no owner action at any point.
+  |     2. THE CREDENTIALS ALREADY ON DISK WERE NEVER CHECKED. Google
+  |        and Spotify both work: Google's token endpoint answers
+  |        invalid_grant rather than invalid_client, and Spotify's
+  |        client-credentials grant hands back a real Bearer token.
+  |        Neither needed a browser or a consent screen.
+  |   What genuinely remains is narrower than this block says: one
+  |   browser Approve for Google, Microsoft and Slack, which is the
+  |   only way to produce a user token and the only way to settle the
+  |   Microsoft and Slack secrets (both providers check the code
+  |   before the secret, so no machine probe can tell a right secret
+  |   from a wrong one). That is an owner act, not agent work.
   +-- ANDROID NOTIFICATION-REPLY PROBE: FINISH IT AND RECORD IT. For
   |   Messages, Instagram and WhatsApp the owner already knows the answer
   |   - yes, no, no - and this is mostly writing it down, per app, with a
   |   date, because it lives nowhere in the repo and the probe is
-  |   untracked and half-written. Messenger and Signal are NOT in the
+  |   untracked and half-written. The Instagram row records only whether a
+  |   reply action exists; Instagram notification content is not an Operator
+  |   input and this probe does not create an Instagram product route.
+  |   Messenger and Signal are NOT in the
   |   probe's watch list and are genuine discovery: add them, install
   |   them, get a real message delivered, catch the notification. Most of
   |   a day all in.
+  |   CORRECTED 2026-08-03 - three things in this block are out of date,
+  |   all in the same direction, all understating what is finished:
+  |     1. "lives nowhere in the repo and the probe is untracked and
+  |        half-written" - it does live in the repo, at
+  |        saved-results/wave0-notification-reply-probe.md, dated
+  |        2026-07-31 with a Re-check 2026-08-03 section, naming the
+  |        actual device. And the probe source is tracked: git ls-files
+  |        lists NotificationProbeService.kt and ReplyCapability.kt,
+  |        first committed in 5cb0831.
+  |     2. "Messenger and Signal are NOT in the probe's watch list" -
+  |        they are, at ReplyCapability.kt:142-150, and unit tests
+  |        already exercise both. Adding a package to that map was
+  |        never the hard part.
+  |     3. the DESIGN.md amendment this task asks for was already made
+  |        on 2026-07-31: DESIGN.md:212 strikes the old count-only line
+  |        as superseded and :213 replaces it with "Notification access
+  |        reads message content, not a count".
+  |   What actually remains is only the physical half, and it is an
+  |   owner act rather than agent work: one inbound SMS to answer the
+  |   Messages row (SMS_RECEIVED is a protected broadcast, so nothing
+  |   can fake one), and Messenger and Signal installed under the
+  |   owner's own Play account. The score stands at 2 of 5.
   +-- capability contract + manifest schema + adapter registry
   +-- router, confidence, disambiguation question sheet
   +-- CONTACT GRAPH: schema, the five resolution rules, wipe path
+  |   PARTLY BUILT, AND NOT PLUGGED IN. Audited 2026-08-03; full writeup in
+  |   saved-results/contact-graph-never-consulted.md. Schema and all five
+  |   rules are done, correct and tested (routing/contacts/graph.go). The
+  |   rest of this row is not one checkbox but six, and the first was a live
+  |   correctness hole:
+  |     1. NEVER CONSULTED. Class.AddressedToPerson was a plain bool, so
+  |        production's classes arrived saying "no person here" because Go
+  |        filled it in, not because anyone decided it. The contact-graph
+  |        branch never ran, and "message Maya" resolved to a real messaging
+  |        adapter carrying an EMPTY handle, with nothing downstream
+  |        checking. FIXED: silence is now unrepresentable — a class that
+  |        never declared which kind it is is refused by name, and the check
+  |        runs before adapter filtering so it cannot be flaky. Production
+  |        declares all twelve classes in one complete map with no default.
+  |        Verified independently of the implementer: go build ok, go vet
+  |        clean, go test -count=1 ./... = 82 packages ok, 0 FAIL, plus four
+  |        tests written before the fix and withheld from it.
+  |     2. NO FEEDSTOCK. Graph.Add has zero production callers; its only
+  |        caller is the offline eval harness. The graph is always empty, so
+  |        every person-addressed request now asks. That is the honest form
+  |        of what it already did, and it fails closed.
+  |     3. NOTHING TO FEED IT FROM. No adapter pairs a person's name with a
+  |        handle. Slack lists channels only, Teams lists chats by topic
+  |        without fetching participants, Instagram returns no handle.
+  |        Changing that is new collection from a connected account, which
+  |        this plan's two-sources rule forbids without a decision.
+  |     4. NO ADDRESS BOOK on either side. No READ_CONTACTS on Android, no
+  |        contact-shaped wire message on the companion.
+  |     5. THE QUESTION CANNOT REACH THE USER, AND IS REPORTED AS A FAILURE.
+  |        Decision.Candidates is dropped when wrapped into QuestionError,
+  |        and the handler turns any Prepare error — question included — into
+  |        "failed". Telling someone their message failed when the truth is
+  |        "which Maya?" is the dishonesty outcome_unknown exists to prevent.
+  |     6. THE ANSWER CANNOT COME BACK. No inbound message carries a chosen
+  |        candidate; Graph.Answer has zero callers. Graph.Wipe and
+  |        consent.Store.Wipe likewise, so "wiped by the existing
+  |        local-state-wipe path" does not yet exist on the companion side.
+  |   Order to take them in: see planning/contact-graph-feedstock-plan.md,
+  |   which is the authority. Short version: feedstock (3) -> Add called (2)
+  |   -> the ask and the answer (5+6). An earlier note here said 5 and 6
+  |   first; that was wrong and is superseded. With the graph empty, a
+  |   chooser would open with nothing in it - this repo's most common defect,
+  |   entered knowingly.
+  |   BUT one half of gap 5 is now urgent on its own, and it is the wording,
+  |   not the chooser. Since messaging is declared addressed-to-a-person and
+  |   the graph is empty, every "message Maya" now resolves to ask - and the
+  |   handler turns any Prepare error into "failed" (handler.go:920-924). So
+  |   the product currently tells people their message FAILED when the truth
+  |   is "I don't know who that is". That is the same dishonesty the
+  |   outcome_unknown design exists to prevent, and fixing the word needs no
+  |   feedstock and no chooser.
+  |   STATUS 2026-08-03: the WORDING half of gap 5 is DONE and verified.
+  |   handler.go now separates *flow.QuestionError from real errors and
+  |   answers "cancelled" with no error object. It has to be that word: the
+  |   phone's error-code set is CLOSED (ProtocolCodec.kt:618) and drops the
+  |   whole envelope on an unknown code, so a new "needs_disambiguation"
+  |   would tell the user nothing at all - worse than the bug. "cancelled"
+  |   is already accepted (:601) and is also the honest word: nothing broke,
+  |   and we do know what happened. 5 tests written before the code (2 of
+  |   them controls); 82 packages ok. Write-up:
+  |   saved-results/a-question-was-being-reported-as-a-failure.md
+  |   NOW DONE 2026-08-03: the question TEXT reaches the phone. It needed
+  |   no new message type and no new action kind - one optional "question"
+  |   field on the action_result that was already being sent, legal only
+  |   when the state is "cancelled". action_result is already sequenced,
+  |   journaled and replayed on a warm reconnect, so riding on it costs
+  |   nothing and loses nothing; a separate unsequenced message would have
+  |   opted out of all three. The phone shows it under a new
+  |   CapabilityPhase.QUESTION titled "One more thing".
+  |   AND THE OLD NOTE ABOVE WAS WRONG: the user did NOT just "see the
+  |   request stop". A cancelled result arriving at phase ROUTING fell to
+  |   the else at CapabilityInteraction.kt:338 and put up a dialog titled
+  |   "App action failed" - the router blamed for working correctly. A
+  |   judge with fresh context caught that; it is why this got built.
+  |   598/0/0 Android from the JUnit XML, 83 packages ok, schema check 35
+  |   validated / 40 rejected. A judge with fresh context then found the
+  |   new dialog's only button did nothing (dismissTerminal reads a
+  |   hand-written setOf that never learned the new phase) - fixed, with
+  |   the failing test written first. Write-up:
+  |   planning/the-question-nobody-hears-plan.md
+  |   ALSO FOUND, NOT FIXED: consent-not-granted (service.go:109-112) is
+  |   flattened into "failed"/"invalid_action" the same way. Nothing failed;
+  |   the user has not been asked yet. Fixing it means showing a consent
+  |   prompt, which is a wire change plus a product call on the wording.
   +-- routing eval set + harness, with contact fixtures (offline, seconds)
-  +-- consent framework (class B screen, storage, revoke, proof test)
+  +-- authorization gate + class H hand-off contract, with tests proving an
+  |   unofficial, unauthorized or under-scoped verb cannot execute
+  |   STATUS 2026-08-03: the gate half is DONE and verified. It was not
+  |   merely missing - Gates was declared by all 15 adapters, validated,
+  |   and read by NOTHING outside its own validator, so adapters/maps
+  |   (Cost: CostPerCall, Gates: [GateBilling]) executed billing the
+  |   owner's cloud account with no checkpoint. Now refused at all three
+  |   doors - Resolve, Preview, Execute - because maps spends the money at
+  |   RESOLVE, so an Execute-only gate paid the bill and then refused to
+  |   use the answer. 9 tests written before the code; 82 packages ok.
+  |   See saved-results/declared-gates-were-never-enforced.md.
+  |   STATUS 2026-08-03 (later): the gate was only on the path a PERSON
+  |   WATCHES. Tier1Runner.Run, Tier2Runner.ConnectLoop and
+  |   Tier2Runner.Heartbeat hold the registry directly and never went
+  |   through execution.Runner, so the three UNATTENDED entry points - a
+  |   nightly probe and a wake heartbeat - had no gate at all. Worse half
+  |   to miss: a charge nobody is watching repeats until someone reads a
+  |   bill. Fixed by MOVING the rule onto manifest.CheckGates() (execution
+  |   imports verification, so verification cannot import back - which is
+  |   why it was skipped, and why a second copy was the wrong answer);
+  |   execution.checkGate and execution.ErrGateNotCleared DELETED, not
+  |   aliased. A gate refusal deliberately does NOT disable the adapter -
+  |   that is what a failed heartbeat means, and a checkpoint nobody has
+  |   built yet must not become a permanent kill. 7 tests written before
+  |   the code, 3 of them controls; 82 packages ok, 0 FAIL, verified by my
+  |   own run. See saved-results/the-unattended-path-walked-past-the-checkpoint.md.
+  |   COST: the maps proof flow is blocked until something can clear a
+  |   billing gate. Deliberate. No shipped path changes (maps is not in
+  |   the production build).
+  |   STATUS 2026-08-03: the CLASS H HAND-OFF half is DONE and verified.
+  |   The demotion the gate describes ("a missing check demotes the verb to
+  |   class H hands_off") already worked and had never been written down or
+  |   tested: two adapters answer to the id "spotify" - the OAuth one that
+  |   completes, and a deep-link one that hands off - and since the registry
+  |   is keyed by id, the hand-off is what ships. A test now pins it: when
+  |   an id carries both, whatever is registered must declare hands_off and
+  |   must not claim to complete, because the user reads that claim as fact.
+  |   It passed first run, so this confirms behaviour, it does not change it.
+  |   What WAS broken was the honesty of the record around it. Inventory
+  |   calls itself "the honest record of what NewProduction actually built"
+  |   and (a) omitted notion entirely - neither Registered nor Skipped,
+  |   (b) omitted apple-notes and apple-reminders entirely - two finished
+  |   adapters claiming Ceiling: Completes that no user can reach, and
+  |   (c) listed "spotify" in BOTH lists with a reason false for the one
+  |   that ships. Root cause: the rule keeping OAuth adapters out was a
+  |   hand-written list of 7 ids with nothing tying it to the Auth field it
+  |   tracks. Every adapter is now in exactly one of three honest states -
+  |   registered, Skipped with a reason, or manifest-declared Unshipped -
+  |   and a test holds the list against what the adapters themselves
+  |   declare, so an 8th OAuth adapter fails CI instead of failing in front
+  |   of a user. NO behaviour changed for any user; nothing was registered
+  |   or unregistered. 4 tests before the code, 2 controls; 82 packages ok.
+  |   See saved-results/adapters-nobody-could-account-for.md.
+  |   NOT DONE, and the earlier wording of this line was too broad -
+  |   corrected 2026-08-03 by grepping each field for readers outside
+  |   tests and outside the adapter files that merely declare them:
+  |     Cost, Capacity, Region  - genuinely ZERO readers. The only
+  |       non-adapter hits are WRITERS constructing a manifest
+  |       (routing/eval/eval.go:146-148). Declared, never consulted.
+  |     ProvesCeiling - NOT in that state, and calling it so was wrong.
+  |       It has no runtime reader, true, but it is ENFORCED at test
+  |       time for every adapter: contract_every_adapter_test.go:360
+  |       and contract_test.go:100 both fail CI on an empty one. It is
+  |       a discipline device rather than runtime data, and it works.
+  |       manifest.CeilingIsProven() (manifest.go:421) is the part with
+  |       no caller anywhere, tests included.
+  |         ^ two errors in that one line, both fixed 2026-08-03. It had
+  |         two callers, manifest_test.go:226 and :232 - "tests included"
+  |         was simply wrong. And the name was a lie: it returned true
+  |         whenever the string was non-empty, so it answered "ceiling
+  |         proven: yes" for all 14 shipped adapters whose named proof
+  |         resolves to nothing. Zero production callers meant no live
+  |         bug, only a trap for whoever called it first. Renamed to
+  |         manifest.NamesAProof(), which is what it actually computes,
+  |         with the gap spelled out in its comment. Its own test was
+  |         already named ...ClaimsAProvableCeiling, so the test author
+  |         had the distinction right and only the method name missed it.
+  |       CORRECTED 2026-08-03, same day: "and it works" was too
+  |       generous, and it was my own line. Both of those tests check
+  |       only that the string is NOT EMPTY. Neither checks that the
+  |       name resolves to anything. Measured: of the 14 adapters this
+  |       build ships, ZERO name a proof that exists - every one points
+  |       at a snake_case smoke no file in this repo defines, so
+  |       "todoist_write_roundtrip_smoke" backs the todoist ceiling
+  |       claim exactly as much as an empty string would. The field is
+  |       not a bad idea and two adapters use it exactly right
+  |       (applereminders -> TestTheFirstWriteCreatesTheAdaptersOwnList,
+  |       applenotes -> TestTheFirstWriteCreatesTheAdaptersOwnFolder,
+  |       both real functions that run) - but both are marked Unshipped,
+  |       so the only two that do it properly are the two that do not
+  |       ship. New test pins this rather than fixing it:
+  |       runtime/proof_names_resolve_test.go resolves every shipped
+  |       adapter's named proof against every Go test function in the
+  |       companion tree and holds the dangling count at 14, so adding
+  |       an adapter with an invented proof name now fails. Confirmed
+  |       red first at a pin of 0, green at 14; 83 Go packages ok. The
+  |       pin is a debt, not a target, and it should only ever go down.
+  |       WHY IT IS PINNED RATHER THAN FIXED: writing the 14 missing
+  |       smokes needs vendor accounts nobody has yet, and whether a
+  |       given claim should be dropped instead of proven is an owner
+  |       call, not code.
+  |   The three real ones still need an owner decision (what budget?
+  |   what rate limit? which regions?), not code.
   +-- ceiling verification: tier-1 nightly runner, tier-2 self-directed
   |   loop + wake heartbeat + outcome telemetry, auto-demotion, alerting
   +-- adapter kill switch via remote manifest  <-- ship an adapter's death
   |                                                without an app release
+  |   STATUS 2026-08-03: DONE and genuinely reachable, which was checked
+  |   rather than assumed, because this codebase's usual failure is a
+  |   finished subsystem nobody calls. cmd/codex-launcher/production.go:74
+  |   calls startKillSwitch, which reads CAPABILITY_KILL_LIST_URL, does one
+  |   refresh before returning (so a killed adapter is never reachable even
+  |   in the window before the first background tick), then re-checks every
+  |   15 minutes. Refresh calls reg.ApplyKillList on the same registry this
+  |   process serves from. With no URL set it logs that it is inactive and
+  |   changes nothing, which is honest rather than silently absent.
   +-- outcome UI: the three ceilings, stated plainly, on both platforms
+  |   STATUS 2026-08-03: the phone's task actions half is DONE.
+  |   TaskActionOutcome had ONE value, Unavailable, returned from ten
+  |   places: four mean the request never left the phone, six mean it was
+  |   already sent or already carried out. The screen showed all ten the
+  |   same warning - "the computer did not confirm whether this change
+  |   happened, check Codex before trying again" - so a person whose phone
+  |   was simply not connected was sent to inspect a computer where
+  |   nothing had happened. Split into NotSent and Unresolved, with two
+  |   dialogs chosen by one shared classifier so the three menu items
+  |   cannot drift. The same conflation one level down - the computer
+  |   saying "it did not happen" and "I do not know" both becoming
+  |   Failed - is fixed too. Journal writes unchanged; only the word the
+  |   person is told changed. 490 unit tests, 0 failures, counted from the
+  |   XML reports rather than Gradle's console line. Write-up:
+  |   saved-results/one-word-for-didnt-happen-and-dont-know.md
+  |   WIRE CONTRACT CLOSED 2026-08-03: every message type and every
+  |   action kind the wire accepts now has a body shape in the published
+  |   schema, and two derived tests keep both lists honest without a
+  |   hand-written list on either side. Schema check 45 validated / 45
+  |   rejected; 83 Go packages ok; Android 598/0/0. Body *contents*
+  |   drifting inside a branch is still uncaught - see
+  |   planning/the-two-types-with-no-body-plan.md.
+  |   NOT DONE, and needs an owner decision rather than code: a finished
+  |   capability run never becomes a row in the home list.
+  |   CapabilityOutcome.toTaskState() calls itself "the one mapping from a
+  |   finished capability run to the TaskState the home list renders it
+  |   as" and has zero callers in app/src/main. It has none because home
+  |   rows are built from TaskSummary, which comes from the companion's
+  |   task snapshot, and a capability run is not a task there - it is
+  |   journaled as its own capability_result event. So the two ends of
+  |   this mapping never meet. Wiring them means deciding whether "message
+  |   Maya" should appear as a task row at all, which is a product call.
+  |   NOT a defect, checked: the UNVERIFIED mark, label and push notice
+  |   are all live by the other route - TaskSummary.effectiveState() turns
+  |   queueState == OUTCOME_UNKNOWN into TaskState.UNVERIFIED, and
+  |   LauncherSessionViewModel sets that in three places (:561, :570,
+  |   :595). Only the mapping is unused, not the state it maps to.
+  |   ONE MORE OF THE SAME SHAPE, found 2026-08-03:
+  |   CapabilityOutcome.confirmControl (CapabilityOutcome.kt:145) is set
+  |   to "Confirm" for a ONE_TAP ceiling at :245 and read by nothing in
+  |   app/src/main. CapabilitySheet's RESULT dialog renders detail,
+  |   message and recoveryAction, and its buttons are Copy draft, Open
+  |   <app>, Disconnect <name> and Done - none driven by confirmControl.
+  |   Read on its own that looks user-visible and bad, because
+  |   ConnectionNotificationPolicy.kt:33 tells the user "One tap left -
+  |   Open Codex Launcher to finish it" and the sheet would then offer no
+  |   tap to make. It is NOT reachable today: the ceiling arrives from the
+  |   Mac via Ceiling.fromWire, and no Go adapter declares one_tap - the
+  |   only two hits in companion are the constant itself
+  |   (manifest.go:109) and the wire validator (validation.go:1107). So
+  |   this is a trap set for whoever ships the first one_tap adapter, not
+  |   a live defect. Whoever does that has to render confirmControl in
+  |   the RESULT dialog, or drop the field. The pre-execution confirm is
+  |   a different mechanism (preview.confirmLabel, CapabilitySheet.kt:62)
+  |   and is wired.
+  |   NOW RUN, 2026-08-03: the Pixel was attached and the connected suite
+  |   is 128 tests, not the 45 recorded earlier. It also does not work on
+  |   a locked phone, and never said so - the lock screen sits on top of
+  |   the activity, Compose never attaches, and every test after the lock
+  |   times out at five seconds. Same build, same class: unlocked 23 of 23
+  |   three times, locked 23 tests with 22 failures. Fixed for the debug
+  |   scenario activity with showWhenLocked in the debug manifest, and a
+  |   preflight (release/checks/android-device-ready.mjs) now stops the
+  |   smoke run with "unlock it by hand" instead of a wall of timeouts.
+  |   The rest of the suite still needs a phone somebody has unlocked -
+  |   the lock here is secure, so nothing in software can open it, and
+  |   turning it off would be disabling one of the phone's own defences.
+  |   STATUS 2026-08-03: the computer's half of the same problem is DONE
+  |   for app actions. publishCapabilityActionResult built the error from
+  |   the state alone - every failure became "invalid_action" - so six
+  |   different situations shared one word and only two of them were the
+  |   user's request actually being invalid. The worst: someone who had
+  |   never connected the app was told their request was invalid, and
+  |   never told the one thing they could act on. Now a
+  |   capabilityFailureCode() table maps the error: unauthorized for not
+  |   granted and for an uncleared gate, desktop_incompatible for a build
+  |   with no capability support, invalid_action only where the request
+  |   really was wrong, internal for everything else. "failed" can no
+  |   longer be published without naming a code. No wire change was
+  |   needed - all four words are already in the phone's fixed set of
+  |   eleven, and a word outside it makes the phone drop the whole
+  |   message, so the user would be told nothing at all. 82 packages ok,
+  |   0 FAIL, run by hand. Write-up:
+  |   saved-results/every-failure-was-called-an-invalid-request.md
+  |   DONE: the same defect on the ordinary task-action path - start a
+  |   task, rename, archive, fork, approve, dismiss - is fixed. Grepping
+  |   handler.go for a hardcoded "invalid_action" now returns nothing.
+  |   startNewTask used to collapse every ending into one newTaskFailed;
+  |   it now returns a reason, and its twelve failure endings divide into
+  |   7 internal (the queue would not open, the app server refused), 4
+  |   invalid_action (a model or project this computer does not have) and
+  |   1 desktop_incompatible. startExistingTask and stopExistingTask had
+  |   the same defect through applyExistingTaskOutcome and were fixed the
+  |   same way. 82 packages ok, 0 FAIL, and all 8 spec tests named
+  |   individually, run by hand. No existing expectation was weakened -
+  |   zero removed lines mention invalid_action.
+  |   DONE: the block that stops a message being sent twice now survives
+  |   Android killing the app. It was a plain field on an object built at
+  |   LauncherSessionViewModel.kt, so a cold start forgot it and the next
+  |   prompt went straight out to a real person for a second time. It is
+  |   now written to its own small store and read back, with an
+  |   unreadable store refusing rather than assuming nothing is pending -
+  |   the same call the task-action half already makes when its journal
+  |   cannot be read. Reading the wiring turned up a second gap the first
+  |   spec missed: the read was started in the background and nobody
+  |   waited for it, so a prompt in the first moments after launch raced
+  |   past the block. Asking to send now makes sure the store has been
+  |   read first, once, however many prompts race for it. 505 tests, 0
+  |   failures, 0 errors, counted from the XML by hand.
   +-- iOS: DEFERRED, ENTIRELY, AND HERE IS WHY IT IS SAFE TO DEFER.
   |   There is no iPhone. The obvious workaround - the iOS Simulator -
   |   cannot answer either iOS question, and this is a hard limit rather
@@ -1037,18 +1563,15 @@ where the work is unlike anything after it.
   |          the contract enforces rather than a thing we discover, so
   |          the risk is that the rule is awkward, not that it is wrong.
   |          Wave 2 cannot start without it.
-  |     RT-5 deliberately NOT proven here - see wave 4. It IS in scope
-  |          now (computer-less users are), but it is the one runtime
-  |          that bills by the hour, so it waits for its own account.
+  |     RT-5 personal-account automation is retired by the policy gate.
   +-- MONEY GATE, AND IT IS DAY ONE, NOT EXIT DAY: name the
   |   model-provider account (literal id, and whether it is personal or
   |   work) and get the owner's OK against it BEFORE the first metered
   |   call. The router and the eval set both call a model, so that first
   |   call happens in Wave 0's first week. This is the one Wave 0 item
   |   that cannot be done late and caught at the exit test.
-  +-- LEGAL GATE: BOOK THE CLASS B REVIEW. Not hold it - book it. It has
-  |   a lead time we do not control and it blocks the Wave 1 iMessage row
-  |   and all of Wave 3, so the booking is Wave 0 work.
+  +-- POLICY GATE: record official route + user authorization + exact scope
+  |   per direct-action verb. Any missing proof forces `hands_off`.
   +-- CUSTODY GATE: write the token-store security model. It gates every
   |   RT-1/2/3 adapter, which is most of Wave 1, so it cannot trail it.
   +-- DISTRIBUTION GATE, BOTH HALVES:
@@ -1070,8 +1593,8 @@ where the work is unlike anything after it.
              the same table as five measurements reads as a measurement;
              the RT-1 audit written down with a yes/no/BD per row; THREE
              runtimes proven end to end - RT-1, RT-4, RT-6 - against one
-             contract and one router, with RT-2 moved to Wave 1, RT-3 to
-             Wave 2 and RT-5 to Wave 4, deliberately, under one stated
+             contract and one router, with RT-2 moved to Wave 1 and RT-3 to
+             Wave 2, deliberately, under one stated
              rule, and named in each place; eval set
              green INCLUDING the ambiguity cases that must ask; NO iOS
              answer is required here and none is claimed - both iOS
@@ -1089,7 +1612,8 @@ where the work is unlike anything after it.
                MONEY    the account named in writing - literal id, and
                         personal or work - and the owner's OK recorded
                         against it. Nothing metered runs before this.
-               LEGAL    the class B review on the calendar with a date.
+               POLICY   official route, user authorization and exact verb
+                        scope recorded for every direct-action adapter.
                CUSTODY  the token-store security model written down and
                         its rotation path exercised once, not just
                         described.
@@ -1109,9 +1633,10 @@ where the work is unlike anything after it.
                         can refuse to distribute this app; only one of
                         them was on anybody's mind.
 
-  WAVE 1   FREE AND SELF-SERVE          ~20 apps, mostly manifests
+  WAVE 1   ANDROID CLOUD + HAND-OFF      closed Play cohort
   =========================================================================
-  Not "no risk" - one row in it is class B. Three caveats before the list:
+  The first external slice follows the locked launch section above. Three
+  caveats before the list:
   - THIS WAVE OPENS WITH RT-2's PROOF, moved here from Wave 0 on
     2026-07-31. Build ONE RT-2 adapter first - Todoist is the cheapest
     honest choice, free and self-serve - and drive it by hand end to end
@@ -1120,22 +1645,56 @@ where the work is unlike anything after it.
     the difference between finding out on adapter one and adapter twenty
     is the whole reason the contract exists. This is a STOP-THE-LINE
     checkpoint, not a first item on a list.
+    **Current checkpoint status (2026-07-31): local implementation, the Android
+    Auto / Computer entry point, exact preview confirmation, and focused tests
+    pass. A debug APK builds. The adapter-only OAuth proof created task
+    `6h9crRHgqHGjgxp8`, read it back, and cleared its in-memory token. The
+    production companion binary now has an owner-only `serve-todoist-proof`
+    path that constructs the connected Todoist flow in memory and uses the
+    normal session handler. Warm reconnect also replays unacknowledged
+    capability outcomes from the saved phone cursor, then sends a fresh task
+    snapshot so Home returns online. No Pixel or emulator is attached, so the
+    physical-device check has not run. The stop line therefore
+    remains closed, and no second Wave 1 adapter starts until that Pixel path is
+    recorded in `saved-results/wave1-todoist-rt2-proof.md`.**
+    **OPENED 2026-08-02, and this line was left stale for a day — noted
+    2026-08-03.** The condition written immediately above is the one that was
+    met: `saved-results/wave1-todoist-rt2-proof.md:12` records the physical
+    Pixel running `serve-todoist-proof` and creating Todoist task
+    `6h9w8XPM54Qj9fp8` on 2026-08-02, and says "**STOP LINE OPEN.** ... Later
+    Wave 1 adapters may start." Nothing here needed re-deciding; the gate
+    defined its own release condition and the condition was satisfied. Worth
+    saying plainly because a stop-the-line gate that stays "closed" in the plan
+    after it has actually opened is the expensive kind of stale: it blocks work
+    that is allowed to proceed, and it does so quietly.
   - THE APP COUNT IS PROVISIONAL. Every connector row below is subject to
     the Wave 0 RT-1 reachability audit; a row that fails it moves to
     RT-2, RT-4 or Wave 2. Do not commit this list to a launch date.
-  - iMessage is CLASS B and therefore behind the legal gate. Everything
-    else here is class A and ships without it. If the legal review slips,
-    Wave 1 ships minus iMessage rather than not shipping.
-  Messaging   Telegram (full), Slack, Discord (bot scope only)
+  - Every verb passes the authorization gate independently. Missing official
+    access or scope produces a class H prepare-and-open hand-off, not a delayed
+    direct-action adapter.
+  Messaging   Telegram (full), Slack (authenticated-user MCP),
+              Discord / Instagram DM / Google Messages:
+              planned COMPLETE via Beeper Server after smoke (see messaging
+              fork); **HAND-OFF as of 2026-08-03** — the Beeper smoke failed
+              (Linux build won't start on the phone), so all three sit at
+              HAND-OFF today, not COMPLETE;
+              WhatsApp + Messenger / Facebook personal out of v1;
+              Signal + iMessage SKIP/hands_off for v1
   Google      Calendar, Drive, Photos  (non-restricted scopes)
   Gmail       READ-ONLY, under 100 users, and START THE CASA CLOCK
-  Microsoft   Outlook + Teams via Graph (personal accounts work)
+  Microsoft   Outlook via Graph for personal or work accounts;
+              Teams direct only for authenticated work/school users,
+              personal Teams prepares and opens the official app
   Work        Notion, Todoist
-  Media       Spotify (Developer Mode: FIVE users, all Premium), Audible,
+  Media       Spotify Web API `unverified` 2026-08-03 (search + play built and
+              tested; no token yet, so playback never driven), Audible,
               Apple Music, podcast RSS
-  Local       iMessage, Apple Notes, Apple Reminders  <-- class B for iMessage
+  Local       iMessage hand-off; Apple Notes and Reminders only through an
+              official, user-authorized, scoped route
   Device      SMS/RCS reply, all deep-link apps (Starbucks, Chipotle,
-              transit, airlines, Venmo, Cash App, Zelle)
+              transit, airlines, Venmo, Cash App, Zelle), plus the
+              Instagram feed post/reel/story draft-and-open (DMs via Beeper)
   Connectors  Uber, Resy, Booking.com, Tripadvisor, Viator, StubHub,
               AllTrails, DoorDash, Uber Eats, Credit Karma, TurboTax,
               Taskrabbit, Thumbtack   (Instacart is Wave 2 - needs a rep)
@@ -1144,8 +1703,8 @@ where the work is unlike anything after it.
                   hand-off by their own vendors.
   Also        every long-lead application starts on day one - they queue,
               and none of them is work, they are calendar dependencies:
-              dd-cli waitlist, Gmail CASA assessment, Spotify extended
-              quota, YouTube quota increase, Discord DM scope.
+              Gmail CASA assessment,
+              quota and YouTube quota increase.
   Exit test: every adapter above driven by hand on the real Pixel against
              the owner's own accounts, with evidence recorded and the
              manifest ceiling corrected wherever reality disagreed. Any
@@ -1169,12 +1728,16 @@ where the work is unlike anything after it.
                        and the 100-user capacity gate has a decision
   Uber Riders API      needs an Uber BD contact, not self-serve
   Instacart API key    needs an Instacart rep
-  Discord DM scope     needs Discord's approval
-  YouTube              10k units/day = ~100 searches; budget it, or apply
+  Discord              HAND-OFF 2026-08-03 — smoke never ran (Server would not
+                       start); was planned COMPLETE via Beeper Server, no bot/self-bot
+  YouTube              hands_off 2026-08-03 (whole adapter; open claim withdrawn)
+                       — live 403, the API key's GCP project is restricted.
+                       10k units/day still applies once the key is fixed
   Threads              better than assumed: reads and replies, not just posts
   TikTok               post only
-  Facebook             pages only
-  LinkedIn             post/comment/profile only, no DMs (verified here)
+  Facebook             personal and Page posts prepare-and-open
+  LinkedIn             authenticated member post/comment/profile only;
+                       managed-organization actions prepare-and-open
   eBay Browse          open; eBay checkout is a separate limited release
   Splitwise            BLOCKED, not merely gated. The self-serve tier bars
                        commercial use, which makes shipping it a C1 breach.
@@ -1186,82 +1749,44 @@ where the work is unlike anything after it.
              parked with a dated reason, not left ambiguous; and every
              cleared adapter driven by hand, same as Wave 1.
 
-  WAVE 3   RISK, NOT MONEY               class B, companion-local
+  WAVE 3   HAND-OFF COVERAGE              no unofficial direct action
   =========================================================================
-  NOT OPTIONAL, AND NOT THE LAST WAVE BY IMPORTANCE. Instagram and
-  WhatsApp have no notification reply box (Instagram confirmed by both
-  documents, WhatsApp on the owner's answer), and Messenger is assumed to
-  match Instagram until Wave 0 measures it. So this is the ONLY path to
-  the apps people message on most. If Wave 3 does not ship, the product is
-  SMS plus a lot of deep links.
-  THE LEGAL GATE BLOCKS SHIPPING, NOT BUILDING. Build it, connect the
-  owner's own accounts, and run the whole hands-on pass against them while
-  the review is pending - that work is the owner using their own accounts
-  on their own machine, which is what the review is about, not a thing the
-  review forbids. What waits for sign-off: a second user's account being
-  connected, the consent copy being finalised, and the adapter appearing
-  in a shipped build. So the honest line is "no USER OTHER THAN THE OWNER
-  touches this until the class B review lands." It is still a calendar
-  dependency and still gets booked in Wave 0, because if it slips, the
-  built-and-tested code sits there unshippable.
-  +-- companion-local browser runtime (headless Chromium on the user's
-  |   machine + a live view streamed to the phone for login)
-  |   DEPENDS ON: the companion's Windows and Linux lifecycle, which the
-  |   README says is not yet fully tested. macOS is proven. Either finish
-  |   those two first, or ship Wave 3 macOS-only and say so - do not
-  |   discover it when a Windows user connects Instagram.
-  +-- Instagram DM, Messenger, Airbnb, Grubhub, general web browsing
-  +-- THE BROWSER RESCUES, in cost order, once the runtime exists:
-  |     Snapchat chat   <-- the single genuine unlock: a whole app going
-  |                         from "no door" to real messaging, on a
-  |                         surface Snap officially runs. Gated on one
-  |                         test: does its web client accept our
-  |                         Chromium, or bounce a non-Chrome UA?
-  |     Google Maps saved places + Netflix My List  <-- half a day each,
-  |                         read/write on a normal logged-in page, no
-  |                         adversary. Gated on Google login holding.
-  |     Facebook personal posting  <-- only because the Meta risk is
-  |                         already accepted for Instagram. Near-zero
-  |                         marginal cost, zero if we drop Instagram.
-  +-- WhatsApp via whatsapp-mcp, Signal via signal-cli, OpenTable
-  +-- dd-cli if the waitlist cleared (macOS Apple Silicon, US/CA, on the
-  |   user's own Mac - never on our infrastructure)
-  +-- ACP / UCP checkout: Shopify, Etsy, Target, Walmart, Nike, Sephora,
-      Wayfair. Real money moves, so preview is mandatory and the
-      retailer stays merchant of record.
-  Exit test: every class B adapter has its own consent copy, its own
-             revoke proof, and a kill switch you have actually pulled once
-             in a drill; and every one driven by hand end to end - for
-             these the send goes to the owner's own account (Saved
-             Messages, Note to Self, own number), never to a third party,
-             because a real DM to a real friend from a browser session is
-             exactly the behaviour the consent screen is warning about.
+  The former companion-browser and linked-device execution wave is retired
+  by the release-wide authorization rule. Do not build or ship a runtime that
+  logs into personal accounts, reads private account data or clicks through
+  their interfaces on the user's behalf.
+  +-- Signal and personal iMessage (v1 SKIP): prepare from context the user
+  |   supplies, open the official app, user sends. WhatsApp / Messenger /
+  |   Instagram DM / Discord / Google Messages: see messaging COMPLETE fork
+  |   (Beeper Server); not this hand-off wave.
+  +-- Airbnb, Grubhub and OpenTable: prepare permitted non-sensitive search or
+  |   booking details, open the official app/site, user reviews and books.
+  +-- Google Maps saved places, Netflix My List and Facebook personal posts:
+  |   prepare the place/title/post, open the official app/site, user finishes.
+  +-- ACP/UCP and other official commerce interfaces may prepare a cart only
+      when authorization and scope permit it; the vendor remains merchant of
+      record and the user completes payment in the official checkout.
+  Exit test: each row proves that no private account data is read through an
+             unofficial route, the prepared information is visible before
+             hand-off, the official app/site opens, and Operator makes no
+             claim that the user-completed send, booking, post or playback
+             happened.
 
-  WAVE 4   COSTS MONEY                   blocked on the money gate
+  WAVE 4   OPTIONAL OFFICIAL PAID ROUTES  outside the first launch
   =========================================================================
-  +-- RT-5 Kernel cloud sandbox. IN SCOPE, settled 2026-07-31: computer-
-  |   less users are in scope at launch, and RT-6 needs a computer, so
-  |   without RT-5 those users lose every browser-only app outright.
-  |   (~$0.48/browser-hr headful, proxies free, + $2-6/mo per pinned IP)
-  |   Its own account, its own approval - the OpenAI $500 does not cover
-  |   it, and a per-hour meter is the one that runs while you sleep.
-  +-- X / Twitter, if $0.20 per post-containing-a-link survives contact
+  +-- X / Twitter, if an official authorized scope and pricing clear
   +-- Yelp (~$8-15 per 1k calls), Reddit commercial ($0.24 per 1k)
   Each is an independent decision with its own estimate and its own
-  approval. None of them blocks anything else.
-  Exit test: the same hands-on pass as every other wave, and RT-5 needs
-             it MORE than anything else here - it is the one runtime
-             deliberately unproven in Wave 0, and it is metered, so a
-             fault that would merely be a bug elsewhere bills by the
-             hour. Drive it by hand, watch the spend during, and record
-             the actual cost per task against the estimate.
+  approval. Kernel/proxy account automation is not in this wave.
+  Exit test: official route, authorization and scope recorded; cost watched
+             during the same hands-on pass as every other direct adapter.
 
   NEVER    Amazon. Banks. Trades and transfers. Dating apps. Strava.
            Venmo, Cash App, Zelle - no API door, and the money rule means
            we would deep-link even if there were one.
            Every one of these still OPENS. See the floor.
-           (Snapchat and Netflix left this list in Wave 3 - a browser
-            reaches both, partially.)
+           (Netflix left this list in Wave 3 because a browser reaches My
+            List; playback remains out of scope.)
 
   IOS SHELL TRACK   DEFERRED UNTIL AFTER WAVE 1
   =========================================================================
@@ -1284,47 +1809,123 @@ where the work is unlike anything after it.
 
 ## Every app, and what gets built
 
-Ceiling values are the *target*; the smoke test decides what actually ships.
+Ceiling values are the *target*; the policy gate runs before the smoke test, and
+the smoke test decides what actually ships. Any older Class B or browser row is
+class H and `hands_off` unless an official, authorized, correctly scoped route
+is recorded for that exact verb.
 "manifest" in the Build column means no bespoke code — a manifest entry, an auth
 record, and contract tests.
 
 ### Messaging
 
+Route key: `beeper_server_localhost` = on-device Beeper Server Desktop API per
+[operator-complete-messaging-plan.md](operator-complete-messaging-plan.md).
+Ceiling **completes** only after green on-phone smoke; else demote to `hands_off`.
+**As of 2026-08-03 the smoke failed** (Beeper's only Linux build is an AppImage
+that will not start on the phone), so all three `beeper_server_localhost` rows
+below are `hands_off` today, not `completes`.
+
 | App | RT | Verbs | Ceiling | Class | Wave | Build |
 |---|---|---|---|---|---|---|
-| SMS / RCS | RT-4 | read, send | completes | A | 0 | Messages attaches a reply box; this is the one direct-send app. Probe result needs writing down |
-| Instagram *via notification reply* | — | — | — | — | **no** | **No reply box.** Both this plan and `draft-and-open-ux-plan.md` agree. It is an RT-6 row below. Recorded here so it is not re-tried |
-| WhatsApp *via notification reply* | — | — | — | — | **pending** | **Owner's word only, and disputed** — `draft-and-open-ux-plan.md` guesses the opposite and marks its own guess UNTESTED. Planned as no reply box, so it is an RT-6 row below; Wave 0's probe settles it. A yes moves it here for free |
-| Telegram | RT-2 | read, send | completes | A | 1 | MTProto client wrapper. Was Wave 0's RT-2 proof; demoted to a normal Wave 1 adapter on 2026-07-31 as too niche to justify an account in the first wave. RT-2's proof went briefly to a Notion REST fixture, then to Wave 1's first real adapter (Todoist) when that fixture was cut — same rule both times: prove a runtime in the wave that first ships it |
-| Slack | RT-1 | read, send | completes | A | 1 | manifest |
-| Discord (servers) | RT-2 | read, send | completes | A | 1 | manifest |
-| Discord (DMs) | RT-2 | read, send | completes | A | 2 | blocked on Discord approval |
-| iMessage | RT-6 | read, send | completes | **B** | 1 | chat.db read + AppleScript send |
-| WhatsApp | RT-6 | read, send | completes | **B** | 3 | whatsapp-mcp bridge |
-| Signal | RT-6 | read, send | completes | **B** | 3 | signal-cli linked device |
-| Instagram DM | RT-6 browser | read, compose, send | one_tap | **B** | 3 | browser runtime + scripted flow |
-| Messenger | RT-6 browser | read, compose, send | one_tap | **B** | 3 | same runtime, new script |
+| SMS / RCS (Google Messages) | beeper_server_localhost | read, send | ~~completes*~~ **hands_off 2026-08-03** | H† | messaging fork | Planned completes* after smoke; **HAND-OFF 2026-08-03** — the Beeper spike failed (AppImage won't start on the phone), so the send smoke never ran. Via Beeper; phone keeps Messages + SIM. Native SMS APIs remain a fallback if Beeper stays demoted |
+| Instagram *via notification reply* | — | — | — | — | **no** | **Not a product route.** DMs use Beeper send, not notification RemoteInput |
+| WhatsApp *via notification reply* | — | — | — | — | **no** | Not a product route; WhatsApp send via Beeper |
 
-The Instagram flow is the sandbox plan's, unchanged in shape: scripted skeleton,
-one model call for the words, preview on the phone, one tap, then verify the DOM
-back so Operator *knows* it sent. Only the host moved from cloud to the
-companion.
+> **OPEN CONTRADICTION, found 2026-08-03 — needs an owner decision, and I have
+> deliberately changed nothing.** These two rows say notification reply is not a
+> product route for Instagram or WhatsApp. The shipped code will do it anyway.
+> There is no app filter at any stage of the chain:
+>
+> 1. The router is told to send *any* "reply to somebody who just messaged them"
+>    to `app_class notification_reply` — `stage1/openai/client.go:84`, no app named.
+> 2. The `notificationreply` adapter takes a handle and text and has zero
+>    app-specific logic.
+> 3. The phone's lookup matches on **person name only** —
+>    `LiveReplyBoxes.candidatesFor` filters `person.matches(query)` and never
+>    looks at the package.
+> 4. `ReplyAdapter.pick` (`ReplyAdapter.kt:149-151`) only requires that the
+>    candidates be one conversation. It does not check the app either.
+> 5. Both apps are in `WatchList.PACKAGES` (`ReplyCapability.kt:143-146`), and
+>    the probe measured both as `CAN_REPLY` on the real phone.
+>
+> So if the user says "reply to Maya" and Maya's live notification is WhatsApp
+> or Instagram, Operator types into that app's reply box today.
+>
+> **There is a real argument that the code is right and the table is too narrow.**
+> The row's stated reason — "DMs use Beeper send, not notification RemoteInput" —
+> is about *composing a new DM*. Replying into a notification the user already
+> received is a different act, and `client.go:85` draws exactly that line in the
+> router's own words: "Open only — never claim the message was sent (notification
+> reply is a separate path)." Whoever wrote that prompt meant the separate path
+> to exist.
+>
+> **Why this is not mine to settle:** routing WhatsApp through Beeper was a
+> deliberate choice with legal weight behind it, and this decides whether
+> Operator touches WhatsApp directly. Two ways to close it, and they are
+> opposite: (a) the table is stale — say notification reply covers every watched
+> app and delete these rows; or (b) the decision stands — add a package filter,
+> and the natural place is `ReplyAdapter.pick`, which already sees the
+> `ReplyHandle` and its package.
+| Telegram | RT-2 | read, send | completes | A | 1 | MTProto client wrapper (unchanged official-ish path) |
+| Slack | RT-1 | read, send | completes | A | 1 | manifest |
+| Discord (servers and DMs) | beeper_server_localhost | send | ~~completes*~~ **hands_off 2026-08-03** | H† | messaging fork | Beeper as the user; no bot/self-bot. Planned completes* after smoke; **HAND-OFF 2026-08-03** — same failed Beeper spike; owner decided 2026-08-03 that Discord routes through the Beeper bridge, never an Operator-owned bot, self-bot, or token |
+| iMessage | RT-4 device hand-off | compose | hands_off | H | 1 | **SKIP COMPLETE for v1.** Prepare + open Messages; no imsg. Revisit at iOS port |
+| WhatsApp | — | — | — | — | **no** | **Out of v1** (Owner 2026-08-03 — Beeper link not working). Do not smoke or claim COMPLETE |
+| Signal | RT-4 device hand-off | compose | hands_off | H | 3 | **SKIP COMPLETE for v1.** Prepare + open Signal |
+| Instagram DM | beeper_server_localhost | send | ~~completes*~~ **hands_off 2026-08-03** | H† | messaging fork | Beeper Server; consent + confirm. Feed post stays hands_off row below. Planned completes* after smoke; **HAND-OFF 2026-08-03** — the Beeper Server spike failed: Beeper's only Linux build is an AppImage and it will not start on the phone, so the send smoke never ran |
+| Messenger / Facebook personal | — | — | — | — | **no** | **Out of v1** (Owner 2026-08-03). Do not link, smoke, or claim COMPLETE |
+
+† Class H† = linked-device / Beeper exception under the messaging fork — not a blank cheque for other unofficial scrapers.
+
+For Instagram DM, Discord, or Google Messages, a request
+such as “message Maya” normalizes to **`send`** when Beeper COMPLETE is green
+for that net (with per-send confirm). If that net is demoted, fall back to
+`compose` + open official app and say Operator cannot know whether the user sent.
+This section + the messaging fork supersede Instagram send automation in
+`sandbox-approach-plan.md` and older hand-off-only language in
+`draft-and-open-ux-plan.md` for those DM sends.
+
+**Current implementation checkpoint (2026-08-01):** Android can generically
+open an installed app through `InstalledAppsRepository`, and the capability
+contract can display a `hands_off` outcome. It cannot yet ask the phone to open
+a named app from a capability result, copy a draft, or target an Instagram
+thread. No Instagram adapter or manifest is registered. The current result
+sheet has only a **Done** button, so this hand-off is planned, not implemented.
+
+**Superseded 2026-08-03 — three of the four "cannot yet" claims above are no
+longer true, and the paragraph is left standing so the correction is visible
+rather than tidied away.** Checked in the code, not inferred:
+
+- *"No Instagram adapter or manifest is registered"* — it is.
+  `companion/internal/capability/runtime/production.go:231` registers it and
+  `:234-235` files it under the messaging class.
+- *"cannot ... open a named app from a capability result, [or] copy a draft"* —
+  both exist. `CapabilitySheet.kt:97-105` offers **Copy draft** whenever the
+  result carries one and **Open <app>** whenever `HandOffActions.androidPackage`
+  can resolve the app.
+- *"The current result sheet has only a Done button"* — it has up to four:
+  Copy draft, Open <app>, Disconnect <app>, Done.
+
+What has *not* changed is the one that matters for this row: **targeting an
+Instagram thread.** That is still not possible, so the hand-off row itself
+stays unshipped. The lesson worth keeping is that a dated checkpoint is a
+photograph, not a status — three of these four went stale in two days, and
+anyone reading the paragraph on its own would have taken all four as current.
 
 ### Social
 
 | App | RT | Verbs | Ceiling | Class | Wave | Build |
 |---|---|---|---|---|---|---|
 | Threads | RT-2 | read, send | completes | A | 2 | manifest + 4 scopes |
-| LinkedIn | RT-1 | send (post/comment) | completes | A | 2 | manifest; posts and comments only — no DM tool was found in the connector, so DMs are hand-off until one turns up |
+| LinkedIn (personal profile) | RT-1 | send (post/comment) | completes | A | 2 | manifest; authenticated member's own posts and comments only. DMs hand off |
+| LinkedIn (managed organization) | RT-4 device hand-off | compose | hands_off | H | 2 | Organization publishing uses a separate organization identity. Prepare the post and open LinkedIn; the user chooses the organization, reviews, and publishes |
 | TikTok | RT-2 | send (post) | completes | A | 2 | manifest |
-| Facebook | RT-2 | send (page post) | completes | A | 2 | manifest; pages only |
-| YouTube | RT-2 | read | completes | A | 2 | manifest + quota budget |
+| Facebook Page | RT-4 device hand-off | compose | hands_off | H | 2 | A Page is a separate publishing identity. Prepare the post and open Facebook; the user chooses the Page, reviews, and publishes |
+| YouTube | RT-2 | read, play | **hands_off 2026-08-03 (whole adapter)** | A | 2 | Data API search + open video intent (`youtube.com/watch` / youtube:). Like/subscribe deferred. Quota budget. Smoke: search returns id + open plays in YouTube app — **DEMOTED 2026-08-03**: both `read`/search and `play` go through the same `search.list` call, and the live key returns `403 PERMISSION_DENIED` because its Google Cloud project is restricted, so nothing has ever been carried to the end through this adapter. The earlier "video played on the Pixel" evidence was a hand-typed `am start -a VIEW` intent that never touched the adapter or the capability flow, so it shows Android can open a video, not that Operator can. In-app chrome remote not required |
 | X / Twitter | RT-2 | read, send | completes | A | 4 | money gate |
 | Reddit | RT-2 | read, send | completes | **C1 until granted** | 4 | The free tier bars commercial use, so shipping on today's terms is a C1 breach — same shape as Splitwise. Email Reddit for commercial terms; build only if granted, and the money gate is the *second* hurdle, not the first |
-| Instagram feed | RT-6 browser | read, send | one_tap | **B** | 3 | shares the DM runtime |
-| Snapchat (chat) | RT-6 browser | read, compose, send | one_tap | **B** | 3 | web client; **gated on the Chromium user-agent test** |
-| Snapchat (Stories, Memories, Snap Map) | RT-4 | — | hands_off | A | 1 | mobile-only, no web surface; deep link |
-| Facebook (personal profile) | RT-6 browser | send (post) | one_tap | **B** | 3 | only once the Meta risk is accepted for Instagram |
+| Instagram post/reel/story | RT-4 device hand-off | compose | hands_off | A | 1 | Prepare caption/content in Operator and open Instagram. The user chooses the destination, reviews and posts manually; Operator does not read the feed or account |
+| Facebook (personal profile) | RT-4 device hand-off | compose | hands_off | H | 2 | Prepare the post and open Facebook; user reviews and publishes |
 
 ### Rides and transport
 
@@ -1332,8 +1933,9 @@ companion.
 |---|---|---|---|---|---|---|
 | Uber (estimates) | RT-1 | read | hands_off | A | 1 | manifest |
 | Uber (booking) | RT-2 | book | completes | A | 2 | blocked on Uber BD |
-| Google Maps (places, directions) | RT-2 | read | completes | A | 1 | manifest; the API has no saved-places surface at all |
-| Google Maps (saved places) | RT-6 browser | read, write | completes | **B** | 3 | the logged-in web map does what no API exposes; **gated on Google login holding in an automated profile** |
+| Google Maps (places, directions) | RT-2 | read | completes | A | 1 | Places + Directions/Routes APIs; answer visible in Operator (do not make user re-type in Maps) |
+| Google Maps (start navigation) | RT-2 + deep link | open | **hands_off 2026-08-03** (was completes) | A | 1 | Compute route then open Maps with navigation intent (`google.navigation:` / equivalent) when reliable. Smoke: Maps opens with the route. Fail → demote to open-without-route HAND-OFF |
+| Google Maps (saved places) | RT-4 device hand-off | write | hands_off | H | 3 | No official write API — prepare intent and open Maps; user saves. Honest copy |
 | Lyft | RT-4 | book | hands_off | A | 1 | deep link |
 | Transit, airlines | RT-4 | book | hands_off | A | 1 | deep link |
 
@@ -1342,12 +1944,12 @@ companion.
 | App | RT | Verbs | Ceiling | Class | Wave | Build |
 |---|---|---|---|---|---|---|
 | DoorDash (connector) | RT-1 | read, order | hands_off | A | 1 | manifest; checkout status **unconfirmed** by the vendor, unlike Uber Eats and Resy — the smoke test decides |
-| DoorDash (dd-cli) | RT-6 | read, order | completes | A | 3 | waitlist; user's own Mac |
+| DoorDash (dd-cli) | — | — | — | H | — | Not a release route. Use an official, scoped connector if approved; otherwise prepare the order and hand off to DoorDash |
 | Uber Eats | RT-1 | read | hands_off | A | 1 | manifest; vendor-confirmed hand-off |
 | Instacart | RT-2 | read, order | hands_off | A | 2 | needs a rep; returns a shareable list URL |
 | Resy | RT-1 | read | hands_off | A | 1 | manifest; vendor-confirmed hand-off |
-| OpenTable | RT-6 | read, book, **cancel, modify** | completes | **B** | 3 | community MCP. The one row that carries all four, and the reason `cancel`/`modify` exist as verbs at all |
-| Grubhub | RT-6 browser | read, order | one_tap | **B** | 3 | browser script |
+| OpenTable | RT-4 device hand-off | book, cancel, modify | hands_off | H | 3 | Prepare permitted booking details and open OpenTable; user reviews and finishes. No community-client direct action |
+| Grubhub | RT-4 device hand-off | order | hands_off | H | 3 | Prepare the order and open Grubhub; user reviews, pays and submits |
 | Yelp | RT-2 | read | completes | A | 4 | money gate |
 | Starbucks, Chipotle, etc. | RT-4 | order | hands_off | A | 1 | deep link |
 
@@ -1355,8 +1957,9 @@ companion.
 some row carries them.** The row-level answer promised earlier:
 
 ```
-  OpenTable    YES, both. The community client exposes them, and this is
-               the row that justifies the verbs.
+  OpenTable    HAND-OFF. The community client is not a release route.
+               Operator prepares the requested change and opens the official
+               app/site; the user cancels or modifies there.
   Resy,        NO. Both are hands_off connectors that only READ - they
   Booking.com  cannot make the booking, so they cannot unmake it. If the
                RT-1 audit finds a write path, they gain both verbs and
@@ -1376,29 +1979,30 @@ some row carries them.** The row-level answer promised earlier:
 | Venmo | RT-4 | — | hands_off | A | 1 | `venmo://` pre-filled; API is retired |
 | Cash App, Zelle | RT-4 | — | hands_off | A | 1 | deep link if one exists |
 | Splitwise | RT-2 | read, write | completes | **C1 until granted** | 2, blocked | Self-serve tier is explicitly not for commercial projects. Email developers@splitwise.com for commercial terms. Ships only if granted — same shape as Reddit. |
-| PayPal | RT-1 | — | hands_off | A | 1 | has real agent payments; we do not use them |
+| PayPal | RT-4 | — | hands_off | A | 1 | PayPal's official MCP is merchant tooling, not control of the authenticated consumer payer account; open PayPal for the user |
 | Stripe, Square | — | — | — | — | never | merchant-side, not this product |
 | Banks, Robinhood, Coinbase | — | — | — | C | never | prohibited action class |
 
 There is no `pay` verb, so no adapter can move money even if a vendor offers it.
-PayPal's MCP server genuinely supports agent-initiated payments and Operator
-still deep-links, because you want the user's thumb on that button. The house
-money rule is enforced by the contract, not by remembering.
+PayPal's official MCP controls merchant business tasks such as invoices; it is
+not a consumer payer-account route. Operator still deep-links because the user
+must complete every payment. The house money rule is enforced by the contract,
+not by remembering.
 
 ### Shopping
 
 | App | RT | Verbs | Ceiling | Class | Wave | Build |
 |---|---|---|---|---|---|---|
-| Shopify merchants | RT-3 | read, order | completes | A | 3 | ACP client |
-| Etsy | RT-3 | read, order | completes | A | 3 | ACP, same client |
-| Target, Walmart, Nike, Sephora, Wayfair | RT-3 | read, order | completes | A | 3 | UCP client |
+| Shopify merchants | RT-3 | read, compose cart | hands_off | A | 3 | ACP may prepare a cart; the user completes checkout on the merchant's official surface |
+| Etsy | RT-3 | read, compose cart | hands_off | A | 3 | ACP may prepare a cart; the user completes checkout on Etsy |
+| Target, Walmart, Nike, Sephora, Wayfair | RT-3 | read, compose cart | hands_off | A | 3 | UCP may prepare a cart; the user completes checkout with the retailer |
 | eBay (browse) | RT-2 | read | completes | A | 2 | manifest |
-| eBay (checkout) | RT-2 | order | completes | A | — | limited release; park with a dated reason |
+| eBay (checkout) | RT-4 official-site hand-off | compose cart | hands_off | H | — | The limited-release API does not prove consumer-account control. Prepare the item and open eBay; the user checks out |
 | **Amazon** | — | — | — | **C** | never | court-enjoined; do not point a browser at it |
 
-Build **both** ACP and UCP. They are one adapter shape with two transports, most
-of the work is shared, and neither has proven consumer demand — hedging is
-cheaper than picking wrong.
+Build **both** ACP and UCP only for cart preparation. They are one adapter shape
+with two transports. Neither protocol may pay, submit an order, or claim a
+purchase; the user completes checkout on the official merchant surface.
 
 ### Travel
 
@@ -1408,24 +2012,39 @@ cheaper than picking wrong.
 | Tripadvisor, Viator | RT-1 | read | hands_off | A | 1 | manifest |
 | StubHub | RT-1 | read | hands_off | A | 1 | manifest |
 | AllTrails | RT-1 | read | completes | A | 1 | manifest |
-| Airbnb | RT-6 browser | read, book | one_tap | **B** | 3 | browser script |
+| Airbnb | RT-4 device hand-off | book | hands_off | H | 3 | Prepare permitted search/booking details and open Airbnb; user reviews and books |
 | Airlines | RT-4 | book | hands_off | A | 1 | deep link |
 
 ### Media
 
+**Folded in 2026-08-02** from [operator-execute-media-maps-plan.md](operator-execute-media-maps-plan.md) (absorbed — parent is source of truth).
+
+**Ceiling rule:** Hand-off = **pay** + **sensitive bookings/orders**. Entertainment “put it on screen / start playing” is COMPLETE when an official API or deep link can do it. YouTube COMPLETE = search + open video (not in-app chrome remote). **The whole adapter is demoted to hands_off 2026-08-03** — both `read`/search and `play` go through the same `search.list` call, and the live key returns `403 PERMISSION_DENIED` because its Google Cloud project is restricted, so nothing has ever been carried to the end through this adapter. The earlier "video played on the Pixel" evidence was a hand-typed `am start -a VIEW` intent that never touched the adapter or the capability flow, so it shows Android can open a video, not that Operator can. Spotify COMPLETE = Web API search + start playback. **Ships `unverified` as of 2026-08-03** — built and tested, but no user token exists yet, so playback has never actually been driven. Netflix is out of this implementation push (no adapter); remains non-COMPLETE if revisited later.
+
 | App | RT | Verbs | Ceiling | Class | Wave | Build |
 |---|---|---|---|---|---|---|
-| Spotify | RT-1 or RT-2 | read, play, write | completes | A | 1 | **5-user cap in Developer Mode** |
+| Spotify | RT-2 | read, play | `unverified` 2026-08-03 | A | 1 | Web API user OAuth; search + start/transfer playback. No playlist/library write in v1. Adapter and OAuth flow built and tests green, but **no user token exists yet, so playback has never been driven** — one owner consent click away. Smoke: search + play on Pixel (no active device = fail → HAND-OFF) |
+| YouTube | RT-2 | read, play | **hands_off 2026-08-03 (whole adapter)** | A | 2 | Same as Social row: Data API search + open intent — **demoted 2026-08-03**: both `read`/search and `play` go through the same `search.list` call, and the live key returns `403 PERMISSION_DENIED` because its Google Cloud project is restricted, so nothing has ever been carried to the end through this adapter. The earlier "video played on the Pixel" evidence was a hand-typed `am start -a VIEW` intent that never touched the adapter or the capability flow, so it shows Android can open a video, not that Operator can. Like/subscribe deferred. Quota budget |
 | Audible | RT-1 | read, play | completes | A | 1 | manifest |
 | Apple Music | RT-2 | read, play, write | completes | A | 1 | MusicKit; needs a subscription |
 | Podcasts | RT-2 | read, play | completes | A | 1 | plain RSS |
-| Netflix (My List, search) | RT-6 browser | read, write | completes | **B** | 3 | API retired 2014; the logged-in web page still does it |
-| Netflix (playback) | RT-4 | play | hands_off | A | 1 | **cannot be automated at all** — Netflix requires a browser build it has signed; deep link and let the TV app play it |
+| TikTok (watch) | RT-4 | open | completes | A | 2 | Deep-link/open the asked video when possible; post stays Social row. Fail → HAND-OFF open app |
+| Netflix (My List, search) | RT-4 device hand-off | write, play | hands_off | H | — | **Out of this push** (Owner 2026-08-02). Registry row only; do not build adapter now |
+| Netflix (playback) | RT-4 | play | hands_off | A | — | **Out of this push.** Cannot automate; do not build |
 
-Spotify's five-user cap is the sharpest early constraint on the list: it makes a
-great demo and cannot serve a waitlist. Either start the extended-quota
-application in Wave 1 or route through the Anthropic connector and let them own
-the relationship. Decide it in Wave 1, not at launch.
+**Smokes / fail-closed (media + Maps) — must be driven on Pixel 9; see “This implementation push — Pixel 9 self-verification”:**
+
+| Smoke | Pass | Fail |
+|---|---|---|
+| Spotify search + play | Track + playback **on Pixel** (no-device = fail) | Demote to HAND-OFF open app |
+| YouTube search + open | Video id + YouTube opens | Demote open and/or search per failure |
+| Maps place/directions | Answer visible in Operator | Keep/demote that verb only |
+| Maps navigation intent | Maps opens with route | Demote nav-intent only |
+| Netflix | — | **Skipped this push** |
+
+Spotify (2026-08-02: route approved COMPLETE via official Web API). **Ships `unverified` as of 2026-08-03** — adapter and OAuth flow are built and tests pass, but no user token exists yet, so playback has never been driven; one owner consent click away. YouTube (2026-08-02: route approved COMPLETE search + open). **As of 2026-08-03 the whole adapter is DEMOTED to hands_off** — both `read`/search and `play` go through the same `search.list` call, and the live key returns `403 PERMISSION_DENIED` because its Google Cloud project is restricted, so nothing has ever been carried to the end through this adapter. The earlier "video played on the Pixel" evidence was a hand-typed `am start -a VIEW` intent that never touched the adapter or the capability flow, so it shows Android can open a video, not that Operator can. Netflix: **not in this push**.
+
+**Spotify multi-user shape:** `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` are **Operator’s one developer app** (shared). Each end user still does a short **Connect Spotify** OAuth once; refresh tokens stay in that user’s private storage. Owner’s Spotify login is only for lab smoke — not a shared “Operator plays as everyone” account. Users need Spotify Premium for playback (Spotify Web API rule).
 
 ### Productivity and personal
 
@@ -1433,12 +2052,15 @@ the relationship. Decide it in Wave 1, not at launch.
 |---|---|---|---|---|---|---|
 | Google Calendar, Drive, Photos | RT-2 | read, write | completes | A | 1 | manifest |
 | Gmail | RT-2 | read, compose, send | completes | A | 1 read / 2 send | **restricted scope, CASA clock** |
-| Outlook, Teams | RT-2 | read, send, write | completes | A | 1 | Graph, `/common` authority |
+| Outlook | RT-2 | read, send, write | completes | A | 1 | Graph delegated access for the authenticated personal or work user |
+| Teams (work/school) | RT-2 | read, send, write | completes | A | 1 | Graph delegated access; actions are on behalf of the authenticated work/school user |
+| Teams (personal account) | RT-4 device hand-off | compose | hands_off | H | 1 | Microsoft Graph's chat send endpoint does not support personal Microsoft accounts. Prepare the message and open Teams |
 | Notion | RT-1 | read, write | completes, **plan-tiered** | A | 0 | Wave 0's RT-1 proving adapter, through Notion's hosted MCP. **OAuth only — it rejects bearer tokens**, so there is no key to hold and nothing to put in `.env`. It was briefly going to be built twice, the second time over the REST API to prove RT-2 on an account we already had; that fixture was cut on 2026-07-31 because for Notion we would always ship the MCP, so the REST half was code written to be thrown away. RT-2 is proven by Wave 1's first real adapter instead. The MCP already does discovery (`notion-search`), so we never hardcode a page or database id — what we add is preview, the measured ceiling, consent and revoke. Ceiling varies with the *user's* Notion plan, so it must be measured per connection |
 | Todoist | RT-2 | read, write | completes | A | 1 | manifest |
 | Apple Notes, Reminders | RT-6 | read, write | completes | A | 0/1 | local CLI on the paired Mac |
-| Credit Karma, TurboTax | RT-1 | read | completes | A | 1 | manifest; read-only |
-| Taskrabbit, Thumbtack | RT-1 | read, book | completes | A | 1 | manifest |
+| Credit Karma, TurboTax | RT-4 prepare-and-open hand-off | read | hands_off | H | 1 | NO-DOOR (no public API) in rt1-reachability-audit — demoted from provisional completes. Specs `creditkarma` / `turbotax` in deeplink Wave1Specs; open app only, never claim score retrieved / filed |
+| Taskrabbit | RT-4 official-site hand-off | compose booking | hands_off | H | 1 | The documented API uses machine-to-machine partner credentials, not an authenticated consumer account. Prepare the request and open Taskrabbit |
+| Thumbtack | RT-4 official-site hand-off | compose booking | hands_off | H | 1 | Partner approval does not establish an authenticated-consumer route. Prepare the request and open Thumbtack unless a user-delegated route is documented later |
 | Apple Health | RT-4 | read | completes | A | — | parked: on-device HealthKit only, and the plan's model calls are off-device. Revisit only with an on-device model. |
 | **Strava** | — | — | — | **C1** | never | policy names context-window ingestion |
 
@@ -1456,7 +2078,7 @@ stopped; it never announces that nothing happens.
 | Banks, Robinhood, Coinbase | C2 | Money movement is a prohibited action class | "Operator never moves money. Opening the app." |
 | Strava | C1 | API policy bars context-window ingestion | "Strava's rules don't allow an assistant to read your activities." |
 | Venmo API, Cash App, Zelle | — | No API door, and the money rule means we would deep-link anyway | "There's no way in yet — opening the app with it filled in." |
-| Hinge; Bumble; Lyft booking; Snapchat Stories, Memories, Snap Map | — | No web client exists to point a browser at. Bumble's web sign-in was switched off 10 June 2026; Lyft's now just texts an app-download link | "There's no way in yet." Different copy — this one can change. |
+| Hinge; Bumble; Lyft booking | — | No web client exists to point a browser at. Bumble's web sign-in was switched off 10 June 2026; Lyft's now just texts an app-download link | "There's no way in yet." Different copy — this one can change. |
 | Apple Health | — | HealthKit never leaves the device and the model runs off-device | "Your health data stays on your phone." |
 | eBay checkout | — | Behind a limited release with a signed contract; browse ships, checkout does not | "I can find it — you'll finish the purchase in eBay." |
 | Netflix playback | — | Requires a browser build Netflix has signed; unfixable | "I can manage your list, but Netflix has to play it." |
@@ -1477,10 +2099,11 @@ CASA clears, and the waitlist copy has to say so.
 
 ### Web
 
-| Any website | RT-6 browser | read, write (public forms) | completes | A | 3 |
+| Any website | paired-computer hand-off | compose | hands_off | H | 3 | Prepare non-sensitive form content and open the official site; user reviews and submits |
 
-The least controversial job the browser runtime has: no login, no impersonation,
-no injunction. It is also the universal fallback when an adapter is demoted.
+Public pages can still be useful, but browser automation is not a universal
+fallback. Operator prepares non-sensitive content and opens the official page;
+the user reviews and submits it.
 
 ---
 
@@ -1496,11 +2119,11 @@ is nearly the whole plan.
   capability contract                    RT-4 device runtime
   all ~60 manifests
   router + eval set                      Android: notification read + reply
-  RT-1, RT-2, RT-3, RT-5 runtimes                 action - SMS/RCS ONLY;
-  RT-6 companion runtime                          the closed social apps
-                                                  attach no reply box.
-                                                  Plus deep links.
-  consent framework                      iOS:     DEFERRED. Expected shape:
+  RT-1, RT-2, RT-3 runtimes                       action - NOT SMS/RCS
+                                                  only (2026-08-03; see the
+                                                  note under the app table);
+  paired-computer Codex route                     plus app/site hand-offs.
+  authorization + hand-off contract      iOS:     DEFERRED. Expected shape:
   ceiling verification                            no notification read at all,
   outcome model                                   context from the share sheet
                                                   or a screenshot, out is
@@ -1527,11 +2150,14 @@ than what this repo does today:
 ```
   WHAT DESIGN.md COMMITTED TO      WHAT THIS PLAN NEEDS
   ---------------------------      -----------------------------------------
-  notification COUNT, framed as    the CONTENT of messages from Instagram,
-  a deliberately limited purpose   WhatsApp, Signal, Messages - read, sent
+  notification COUNT, framed as    the CONTENT of messages from WhatsApp,
+  a deliberately limited purpose   Signal, Messages - read, sent
                                    to a model, and stored long enough to
                                    compose a reply
 ```
+
+Personal Instagram is deliberately absent from the right column. Operator may
+use only context the user directly supplies while preparing the draft.
 
 Play's notification-access policy restricts the listener to uses core to the
 app's function and has been tightened repeatedly; a personal-assistant reply
@@ -1603,11 +2229,9 @@ spend.
 So the Wave 0 spike is the cheap version of finding out: read the current
 guidelines against what Operator actually does, and where it is genuinely
 ambiguous, ask Apple before building rather than after. It is a day. Three
-possible answers and all three are useful — fine as designed; fine if Class B
-adapters are absent on iOS (which the contract already permits, since a manifest
-can be platform-scoped); or not fine at all, in which case iOS ships as a
-draft-and-open client over Class A adapters only, and open question 7 answers
-itself.
+possible answers and all three are useful — fine as designed; fine with only
+official direct routes plus hand-offs; or not fine at all, in which case iOS
+ships only after the design changes.
 
 There is no shortcut worth pretending about. What the plan *does* buy is that
 the shell is the only iOS-specific cost: the contract, all ~60 manifests, the
@@ -1677,8 +2301,8 @@ recording, and once per scheduled smoke run.
   (scheduled)        against the actual service         scheduled, not
                                                         in the dev loop
   ----------------   --------------------------------   --------------
-  consent drill      class B revoke really deletes;     minutes, manual
-  (per release)      the kill switch really kills
+  policy drill       under-scoped action hands off;      minutes, manual
+  (per release)      revoke and kill switch really work
   ----------------   --------------------------------   --------------
   HANDS-ON PASS      the product is actually usable,    15-40 min per
   (per adapter,      on a real phone, against real      adapter, human,
@@ -1715,9 +2339,9 @@ recipient of every message sent.
   ----------------------------------------------------------------------
   1. INSTALL     build to the physical Pixel 9, not the emulator. The
                  emulator cannot post real notifications from real apps.
-  2. CONNECT     run the real connect flow, including the class B consent
-                 screen if there is one. Read the screen as a user would
-                 and note if it lies or overwhelms.
+  2. CONNECT     for a direct route, run the official authorization flow and
+                 verify the granted scope. For class H, verify no third-party
+                 account connection exists.
   3. ASK         speak or type the utterance a person would actually use,
                  not the one in the eval file. "Text Aadivya I'm running
                  late", not "send message to contact".
@@ -1850,9 +2474,8 @@ measurements:
   Wave 2 gated adapters     same code,    the work is emails and waiting, not
                             weeks of      engineering. Start every application
                             calendar      in Wave 1 or Wave 2 stalls.
-  Wave 3 browser runtime    4-8 weeks     the runtime is real engineering; the
-                            + 0.5-2 days  scripts on top of it are not
-                            per script
+  Wave 3 hand-off rows      0.5-2 days    app/site opening, prepared-content
+                            per app       preview and honest outcome proof
   iOS shell                 8-16 weeks    a second client, a second language,
   DEFERRED until after      + half a day  zero new app coverage. NOT ON THE
   Wave 1, and until         of probes     CLOCK YET: it starts when an iPhone
@@ -1867,14 +2490,13 @@ measurements:
                             in total)     saved up. Gates each wave's exit.
   ----------------------    ----------    ----------------------------------
   Calendar dependencies that are nobody's work and block real ships:
-    Gmail CASA assessment, Spotify extended quota, Discord DM scope,
-    YouTube quota, dd-cli waitlist, Instacart and Uber BD contacts,
-    App Store review, and the class B legal review.
+    Gmail CASA assessment, YouTube quota, Instacart and Uber BD contacts,
+    and App Store review.
     Every one of these starts the day it can, not the day it is needed.
 ```
 
 **The standing cost people forget is the test accounts.** Forty-odd third-party
-accounts for tier-1 smoke testing, several paid (Spotify Premium, Apple Music,
+accounts for tier-1 smoke testing, several paid (Apple Music,
 Audible, a Netflix plan, DoorDash and Uber accounts that must occasionally place
 a real order), all needing periodic re-auth by a human. Call it **$150–400 a
 month in subscriptions plus a few hours a month of somebody's attention**, and
@@ -1893,9 +2515,9 @@ the long tail rather than the scheduled run.
   (vendor changes, quietly)   repeatedly   automatically; UI tells the truth;
                                            kill switch without a release
   -------------------------   ----------   ----------------------------------
-  a vendor bans us mid-       likely       kill switch, plus the consent
-  flight (cf. Meta on         (it has      screen already told the user this
-  WhatsApp, Jan 2026)         happened)    could happen for class B
+  a vendor changes access     likely       authorization gate demotes the verb
+  or scope                    (it has      to hand-off; kill switch disables a
+                              happened)    stale direct route
   -------------------------   ----------   ----------------------------------
   router picks wrong and      likely       preview is mandatory for send,
   something irreversible      without      order and book. No exceptions,
@@ -1909,12 +2531,9 @@ the long tail rather than the scheduled run.
   Gmail CASA lapses at        moderate     Wave 1 starts the clock; treat it
   100 users                                as a launch dependency
   -------------------------   ----------   ----------------------------------
-  legal action over a         low but      class B is user-hardware,
-  class B adapter             existential  user-account, user-consented -
-                                           and it is still a lawyer's call,
-                                           not a search result. The legal
-                                           gate is what stops us finding out
-                                           the expensive way.
+  unofficial account          low after    release rule forbids it; contract
+  automation ships            the gate     tests reject browser, bridge and
+                                           under-scoped execution routes
   -------------------------   ----------   ----------------------------------
   half the RT-1 connectors    UNKNOWN,     the Wave 0 reachability audit.
   turn out to be Claude-      and it is    Each failure demotes to RT-2, RT-4
@@ -1949,58 +2568,142 @@ the long tail rather than the scheduled run.
   on iOS                                   thing that enforces it while the
                                            platform is unwatched.
   -------------------------   ----------   ----------------------------------
-  Snapchat's web client       50/50        one session answers it. If it
-  bounces our Chromium                     bounces, Snapchat returns to the
-                                           no-door list and Wave 3 loses its
-                                           headline unlock, nothing else.
+  Snapchat                    dropped      owner does not use it; no probe,
+                                           adapter or browser work is scheduled
+                                           unless it is explicitly added later.
 ```
 
-**Reversibility, concretely.** Every adapter can be turned off remotely without
-an app release. Every class B connection can be revoked by the user, with the
-revoke proven by test. Every wave can ship without the wave after it. Nothing in
-Wave 1 depends on any money being spent.
+**Reversibility, concretely.** Every direct adapter can be turned off remotely
+without an app release, and every official account connection can be revoked by
+the user with the revoke proven by test. Class H holds no account credential.
+Every wave can ship without the wave after it.
 
 ---
 
 ## Open questions
 
-1. **The Kernel account for RT-5 is unnamed.** RT-5 is now in scope — that part
-   is settled — but the runtime that bills by the hour cannot run on the OpenAI
-   account, and the $500 ceiling does not stretch to cover it. This needs the
-   same treatment the model provider got: a literal account, personal or work,
-   a monthly ceiling, and a line in `saved-results`. It blocks Wave 4 and
-   nothing before it, so there is time — but it is a hard block when it lands.
+**Who each one belongs to, checked 2026-08-03.** Counting these as six items of
+outstanding engineering work overstates them, so here is the disposition in one
+place. **None of the six is agent-doable, and that is by design rather than by
+neglect:** Q1 and Q2 are decisions only the owner can make (a recipient, a
+threshold, a user-experience call — there is no fact to look up that would
+settle either); **Q3 is closed, both halves**, answered 2026-08-03 and written
+up below; Q4 and Q5 are deferred with the whole iOS shell, and the plan already
+says why — there is no iPhone, and the simulator cannot answer either question,
+so they are needed before iOS RT-4 starts and not before Android ships; Q6 is
+declared out of scope in its own text and sits on the legal and custody line,
+blocking the first user who is not the owner rather than blocking Wave 0.
 
-2. **iOS hand-off confirmation: say nothing, or ask on return?** Carried over
+1. **Launch operations details need the owner.** *(Owner decision — no
+   engineering blocked.)* Name the support/feedback
+   recipient and public contact details, the feedback-call booking method, the
+   cloud-budget alert thresholds and recipients, and the retention/access rules
+   for consented diagnostics and opt-in traces. The route, $100 hard cap and
+   on-device redaction rule are already settled.
+
+2. **Instagram clipboard behavior: separate Copy and Open controls, or one
+   Copy & Open control?** This is a user-experience decision only the owner can
+   make. The safer baseline is separate controls because the clipboard changes
+   only after a clear tap. Either choice still ends before Instagram send.
+
+3. **How precisely can Android open Instagram?** This is technical homework,
+   not a user decision. The generic installed-app launch is present locally.
+   A recipient-specific DM/profile link and any content-sharing target must be
+   checked against current official Android/Instagram documentation and on the
+   Pixel before the plan promises them. Until then, the contract is only “open
+   Instagram,” with the user choosing the thread or posting surface.
+
+   **Documentation half: answered, 2026-08-03.** Meta’s own pages were read
+   directly (sharing-to-feed, sharing-to-stories, and the Messenger Platform
+   ig.me page). Findings, with the evidence, are in
+   `saved-results/how-precisely-android-can-open-instagram.md`:
+
+   - **A recipient-specific DM link does not exist for ordinary accounts.** The
+     only documented mechanism, `https://ig.me/m/<USERNAME>`, is published
+     inside the *Instagram Messaging API* docs — the product for businesses
+     running a bot — and its stated requirement is that the account “must be
+     published” and be connected to an app. Nothing in the page says it works
+     for an arbitrary personal account. It is also “not supported on Instagram
+     Web.”
+   - **A profile deep link is undocumented.** `instagram://user?username=…`
+     appears in no Meta documentation — not deprecated, never published. The
+     web address `https://instagram.com/<username>` may open the app through
+     Android’s own app-links mechanism, but that is the operating system’s
+     behaviour, not a Meta promise.
+   - **Content sharing splits in two, and the split costs money-adjacent
+     effort.** Feed sharing is documented as a plain Android share sheet
+     (`ACTION_SEND` + `createChooser`) with **no Facebook App ID required**.
+     Stories sharing (`com.instagram.share.ADD_TO_STORY`) is documented but
+     quotes: “Beginning in January 2023, you must provide a Facebook AppID to
+     share content to Instagram Stories.” That is an owner act — a Meta
+     developer account and an app registration — not a coding task.
+
+   **So the contract in this plan is confirmed as correct, not provisional.**
+   “Open Instagram, you choose the thread” is exactly what the documentation
+   supports without registration. `HandOffActions.openApp` already does that
+   and nothing more (`HandOffActions.kt:122-142`), and the companion adapter’s
+   own preview says “Operator opens Instagram only.” No change is warranted.
+
+   Held by a tripwire:
+   `InstagramHandOffStaysGenericTest.kt` (4 tests, green) fires if an
+   `instagram://`/`ig.me` link appears in `src/main`, or if a Stories/Reels
+   share intent appears with no Facebook App ID. Feed sharing is deliberately
+   not caught. All four proven able to fail on injected violations; suite went
+   619 → 623 tests, 0 failures.
+
+   **Pixel half: answered too, 2026-08-03 — and it did not need the phone
+   unlocked.** The remaining claim was observation-shaped: whether
+   `https://instagram.com/<username>` actually lands in the app on this device.
+   Android decides that *before* it launches anything, so it can be read
+   directly with the screen off. Asked on the Pixel:
+
+   ```
+   cmd package resolve-activity --brief --user 0 \
+     -a android.intent.action.VIEW -c android.intent.category.BROWSABLE \
+     -d "https://instagram.com/instagram"
+   -> android/com.android.internal.app.ResolverActivity
+   ```
+
+   **It does not land in Instagram. It opens the "which app?" chooser.** The
+   control proves the probe works — `https://example.com/x` on the same device
+   resolves straight to `com.android.chrome/…IntentDispatcher`, `isDefault=true`.
+
+   Why, from `pm get-app-links --user 0 com.instagram.android`: the domains are
+   `verified` at the system level (`instagram.com: verified`, `ig.me: verified`),
+   but the per-user section reads **`Selection state: Disabled:`** and lists
+   every one of them. Link handling for Instagram is switched off for this user,
+   so Android ignores the verification and falls back to the chooser —
+   `query-activities` confirms two handlers compete, Instagram’s
+   `UrlHandlerLauncherActivity` and Chrome.
+
+   **This is a per-phone setting the owner controls** (Settings → Apps →
+   Instagram → Open by default), not something an app can force. So a web
+   address is not a route Operator can promise: on a phone where that toggle is
+   off it is *worse* than what ships today, because it adds a chooser dialog the
+   user has to dismiss before they get to Instagram at all.
+
+   **Both halves now agree: the current contract is the ceiling.** No new test
+   was added for this — `InstagramHandOffStaysGenericTest` already asserts the
+   hand-off stays a `getLaunchIntentForPackage` call, which is exactly what
+   rules out swapping in an `ACTION_VIEW` on an `instagram.com` address. A
+   separate guard that tried to spot “an Instagram URL used as a hand-off
+   target” could not tell that apart from ordinary link content, and a guard
+   that cannot fail honestly is worse than none.
+
+   *One caveat, stated rather than glossed:* the intent was resolved, not
+   launched — launching needs the screen on. Resolution is the step that picks
+   the app, and two independent readings agree on it, but no window was
+   observed opening.
+
+4. **iOS hand-off confirmation: say nothing, or ask on return?** Carried over
    unresolved from the draft-and-open plan. Deferred with the rest of iOS;
    needed before the iOS RT-4 work starts, not before Android ships.
 
-3. **Custom keyboard, or clipboard?** Two taps versus three, at the cost of
+5. **Custom keyboard, or clipboard?** Two taps versus three, at the cost of
    iOS's Allow Full Access on a product already asking to read messages. Also
    deferred with iOS.
 
-4. **Spotify: apply for extended quota, or route through the connector?** The
-   five-user cap forces this in Wave 1. It is the first capacity-gate decision
-   and it sets the pattern for Gmail, YouTube and Discord.
-
-5. **The legal read on class B — now a gate, so it needs a date.** The C1/C2/C3/B
-   rule above is my reasoning, not advice, and the line between "our contract to
-   break" and "the user's" is exactly what a lawyer should confirm or move. This
-   blocks the class B iMessage row in Wave 1 and all of Wave 3, so it needs
-   booking in Wave 0 — not when Wave 3 is otherwise ready.
-
-6. **Is Snapchat worth a session before Wave 3?** It is the largest single
-   coverage gain available and it hinges on one untested question. Answering it
-   early is cheap and changes what Wave 3 is *for*; answering it late risks
-   building the runtime around a headline that does not exist.
-
-7. **Nothing in this plan has a named owner.** The sizing table gives roles, not
-   people, and the gates that block the most work — "name the Kernel account"
-   and "book the lawyer" — are both actions only you can take. The recurring
-   test-account re-auth work also needs someone's name on it before Wave 1, or
-   it silently becomes nobody's job and the smoke tests rot.
-
-8. **Deliberately out of scope here, named so it is not mistaken for done.**
+6. **Deliberately out of scope here, named so it is not mistaken for done.**
     This is an engineering plan. A commercial product moving message content
     and financial-adjacent reads (Credit Karma, TurboTax) through cloud model
     calls also needs a privacy policy, a data-retention answer, and abuse and
@@ -2009,13 +2712,24 @@ Wave 1 depends on any money being spent.
     line as the legal and custody gates.
 
 Closed by this revision, listed so they are not re-opened by accident:
-**the browser-runtime question is answered — BOTH RT-6 and RT-5**, companion-local
-by default and the Kernel cloud sandbox as the paid fallback, because
-computer-less users are in scope at launch and RT-6 needs a computer;
+**the first external route is Android cloud, with paired Computer optional**;
+RT-5/RT-6 personal-account browser automation is not a release route;
 **the model-provider account is named** — OpenAI, `ssdear@gmail.com`, personal,
 capped at $500/month, recorded in
 [operator-agent-billing-account.md](../saved-results/operator-agent-billing-account.md),
 which was the file this plan cited before it existed;
+**the recurring account owner is named** — Aadivya owns developer registrations
+and recurring test-account sign-ins;
+**the Android home-prompt behavior is named** — Auto tries app actions first
+and falls back to a Codex task, while the visible Computer override sends
+directly to the paired computer;
+**Spotify's route is Web API COMPLETE by design** (search + start playback via
+user OAuth), but **ships `unverified` as of 2026-08-03** — adapter and OAuth
+flow are built and tests pass, but no user token exists yet, so playback has
+never been driven, one owner consent click away;
+playlist/library write stays out of v1;
+**Snapchat is dropped** — there is no probe or build work for it in this plan;
+**Kernel personal-account automation is retired as a release route**;
 **the iOS shell is deferred until after Wave 1** — there is no iPhone and the
 simulator cannot answer either iOS question, so Android ships first and iOS
 resumes when a device exists, protected by platform-neutral adapters, the
@@ -2028,15 +2742,19 @@ adapters has a design and tier-1's ops cost is dollarized; the contact graph has
 a schema, five resolution rules and a two-stage router that keeps it off our
 servers; Splitwise is C1-blocked rather than shipping; Instacart and Gmail send
 are Wave 2 in both the waves and the tables; RT-1's Claude-only risk has an
-audit with a named owner in Wave 0; the legal review is a gate rather than a
-wish; the browser rescues from the Kernel plan (Snapchat, Maps saved places,
-Netflix My List, Facebook profile) are in Wave 3 with their tests named; the
+audit with a named owner in Wave 0; the authorization gate demotes every
+unofficial, unauthorized or under-scoped action to prepare-and-open hand-off;
+the former browser rescues (Maps saved places, Netflix My List, Facebook
+profile) are hand-offs rather than account automation; the
 open-the-app floor is stated once and applies to every row including Class C;
 `cancel` and `modify` are in the verb set; eBay checkout, Apple Health, Netflix
 playback and the cloud-Android-device option are all in the registry rather than
-only in prose; the notification-reply result is stated as settled and negative
-for Instagram and WhatsApp, which makes Wave 3 mandatory rather than optional,
-with recording the probe properly as a Wave 0 exit condition; the cloud token
+only in prose; Instagram **feed** post/reel/story stays draft-and-open, while
+Instagram **DM send** was planned COMPLETE via Beeper Server after smoke
+(messaging fork), not Operator browser automation — **HAND-OFF as of
+2026-08-03** because that smoke failed (Beeper's only Linux build is an
+AppImage that will not start on the phone); the notification-reply probe remains Wave 0
+evidence only; the cloud token
 store has a custody gate rather than no security model at all; the Apple
 guideline question stays a Wave 0 spike even though the iOS client is deferred,
 because it is a lead time and a "no" is cheapest to hear before any code

@@ -67,6 +67,85 @@ class ReplyCapabilityTest {
         assertEquals("reply_key", result.remoteInputKey)
     }
 
+    // ---- pointing at the action, not just describing it ------------------
+    //
+    // Knowing a reply box exists is not enough to use one. Firing a reply
+    // means holding the live Android action, and only the notification
+    // listener can see those — it gets a list, and has to pick the same one
+    // out of it that classify already picked.
+    //
+    // The listener must not re-apply the rule itself. Two copies of "shade
+    // first, then the watch extender, and only fields that take our own
+    // words" is two copies that can drift, and the drift would be silent:
+    // Operator would send through a different box than the one it measured.
+    // So classify says which action it chose, and the listener just counts
+    // to it.
+
+    @Test
+    fun classifyPointsAtWhichActionItChose() {
+        val result = ReplyCapability.classify(
+            sighting(
+                shade = listOf(
+                    action("Mark as read"),
+                    action("Reply", listOf(freeForm())),
+                ),
+            ),
+        )
+
+        assertEquals(ReplySource.SHADE, result.source)
+        assertEquals(1, result.replyActionIndex)
+    }
+
+    @Test
+    fun theIndexCountsWithinTheWatchExtenderWhenThatIsWhereTheBoxIs() {
+        // The two lists are separate, so the index is only meaningful next to
+        // the source. Counting a watch action's position against the shade
+        // list would reach into the wrong action, or off the end of it.
+        val result = ReplyCapability.classify(
+            sighting(
+                shade = listOf(action("Mark as read")),
+                wearable = listOf(
+                    action("Mute"),
+                    action("Archive"),
+                    action("Reply", listOf(freeForm())),
+                ),
+            ),
+        )
+
+        assertEquals(ReplySource.WEARABLE_EXTENDER, result.source)
+        assertEquals(2, result.replyActionIndex)
+    }
+
+    @Test
+    fun anActionOfferingOnlyCannedChoicesIsNotTheOnePointedAt() {
+        // The canned-only action is skipped for the same reason it does not
+        // count as a reply box: picking from a menu is not sending what the
+        // user meant. If the index pointed here, Operator would fire a
+        // suggested phrase instead of the message it was asked to send.
+        val result = ReplyCapability.classify(
+            sighting(
+                shade = listOf(
+                    action("Quick reply", listOf(cannedOnly())),
+                    action("Reply", listOf(freeForm())),
+                ),
+            ),
+        )
+
+        assertEquals(1, result.replyActionIndex)
+    }
+
+    @Test
+    fun thereIsNothingToPointAtWhenNoReplyBoxExists() {
+        // An index of 0 here would read as "the first action", and the
+        // listener would retain something that cannot accept a reply at all.
+        val result = ReplyCapability.classify(
+            sighting(shade = listOf(action("Mark as read"), action("Mute"))),
+        )
+
+        assertFalse(result.canReply)
+        assertNull("an app with no reply box still pointed at an action", result.replyActionIndex)
+    }
+
     @Test
     fun actionsWithoutRemoteInputsAreNotReplyBoxes() {
         val result = ReplyCapability.classify(

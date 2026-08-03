@@ -7,7 +7,18 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
 )
+
+// mutatingTools names the notion-* tools that change something in Notion
+// when called, as opposed to notion-search/notion-fetch, which only read. A
+// lost reply to one of these is ambiguous in a way a lost reply to a read
+// never is.
+var mutatingTools = map[string]bool{
+	ToolCreatePages: true,
+	ToolUpdatePage:  true,
+}
 
 // HTTPSession is the real MCP session: JSON-RPC 2.0 over HTTP to Notion's
 // hosted MCP server, authenticated with a live OAuth access token supplied
@@ -61,7 +72,11 @@ type rpcResponse struct {
 
 // invoke sends one JSON-RPC request over HTTP and returns its result field,
 // or an error built from either a transport failure or an RPC-level error.
-func (s *HTTPSession) invoke(ctx context.Context, method string, params any) (json.RawMessage, error) {
+// mutating and verb tell invoke whether a lost reply to THIS call is
+// ambiguous (a write whose request may have already landed) or an ordinary
+// failure (a read, which changed nothing) — the caller knows which tool it
+// is calling and invoke does not, so it must be told.
+func (s *HTTPSession) invoke(ctx context.Context, method string, params any, mutating bool, verb string) (json.RawMessage, error) {
 	s.mu.Lock()
 	s.nextID++
 	id := s.nextID
@@ -84,7 +99,18 @@ func (s *HTTPSession) invoke(ctx context.Context, method string, params any) (js
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("notion: %s: %w", method, err)
+		wrapped := fmt.Errorf("notion: %s: %w", method, err)
+		httpMethod := http.MethodGet
+		if mutating {
+			httpMethod = http.MethodPost
+		}
+		classified := adapter.ClassifyHTTPFailure(ID, httpMethod, wrapped)
+		if unknown, ok := classified.(*adapter.OutcomeUnknownError); ok {
+			// The transport call only knows GET vs. POST; the caller knows
+			// which MCP tool this was, so restore that as the Verb.
+			unknown.Verb = verb
+		}
+		return nil, classified
 	}
 	defer resp.Body.Close()
 
@@ -105,7 +131,7 @@ func (s *HTTPSession) invoke(ctx context.Context, method string, params any) (js
 // ListTools calls MCP's tools/list and returns the tool names the connected
 // account's server exposes.
 func (s *HTTPSession) ListTools(ctx context.Context) ([]string, error) {
-	raw, err := s.invoke(ctx, "tools/list", map[string]any{})
+	raw, err := s.invoke(ctx, "tools/list", map[string]any{}, false, "tools/list")
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +153,7 @@ func (s *HTTPSession) ListTools(ctx context.Context) ([]string, error) {
 // Call invokes one MCP tool by name via tools/call and returns its raw
 // result payload.
 func (s *HTTPSession) Call(ctx context.Context, tool string, args map[string]any) (json.RawMessage, error) {
-	raw, err := s.invoke(ctx, "tools/call", map[string]any{"name": tool, "arguments": args})
+	raw, err := s.invoke(ctx, "tools/call", map[string]any{"name": tool, "arguments": args}, mutatingTools[tool], tool)
 	if err != nil {
 		return nil, err
 	}

@@ -18,6 +18,15 @@ import (
 // caller can test for "this manifest is bad" without parsing the message.
 var ErrInvalidManifest = errors.New("invalid manifest")
 
+// ErrGateNotCleared is returned when a manifest declares a checkpoint the
+// request has not cleared. Nothing in the product can clear one today, so
+// any gate other than GateNone refuses. This lives on the manifest, not on
+// any one caller, because both the user-facing runner (execution.Runner) and
+// the unattended verification runners have to refuse the same way, and
+// execution already imports verification — so the rule has to sit somewhere
+// both can reach without a cycle.
+var ErrGateNotCleared = errors.New("adapter declares a gate that has not been cleared")
+
 // ---- runtime --------------------------------------------------------------
 
 // Runtime identifies which execution environment a capability adapter runs
@@ -82,7 +91,7 @@ func ParseVerb(name string) (Verb, error) {
 // and therefore must be shown to the user before Execute runs.
 func (v Verb) RequiresPreview() bool {
 	switch v {
-	case Send, Order, Book, Cancel, Modify:
+	case Send, Order, Book, Write, Cancel, Modify:
 		return true
 	default:
 		return false
@@ -102,6 +111,13 @@ const (
 )
 
 func validCeiling(c Ceiling) bool {
+	return c.Valid()
+}
+
+// Valid reports whether c is one of the three known ceilings. Anything else
+// (including the empty string) is not a real ceiling and must be refused
+// rather than ranked or compared.
+func (c Ceiling) Valid() bool {
 	switch c {
 	case Completes, OneTap, HandsOff:
 		return true
@@ -131,6 +147,19 @@ func (c Ceiling) Rank() int {
 func (c Ceiling) AtMost(other Ceiling) Ceiling {
 	if other.Rank() < c.Rank() {
 		return other
+	}
+	return c
+}
+
+// OrHandsOff reads a ceiling an adapter handed over at some earlier moment
+// (not from the manifest file, so it may be blank or misspelled) and returns
+// the ceiling that is safe to act on. Blank is not a claim of any kind, and
+// the honest reading of "no claim" is the most modest ceiling there is, not
+// the strongest — an adapter that forgot to declare must never be read as
+// having declared the best possible outcome.
+func (c Ceiling) OrHandsOff() Ceiling {
+	if !c.Valid() {
+		return HandsOff
 	}
 	return c
 }
@@ -366,6 +395,14 @@ type Manifest struct {
 	Region        []string `json:"region"`
 	Platform      Platform `json:"platform"`
 	ProvesCeiling string   `json:"proves_ceiling"`
+
+	// Unshipped, when set, is the plain-English reason no build registers
+	// this adapter. An adapter nobody can reach makes no claim to any user,
+	// so it is not asked to name a smoke test proving its ceiling. It is a
+	// reason rather than a yes/no on purpose: the exemption has to be
+	// written down and readable in the manifest, not taken quietly. Empty
+	// means the adapter ships and every rule applies.
+	Unshipped string `json:"unshipped,omitempty"`
 }
 
 // Allows reports whether this manifest declares the given verb.
@@ -378,11 +415,34 @@ func (m Manifest) Allows(v Verb) bool {
 	return false
 }
 
-// CeilingIsProven reports whether this manifest names a smoke test that
-// proves its declared ceiling. A manifest without one is still valid — it
-// ships as unverified — but it does not claim proof.
-func (m Manifest) CeilingIsProven() bool {
+// NamesAProof reports whether this manifest names a smoke test for its
+// ceiling. It does NOT report that the ceiling is proven, and the difference
+// is not pedantic: nothing here checks that the name belongs to a test that
+// exists. Measured 2026-08-03, all 14 shipped adapters name a proof that
+// resolves to nothing, so a method called CeilingIsProven — which this was —
+// would have answered "yes, proven" for every adapter in the build and been
+// wrong every time. See runtime/proof_names_resolve_test.go, which pins that
+// count so it cannot grow.
+//
+// A manifest without a name is still valid; it ships as unverified. A
+// manifest with one has made a claim, which is a different and much weaker
+// thing than having kept it.
+func (m Manifest) NamesAProof() bool {
 	return m.ProvesCeiling != ""
+}
+
+// CheckGates scans the manifest's whole declared Gates list and refuses if
+// any entry is not GateNone. GateNone is not a gate — a list of nothing but
+// GateNone passes — but GateNone sitting alongside a real gate is not
+// permission either: the whole list is scanned because the strictest entry
+// decides, not the first or the last.
+func (m Manifest) CheckGates() error {
+	for _, g := range m.Gates {
+		if g != GateNone {
+			return fmt.Errorf("%w: %s requires %s", ErrGateNotCleared, m.ID, g)
+		}
+	}
+	return nil
 }
 
 // Validate checks every field and accumulates every fault, rather than

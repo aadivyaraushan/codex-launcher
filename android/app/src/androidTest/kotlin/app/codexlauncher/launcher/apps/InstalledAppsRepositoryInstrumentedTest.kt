@@ -9,11 +9,32 @@ import java.io.FileInputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InstalledAppsRepositoryInstrumentedTest {
+    /**
+     * Put the phone back on the launcher, whatever happened above.
+     *
+     * The second test deliberately launches another app. When it stopped early --
+     * one failed assertion -- Android Settings stayed in front and covered every
+     * test that ran afterwards, turning one failure into forty. Cleanup that only
+     * runs on the happy path is not cleanup.
+     */
+    @After
+    fun returnHome() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+        val deadline = android.os.SystemClock.uptimeMillis() + 5_000
+        while (android.os.SystemClock.uptimeMillis() < deadline &&
+            automation.rootInActiveWindow?.packageName == "com.android.settings"
+        ) {
+            android.os.SystemClock.sleep(50)
+        }
+    }
+
     @Test
     fun realLauncherAppsSourceEnumeratesEveryLaunchableActivityVisibleToAndroid() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
@@ -46,7 +67,9 @@ class InstalledAppsRepositoryInstrumentedTest {
         assertTrue(repository.launch(requireNotNull(settings)))
 
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        val deadline = android.os.SystemClock.uptimeMillis() + 3_000
+        // 3s was not enough on real hardware: the system UI overlay is still the
+        // active window while Settings is starting, and the sample landed there.
+        val deadline = android.os.SystemClock.uptimeMillis() + 10_000
         var foregroundPackage: CharSequence? = null
         while (android.os.SystemClock.uptimeMillis() < deadline) {
             foregroundPackage = automation.rootInActiveWindow?.packageName

@@ -159,7 +159,7 @@ func TestActionRechecksActiveConnectionAtCommitBoundary(t *testing.T) {
 	}
 }
 
-func TestWarmReplacementReplaysCommittedActionBeforeAnySnapshotReplacement(t *testing.T) {
+func TestWarmReplacementReplaysCommittedActionThenRestoresAFreshSnapshot(t *testing.T) {
 	handler, base := newTestHandlerWithTasks(t, taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
 		return []taskstate.Task{}, nil
 	}))
@@ -184,11 +184,13 @@ func TestWarmReplacementReplaysCommittedActionBeforeAnySnapshotReplacement(t *te
 	if err := handler.Handle(context.Background(), replacement, decode(t, hello)); err != nil {
 		t.Fatal(err)
 	}
-	if len(replacement.messages) != 2 || replacement.messages[0].Type != "welcome" || replacement.messages[1].Type != "action_result" || replacement.messages[1].Sequence == nil || *replacement.messages[1].Sequence != baseSequence+1 {
+	if len(replacement.messages) != 3 || replacement.messages[0].Type != "welcome" ||
+		replacement.messages[1].Type != "action_result" || replacement.messages[1].Sequence == nil || *replacement.messages[1].Sequence != baseSequence+1 ||
+		replacement.messages[2].Type != "snapshot" || replacement.messages[2].Sequence == nil || *replacement.messages[2].Sequence != baseSequence+2 {
 		t.Fatalf("replacement replay = %#v", replacement.messages)
 	}
 	bounds, err := replacement.store.Bounds(context.Background())
-	if err != nil || bounds.Latest != baseSequence+1 {
+	if err != nil || bounds.Latest != baseSequence+2 {
 		t.Fatalf("journal bounds after warm replay = %#v, %v", bounds, err)
 	}
 }

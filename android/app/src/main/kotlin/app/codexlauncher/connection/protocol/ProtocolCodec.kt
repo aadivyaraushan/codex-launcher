@@ -56,7 +56,7 @@ object ProtocolCodec {
         val type = MessageType.entries.find { it.wireName == typeName } ?: fail(ProtocolError.INVALID_ENVELOPE)
         val sequence = root["seq"]?.jsonPrimitive?.longOrNull
         if ("seq" in root && sequence == null) fail(ProtocolError.INVALID_ENVELOPE)
-        val sequenceType = type in setOf(MessageType.SNAPSHOT, MessageType.EVENT, MessageType.ACTION_RESULT, MessageType.ATTACHMENT_ACK)
+        val sequenceType = type in setOf(MessageType.SNAPSHOT, MessageType.EVENT, MessageType.ACTION_RESULT, MessageType.CAPABILITY_RESULT, MessageType.ATTACHMENT_ACK)
         if (sequenceType != (sequence != null) || sequence != null && sequence < 1) fail(ProtocolError.INVALID_ENVELOPE)
         val body = objectField(root, "body")
         validateBody(sender, type, sequence, body)
@@ -171,15 +171,50 @@ object ProtocolCodec {
                 !optionalString(body, "requestId").isValidId() || !optionalString(body, "taskId").isValidId()
             ) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.DECISION_PAGE -> if (sender != Sender.COMPANION || !validDecisionPage(body)) fail(ProtocolError.INVALID_ENVELOPE)
+            MessageType.CAPABILITY_PREVIEW -> if (
+                sender != Sender.COMPANION || body.keys != setOf("requestId", "adapterId", "verb", "headline", "lines", "confirmLabel", "fingerprint") ||
+                !optionalString(body, "requestId").isValidId() || !optionalString(body, "adapterId").isValidId() || optionalString(body, "verb") !in capabilityVerbs ||
+                !optionalString(body, "headline").isSafeDisplay(256) || !optionalString(body, "confirmLabel").isSafeDisplay(64) ||
+                !optionalString(body, "fingerprint").isSha256() || !validCapabilityLines(body["lines"])
+            ) fail(ProtocolError.INVALID_ENVELOPE)
+            MessageType.CAPABILITY_RESULT -> {
+                val ceiling = optionalString(body, "ceiling")
+                val handedOffTo = optionalString(body, "handedOffTo")
+                val done = body["done"]?.jsonPrimitive?.booleanOrNull
+                if (sender != Sender.COMPANION || sequence == null || body.keys != setOf("requestId", "ceiling", "done", "detail", "handedOffTo") ||
+                    !optionalString(body, "requestId").isValidId() || ceiling !in capabilityCeilings || done == null ||
+                    !optionalString(body, "detail").isSafeDisplay(2048) || handedOffTo.isNotEmpty() && !handedOffTo.isSafeDisplay(128) ||
+                    ceiling == "hands_off" && done && handedOffTo.isEmpty() || ceiling != "hands_off" && handedOffTo.isNotEmpty() || !done && handedOffTo.isNotEmpty()
+                ) fail(ProtocolError.INVALID_ENVELOPE)
+            }
+            // The Mac decides a reply is needed but cannot send it: only the
+            // phone holds the live notification. "text" is bounded the same
+            // way capability_request's utterance is, not isSafeDisplay'd,
+            // because it is raw words a person wrote for another person, not
+            // a label this app renders in its own UI — stripping it for
+            // display would change what gets sent.
+            MessageType.DEVICE_ACTION -> if (
+                sender != Sender.COMPANION || body.keys != setOf("requestId", "kind", "handle", "text") ||
+                !optionalString(body, "requestId").isValidId() || optionalString(body, "kind") !in deviceActionKinds ||
+                !optionalString(body, "handle").isSafeDisplay(256) ||
+                !optionalString(body, "text").isBounded(4096) || optionalString(body, "text").isBlank()
+            ) fail(ProtocolError.INVALID_ENVELOPE)
+            // Only the phone can report how a reply actually landed; it is
+            // the one machine that watched the send happen.
+            MessageType.DEVICE_ACTION_RESULT -> if (
+                sender != Sender.PHONE || body.keys != setOf("requestId", "outcome") ||
+                !optionalString(body, "requestId").isValidId() || optionalString(body, "outcome") !in deviceActionOutcomes
+            ) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.ACTION_RESULT -> {
                 val state = optionalString(body, "state")
                 val resultCode = optionalString(body, "resultCode")
                 val forkTaskId = optionalString(body, "forkTaskId")
-                if (sender != Sender.COMPANION || sequence == null || body.keys.any { it !in setOf("actionId", "state", "resultCode", "error", "forkTaskId") } ||
+                if (sender != Sender.COMPANION || sequence == null || body.keys.any { it !in setOf("actionId", "state", "resultCode", "error", "forkTaskId", "question") } ||
                     !optionalString(body, "actionId").isValidId() || state !in actionStates ||
                     body["resultCode"] != null && resultCode !in actionResultCodes ||
                     body["forkTaskId"] != null && (!forkTaskId.isValidId() || state != "confirmed") ||
-                    !validOptionalError(body["error"], state in setOf("failed", "outcome_unknown"))
+                    !validOptionalError(body["error"], state in setOf("failed", "outcome_unknown")) ||
+                    body["question"] != null && (!optionalString(body, "question").isSafeDisplay(512) || state != "cancelled")
                 ) fail(ProtocolError.INVALID_ACTION_STATE)
             }
             MessageType.ACK -> if (sender != Sender.PHONE || body.keys != setOf("throughSeq") || (body["throughSeq"]?.jsonPrimitive?.longOrNull ?: 0) < 1) fail(ProtocolError.INVALID_ACK)
@@ -212,6 +247,16 @@ object ProtocolCodec {
     private fun validateAction(sender: Sender, body: JsonObject) {
         if (sender != Sender.PHONE || !optionalString(body, "actionId").isValidId()) fail(ProtocolError.INVALID_ACTION)
         when (optionalString(body, "kind")) {
+            "capability_request" -> if (
+                body.keys != setOf("actionId", "kind", "utterance") || !optionalString(body, "utterance").isBounded(4096) || optionalString(body, "utterance").isBlank()
+            ) fail(ProtocolError.INVALID_ACTION)
+            "capability_confirm" -> if (
+                body.keys != setOf("actionId", "kind", "requestId", "fingerprint", "decision") || !optionalString(body, "requestId").isValidId() ||
+                !optionalString(body, "fingerprint").isSha256() || optionalString(body, "decision") !in setOf("confirm", "cancel")
+            ) fail(ProtocolError.INVALID_ACTION)
+            "capability_disconnect" -> if (
+                body.keys != setOf("actionId", "kind", "adapterId") || !optionalString(body, "adapterId").isValidId()
+            ) fail(ProtocolError.INVALID_ACTION)
             "start_turn" -> {
                 val validText = optionalString(body, "text").isBounded(131072) && optionalString(body, "text").isNotBlank()
                 val existingTask =
@@ -310,6 +355,15 @@ object ProtocolCodec {
                 answer.isNotEmpty() && answer.length <= 131072 && '\u0000' !in answer && total <= 131072
             }
         }
+    }.getOrDefault(false)
+
+    private fun validCapabilityLines(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
+        val lines = value?.jsonArray?.map { element ->
+            val primitive = element.jsonPrimitive
+            if (!primitive.isString) return@runCatching false
+            primitive.content
+        } ?: return@runCatching false
+        lines.size in 1..8 && lines.all { it.isSafeDisplay(1024) }
     }.getOrDefault(false)
 
     private fun validAllowedDecisions(value: kotlinx.serialization.json.JsonElement?): Boolean = runCatching {
@@ -551,6 +605,17 @@ object ProtocolCodec {
     private val eventNames = setOf("activity", "reply", "approval", "answer", "failure", "interrupted", "metadata")
     private val transcriptStatuses = setOf("inProgress", "completed", "failed", "declined")
     private val requestKinds = setOf("command", "file", "permissions", "question", "mcp_elicitation")
+    private val capabilityVerbs = setOf("read", "compose", "send", "order", "book", "play", "write", "cancel", "modify")
+    private val capabilityCeilings = setOf("completes", "one_tap", "hands_off")
+    // Closed set of things this phone knows how to be asked to do. A wire
+    // format that let this grow silently would let the Mac ask for an act
+    // the phone was never built to carry out.
+    private val deviceActionKinds = setOf("notification_reply")
+    // Four endings, not a boolean. "notification_gone" is neither a success
+    // nor a failure worth retrying: the conversation moved on before the
+    // phone could act, and lumping it in with "failed" would make the Mac
+    // retry a reply into a notification that no longer exists.
+    private val deviceActionOutcomes = setOf("handed_to_the_app", "notification_gone", "failed", "refused")
     private val errorCodes = setOf("computer_offline", "connection_lost", "desktop_incompatible", "owner_unavailable", "invalid_action", "outcome_unknown", "sequence_gap", "unauthorized", "quota_exceeded", "attachment_invalid", "internal")
     private val limitKeys = setOf("maxJsonBytes", "maxAttachmentBytes", "maxDeviceUploads", "maxGlobalUploads", "maxTemporaryBytes", "uploadExpirySeconds")
 }
@@ -560,6 +625,7 @@ class ProtocolSession(
     private val quota: AttachmentQuota = AttachmentQuota(AttachmentLimits()),
     private val expectedSessionId: String = "",
     private var deviceId: String = "",
+    initialSequence: Long? = null,
 ) {
     private val seenActions = mutableSetOf<String>()
     private val actionStates = mutableMapOf<String, String>()
@@ -567,9 +633,9 @@ class ProtocolSession(
     private val requestedUploads = mutableMapOf<String, Int>()
     private val completedUploads = mutableMapOf<String, AttachmentAck>()
     private var closed = false
-    var lastSequence: Long? = null
+    var lastSequence: Long? = initialSequence
         private set
-    private var lastAck: Long? = null
+    private var lastAck: Long? = initialSequence
     var hasFreshSnapshot: Boolean = false
         private set
 

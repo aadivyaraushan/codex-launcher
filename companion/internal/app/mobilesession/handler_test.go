@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
+	capabilityadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
+	capabilityflow "github.com/codex-launcher/codex-launcher/companion/internal/capability/flow"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
@@ -29,6 +32,136 @@ import (
 )
 
 var sessionNow = time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+
+type recordingCapabilityFlow struct {
+	preparedUtterance string
+	preparedOwner     string
+	confirmedOwner    string
+	cancelledOwner    string
+	confirmed         int
+	cancelled         int
+	disconnected      []string
+	disconnectErr     error
+}
+
+func (f *recordingCapabilityFlow) Prepare(_ context.Context, ownerID, requestID, utterance string) (capabilityflow.Preview, error) {
+	f.preparedOwner = ownerID
+	f.preparedUtterance = utterance
+	return capabilityflow.Preview{
+		RequestID: requestID, AdapterID: "todoist", Verb: manifest.Write,
+		Headline: "Create a Todoist task", Lines: []string{"Buy oat milk", "Before tomorrow"}, Confirm: "Create task",
+		Fingerprint: strings.Repeat("a", 64),
+	}, nil
+}
+
+func (f *recordingCapabilityFlow) Confirm(_ context.Context, ownerID, requestID, fingerprint string) (capabilityadapter.Outcome, error) {
+	f.confirmed++
+	f.confirmedOwner = ownerID
+	if requestID != "cap-request-1" || fingerprint != strings.Repeat("a", 64) {
+		return capabilityadapter.Outcome{}, capabilityflow.ErrFingerprintMismatch
+	}
+	return capabilityadapter.Outcome{Reached: manifest.Completes, Done: true, Detail: "Created Todoist task"}, nil
+}
+
+func (f *recordingCapabilityFlow) Cancel(ownerID, requestID, fingerprint string) error {
+	f.cancelled++
+	f.cancelledOwner = ownerID
+	if requestID != "cap-cancel-1" || fingerprint != strings.Repeat("a", 64) {
+		return capabilityflow.ErrFingerprintMismatch
+	}
+	return nil
+}
+
+func TestCapabilityActionsSendExactPreviewThenSequencedOutcome(t *testing.T) {
+	handler, sender := newTestHandler(t)
+	flow := &recordingCapabilityFlow{}
+	handler.EnableCapabilities(flow)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-cap","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.sent = make(chan contract.Message, 2)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"cap-request","sender":"phone","type":"action","body":{"actionId":"cap-request-1","kind":"capability_request","utterance":"Add buy oat milk to Todoist before tomorrow"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	preview := awaitSentMessage(t, sender.sent)
+	if preview.Type != "capability_preview" || preview.Sequence != nil || !bytes.Contains(preview.Body, []byte(`"adapterId":"todoist"`)) ||
+		!bytes.Contains(preview.Body, []byte(`"lines":["Buy oat milk","Before tomorrow"]`)) || flow.preparedUtterance == "" ||
+		flow.preparedOwner != capabilityOwner(sender) {
+		t.Fatalf("preview=%+v prepared=%q", preview, flow.preparedUtterance)
+	}
+
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"cap-confirm","sender":"phone","type":"action","body":{"actionId":"cap-confirm-1","kind":"capability_confirm","requestId":"cap-request-1","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","decision":"confirm"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if result.Type != "capability_result" || result.Sequence == nil || !bytes.Contains(result.Body, []byte(`"ceiling":"completes"`)) ||
+		!bytes.Contains(result.Body, []byte(`"done":true`)) || flow.confirmed != 1 || flow.confirmedOwner != capabilityOwner(sender) {
+		t.Fatalf("result=%+v confirmed=%d", result, flow.confirmed)
+	}
+}
+
+func TestWarmReconnectReplaysAnUnacknowledgedCapabilityOutcome(t *testing.T) {
+	handler, first := newTestHandlerWithTasks(t, taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) { return nil, nil }))
+	flow := &recordingCapabilityFlow{}
+	handler.EnableCapabilities(flow)
+	if err := handler.Handle(context.Background(), first, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-first","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	first.sent = make(chan contract.Message, 2)
+	if err := handler.Handle(context.Background(), first, decode(t, `{"version":{"major":1,"minor":0},"messageId":"prepare","sender":"phone","type":"action","body":{"actionId":"cap-request-1","kind":"capability_request","utterance":"Add a Todoist task"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	_ = awaitSentMessage(t, first.sent)
+	if err := handler.Handle(context.Background(), first, decode(t, `{"version":{"major":1,"minor":0},"messageId":"confirm","sender":"phone","type":"action","body":{"actionId":"confirm-1","kind":"capability_confirm","requestId":"cap-request-1","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","decision":"confirm"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, first.sent)
+	if result.Sequence == nil || *result.Sequence < 2 {
+		t.Fatalf("first capability result=%+v", result)
+	}
+	resultSequence := *result.Sequence
+
+	second := &recordingSender{
+		deviceID: "pixel-9", sessionID: "session-2", connectionID: 2,
+		projectPath: first.projectPath, store: first.store, sent: make(chan contract.Message, 3),
+	}
+	warmHello := fmt.Sprintf(`{"version":{"major":1,"minor":0},"messageId":"hello-warm","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"warm","lastAck":%d}}}`, resultSequence-1)
+	if err := handler.Handle(context.Background(), second, decode(t, warmHello)); err != nil {
+		t.Fatal(err)
+	}
+	_ = awaitSentMessage(t, second.sent)
+	replayed := awaitSentMessage(t, second.sent)
+	if replayed.Type != "capability_result" || replayed.Sequence == nil || *replayed.Sequence != resultSequence ||
+		!bytes.Contains(replayed.Body, []byte(`"detail":"Created Todoist task"`)) || flow.confirmed != 1 {
+		t.Fatalf("replayed=%+v confirmed=%d", replayed, flow.confirmed)
+	}
+	snapshot := awaitSentMessage(t, second.sent)
+	if snapshot.Type != "snapshot" || snapshot.Sequence == nil || *snapshot.Sequence != resultSequence+1 {
+		t.Fatalf("warm reconnect snapshot=%+v", snapshot)
+	}
+}
+
+func TestCapabilityCancelNeverExecutesAndReturnsCancelledActionResult(t *testing.T) {
+	handler, sender := newTestHandler(t)
+	flow := &recordingCapabilityFlow{}
+	handler.EnableCapabilities(flow)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-cap","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.sent = make(chan contract.Message, 2)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"cap-request","sender":"phone","type":"action","body":{"actionId":"cap-cancel-1","kind":"capability_request","utterance":"Add task"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	_ = awaitSentMessage(t, sender.sent)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"cap-cancel","sender":"phone","type":"action","body":{"actionId":"cap-cancel-action","kind":"capability_confirm","requestId":"cap-cancel-1","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","decision":"cancel"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if result.Type != "action_result" || !bytes.Contains(result.Body, []byte(`"state":"cancelled"`)) || flow.cancelled != 1 ||
+		flow.cancelledOwner != capabilityOwner(sender) || flow.confirmed != 0 {
+		t.Fatalf("result=%+v cancelled=%d confirmed=%d", result, flow.cancelled, flow.confirmed)
+	}
+}
 
 func TestDecisionReadIsLiveOnlyAndApprovalRoutesToExactPendingRequest(t *testing.T) {
 	handler, sender := newTestHandler(t)

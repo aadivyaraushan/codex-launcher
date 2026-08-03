@@ -181,20 +181,28 @@ class CompanionSessionClient private constructor(
     private val signer: DevicePairingSigner,
     private val endpoint: (PairedComputer, String) -> String,
     private val tlsClients: PinnedTlsClientFactory,
+    private val loadResumeCursor: (String) -> Long?,
 ) {
-    constructor(signer: DevicePairingSigner) : this(signer, ::productionEndpoint, PinnedTlsClientFactory())
+    constructor(
+        signer: DevicePairingSigner,
+        loadResumeCursor: (String) -> Long? = { null },
+    ) : this(signer, ::productionEndpoint, PinnedTlsClientFactory(), loadResumeCursor)
 
     // Test-only: targets a local MockWebServer URL, not an untrusted paired-computer
     // host, so it uses the system resolver instead of the public-address DNS filter.
-    internal constructor(signer: DevicePairingSigner, testEndpoint: String) :
-        this(signer, { _, _ -> testEndpoint }, PinnedTlsClientFactory(dns = Dns.SYSTEM))
+    internal constructor(
+        signer: DevicePairingSigner,
+        testEndpoint: String,
+        loadResumeCursor: (String) -> Long? = { null },
+    ) : this(signer, { _, _ -> testEndpoint }, PinnedTlsClientFactory(dns = Dns.SYSTEM), loadResumeCursor)
 
     fun connect(
         paired: PairedComputer,
         sessionId: String,
         observer: SessionObserver,
     ): SessionConnection {
-        val handshake = SessionHandshake(paired, sessionId, signer)
+        val resumeThroughSequence = loadResumeCursor(paired.pairingGeneration)
+        val handshake = SessionHandshake(paired, sessionId, signer, resumeThroughSequence = resumeThroughSequence)
         val client =
             tlsClients.builder(paired.tlsIdentityPin())
                 .connectTimeout(10, TimeUnit.SECONDS)
@@ -231,6 +239,7 @@ class CompanionSessionClient private constructor(
                                             attachmentKey = output.attachmentKey,
                                             expectedSessionId = sessionId,
                                             deviceId = paired.deviceId,
+                                            initialSequence = resumeThroughSequence,
                                         )
                                     if (!webSocket.send(output.helloJson)) throw SessionHandshakeException("Session hello could not be sent")
                                     protocolSession = nextProtocol
@@ -303,7 +312,12 @@ class CompanionSessionClient private constructor(
         AppLog.info(
             feature = "session-network",
             message = "opening pinned WebSocket",
-            fields = mapOf("device_id" to paired.deviceId, "session_id" to sessionId, "input_shape" to "paired_computer"),
+            fields = mapOf(
+                "device_id" to paired.deviceId,
+                "session_id" to sessionId,
+                "resume_mode" to if (resumeThroughSequence != null) "warm" else "no_local_state",
+                "input_shape" to "paired_computer,resume_cursor",
+            ),
         )
         val webSocket = client.newWebSocket(Request.Builder().url(endpoint(paired, sessionId)).build(), listener)
         connection.attach(webSocket)

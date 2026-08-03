@@ -2,9 +2,11 @@ package app.codexlauncher.storage.wipe
 
 import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.storage.actions.ActionRecordStore
+import app.codexlauncher.storage.capability.unresolved.UnresolvedCapabilityDataStore
 import app.codexlauncher.storage.drafts.DraftKeyStore
 import app.codexlauncher.storage.drafts.EncryptedDraftStore
 import app.codexlauncher.storage.connection.lastseen.LastConnectionStore
+import app.codexlauncher.storage.connection.resume.ResumeCursorStore
 import app.codexlauncher.storage.pairing.DeviceIdentityStore
 import app.codexlauncher.storage.pairing.PairingRecordStore
 import app.codexlauncher.storage.projects.ProjectSelectionStore
@@ -16,11 +18,13 @@ enum class WipeStep {
     PROJECT_SELECTION,
     ACTION_RECORDS,
     LAST_CONNECTION,
+    RESUME_CURSOR,
     DRAFT_CIPHERTEXT,
     DRAFT_KEY,
     DEVICE_IDENTITY,
     PAIRING_KEY,
     PAIRING_RECORD,
+    CAPABILITY_UNRESOLVED_CHECK,
     MARKER_FINISH,
     ;
 
@@ -30,11 +34,13 @@ enum class WipeStep {
                 PROJECT_SELECTION,
                 ACTION_RECORDS,
                 LAST_CONNECTION,
+                RESUME_CURSOR,
                 DRAFT_CIPHERTEXT,
                 DRAFT_KEY,
                 DEVICE_IDENTITY,
                 PAIRING_KEY,
                 PAIRING_RECORD,
+                CAPABILITY_UNRESOLVED_CHECK,
             )
     }
 }
@@ -143,11 +149,13 @@ class LocalStateWiper(
             projects: ProjectSelectionStore,
             actions: ActionRecordStore,
             lastConnections: LastConnectionStore,
+            resumeCursors: ResumeCursorStore,
             drafts: EncryptedDraftStore,
             draftKeys: DraftKeyStore,
             deviceIdentity: DeviceIdentityStore,
             pairingKeys: PairingKeyStore,
             pairingRecords: PairingRecordStore,
+            capabilityUnresolvedChecks: UnresolvedCapabilityDataStore,
         ): LocalStateWiper =
             LocalStateWiper(
                 gate = gate,
@@ -157,11 +165,13 @@ class LocalStateWiper(
                         WipeStep.PROJECT_SELECTION to projects::clearForWipe,
                         WipeStep.ACTION_RECORDS to actions::clearAllForWipe,
                         WipeStep.LAST_CONNECTION to lastConnections::clearForWipe,
+                        WipeStep.RESUME_CURSOR to resumeCursors::clearForWipe,
                         WipeStep.DRAFT_CIPHERTEXT to { drafts.clearForWipe() },
                         WipeStep.DRAFT_KEY to { deleteKey(draftKeys::delete) },
                         WipeStep.DEVICE_IDENTITY to deviceIdentity::clearForWipe,
                         WipeStep.PAIRING_KEY to { deleteKey(pairingKeys::delete) },
                         WipeStep.PAIRING_RECORD to pairingRecords::clearForWipe,
+                        WipeStep.CAPABILITY_UNRESOLVED_CHECK to capabilityUnresolvedChecks::clearForWipe,
                     ),
             )
 

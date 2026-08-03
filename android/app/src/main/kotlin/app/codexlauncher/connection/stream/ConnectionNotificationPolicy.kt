@@ -31,6 +31,10 @@ class ConnectionNotificationPolicy {
             TaskState.WAITING_FOR_ANSWER -> ConnectionNotice("Codex needs your answer", "Open Codex Launcher to respond.")
             TaskState.FAILED -> ConnectionNotice("Codex needs attention", "Open Codex Launcher to review the task.")
             TaskState.ONE_TAP_LEFT -> ConnectionNotice("One tap left", "Open Codex Launcher to finish it.")
+            // We could not learn what happened, which is exactly the kind of
+            // thing a person should hear about rather than discover later —
+            // the same reasoning that gives FAILED a notice above.
+            TaskState.UNVERIFIED -> ConnectionNotice("Couldn't confirm that happened", "Open Codex Launcher to check.")
             // A hand-off is a fact about where control went, not something
             // that needs the user's attention right now — no notice.
             TaskState.WORKING, TaskState.INTERRUPTED, TaskState.HANDED_OFF -> null

@@ -108,7 +108,11 @@ The three marks below were added on 2026-07-31 for Operator, which acts inside o
 
 - **One tap left:** solid warning-color half-circle (flat edge right), paired with `One tap left`. Operator did the work and is holding it at the last irreversible step for the user to confirm. The thing has **not** happened yet. Always accompanied by the preview of what will happen and the control that finishes it.
 - **Handed off:** outlined muted circle with an arrow leaving through its right edge, paired with `Handed off`. Operator has opened the app with the work loaded and can no longer see what happens. Never claim success after this mark, and never claim failure — say what was handed over and to which app.
-- **Unverified:** outlined muted triangle containing a dot, paired with `Unverified` or `Degraded`. The adapter's ceiling has never been proven against the live service, or a scheduled check demoted it. Shown next to the capability, not next to the task.
+- **Unverified:** outlined muted circle containing a question mark. It is the one mark for "we cannot vouch for this", and it says that about two different things, in two different places, with different words:
+  - Next to a **capability**, paired with `Unverified` or `Degraded`: the adapter's ceiling has never been proven against the live service, or a scheduled check demoted it. This is a standing fact about the adapter, not about any one run.
+  - Next to a **task**, paired with `Couldn't confirm that happened`: this particular run's outcome was lost — the phone dropped off, or a deadline passed — before anyone could see whether it landed. It is not still working, it did not fail, and it is not a reply.
+  
+  These share a mark because they make the same claim to the user and can never appear about the same thing at the same time; the words and the position carry the difference. The task version is the more urgent of the two and always comes with somewhere to check and an explicit way to say it has been checked — never a plain retry, because retrying something that may already have happened can do it twice.
 
 **One tap left and handed off must never look alike.** They are the two states a user is most likely to confuse, and the cost of confusing them is believing a message was sent when it was not. One is filled and warm and asks for a thumb; the other is outlined and muted and asks for nothing. Both carry their words.
 
@@ -208,6 +212,8 @@ Added 2026-07-31. This is the screen that asks for the sensitive permission, so 
 | 2026-07-12 | ~~Notification count requires optional listener access~~ **Superseded 2026-07-31** | Was accurate when the launcher only counted notifications. It is no longer what the product does — see the row below. |
 | 2026-07-31 | Notification access reads message content, not a count | Operator replies to messages. That needs the sender, the thread, and the text of the message, sent to a model to compose a reply and held until the reply is sent. Describing this as a count would understate it in the product's own design document. |
 | 2026-07-31 | Three state marks added: one tap left, handed off, unverified | Operator stops in places a launcher never did. Without these marks a user cannot tell a sent message from a drafted one. |
+| 2026-08-03 | Unverified also marks a task whose outcome was lost, and appears on task rows | The row above described it as a standing fact about an adapter, shown only next to a capability. A run whose phone dropped off mid-flight makes the same claim about one task, and a row in a list you are scrolling past has nothing else on it to say something is wrong. Same mark, different words and position. |
+| 2026-08-03 | Unverified's shape is a circle containing a question mark, not a triangle containing a dot | Correcting the document to what shipped, not the other way round: the mark set has no triangle, and every other mark here is a circle, diamond, square or half-circle. **Open for the owner to reverse** — the change was made in code without amending this document first, which is the order this section exists to prevent. |
 
 ## Source Artifact
 

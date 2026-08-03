@@ -98,6 +98,10 @@ class HomeTaskMarkTest {
                 TaskState.ONE_TAP_LEFT -> assertEquals(StateMark.ONE_TAP_LEFT, task.mark)
                 TaskState.HANDED_OFF -> assertEquals(StateMark.HANDED_OFF, task.mark)
                 TaskState.FAILED -> assertEquals(StateMark.FAILED, task.mark)
+                // A task nobody can vouch for is exactly the kind of state
+                // this file exists for — easy to misread, and the row is
+                // where it gets misread. See HomeUnresolvedRowTest.
+                TaskState.UNVERIFIED -> assertEquals(StateMark.UNVERIFIED, task.mark)
                 else -> assertNull("$state should carry no mark", task.mark)
             }
         }

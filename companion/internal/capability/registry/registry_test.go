@@ -267,6 +267,35 @@ func TestAMeasuredCeilingBelowTheClaimDemotesTheAdapter(t *testing.T) {
 	}
 }
 
+func TestAMeasurementThatIsNotARealCeilingIsRefusedNotRecorded(t *testing.T) {
+	// The worst version of a bad measurement is not that it is wrong — it is
+	// that it wins. Rank() scores anything it does not recognise as 0, which
+	// is below every real ceiling, so an adapter that forgot to set the field
+	// reads as a fall and is written down as permanently demoted. Nothing
+	// undoes that except three clean runs it may never get.
+	//
+	// The runner already refuses these before it reports one. This is the
+	// same refusal at the place the value actually lands, so the two
+	// verification paths that record measurements directly cannot open the
+	// hole again.
+	r := New()
+	mustRegister(t, r, adapterFor("uber"))
+
+	for _, bad := range []manifest.Ceiling{"", "sort_of", "COMPLETES"} {
+		if err := r.RecordMeasuredCeiling("uber", bad); err == nil {
+			t.Errorf("recording %q as a measured ceiling was accepted", bad)
+		}
+		ceiling, proven, _ := r.EffectiveCeiling("uber")
+		if proven {
+			t.Errorf("after a refused measurement of %q the adapter reads as proven", bad)
+		}
+		if ceiling != manifest.Completes {
+			t.Errorf("after a refused measurement of %q the ceiling is %s, want the declared completes",
+				bad, ceiling)
+		}
+	}
+}
+
 func TestAMeasurementCannotPromoteAnAdapterAboveItsOwnClaim(t *testing.T) {
 	// The manifest is the ceiling on the ceiling. A measurement can only
 	// lower it, so a bug in a smoke test cannot hand an adapter more

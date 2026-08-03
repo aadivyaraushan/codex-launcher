@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,11 +35,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
+import app.codexlauncher.capability.reply.guard.ThreadKey
 
 @Composable
 fun AppearanceScreen(
     mode: AppearanceMode,
     modifier: Modifier = Modifier,
+    stoppedConversations: List<ThreadKey> = emptyList(),
+    appLabel: (String) -> String = { it },
+    onResume: (ThreadKey) -> Unit = {},
     onModeSelected: (AppearanceMode) -> Unit = {},
     onBack: () -> Unit = {},
 ) {
@@ -118,6 +123,33 @@ fun AppearanceScreen(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Spacer(Modifier.height(28.dp))
+            Text("Stopped conversations", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            if (stoppedConversations.isEmpty()) {
+                Text(
+                    "Operator is not stopped from replying in any conversation.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    stoppedConversations.forEach { key ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "${appLabel(key.packageName)} • ${key.displayPerson}",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { onResume(key) }) { Text("Turn replies back on") }
+                        }
+                    }
+                }
+            }
         }
     }
 }

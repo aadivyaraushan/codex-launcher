@@ -204,7 +204,7 @@ class ReplyAdapterTest {
     @Test
     fun aSendThatWentThroughReportsCompletesAndClaimsIt() {
         val plan = ReplyAdapter.plan(handle(), "on my way", attended = true) as ReplyPlan.Send
-        val out = ReplyAdapter.outcome(plan, delivered = true)
+        val out = ReplyAdapter.outcome(plan, handedToApp = true)
         assertEquals(Ceiling.COMPLETES, out.ceiling)
         assertTrue(out.claimsSuccess)
         assertNull(out.handedOffToApp)
@@ -213,7 +213,7 @@ class ReplyAdapterTest {
     @Test
     fun aSendThatFailedIsAFailureAndNotAHandOff() {
         val plan = ReplyAdapter.plan(handle(), "on my way", attended = true) as ReplyPlan.Send
-        val out = ReplyAdapter.outcome(plan, delivered = false)
+        val out = ReplyAdapter.outcome(plan, handedToApp = false)
         assertFalse(out.claimsSuccess)
         assertTrue(out.claimsFailure)
         assertNull("a failed send was dressed up as a hand-off", out.handedOffToApp)
@@ -224,7 +224,7 @@ class ReplyAdapterTest {
     fun anOpenedAppClaimsNeitherSuccessNorFailure() {
         val plan = ReplyAdapter.plan(handle(verdict = ProbeVerdict.NO_REPLY_BOX), "on my way", attended = true)
             as ReplyPlan.HandOff
-        val out = ReplyAdapter.outcome(plan, delivered = true)
+        val out = ReplyAdapter.outcome(plan, handedToApp = true)
         assertEquals(Ceiling.HANDS_OFF, out.ceiling)
         assertFalse(out.claimsSuccess)
         assertFalse(out.claimsFailure)

@@ -2,6 +2,9 @@ package app.codexlauncher.connection.runtime
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.codexlauncher.capability.interaction.CapabilityEffect
+import app.codexlauncher.capability.interaction.CapabilityInteraction
+import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.connection.protocol.MessageType
 import app.codexlauncher.connection.protocol.ProtocolCodec
@@ -20,6 +23,7 @@ import app.codexlauncher.project.selection.ProjectSelectionViewModel
 import app.codexlauncher.project.session.ProjectSessionBridge
 import app.codexlauncher.project.session.ProjectSnapshot
 import app.codexlauncher.storage.actions.ActionJournal
+import app.codexlauncher.storage.capability.unresolved.UnresolvedCapabilityStore
 import app.codexlauncher.storage.connection.lastseen.shouldRecordSuccessfulConnection
 import app.codexlauncher.task.summary.TaskEventReducer
 import app.codexlauncher.task.summary.TaskQueueState
@@ -82,13 +86,16 @@ class LauncherSessionViewModel(
     saveProject: suspend (ProjectChoice) -> Boolean,
     clearProject: suspend () -> Boolean,
     private val actionJournal: ActionJournal,
+    private val carryOutDeviceReply: (handle: String, text: String) -> String = { _, _ -> "refused" },
     private val clearConfirmedDraft: suspend (DraftVersion) -> Boolean = { false },
     private val onSuccessfulConnection: suspend (pairingGeneration: String, epochMillis: Long) -> Unit = { _, _ -> },
+    private val recordResumeCursor: suspend (pairingGeneration: String, throughSequence: Long) -> Boolean = { _, _ -> true },
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val nextSessionId: () -> String = { UUID.randomUUID().toString() },
     private val retryWait: suspend (attempt: Int) -> Unit = { attempt -> delay(retryDelayMillis(attempt)) },
     private val transcriptRefreshWait: suspend () -> Unit = { delay(TRANSCRIPT_REFRESH_MILLIS) },
     private val attachmentUploader: AttachmentUploader = AttachmentUploader(),
+    private val unresolvedCapabilityChecks: UnresolvedCapabilityStore? = null,
     workScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LauncherSessionState())
@@ -96,12 +103,14 @@ class LauncherSessionViewModel(
     private val submissionScope = workScope ?: viewModelScope
     private var snapshotScope = newSnapshotScope()
     private var activeDeviceId: String? = null
+    private var activePairingGeneration: String? = null
     private var activeConnection: SessionConnection? = null
     private var projectBridge: ProjectSessionBridge? = null
     private var transcriptCapable = false
     private var taskManagementCapable = false
     private var attachmentCapable = false
     private var decisionCapable = false
+    private var capabilityActionsCapable = false
     private var maxAttachmentBytes = ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
     private var taskActionBridge: TaskActionBridge? = null
     private var taskControlViewModel: TaskControlViewModel? = null
@@ -128,6 +137,16 @@ class LauncherSessionViewModel(
 
     val state: StateFlow<LauncherSessionState> = mutableState.asStateFlow()
     val attachments = attachmentUploader.state
+    private val capabilityController =
+        CapabilityInteraction(
+            sendAction = { encoded, beforeBoundary ->
+                activeConnection?.sendAction(encoded, beforeBoundary)
+                    ?: app.codexlauncher.connection.session.ActionSendResult.NOT_SENT
+            },
+            unresolvedStore = unresolvedCapabilityChecks,
+        )
+    val capabilityInteraction = capabilityController.state
+    private var pendingHomePrompt: PendingHomePrompt? = null
     private val decisionViewModel =
         ApprovalViewModel(
             sendAction = { encoded, beforeBoundary -> activeConnection?.sendAction(encoded, beforeBoundary) ?: app.codexlauncher.connection.session.ActionSendResult.NOT_SENT },
@@ -146,6 +165,13 @@ class LauncherSessionViewModel(
             afterSelectionApplied = ::acknowledgeProjectResult,
             workScope = submissionScope,
         )
+
+    init {
+        // Restored once, here, before anything else can read capabilityInteraction
+        // for the answer: a process death forgets the in-memory block, but the
+        // store outlives the process, so this is what makes it survive a cold start.
+        submissionScope.launch { capabilityController.restoreUnresolvedCheck() }
+    }
 
     @Synchronized
     fun connect(paired: PairedComputer, force: Boolean = false) {
@@ -187,6 +213,7 @@ class LauncherSessionViewModel(
         if (!force && activeDeviceId == paired.deviceId && current.phase != app.codexlauncher.connection.state.ConnectionPhase.DISCONNECTED) return
         closeCurrent(invalidate = true)
         activeDeviceId = paired.deviceId
+        activePairingGeneration = paired.pairingGeneration
         mutableState.value = LauncherSessionState(ConnectionStateMachine.reduce(ConnectionSnapshot.initial(), ConnectionEvent.ConnectRequested))
         val currentGeneration = generation.get()
         val sessionId = nextSessionId()
@@ -257,11 +284,15 @@ class LauncherSessionViewModel(
                     MessageType.TASK_PAGE -> applyTaskPage(expectedGeneration, message)
                     MessageType.DECISION_PAGE -> applyDecisionPage(expectedGeneration, message)
                     MessageType.ACTION_RESULT -> {
+                        acceptCapabilityActionResult(expectedGeneration, message)
                         decisionViewModel.acceptActionResult(message)
                         projectBridge?.accept(message)
                         taskActionBridge?.accept(message)
                         taskControlViewModel?.accept(message)
                     }
+                    MessageType.CAPABILITY_PREVIEW -> capabilityController.acceptPreview(message)
+                    MessageType.CAPABILITY_RESULT -> acceptCapabilityResult(expectedGeneration, message)
+                    MessageType.DEVICE_ACTION -> handleDeviceAction(expectedGeneration, message)
                     MessageType.ATTACHMENT_ACK -> {
                         attachmentUploader.accept(message)
                         val sequence = message.sequence
@@ -295,6 +326,7 @@ class LauncherSessionViewModel(
         taskManagementCapable = "task_management" in capabilities
         attachmentCapable = "attachments" in capabilities
         decisionCapable = "decisions" in capabilities
+        capabilityActionsCapable = "capability_actions" in capabilities
         maxAttachmentBytes =
             message.body["limits"]?.jsonObject?.get("maxAttachmentBytes")?.jsonPrimitive?.longOrNull
                 ?.coerceAtMost(ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong())
@@ -415,6 +447,122 @@ class LauncherSessionViewModel(
         return outcome
     }
 
+    fun setPromptDestination(destination: PromptDestination): Boolean =
+        capabilityController.setDestination(destination)
+
+    suspend fun submitHomePrompt(
+        prompt: String,
+        selection: NewTaskSelection,
+        draftVersion: DraftVersion,
+    ) {
+        val routeThroughApps =
+            capabilityActionsCapable && capabilityInteraction.value.destination == PromptDestination.AUTO
+        if (!routeThroughApps) {
+            AppLog.info(
+                feature = "capability-interaction",
+                message = "home prompt sent directly to paired computer",
+                fields = mapOf(
+                    "destination" to capabilityInteraction.value.destination.name.lowercase(),
+                    "capability_available" to capabilityActionsCapable,
+                    "prompt_length" to prompt.length,
+                ),
+            )
+            startNewTask(prompt, selection, draftVersion)
+            return
+        }
+
+        synchronized(this) {
+            if (pendingHomePrompt != null) return
+            pendingHomePrompt = PendingHomePrompt(prompt, selection, draftVersion)
+        }
+        val requestId = capabilityController.request(prompt)
+        if (requestId != null) return
+        val fallback = synchronized(this) { pendingHomePrompt.also { pendingHomePrompt = null } } ?: return
+        startNewTask(fallback.prompt, fallback.selection, fallback.draftVersion)
+    }
+
+    suspend fun respondToCapability(confirm: Boolean): Boolean =
+        capabilityController.respond(confirm)
+
+    suspend fun disconnectCapability(): Boolean =
+        capabilityController.disconnect()
+
+    fun dismissCapabilityResult() = capabilityController.dismissTerminal()
+
+    fun markCapabilityChecked() = capabilityController.markChecked()
+
+    @Synchronized
+    private fun acceptCapabilityActionResult(expectedGeneration: Long, message: ProtocolMessage) {
+        val effect = capabilityController.acceptActionResult(message)
+        if (effect == CapabilityEffect.None) return
+        val sequence = message.sequence
+        if (sequence == null) {
+            fail(expectedGeneration, SessionFailure.INVALID_PROTOCOL)
+            return
+        }
+        val pending = pendingHomePrompt
+        pendingHomePrompt = null
+        submissionScope.launch {
+            acknowledge(expectedGeneration, sequence)
+            if (effect is CapabilityEffect.FallbackToComputer && pending != null) {
+                AppLog.info(
+                    feature = "capability-interaction",
+                    message = "app action route did not match",
+                    fields = mapOf(
+                        "request_id" to effect.requestId,
+                        "decision" to "start_codex_task",
+                        "prompt_length" to pending.prompt.length,
+                    ),
+                )
+                startNewTask(pending.prompt, pending.selection, pending.draftVersion)
+            } else {
+                AppLog.info(
+                    feature = "capability-interaction",
+                    message = "app action confirmation reached a terminal result",
+                    fields = mapOf(
+                        "result" to effect::class.simpleName.orEmpty(),
+                        "decision" to "keep_draft_without_fallback",
+                    ),
+                )
+            }
+        }
+    }
+
+    @Synchronized
+    private fun acceptCapabilityResult(expectedGeneration: Long, message: ProtocolMessage) {
+        val outcome = capabilityController.acceptResult(message) ?: return
+        val sequence = message.sequence
+        if (sequence == null) {
+            fail(expectedGeneration, SessionFailure.INVALID_PROTOCOL)
+            return
+        }
+        val pending = pendingHomePrompt
+        pendingHomePrompt = null
+        submissionScope.launch {
+            // Throw someone's words away only when we know the thing they
+            // wanted actually happened. "Not a failure" is a wider net than it
+            // looks: a one-tap result has staged something and sent nothing —
+            // there is still a button to press — and a hand-off means we
+            // stopped being able to see what happened. Both used to delete the
+            // draft, which is exactly when the person is most likely to want
+            // it back. Only a finished `completes` run claims success.
+            if (pending != null && outcome.claimsSuccess) {
+                clearConfirmedDraft(pending.draftVersion)
+            }
+            acknowledge(expectedGeneration, sequence)
+            AppLog.info(
+                feature = "capability-interaction",
+                message = "app action result published",
+                fields = mapOf(
+                    "sequence" to sequence,
+                    "ceiling" to outcome.ceiling.wireName,
+                    "claims_success" to outcome.claimsSuccess,
+                    "claims_failure" to outcome.claimsFailure,
+                ),
+            )
+        }
+    }
+
     suspend fun queueTaskFollowUp(taskId: String, prompt: String): ExistingTaskControlOutcome {
         val attachmentIds = prepareAttachments() ?: return ExistingTaskControlOutcome.Unavailable
         val outcome = taskControlViewModel?.sendToTask(taskId, prompt, ExistingTaskSendMode.QUEUE, attachmentIds) ?: ExistingTaskControlOutcome.Unavailable
@@ -511,7 +659,7 @@ class LauncherSessionViewModel(
     }
 
     private suspend fun performTaskAction(taskId: String, action: TaskAction): TaskActionOutcome {
-        val request = currentTaskActionRequest(taskId) ?: return TaskActionOutcome.Unavailable
+        val request = currentTaskActionRequest(taskId) ?: return TaskActionOutcome.NotSent
         val outcome = request.bridge.perform(taskId, action)
         if (action == TaskAction.Fork) {
             if (outcome is TaskActionOutcome.Forked) {
@@ -1030,6 +1178,45 @@ class LauncherSessionViewModel(
         return appliedThrough
     }
 
+    /**
+     * Answers a `device_action` the Mac could not send itself. Two rules do
+     * the work: always answer, and never re-word. `carryOutDeviceReply`
+     * decides the one word that goes back — this only has to get that word
+     * onto the wire, even when the attempt throws, because an unanswered
+     * request costs the user the Mac's whole timeout for something the phone
+     * already knows the answer to.
+     */
+    private fun handleDeviceAction(expectedGeneration: Long, message: ProtocolMessage) {
+        if (generation.get() != expectedGeneration) return
+        val requestId = message.body.getValue("requestId").jsonPrimitive.content
+        val handle = message.body.getValue("handle").jsonPrimitive.content
+        val text = message.body.getValue("text").jsonPrimitive.content
+
+        val outcome =
+            try {
+                carryOutDeviceReply(handle, text)
+            } catch (error: Exception) {
+                AppLog.error(
+                    feature = "connection-runtime",
+                    message = "device reply attempt threw",
+                    error = error,
+                    fields = mapOf("request_id" to requestId, "decision" to "answer_failed"),
+                )
+                "failed"
+            }
+
+        if (generation.get() != expectedGeneration) return
+        val encoded =
+            buildJsonObject {
+                put("version", buildJsonObject { put("major", ProtocolCodec.PROTOCOL_MAJOR); put("minor", 0) })
+                put("messageId", UUID.randomUUID().toString())
+                put("sender", "phone")
+                put("type", "device_action_result")
+                put("body", buildJsonObject { put("requestId", requestId); put("outcome", outcome) })
+            }.toString().also(ProtocolCodec::decodeText)
+        activeConnection?.sendText(encoded)
+    }
+
     private suspend fun acknowledge(expectedGeneration: Long, throughSequence: Long) {
         acknowledgementMutex.withLock {
             if (generation.get() != expectedGeneration) return
@@ -1050,6 +1237,19 @@ class LauncherSessionViewModel(
         request: AcknowledgementRequest,
     ) {
         if (generation.get() != expectedGeneration) return
+        val pairingGeneration = activePairingGeneration
+        if (pairingGeneration == null || !recordResumeCursor(pairingGeneration, request.throughSequence)) {
+            AppLog.info(
+                feature = "connection-runtime",
+                message = "resume cursor could not be stored before acknowledgement",
+                fields = mapOf(
+                    "through_sequence" to request.throughSequence,
+                    "decision" to "disconnect_without_acknowledging",
+                ),
+            )
+            fail(expectedGeneration, SessionFailure.CONNECTION_LOST)
+            return
+        }
         val encoded =
             buildJsonObject {
                 put("version", buildJsonObject { put("major", ProtocolCodec.PROTOCOL_MAJOR); put("minor", 0) })
@@ -1181,6 +1381,7 @@ class LauncherSessionViewModel(
         taskManagementCapable = false
         attachmentCapable = false
         decisionCapable = false
+        capabilityActionsCapable = false
         maxAttachmentBytes = ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
         attachmentUploader.detach()
         taskActionBridge?.close()
@@ -1193,6 +1394,12 @@ class LauncherSessionViewModel(
         pendingForkTaskId = null
         pendingDecisionRead = null
         decisionViewModel.clear()
+        // A lost connection, not a deliberate close: an app action may have
+        // already left the phone, so this must not vanish silently the way
+        // clear() does. sessionLost() ends it as unverified instead. See
+        // closeCurrent() below, which keeps clear() for a real shutdown.
+        capabilityController.sessionLost()
+        pendingHomePrompt = null
         acknowledgementGate.reset()
         pendingProjectAcknowledgement.set(null)
         pendingTaskEvents.clear()
@@ -1280,12 +1487,15 @@ class LauncherSessionViewModel(
         taskManagementCapable = false
         attachmentCapable = false
         decisionCapable = false
+        capabilityActionsCapable = false
         maxAttachmentBytes = ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
         attachmentUploader.detach()
         taskActionBridge?.close()
         taskActionBridge = null
         taskControlViewModel?.close()
         taskControlViewModel = null
+        capabilityController.clear()
+        pendingHomePrompt = null
         pendingTaskAcknowledgements.clear()
         retainedUnknownActionIds.clear()
         pendingTranscript = null
@@ -1346,6 +1556,12 @@ private data class PendingTranscriptRequest(
     val requestId: String,
     val taskId: String,
     val mode: TranscriptReadMode,
+)
+
+private data class PendingHomePrompt(
+    val prompt: String,
+    val selection: NewTaskSelection,
+    val draftVersion: DraftVersion,
 )
 
 private enum class TranscriptReadMode { INITIAL, EARLIER, REFRESH }

@@ -223,13 +223,17 @@ func TestAManifestWithoutASmokeTestIsValidButUnproven(t *testing.T) {
 	if err := m.Validate(); err != nil {
 		t.Fatalf("a manifest with no smoke test failed validation: %v", err)
 	}
-	if m.CeilingIsProven() {
-		t.Error("a manifest with no smoke test claims a proven ceiling")
+	if m.NamesAProof() {
+		t.Error("a manifest with no smoke test claims to name one")
 	}
 }
 
 func TestAManifestNamingASmokeTestClaimsAProvableCeiling(t *testing.T) {
-	if !good().CeilingIsProven() {
+	// Note what this does and does not say. It says the manifest named
+	// something. Whether that name belongs to a test that exists is a
+	// separate question, and today the answer is no for every shipped
+	// adapter — see runtime/proof_names_resolve_test.go.
+	if !good().NamesAProof() {
 		t.Error("a manifest naming a smoke test does not claim a provable ceiling")
 	}
 }
@@ -240,7 +244,7 @@ func TestEveryVerbThatMovesSomethingIrreversibleRequiresAPreview(t *testing.T) {
 	// "order the usual" spending money with no preview is the silent
 	// over-reach this list exists to stop. cancel and modify are here because
 	// a cancellation is irreversible in the direction that matters.
-	mustPreview := []Verb{Send, Order, Book, Cancel, Modify}
+	mustPreview := []Verb{Send, Order, Book, Write, Cancel, Modify}
 	for _, v := range mustPreview {
 		if !v.RequiresPreview() {
 			t.Errorf("verb %s does not require a preview; it must", v)

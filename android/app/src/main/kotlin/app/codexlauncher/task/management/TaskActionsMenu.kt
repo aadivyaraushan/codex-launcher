@@ -34,7 +34,8 @@ fun TaskActionsMenu(
     var archiveVisible by remember { mutableStateOf(false) }
     var renameTitle by remember(currentTitle) { mutableStateOf(currentTitle) }
     var busy by remember { mutableStateOf(false) }
-    var failureVisible by remember { mutableStateOf(false) }
+    var unresolvedVisible by remember { mutableStateOf(false) }
+    var nothingChangedVisible by remember { mutableStateOf(false) }
 
     IconButton(
         onClick = { expanded = true },
@@ -66,9 +67,10 @@ fun TaskActionsMenu(
                 expanded = false
                 busy = true
                 scope.launch {
-                    failureVisible = when (onFork()) {
-                        TaskActionOutcome.Complete, is TaskActionOutcome.Forked, TaskActionOutcome.NeedsReview -> false
-                        else -> true
+                    when (onFork().dialogFor()) {
+                        TaskActionDialog.NONE -> {}
+                        TaskActionDialog.NOTHING_CHANGED -> nothingChangedVisible = true
+                        TaskActionDialog.UNRESOLVED -> unresolvedVisible = true
                     }
                     busy = false
                 }
@@ -117,7 +119,11 @@ fun TaskActionsMenu(
                         scope.launch {
                             val outcome = onRename(sanitized)
                             renameVisible = false
-                            failureVisible = outcome != TaskActionOutcome.Complete
+                            when (outcome.dialogFor()) {
+                                TaskActionDialog.NONE -> {}
+                                TaskActionDialog.NOTHING_CHANGED -> nothingChangedVisible = true
+                                TaskActionDialog.UNRESOLVED -> unresolvedVisible = true
+                            }
                             busy = false
                         }
                     },
@@ -141,7 +147,11 @@ fun TaskActionsMenu(
                         scope.launch {
                             val outcome = onArchive()
                             archiveVisible = false
-                            failureVisible = outcome != TaskActionOutcome.Complete
+                            when (outcome.dialogFor()) {
+                                TaskActionDialog.NONE -> {}
+                                TaskActionDialog.NOTHING_CHANGED -> nothingChangedVisible = true
+                                TaskActionDialog.UNRESOLVED -> unresolvedVisible = true
+                            }
                             busy = false
                         }
                     },
@@ -152,17 +162,39 @@ fun TaskActionsMenu(
             },
         )
     }
-    if (failureVisible) {
+    if (nothingChangedVisible) {
         AlertDialog(
-            onDismissRequest = { failureVisible = false },
+            onDismissRequest = { nothingChangedVisible = false },
+            title = { Text("Nothing changed") },
+            text = { Text("That didn't go through, so nothing on your computer changed. You can try again.") },
+            confirmButton = {
+                TextButton(onClick = { nothingChangedVisible = false }) { Text("OK") }
+            },
+        )
+    }
+    if (unresolvedVisible) {
+        AlertDialog(
+            onDismissRequest = { unresolvedVisible = false },
             title = { Text("Task action unconfirmed") },
             text = { Text("The computer did not confirm whether this change happened. Check Codex on your computer before trying again.") },
             confirmButton = {
-                TextButton(onClick = { failureVisible = false }) { Text("OK") }
+                TextButton(onClick = { unresolvedVisible = false }) { Text("OK") }
             },
         )
     }
 }
+
+// Which warning (if any) to show for an outcome. Kept in one place so the three
+// menu items -- rename, archive, fork -- can't drift into showing different
+// dialogs for the same kind of outcome.
+private enum class TaskActionDialog { NONE, NOTHING_CHANGED, UNRESOLVED }
+
+private fun TaskActionOutcome.dialogFor(): TaskActionDialog =
+    when (this) {
+        TaskActionOutcome.Complete, is TaskActionOutcome.Forked, TaskActionOutcome.NeedsReview -> TaskActionDialog.NONE
+        TaskActionOutcome.NotSent, TaskActionOutcome.Invalid, is TaskActionOutcome.Failed -> TaskActionDialog.NOTHING_CHANGED
+        TaskActionOutcome.Unresolved -> TaskActionDialog.UNRESOLVED
+    }
 
 private fun String.isSafeTaskTitle(): Boolean =
     length in 1..256 && isNotBlank() && none(Char::isISOControl)

@@ -15,6 +15,14 @@ enum class TaskState(val wireName: String) {
     // app entirely, without that being WORKING, FAILED, or a reply.
     ONE_TAP_LEFT("one_tap_left"),
     HANDED_OFF("handed_off"),
+
+    // A run whose phone dropped off mid-flight before we could learn what
+    // happened: it is not still running, it did not fail, and it is not a
+    // confirmed reply either. The companion never sends this over the wire —
+    // it only ever arrives locally, from a CapabilityOutcome derived on the
+    // phone — but it still needs a TaskState so the home list can render it
+    // honestly instead of guessing.
+    UNVERIFIED("unverified"),
     ;
 
     companion object {
@@ -44,3 +52,15 @@ data class TaskSummary(
     val queueState: TaskQueueState = TaskQueueState.NONE,
     val statusSummary: String? = null,
 )
+
+/**
+ * The state this task should be treated as everywhere it is displayed or
+ * turned into a notification. A task whose outcome we lost track of
+ * ([TaskQueueState.OUTCOME_UNKNOWN]) reports as [TaskState.UNVERIFIED] no
+ * matter what [state] last said (usually still "working"), because that last
+ * known state is no longer something we can vouch for. Every other task
+ * reports its own [state] unchanged. Every caller that needs an honest state
+ * for a task should go through this instead of reading [state] directly.
+ */
+fun TaskSummary.effectiveState(): TaskState =
+    if (queueState == TaskQueueState.OUTCOME_UNKNOWN) TaskState.UNVERIFIED else state

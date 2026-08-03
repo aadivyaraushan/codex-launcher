@@ -144,3 +144,71 @@ func TestUnparseableModelOutputIsAnErrorNotAGuess(t *testing.T) {
 		t.Fatal("Route accepted prose as a route")
 	}
 }
+
+// ---- named slots ---------------------------------------------------------
+
+// Some requests carry more than one thing: "directions from home to the
+// airport" has two places, and Subject can only hold one. Fields is how the
+// cloud half hands named slots to the on-device half.
+func TestFieldsCarryNamedSlotsToTheOnDeviceHalf(t *testing.T) {
+	route, err := ParseRoute([]byte(`{"verb":"read","app_class":"travel","app_named":"maps",
+	  "subject":"directions to the airport","body":"",
+	  "fields":{"origin":"Blue Bottle Coffee Oakland","destination":"SFO"},
+	  "confidence":0.95}`))
+	if err != nil {
+		t.Fatalf("ParseRoute: %v", err)
+	}
+	if route.Fields["origin"] != "Blue Bottle Coffee Oakland" || route.Fields["destination"] != "SFO" {
+		t.Fatalf("fields=%v, want both endpoints", route.Fields)
+	}
+}
+
+func TestAFieldNamingAContactHandleIsRefusedLikeAnyOtherField(t *testing.T) {
+	// The whole point of the two stages is that the cloud half never sees a
+	// resolved handle. A free-form map would be the obvious way around that
+	// rule, so the same screen has to apply inside it.
+	for _, key := range []string{"recipient_phone", "email", "thread_id", "contact"} {
+		raw := []byte(`{"verb":"send","app_class":"messaging","app_named":"Signal",
+		  "subject":"hi","body":"","fields":{"` + key + `":"whatever"},"confidence":0.99}`)
+		if _, err := ParseRoute(raw); !errors.Is(err, ErrHandleInRoute) {
+			t.Errorf("field %q was accepted (err=%v), want ErrHandleInRoute", key, err)
+		}
+	}
+}
+
+func TestAReplyWithNoFieldsStillParses(t *testing.T) {
+	route, err := ParseRoute([]byte(`{"verb":"read","app_class":"travel","app_named":"maps",
+	  "subject":"Blue Bottle","body":"","confidence":0.95}`))
+	if err != nil {
+		t.Fatalf("ParseRoute: %v", err)
+	}
+	if len(route.Fields) != 0 {
+		t.Fatalf("fields=%v, want none", route.Fields)
+	}
+}
+
+// Strict mode makes the model send every slot every time, filling the unused
+// ones with null. An adapter that asks "was this slot set?" would read a
+// present-but-empty slot as set, so the empty ones have to be dropped here
+// rather than in each adapter.
+func TestParseRouteDropsSlotsTheModelLeftEmpty(t *testing.T) {
+	reply := []byte(`{"verb":"read","app_class":"travel","app_named":"maps",
+	  "subject":"directions","body":"",
+	  "fields":{"origin":"Blue Bottle Coffee Oakland","destination":"SFO",
+	            "list":null,"folder":"","navigate":"   "},
+	  "confidence":0.9}`)
+
+	route, err := ParseRoute(reply)
+	if err != nil {
+		t.Fatalf("ParseRoute: %v", err)
+	}
+	want := map[string]string{"origin": "Blue Bottle Coffee Oakland", "destination": "SFO"}
+	if len(route.Fields) != len(want) {
+		t.Fatalf("Fields=%v, want only the slots the model actually filled: %v", route.Fields, want)
+	}
+	for key, value := range want {
+		if route.Fields[key] != value {
+			t.Errorf("Fields[%q]=%q, want %q", key, route.Fields[key], value)
+		}
+	}
+}

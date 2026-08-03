@@ -4,10 +4,13 @@ import android.content.Context
 import app.codexlauncher.storage.actions.ActionRecordStore
 import app.codexlauncher.storage.actions.StoredActionJournal
 import app.codexlauncher.storage.actions.actionRecordDataStore
+import app.codexlauncher.storage.capability.unresolved.UnresolvedCapabilityDataStore
+import app.codexlauncher.storage.capability.unresolved.unresolvedCapabilityDataStore
 import app.codexlauncher.storage.drafts.DraftKeyStore
 import app.codexlauncher.storage.drafts.EncryptedDraftStore
 import app.codexlauncher.storage.connection.lastseen.LastConnectionStore
 import app.codexlauncher.storage.connection.lastseen.lastConnectionDataStore
+import app.codexlauncher.storage.connection.resume.ResumeCursorStore
 import app.codexlauncher.storage.pairing.DeviceIdentityStore
 import app.codexlauncher.storage.pairing.PairingRecordStore
 import app.codexlauncher.storage.pairing.deviceIdentityDataStore
@@ -33,6 +36,8 @@ class LocalStateOwner(context: Context) {
     val actionRecords = ActionRecordStore(appContext.actionRecordDataStore, gate)
     val actionJournal = StoredActionJournal(actionRecords)
     val lastConnections = LastConnectionStore(appContext.lastConnectionDataStore, gate)
+    val resumeCursors = ResumeCursorStore(appContext, gate)
+    val capabilityUnresolvedChecks = UnresolvedCapabilityDataStore(appContext.unresolvedCapabilityDataStore, gate)
     val pairingKeys = PairingKeyStore()
     private val draftKeys = DraftKeyStore()
     val drafts =
@@ -50,10 +55,12 @@ class LocalStateOwner(context: Context) {
             projects = projectSelections,
             actions = actionRecords,
             lastConnections = lastConnections,
+            resumeCursors = resumeCursors,
             drafts = drafts,
             draftKeys = draftKeys,
             deviceIdentity = deviceIdentity,
             pairingKeys = pairingKeys,
             pairingRecords = pairingRecords,
+            capabilityUnresolvedChecks = capabilityUnresolvedChecks,
         )
 }

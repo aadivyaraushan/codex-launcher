@@ -4,20 +4,22 @@ import android.Manifest
 import android.content.ComponentName
 import android.os.ParcelFileDescriptor
 import android.view.WindowInsets
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.onRoot
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -43,7 +45,13 @@ class UiScenarioActivityTest {
     fun everyFixedScenarioRendersItsExpectedRoot() {
         ScenarioCatalog.all.forEach { scenario ->
             show(scenario)
-            waitForText(scenario.expectedText)
+            // Name the scenario. A bare timeout out of a ~40-iteration loop says
+            // only that one of them broke, which is not enough to act on.
+            try {
+                waitForText(scenario.expectedText)
+            } catch (timeout: ComposeTimeoutException) {
+                throw AssertionError("scenario ${scenario.wireName} never showed \"${scenario.expectedText}\"", timeout)
+            }
         }
     }
 
@@ -88,7 +96,7 @@ class UiScenarioActivityTest {
         listOf("Working", "Needs approval", "Needs answer", "Failed", "Interrupted", "Replied").forEach(::waitForText)
         compose.onNodeWithContentDescription("Prompt").performTextInput("Run the sample checks")
         compose.onNodeWithContentDescription("Prompt").assertTextContains("Run the sample checks")
-        compose.onNodeWithContentDescription("Send prompt").performClick()
+        compose.onNodeWithContentDescription("Send prompt using Auto").performClick()
         compose.onNodeWithText("Sample prompt sent").assertIsDisplayed()
     }
 
@@ -104,7 +112,7 @@ class UiScenarioActivityTest {
         compose.waitForIdle()
         val rootBottom = compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom
         val keyboardTop = rootBottom - imeBottomInset()
-        val actionBottom = compose.onNodeWithContentDescription("Send prompt").fetchSemanticsNode().boundsInRoot.bottom
+        val actionBottom = compose.onNodeWithContentDescription("Send prompt using Auto").fetchSemanticsNode().boundsInRoot.bottom
 
         assertTrue(
             "new-task actions leave excessive space above the keyboard: keyboard=$keyboardTop actions=$actionBottom",
@@ -138,9 +146,12 @@ class UiScenarioActivityTest {
         compose.onNodeWithContentDescription("Choose permission mode").performClick()
         compose.onNodeWithText("Full access").performClick()
         compose.onNodeWithText("Use all files available to the computer account.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithContentDescription("Dictate prompt").performClick()
+        // Scroll back to the buttons first. performClick sends a real touch at the
+        // node's coordinates, so a button left off-screen by the scroll above is
+        // tapped where nothing is, silently.
+        compose.onNodeWithContentDescription("Dictate prompt").performScrollTo().performClick()
         compose.onNodeWithText("Dictation requested").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithContentDescription("Attach file").performClick()
+        compose.onNodeWithContentDescription("Attach file").performScrollTo().performClick()
         compose.onNodeWithText("Attachment picker requested").performScrollTo().assertIsDisplayed()
 
         show(ScenarioId.HOME_ATTACHMENTS)
@@ -156,7 +167,7 @@ class UiScenarioActivityTest {
     fun homeFailureStatesKeepTheComposerSafeAndEditable() {
         show(ScenarioId.HOME_CHOOSE_PROJECT)
         compose.onNodeWithContentDescription("Prompt").performTextInput("Do not send yet")
-        compose.onNodeWithContentDescription("Send prompt").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Send prompt using Auto").assertIsNotEnabled()
 
         show(ScenarioId.HOME_DRAFT_ERROR)
         compose.onNodeWithContentDescription("Prompt").performTextInput("Keep this draft")
@@ -391,6 +402,113 @@ class UiScenarioActivityTest {
         compose.onNodeWithText("Remove confirmed").assertIsDisplayed()
     }
 
+    /**
+     * The four consent surfaces of a reply, on a real screen.
+     *
+     * Every one of them shipped with the same sentence against it in the plan:
+     * "still unverified — the dialog on a real screen". Each was tested as a
+     * Kotlin unit, which proves the strings and the branches and proves nothing
+     * about whether Android ever draws them. Between them they are the whole
+     * consent story for a reply: the permission ask that has to appear before
+     * anything can be sent at all, the sheet that is the only consent gate a
+     * reply gets, the offer that is the only way a person can stop a
+     * conversation, and the list that is the only way to undo that.
+     *
+     * Rendering is covered for free by everyFixedScenarioRendersItsExpectedRoot,
+     * which walks the whole catalogue. This test is here for the other half:
+     * that the controls on those surfaces are wired to the real callbacks
+     * rather than drawn and inert.
+     */
+    @Test
+    fun replyConsentSurfacesRunTheirRealProductionActions() {
+        show(ScenarioId.REPLY_ACCESS_ASK)
+        compose.onNodeWithText("Open settings").performClick()
+        compose.onNodeWithText("Notification settings requested").assertIsDisplayed()
+
+        show(ScenarioId.REPLY_ACCESS_ASK)
+        compose.onNodeWithText("Not now").performClick()
+        compose.onNodeWithText("Notification ask dismissed").assertIsDisplayed()
+
+        show(ScenarioId.REPLY_STOP_OFFER)
+        // Never "sent", never "delivered". Android accepted the text; nobody
+        // ever told us WhatsApp did anything with it.
+        compose.onNodeWithText("Handed a reply to WhatsApp for Maya.").assertIsDisplayed()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithText("Stop offer dismissed").assertIsDisplayed()
+
+        show(ScenarioId.REPLY_STOP_OFFER)
+        compose.onNodeWithText("Stop replying to Maya").performClick()
+        compose.onNodeWithText("Stop requested for Maya").assertIsDisplayed()
+
+        show(ScenarioId.REPLY_STOPPED_LIST)
+        waitForText("Turn replies back on")
+        compose.onNodeWithText("Turn replies back on").performClick()
+        compose.onNodeWithText("Replies resumed for Maya").assertIsDisplayed()
+
+        show(ScenarioId.CAPABILITY_CONFIRM)
+        // The product name, never the adapter's programmer id — this screen is
+        // the consent step, and "Notification_reply · send" was the defect.
+        // "This phone" is deliberate: the machine showing this sheet does not
+        // know which app the reply will land in.
+        compose.onNodeWithText("This phone · send").assertIsDisplayed()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Capability declined").assertIsDisplayed()
+
+        show(ScenarioId.CAPABILITY_CONFIRM)
+        compose.onNodeWithText("Send reply").performClick()
+        compose.onNodeWithText("Capability confirmed").assertIsDisplayed()
+    }
+
+    @Test
+    fun everyLaterPhaseOfTheCapabilitySheetRunsItsRealProductionActions() {
+        // The consent step was the easy half. These five are what the same
+        // sheet shows *after* the user says yes, and they are the ones that
+        // have to stay honest: two of them exist specifically to avoid
+        // claiming something happened when nobody knows whether it did.
+
+        show(ScenarioId.CAPABILITY_RUNNING)
+        compose.onNodeWithText("Waiting for the paired computer…").assertIsDisplayed()
+        // No button, and the dialog cannot be dismissed. A run that is in
+        // flight has no honest control to offer: "Cancel" would promise a
+        // stop this screen cannot deliver.
+        compose.onNodeWithText("Done").assertDoesNotExist()
+        compose.onNodeWithText("Cancel").assertDoesNotExist()
+
+        show(ScenarioId.CAPABILITY_RESULT_UNKNOWN)
+        // "Unverified" is the mark's own written label, and it has to be on
+        // screen next to the shape — a bare glyph is not a claim anybody can
+        // read. The detail says we do not know; the recovery line says what
+        // to do about it. Neither may be softened into "sent".
+        compose.onNodeWithText("Unverified").assertIsDisplayed()
+        compose.onNodeWithText("The phone lost touch before it learned whether this landed.").assertIsDisplayed()
+        compose.onNodeWithText("Check WhatsApp before sending it again.").assertIsDisplayed()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithText("Result dismissed").assertIsDisplayed()
+
+        show(ScenarioId.CAPABILITY_FAILED)
+        compose.onNodeWithText("App action failed").assertIsDisplayed()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithText("Failure dismissed").assertIsDisplayed()
+
+        show(ScenarioId.CAPABILITY_QUESTION)
+        // Nothing failed here — the router understood the request and needs
+        // one more word. The title must not say "failed"; that word standing
+        // for two opposite truths is the defect this phase exists to fix.
+        compose.onNodeWithText("One more thing").assertIsDisplayed()
+        compose.onNodeWithText("App action failed").assertDoesNotExist()
+        compose.onNodeWithText("Which Maya did you mean?").assertIsDisplayed()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithText("Question acknowledged").assertIsDisplayed()
+
+        show(ScenarioId.CAPABILITY_UNRESOLVED_CHECK)
+        // Plain text and one button, deliberately not a dialog: dismissing
+        // the sheet does not clear an unresolved check, so this has to be
+        // able to outlive the dialog that raised it.
+        compose.onNodeWithText("Operator could not confirm the reply to Maya.").assertIsDisplayed()
+        compose.onNodeWithText("I checked").performClick()
+        compose.onNodeWithText("Unresolved check cleared").assertIsDisplayed()
+    }
+
     private fun show(scenario: ScenarioId) {
         val output =
             shell(
@@ -398,14 +516,67 @@ class UiScenarioActivityTest {
                     "-n app.codexlauncher/.debug.scenarios.UiScenarioActivity --es scenario ${scenario.wireName}",
             )
         assertTrue(output, output.contains("Status: ok"))
+        // "am start -W" returns when the activity is resumed, which is before
+        // Compose has attached its hierarchy. Callers query semantics on the very
+        // next line, so wait for the hierarchy here.
+        awaitHierarchy()
     }
 
     private fun waitForText(text: String) {
-        compose.waitUntil(timeoutMillis = 3_000) {
+        awaitUi {
+            val node = compose.onNodeWithText(text, substring = true)
+            node.assertExists()
+            // Scroll to it when there is anything to scroll. Home puts the composer
+            // at the foot of the task list, so a message that belongs under the
+            // prompt field starts below the fold on a phone -- and anyone who has
+            // typed is already scrolled to it. Asserting "displayed" without
+            // scrolling would call a correctly rendered screen missing.
+            runCatching { node.performScrollTo() }
+            node.assertIsDisplayed()
+        }
+    }
+
+    /**
+     * Poll until [check] stops throwing.
+     *
+     * Catches IllegalStateException alongside AssertionError. Querying Compose
+     * before its hierarchy is attached throws "No compose hierarchies found in
+     * the app" — that is not a failed assertion, it is "not yet". A check that
+     * never succeeds still fails the test when the poll times out.
+     */
+    /**
+     * Wait until Compose has a hierarchy attached.
+     *
+     * Deliberately not onRoot(): a scenario showing a dialog has two Compose
+     * hierarchies, and onRoot() fails outright on more than one. What matters
+     * here is only that there is at least one.
+     */
+    private fun awaitHierarchy() {
+        // Five seconds, and it stays five seconds.
+        //
+        // This timing out used to look like the device being busy, and raising
+        // it to twenty was tried and measured and did nothing: inside the full
+        // suite it failed the same way, ten tests deep. The cause was the lock
+        // screen sitting on top of the activity, and the fix is showWhenLocked
+        // in the debug manifest, not a bigger number here. A wait that keeps
+        // getting raised is a wait that has stopped being a test.
+        compose.waitUntil(timeoutMillis = 5_000) {
             try {
-                compose.onNodeWithText(text, substring = true).assertIsDisplayed()
+                compose.onAllNodes(isRoot()).fetchSemanticsNodes().isNotEmpty()
+            } catch (_: IllegalStateException) {
+                false
+            }
+        }
+    }
+
+    private fun awaitUi(check: () -> Unit) {
+        compose.waitUntil(timeoutMillis = 5_000) {
+            try {
+                check()
                 true
             } catch (_: AssertionError) {
+                false
+            } catch (_: IllegalStateException) {
                 false
             }
         }

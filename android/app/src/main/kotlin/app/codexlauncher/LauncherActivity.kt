@@ -51,6 +51,9 @@ import app.codexlauncher.appearance.theme.QuietInstrumentTheme
 import app.codexlauncher.appearance.theme.ThemePreferenceStore
 import app.codexlauncher.appearance.theme.themeDataStore
 import app.codexlauncher.appearance.settings.AppearanceScreen
+import app.codexlauncher.capability.interaction.CapabilitySheet
+import app.codexlauncher.capability.handoff.HandOffActions
+import app.codexlauncher.capability.reply.guard.ThreadKey
 import app.codexlauncher.connection.pairing.PairingScreen
 import app.codexlauncher.connection.pairing.PairingViewModel
 import app.codexlauncher.connection.pairing.network.AndroidDevicePairingSigner
@@ -78,6 +81,8 @@ import app.codexlauncher.launcher.surface.AttachmentChoiceDialog
 import app.codexlauncher.launcher.surface.BackgroundConnectionWarningDialog
 import app.codexlauncher.launcher.surface.LauncherLoadingScreen
 import app.codexlauncher.launcher.surface.LocalStateRecoveryScreen
+import app.codexlauncher.launcher.surface.NotificationAccessDialog
+import app.codexlauncher.launcher.surface.ReplyStopOfferRow
 import app.codexlauncher.launcher.surface.UnpairConfirmationDialog
 import app.codexlauncher.project.selection.ProjectSelector
 import app.codexlauncher.project.selection.ProjectSelectionUiState
@@ -148,7 +153,10 @@ class LauncherActivity : ComponentActivity() {
             val draftComposerState by draftComposerViewModel.state.collectAsState()
             val attachmentUploads by sessionViewModel.attachments.collectAsState()
             val decisionState by sessionViewModel.decisions.collectAsState()
+            val capabilityState by sessionViewModel.capabilityInteraction.collectAsState()
             val projectUiState by sessionViewModel.projectSelection.state.collectAsState()
+            val notificationAccessBlock by launcherApplication.notificationAccessAsk.state.collectAsState()
+            val lastRepliedConversation by launcherApplication.replyGuard.lastReplied.collectAsState()
             val scope = rememberCoroutineScope()
             val appsRepository = remember { InstalledAppsRepository(applicationContext) }
             val appsLoader = remember { InstalledAppsLoader(appsRepository) }
@@ -165,6 +173,7 @@ class LauncherActivity : ComponentActivity() {
             var attachmentChoiceVisible by rememberSaveable { mutableStateOf(false) }
             var attachmentMessage by remember { mutableStateOf<String?>(null) }
             var homeDictationMessage by remember { mutableStateOf<String?>(null) }
+            var stoppedConversations by remember { mutableStateOf(emptyList<ThreadKey>()) }
             val homeDictationLauncher =
                 rememberLauncherForActivityResult(PromptDictationContract("Speak your prompt")) { result ->
                     val applied =
@@ -364,6 +373,9 @@ class LauncherActivity : ComponentActivity() {
                 if (destination == LauncherDestination.APPS) {
                     installedApps = appsLoader.load()
                 }
+                if (destination == LauncherDestination.APPEARANCE) {
+                    stoppedConversations = launcherApplication.durableStops.stopped().toList()
+                }
             }
             DisposableEffect(decisionState.active?.requestId) {
                 if (decisionState.active != null) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -434,9 +446,13 @@ class LauncherActivity : ComponentActivity() {
                                 val version = draftComposerState.version
                                 if (selection != null && version != null) {
                                     homeDictationMessage = null
-                                    scope.launch { sessionViewModel.startNewTask(prompt, selection, version) }
+                                    scope.launch { sessionViewModel.submitHomePrompt(prompt, selection, version) }
                                 }
                             },
+                            promptDestination = capabilityState.destination,
+                            capabilityBusy = capabilityState.busy,
+                            capabilityMessage = capabilityState.message,
+                            onPromptDestinationChange = sessionViewModel::setPromptDestination,
                             newTaskNeedsReview = sessionUiState.newTaskNeedsReview,
                             newTaskMessage = sessionUiState.newTaskMessage ?: homeDictationMessage,
                             onDismissNewTaskReview = {
@@ -583,6 +599,12 @@ class LauncherActivity : ComponentActivity() {
                     LauncherDestination.APPEARANCE ->
                         AppearanceScreen(
                             mode = appearanceMode,
+                            stoppedConversations = stoppedConversations,
+                            appLabel = ::appLabelFor,
+                            onResume = { key ->
+                                stoppedConversations = stoppedConversations.filterNot { it == key }
+                                scope.launch(Dispatchers.IO) { launcherApplication.durableStops.resume(key) }
+                            },
                             onModeSelected = { mode -> scope.launch { themePreferences.setMode(mode) } },
                             onBack = { destination = LauncherDestination.APPS },
                         )
@@ -606,6 +628,23 @@ class LauncherActivity : ComponentActivity() {
                         onDismiss = { connectionServiceWarning = null },
                     )
                 }
+                if (notificationAccessBlock.worthAsking) {
+                    NotificationAccessDialog(
+                        onOpenSettings = {
+                            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                            launcherApplication.notificationAccessAsk.dismiss()
+                        },
+                        onDismiss = { launcherApplication.notificationAccessAsk.dismiss() },
+                    )
+                }
+                lastRepliedConversation?.let { key ->
+                    ReplyStopOfferRow(
+                        key = key,
+                        appLabel = remember(key.packageName) { appLabelFor(key.packageName) },
+                        onStop = { scope.launch(Dispatchers.IO) { launcherApplication.durableStops.stop(key) } },
+                        onDismiss = { launcherApplication.replyGuard.dismissOffer() },
+                    )
+                }
                 decisionState.active?.let { request ->
                     if (request.kind == "question") {
                         QuestionSheet(
@@ -622,6 +661,23 @@ class LauncherActivity : ComponentActivity() {
                         )
                     }
                 }
+                CapabilitySheet(
+                    state = capabilityState,
+                    onRespond = { confirm -> scope.launch { sessionViewModel.respondToCapability(confirm) } },
+                    onDismiss = sessionViewModel::dismissCapabilityResult,
+                    onCopyDraft = { draft ->
+                        val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Operator draft", draft))
+                        AppLog.info(
+                            feature = "handoff",
+                            message = "hand-off draft copied",
+                            fields = mapOf("draft_length" to draft.length, "decision" to "copy_to_clipboard"),
+                        )
+                    },
+                    onOpenHandOff = { appName -> HandOffActions.openApp(this@LauncherActivity, appName) },
+                    onDisconnect = { scope.launch { sessionViewModel.disconnectCapability() } },
+                    onCheckDone = sessionViewModel::markCapabilityChecked,
+                )
                 if (unpairConfirmVisible) {
                     UnpairConfirmationDialog(
                         onDismiss = { unpairConfirmVisible = false },
@@ -651,6 +707,20 @@ class LauncherActivity : ComponentActivity() {
             )
         }
     }
+
+    /**
+     * The reply-stop offer only ever has a package name, the same spelling
+     * the reply path already keys conversations by. This turns that into
+     * the label the person actually recognises on their phone, falling back
+     * to the package name itself if Android has nothing installed under it
+     * any more.
+     */
+    private fun appLabelFor(packageName: String): String =
+        try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString()
+        } catch (error: PackageManager.NameNotFoundException) {
+            packageName
+        }
 
     private fun openAndroidSettings() {
         AppLog.info(

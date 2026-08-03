@@ -19,13 +19,14 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/applenotes"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/notion"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/execution"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/registry"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: proveadapter <notes|killswitch|notion|rotate>")
+		fmt.Fprintln(os.Stderr, "usage: proveadapter <notes|reminders|killswitch|notion|todoist|spotify|rotate>")
 		os.Exit(2)
 	}
 
@@ -33,14 +34,20 @@ func main() {
 	switch os.Args[1] {
 	case "notes":
 		err = runNotes(os.Args[2:])
+	case "reminders":
+		err = runReminders(os.Args[2:])
 	case "killswitch":
 		err = runKillswitch(os.Args[2:])
 	case "notion":
 		err = runNotion(os.Args[2:])
+	case "todoist":
+		err = runTodoist(os.Args[2:])
+	case "spotify":
+		err = runSpotify(os.Args[2:])
 	case "rotate":
 		err = runRotate(os.Args[2:])
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand %q; want notes, killswitch, notion, or rotate\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "unknown subcommand %q; want notes, reminders, killswitch, notion, todoist, spotify, or rotate\n", os.Args[1])
 		os.Exit(2)
 	}
 	if err != nil {
@@ -108,13 +115,18 @@ func runNotes(args []string) error {
 	if err != nil {
 		return fmt.Errorf("build apple notes adapter: %w", err)
 	}
+	reg := registry.New()
+	if err := reg.Register(a); err != nil {
+		return fmt.Errorf("register apple notes adapter: %w", err)
+	}
+	runner := execution.New(reg)
 
 	step(1, "Describe the adapter")
 	m := a.Describe()
 	printManifest(m)
 
 	step(2, "Resolve and preview a write — nothing runs yet")
-	writePlan, err := a.Resolve(ctx, adapter.Intent{
+	writePlan, err := runner.Resolve(ctx, adapter.Intent{
 		AdapterID: applenotes.ID,
 		Verb:      manifest.Write,
 		Subject:   "Operator proving run",
@@ -123,15 +135,15 @@ func runNotes(args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve write: %w", err)
 	}
-	preview, err := a.Preview(ctx, writePlan)
+	preview, err := runner.Preview(ctx, writePlan)
 	if err != nil {
 		return fmt.Errorf("preview write: %w", err)
 	}
 	line("this is what would happen — read it before anything runs:")
-	printPreview(preview)
+	printPreview(preview.Preview)
 
 	step(3, "Execute the write against the real Notes app")
-	writeOutcome, err := a.Execute(ctx, writePlan)
+	writeOutcome, err := runner.Execute(ctx, writePlan, preview.Confirmed())
 	if err != nil {
 		return fmt.Errorf("execute write: %w", err)
 	}
@@ -139,11 +151,11 @@ func runNotes(args []string) error {
 	printOutcome(writeOutcome)
 
 	step(4, "Resolve and execute a read of the same folder")
-	readPlan, err := a.Resolve(ctx, adapter.Intent{AdapterID: applenotes.ID, Verb: manifest.Read})
+	readPlan, err := runner.Resolve(ctx, adapter.Intent{AdapterID: applenotes.ID, Verb: manifest.Read})
 	if err != nil {
 		return fmt.Errorf("resolve read: %w", err)
 	}
-	readOutcome, err := a.Execute(ctx, readPlan)
+	readOutcome, err := runner.Execute(ctx, readPlan, execution.Confirmation{})
 	if err != nil {
 		return fmt.Errorf("execute read: %w", err)
 	}
@@ -155,7 +167,7 @@ func runNotes(args []string) error {
 	}
 
 	step(5, fmt.Sprintf("Attempt a write into %q, a folder this adapter does not own", *foreign))
-	_, err = a.Resolve(ctx, adapter.Intent{
+	_, err = runner.Resolve(ctx, adapter.Intent{
 		AdapterID: applenotes.ID,
 		Verb:      manifest.Write,
 		Subject:   "Should never be created",

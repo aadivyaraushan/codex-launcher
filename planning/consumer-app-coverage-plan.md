@@ -1,5 +1,11 @@
 # Consumer app coverage — the full list and the cheapest door into each
 
+> **Release-policy status (2026-08-02):** This document remains a survey of
+> technically available routes. [consumer-app-implementation-plan.md](consumer-app-implementation-plan.md)
+> controls what ships. Direct action stays available when an official route acts
+> on behalf of the authenticated user. A bot, service account, Page,
+> organization, merchant account, or other separate identity is hand-off only.
+
 **Date:** 2026-07-30
 **Extends:** [sandbox-approach-plan.md](sandbox-approach-plan.md), which solved exactly
 one app (Instagram) with the most expensive tool available (a driven browser).
@@ -28,7 +34,7 @@ not one, and the cheap ones cover more of a real phone than the sandbox does.
   Uber, Resy,     Google,       Shopify,      SMS reply,    Instagram,
   Spotify,        Telegram,     Etsy, Target, "open app     Airbnb,
   Instacart,      Reddit,       Walmart,      with this     Grubhub,
-  Booking.com     Discord,      Nike          drafted"      dating apps
+  Booking.com     Todoist,      Nike          drafted"      dating apps
                   Notion, X
 ```
 
@@ -152,8 +158,8 @@ memory.
 | WhatsApp | R6 `whatsapp-mcp` — Go bridge over the WhatsApp Web multidevice protocol, QR login, SQLite locally | Read history, search contacts, send to people and groups, personal account | [Verified](https://github.com/lharries/whatsapp-mcp) |
 | Telegram | R2 MTProto user client wrapped as MCP | Everything — full read/send on the personal account, not a bot | [Verified](https://github.com/antongsm/mcp-telegram) |
 | Signal | R6 `signal-cli` as a linked device | Read/send, direct and group. Self-host, no official API exists. Several MCP wrappers maintained into 2026. | [Verified](https://github.com/rymurr/signal-mcp) |
-| Discord | R2 official API (bot token or user OAuth) | Servers and channels via a bot the user adds. **DMs are not free:** the `dm_channels.read` OAuth scope needs Discord's approval, bots can't be friends or join group DMs, and automating a normal user account (a "self-bot") is a bannable ToS breach. | [Verified](https://docs.discord.com/developers/topics/oauth2) |
-| Slack | R1 official connector / OAuth app | Full, and it's an interactive Claude app | [Verified](https://sunpeak.ai/blogs/claude-connectors-vs-claude-apps/) |
+| Discord | R4 official-app hand-off | Discord's public messaging route acts as a separate bot user; standard user-account automation is forbidden. Operator prepares the message and opens Discord for the authenticated user to send. | [Verified](https://docs.discord.com/developers/topics/oauth2) |
+| Slack | R1 official MCP / user OAuth | Read and send on behalf of the authenticated user. The MCP client has a Slack app identity for approval and logging, but the tools use Slack user tokens. | [Verified](https://docs.slack.dev/ai/slack-mcp-server/) |
 | iMessage | R6 local MCP: read the Messages SQLite DB, send via AppleScript | Read + send, but only while a Mac is awake and unlocked. Still works on macOS 26 Tahoe; the standard split is read from `~/Library/Messages/chat.db`, send via AppleScript. | [Verified](https://github.com/openclaw/imsg) |
 | Instagram DM | **R5 sandbox** | The existing plan. Graph API covers business accounts only. | Existing plan |
 | Messenger | R5 sandbox | Same reason as Instagram | Memory |
@@ -176,10 +182,10 @@ you, it's that one.
 | Instagram | R5 sandbox | Existing plan | — |
 | X / Twitter | R2 official API, **pay-per-use** | Post $0.015 (**$0.20 if it contains a link**), read $0.005, 2M reads/mo hard cap. No free tier. | [Verified](https://postproxy.dev/blog/x-api-pricing-2026/) |
 | Reddit | R2 official OAuth API — **not free-and-open, see below** | Read, post, comment, DM at 100 queries/min authenticated. But the free tier needs pre-approval under Reddit's Nov 2025 Responsible Builder Policy, **explicitly bars commercial use**, and self-serve registration is closed (2–4 week manual review). Commercial rate is **$0.24 per 1,000 calls**. | [Verified — corrected](https://www.socialcrawl.dev/blog/reddit-data-api-2026) |
-| LinkedIn | R1 — already connected via Composio in this environment | Limited: post, share a URL, comment, read own profile and managed orgs. **No messaging tool exists in the toolkit** — confirmed by searching the live connection this session. | Verified in this environment |
+| LinkedIn | R1 for the authenticated member; R4 for managed organizations | Personal posts/comments may stay direct when they act as the authenticated member. Managed-organization publishing uses a separate organization identity and hands off. No messaging tool exists in the checked toolkit. | Verified in this environment; organization identity treatment is the 2026-08-02 owner rule |
 | TikTok | R2 Content Posting API | Post only (direct post or draft inbox). No For You / feed read, no DMs — TikTok does not expose DM data to third-party integrations. | [Verified](https://www.tokportal.com/learn/tiktok-content-posting-api-developer-guide) |
 | YouTube | R2 Data API v3 | Search, playlists, subscriptions, comments. Free, but **10,000 quota units/day ≈ 100 searches** — a search costs 100 units. More requires an audit form and manual review; there is no self-serve way to buy quota. | [Verified](https://www.getphyllo.com/post/youtube-api-limits-how-to-calculate-api-usage-cost-and-fix-exceeded-api-quota) |
-| Facebook | R2 Graph API | Pages only. Posting to a personal profile has been impossible since `publish_actions` was removed in 2018. | [Verified](https://postproxy.dev/blog/facebook-graph-api-posting-guide/) |
+| Facebook | R4 official-app hand-off | The Graph API publishing route acts as a Facebook Page, a separate identity. Personal-profile posting is also unavailable through the API. Operator prepares the post and opens Facebook for the user to publish. | [Route limit verified](https://developers.facebook.com/docs/pages-api/posts/) |
 | Threads | R2 Threads API | **More than posting.** Publish text/image/video/carousel/quote posts, and read, reply to, hide and delete replies on your own posts. Scopes: `threads_basic`, `threads_content_publish`, `threads_read_replies`, `threads_manage_replies`. | [Verified](https://replia.net/blog/threads-api-guide) |
 | Snapchat | **none** | Snap Kit is login, Creative, Story and Ads only — no messaging API, nothing that sends a snap. Sandbox is poor too: mobile-first with a thin web client. | [Verified](https://developers.snap.com/api/home) |
 
@@ -228,8 +234,8 @@ and the application asks what you would build, which you can answer well.
 | App | Route | What you actually get | Confidence |
 |---|---|---|---|
 | Venmo | **none** | Developer and Payouts APIs are retired; closed to new businesses. Only pre-2016 grandfathered access survives. Deep link (`venmo://`) to a pre-filled screen is all that's left. | [Verified](https://www.fintechfutures.com/digital-banking/in-resource-shift-venmo-closes-api-to-new-developers) |
-| PayPal | R1 official MCP server, plus an ACP server | Real agent-initiated payments | [Verified](https://paymentbrief.com/articles/ai-agents-payment-apis-mcp-stripe-toolkit/) |
-| Stripe / Square | R1 official MCP servers | Merchant-side, not consumer | Same source |
+| PayPal | R4 official-app hand-off | The official MCP is merchant tooling for business tasks such as invoices, not control of a consumer payer account. A separate consumer ACP/payment route was not verified. | [Verified](https://developer.paypal.com/tools/mcp-server/) |
+| Stripe / Square | no consumer route | Their official MCP servers control merchant or seller accounts, not the authenticated consumer. | [Stripe](https://docs.stripe.com/mcp), [Square](https://developer.squareup.com/docs/mcp) |
 | Cash App | **none** | No consumer API | Memory — not re-checked |
 | Zelle | **none** | Bank-side only | Memory — not re-checked |
 | Splitwise | R2 public API | Add expenses, settle up. Self-serve keys exist, but the self-serve tier has conservative limits and is **"not intended for commercial projects"** — commercial use means emailing developers@splitwise.com. | [Verified](https://dev.splitwise.com/) |
@@ -295,14 +301,16 @@ use the Anthropic connector and let them own the relationship.
 | App | Route | What you actually get | Confidence |
 |---|---|---|---|
 | Gmail, Calendar, Drive, Photos | R2 Google OAuth APIs | Full read/write, and technically the best-supported surface here — **but Gmail's mail scopes are Restricted.** Past 100 users in production, an app touching them must pass an annual third-party CASA security assessment and re-pass it every 12 months. Reported cost ranges from low thousands to far more, every year. See the reordering note below. | [Verified — new constraint](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification) |
-| Outlook, Teams | R2 Microsoft Graph | Full, and **personal Outlook.com accounts are supported**, not just work tenants — register the app against the `/common` authority. Graph is now the only supported way in; EWS retires October 2026. | [Verified](https://learn.microsoft.com/en-us/graph/outlook-mail-concept-overview) |
+| Outlook | R2 Microsoft Graph | Delegated mail access supports the authenticated personal Outlook.com or work user. | [Verified](https://learn.microsoft.com/en-us/graph/outlook-mail-concept-overview) |
+| Teams | R2 Microsoft Graph for work/school; R4 for personal accounts | Delegated chat send acts as the authenticated work/school user. Microsoft's endpoint does not support personal Microsoft accounts, so personal Teams hands off. | [Verified](https://learn.microsoft.com/en-us/graph/api/chat-post-messages?view=graph-rest-1.0) |
 | Notion | R1 official MCP | Full: search, read pages as Markdown, query data sources with filters, create pages, edit content, move pages. Official server from Notion, on API version 2026-03-11. | [Verified](https://github.com/makenotion/notion-mcp-server) |
 | Todoist | R2 public API | Full. API v1 unifies the old Sync and REST APIs; free personal token from account settings, OAuth for multi-user. | [Verified](https://developer.todoist.com/api/v1/) |
 | Apple Notes, Reminders | R6 local CLI on a paired Mac | Full, Mac must be awake | Memory — not re-checked |
 | Strava | **effectively none for this product** | Not just "AI training prohibited." The 2026 API policy bars using Strava data "in connection with the development, training, evaluation, or operation of any AI Application," and names **ingestion into a context window** specifically. Separately, Standard-tier developers now need a paid Strava subscription (~$11.99/mo). An LLM assistant reading a user's activities is the exact thing this forbids. | [Verified — corrected](https://www.strava.com/legal/api_policy) |
 | Apple Health | on-device HealthKit only | Never leaves the phone | Memory |
-| Credit Karma, TurboTax | R1 official connectors | Read-only financial summary | [Verified](https://aitoolsreview.co.uk/insights/claude-connectors-complete-directory) |
-| Taskrabbit, Thumbtack | R1 official connectors | Booking local services | Same |
+| Credit Karma, TurboTax | R4 prepare-and-open hand-off | NO-DOOR (no public API). Demoted from provisional R1 completes. Specs `creditkarma` / `turbotax`. | [rt1-reachability-audit](../saved-results/rt1-reachability-audit.md) |
+| Taskrabbit | R4 official-site hand-off | The documented API uses machine-to-machine partner credentials rather than an authenticated consumer account. | [Verified](https://developer.taskrabbit.com/docs/getting-started) |
+| Thumbtack | R4 official-site hand-off | Partner approval is documented, but an authenticated-consumer route was not established. | [Access gate](https://developers.thumbtack.com/docs/getting-started/authentication) |
 
 ### Dating and the genuinely closed
 
@@ -359,7 +367,8 @@ Revised after the verification pass below — three items moved out of week 1–
            +-- Telegram via MTProto MCP
            +-- Spotify + Resy + Booking.com connectors, understood as
                SEARCH-AND-HAND-OFF, not completion
-           +-- Todoist, Notion, Microsoft Graph (personal accounts work)
+           +-- Todoist, Notion, Outlook Graph (personal accounts work)
+           +-- Teams Graph for work/school users; personal Teams hands off
            +-- Apply to the dd-cli waitlist  <-- do this on day one, it queues
            Covers: comms, calendar, music, tasks, notes, discovery
 
@@ -367,7 +376,7 @@ Revised after the verification pass below — three items moved out of week 1–
            +-- Uber connector (estimates), apply for Riders API separately
            +-- Instacart API key (needs an Instacart rep)
            +-- YouTube (10k units/day = ~100 searches; budget it)
-           +-- Discord (bot scope only; DM scope needs Discord's approval)
+           +-- Discord prepare-and-open hand-off; no bot or self-bot route
            +-- Threads (more capable than assumed - replies, not just posts)
            Covers: rides, groceries, social read
 
@@ -483,12 +492,12 @@ near-primary source. What moved:
 | Booking.com, Resy | "booking flow" / "reservations" | Search and availability only; both complete on the vendor's own surface. |
 | YouTube | "Free quota" | 10,000 units/day ≈ **100 searches**, and no way to buy more. |
 | Threads | "Posting" (unverified) | Also reads, replies to, hides and deletes replies. **Better than assumed.** |
-| Discord | "DMs via a bot" | DM scope needs Discord's approval; self-bots are a ban. |
+| Discord | "DMs or servers via a bot" | A bot is a separate user and self-bots are forbidden, so both become prepare-and-open hand-offs. |
 
 **Confirmed as written:** Signal, iMessage, TikTok, Facebook, Snapchat, Lyft,
 Google Maps, Grubhub, Airbnb, Netflix, Apple Music, Splitwise, eBay, Todoist,
-Notion, Microsoft Graph (which is *better* than assumed — personal Outlook.com
-accounts are supported), and the dating-app judgement.
+Notion, Outlook Graph (personal Outlook.com accounts are supported), and the
+dating-app judgement. Teams is narrower: direct chat send is work/school only.
 
 **Verified inside this environment, not from the web:** the LinkedIn row. The
 Composio connection is live on the personal account, and searching its toolkit

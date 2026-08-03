@@ -15,6 +15,12 @@ import (
 	"unicode"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
+	capabilityadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/consent"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/devicework"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/execution"
+	capabilityflow "github.com/codex-launcher/codex-launcher/companion/internal/capability/flow"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
@@ -31,6 +37,13 @@ import (
 
 type TaskSource interface {
 	ListRecent(context.Context, int) ([]taskstate.Task, error)
+}
+
+type CapabilityFlow interface {
+	Prepare(context.Context, string, string, string) (capabilityflow.Preview, error)
+	Confirm(context.Context, string, string, string) (capabilityadapter.Outcome, error)
+	Cancel(string, string, string) error
+	Disconnect(context.Context, string) error
 }
 
 type TaskTranscriptSource interface {
@@ -104,6 +117,8 @@ type Handler struct {
 	existingTaskSource ExistingTaskSource
 	promptQueue        *promptqueue.Queue
 	decisionRouter     *decisions.Router
+	capabilityFlow     CapabilityFlow
+	deviceWork         *devicework.Ledger
 	nextID             atomic.Uint64
 	publishMu          sync.Mutex
 	mu                 sync.Mutex
@@ -119,6 +134,13 @@ const (
 	broadcastQueueSize     = 128
 	defaultSendTimeout     = 2 * time.Second
 	maxTaskRefreshAttempts = 3
+
+	// DeviceWorkTimeout is how long the Mac waits for a phone to answer a
+	// device_action before giving up on it. A notification reply either lands
+	// within seconds or it is not going to land at all, and the cost of
+	// waiting longer than that is not patience — it is the user's next
+	// prompt sitting blocked behind a reply that was never coming.
+	DeviceWorkTimeout = 60 * time.Second
 )
 
 type outboundBroadcast struct {
@@ -205,6 +227,7 @@ func NewWithTaskSourceQueueAndAttachments(
 		active: make(map[string]transport.MessageSender), broadcasts: make(chan outboundBroadcast, broadcastQueueSize), sendTimeout: defaultSendTimeout,
 		taskRefreshWait: waitForTaskRefreshRetry,
 	}
+	handler.deviceWork = devicework.NewLedger(DeviceWorkTimeout, handler.now)
 	handler.transcriptSource, _ = taskSource.(TaskTranscriptSource)
 	handler.managementSource, _ = taskSource.(TaskManagementSource)
 	handler.optionSource, _ = taskSource.(NewTaskOptionsSource)
@@ -298,6 +321,19 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 			previous.Close()
 			handler.logger.Info("[mobile-session] older device session replaced", "device_id", sender.DeviceID(), "session_id", sender.SessionID(), "decision", "single_active_session")
 		}
+		// device_action is never replayed from the journal, so a phone
+		// starting a fresh session has no memory of any ask it left
+		// outstanding and will never answer it. Whether it sent the reply
+		// before it disconnected is exactly what nobody can find out, so
+		// every one of those requests is given up on now rather than left
+		// to sit until its own timeout. This runs after handler.mu is
+		// released — publishCapabilityActionResult can fall back to
+		// disconnecting a recipient, which needs that lock itself.
+		for _, abandoned := range handler.deviceWork.DeviceGone(sender.DeviceID()) {
+			if err := handler.publishCapabilityActionResult(ctx, sender, abandoned.ActionID, "outcome_unknown"); err != nil {
+				handler.logger.Error("[mobile-session] device action give-up failed", "device_id", sender.DeviceID(), "request_id", abandoned.RequestID, "action_id", abandoned.ActionID, "error_class", fmt.Sprintf("%T", err))
+			}
+		}
 		return nil
 	}
 	handler.mu.Lock()
@@ -306,6 +342,7 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 	if current == nil || current.ConnectionID() != sender.ConnectionID() {
 		return ErrSessionSuperseded
 	}
+	handler.SweepDeviceWork(ctx)
 	handler.logger.Info("[mobile-session] message received", "device_id", sender.DeviceID(), "message_type", message.Type, "input_shape", "validated_protocol_message")
 	switch message.Type {
 	case "ack":
@@ -322,6 +359,8 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 		return handler.handleTaskRead(ctx, sender, message)
 	case "decision_read":
 		return handler.handleDecisionRead(ctx, sender, message)
+	case "device_action_result":
+		return handler.handleDeviceActionResult(ctx, sender, message)
 	default:
 		return ErrUnsupportedMessage
 	}
@@ -330,6 +369,12 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 func (handler *Handler) EnableDecisions(router *decisions.Router) {
 	if handler != nil && router != nil {
 		handler.decisionRouter = router
+	}
+}
+
+func (handler *Handler) EnableCapabilities(flow CapabilityFlow) {
+	if handler != nil && flow != nil {
+		handler.capabilityFlow = flow
 	}
 }
 
@@ -472,7 +517,7 @@ func (handler *Handler) handleHello(ctx context.Context, sender transport.Messag
 			handler.logger.Info("[mobile-session] new task options ready", "model_count", len(options.Models), "permission_mode_count", len(options.PermissionModes), "output_shape", "safe_option_catalog")
 		}
 	}
-	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, handler.attachmentCapable, handler.decisionRouter != nil, options)); err != nil {
+	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, handler.attachmentCapable, handler.decisionRouter != nil, handler.capabilityFlow != nil, options)); err != nil {
 		return err
 	}
 	var body struct {
@@ -484,22 +529,34 @@ func (handler *Handler) handleHello(ctx context.Context, sender transport.Messag
 	if err := json.Unmarshal(message.Body, &body); err != nil {
 		return err
 	}
+	replayedWarm := false
 	if body.Resume.Mode == "warm" && body.Resume.LastAck != nil {
 		events, err := handler.journal.ReplayAfter(ctx, *body.Resume.LastAck)
 		if err == nil {
+			replayedWarm = true
 			for _, event := range events {
 				sequence := event.Sequence
 				if err := handler.send(ctx, sender, event.Name, &sequence, event.Body); err != nil {
 					return err
 				}
 			}
-			return nil
+			handler.logger.Info("[mobile-session] warm events replayed", "device_id", sender.DeviceID(), "last_ack", *body.Resume.LastAck, "replayed_count", len(events), "decision", "follow_with_fresh_snapshot")
 		}
-		if !errors.Is(err, eventjournal.ErrCursorCompacted) {
+		if err != nil && !errors.Is(err, eventjournal.ErrCursorCompacted) {
 			return err
 		}
 	}
-	snapshot, err := handler.refreshTaskSnapshot(ctx)
+	var snapshot eventjournal.Snapshot
+	var err error
+	if replayedWarm && handler.taskSource == nil {
+		current, currentErr := handler.journal.Snapshot(handler.now())
+		if currentErr != nil {
+			return currentErr
+		}
+		snapshot, err = handler.journal.ReplaceSnapshot(ctx, current.Body, handler.now())
+	} else {
+		snapshot, err = handler.refreshTaskSnapshot(ctx)
+	}
 	if err != nil {
 		return err
 	}
@@ -636,6 +693,9 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		RequestKind      decisions.Kind      `json:"requestKind"`
 		Decision         decisions.Decision  `json:"decision"`
 		Answers          map[string][]string `json:"answers"`
+		Utterance        string              `json:"utterance"`
+		Fingerprint      string              `json:"fingerprint"`
+		AdapterID        string              `json:"adapterId"`
 	}
 	if err := json.Unmarshal(message.Body, &action); err != nil {
 		return err
@@ -648,18 +708,30 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	if current == nil || current.ConnectionID() != sender.ConnectionID() {
 		return ErrSessionSuperseded
 	}
+	if action.Kind == "capability_request" || action.Kind == "capability_confirm" || action.Kind == "capability_disconnect" {
+		return handler.handleCapabilityAction(ctx, sender, capabilityActionParams{
+			ActionID:    action.ActionID,
+			Kind:        action.Kind,
+			RequestID:   action.RequestID,
+			Utterance:   action.Utterance,
+			Fingerprint: action.Fingerprint,
+			Decision:    string(action.Decision),
+			AdapterID:   action.AdapterID,
+		})
+	}
 	result := map[string]any{"actionId": action.ActionID, "state": "confirmed"}
 	refreshTasks := false
 	var provisionalTask *snapshotTask
 	switch action.Kind {
 	case "start_turn":
 		if action.TaskID != "" {
-			outcome, resultCode := handler.startExistingTask(ctx, sender.DeviceID(), action.ActionID, action.TaskID, action.Text, action.AttachmentIDs, false)
-			applyExistingTaskOutcome(result, outcome, resultCode)
+			outcome, code, resultCode := handler.startExistingTask(ctx, sender.DeviceID(), action.ActionID, action.TaskID, action.Text, action.AttachmentIDs, false)
+			applyExistingTaskOutcome(result, outcome, code, resultCode)
 			refreshTasks = outcome == existingTaskAccepted && resultCode != "queued"
 			break
 		}
-		switch handler.startNewTask(ctx, sender.DeviceID(), action.ActionID, action.ProjectID, action.Text, action.ModelID, action.ReasoningID, action.PermissionModeID, action.AttachmentIDs) {
+		outcome, code := handler.startNewTask(ctx, sender.DeviceID(), action.ActionID, action.ProjectID, action.Text, action.ModelID, action.ReasoningID, action.PermissionModeID, action.AttachmentIDs)
+		switch outcome {
 		case newTaskConfirmed:
 			refreshTasks = true
 			if confirmed, confirmedErr := handler.promptQueue.Entry(ctx, action.ActionID); confirmedErr == nil && confirmed.Result.ThreadID != "" && confirmed.Result.TurnID != "" {
@@ -674,26 +746,29 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		case newTaskOutcomeUnknown:
 			setActionOutcomeUnknown(result)
 		case newTaskFailed:
-			setActionFailure(result, "invalid_action", false)
+			setActionFailure(result, string(code), code == failureInternal)
 		}
 	case "steer_turn":
-		outcome, resultCode := handler.startExistingTask(ctx, sender.DeviceID(), action.ActionID, action.TaskID, action.Text, action.AttachmentIDs, true)
-		applyExistingTaskOutcome(result, outcome, resultCode)
+		outcome, code, resultCode := handler.startExistingTask(ctx, sender.DeviceID(), action.ActionID, action.TaskID, action.Text, action.AttachmentIDs, true)
+		applyExistingTaskOutcome(result, outcome, code, resultCode)
 		refreshTasks = outcome == existingTaskAccepted && resultCode == "redirected"
 	case "interrupt_turn":
-		outcome, resultCode := handler.stopExistingTask(ctx, action.ActionID, action.TaskID)
-		applyExistingTaskOutcome(result, outcome, resultCode)
+		outcome, code, resultCode := handler.stopExistingTask(ctx, action.ActionID, action.TaskID)
+		applyExistingTaskOutcome(result, outcome, code, resultCode)
 		refreshTasks = outcome == existingTaskAccepted
 	case "dismiss_unknown_control":
-		var dismissed promptqueue.Entry
-		var dismissErr error
 		if handler.promptQueue == nil {
-			dismissErr = promptqueue.ErrInvalidEntry
-		} else {
-			dismissed, dismissErr = handler.promptQueue.DismissUnknown(ctx, action.TargetActionID, action.TaskID, sender.DeviceID(), handler.now())
+			handler.logger.Info("[mobile-session] dismiss rejected", "device_id", sender.DeviceID(), "action_id", action.ActionID, "branch_reason", "no_prompt_queue", "error_code", string(failureDesktopIncompatible))
+			setActionFailure(result, string(failureDesktopIncompatible), false)
+			break
 		}
+		dismissed, dismissErr := handler.promptQueue.DismissUnknown(ctx, action.TargetActionID, action.TaskID, sender.DeviceID(), handler.now())
 		if dismissErr != nil {
-			setActionFailure(result, "invalid_action", false)
+			// The target control does not exist, belongs to another device, or
+			// is not in a dismissible state - that is the request being wrong,
+			// not a broken component.
+			handler.logger.Info("[mobile-session] dismiss rejected", "device_id", sender.DeviceID(), "action_id", action.ActionID, "target_action_id", action.TargetActionID, "branch_reason", "dismiss_target_invalid", "error_code", string(failureInvalidAction))
+			setActionFailure(result, string(failureInvalidAction), false)
 		} else {
 			handler.releaseActionAttachments(dismissed)
 			result["resultCode"] = "accepted"
@@ -701,16 +776,19 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		}
 	case "set_project":
 		if _, err := handler.projects.Resolve(action.ProjectID); err != nil {
-			setActionFailure(result, "invalid_action", false)
+			handler.logger.Info("[mobile-session] set_project rejected", "device_id", sender.DeviceID(), "project_id", action.ProjectID, "branch_reason", "project_not_resolved", "error_code", string(failureInvalidAction))
+			setActionFailure(result, string(failureInvalidAction), false)
 		}
 	case "approval", "question_response":
 		if handler.decisionRouter == nil {
-			setActionFailure(result, "invalid_action", false)
+			handler.logger.Info("[mobile-session] decision rejected", "device_id", sender.DeviceID(), "action_id", action.ActionID, "action_kind", action.Kind, "branch_reason", "no_decision_router", "error_code", string(failureDesktopIncompatible))
+			setActionFailure(result, string(failureDesktopIncompatible), false)
 			break
 		}
 		pending, okay := handler.pendingDecision(action.TaskID, action.RequestID)
 		if !okay || action.Kind == "approval" && pending.Kind != action.RequestKind || action.Kind == "question_response" && pending.Kind != decisions.KindQuestion {
-			setActionFailure(result, "invalid_action", false)
+			handler.logger.Info("[mobile-session] decision rejected", "device_id", sender.DeviceID(), "action_id", action.ActionID, "action_kind", action.Kind, "branch_reason", "pending_decision_not_found_or_kind_mismatch", "error_code", string(failureInvalidAction))
+			setActionFailure(result, string(failureInvalidAction), false)
 			break
 		}
 		response := decisions.Response{RequestID: pending.ID, ThreadID: pending.ThreadID, TurnID: pending.TurnID, ItemID: pending.ItemID, Kind: pending.Kind}
@@ -726,25 +804,33 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 			case errors.Is(err, decisions.ErrOwnerUnavailable):
 				setActionFailure(result, "owner_unavailable", true)
 			default:
-				setActionFailure(result, "invalid_action", false)
+				// We do not know why the router refused this response, so we
+				// admit that rather than blaming the request.
+				handler.logger.Error("[mobile-session] decision response failed", "device_id", sender.DeviceID(), "action_id", action.ActionID, "action_kind", action.Kind, "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+				setActionFailure(result, string(failureInternal), true)
 			}
 		} else {
 			result["resultCode"] = "accepted"
 		}
 	case "rename_task", "archive_task", "fork_task":
 		if handler.managementSource == nil {
-			setActionFailure(result, "invalid_action", false)
+			handler.logger.Info("[mobile-session] task management rejected", "device_id", sender.DeviceID(), "task_id", action.TaskID, "action_kind", action.Kind, "branch_reason", "no_management_source", "error_code", string(failureDesktopIncompatible))
+			setActionFailure(result, string(failureDesktopIncompatible), false)
 			break
 		}
 		if action.Kind == "archive_task" && handler.promptQueue != nil {
 			queueStatus, statusErr := handler.promptQueue.Status(ctx, action.TaskID)
 			if statusErr != nil {
+				handler.logger.Error("[mobile-session] archive queue status lookup failed", "device_id", sender.DeviceID(), "task_id", action.TaskID, "error_class", fmt.Sprintf("%T", statusErr), "error_code", string(failureInternal))
 				setActionFailure(result, "internal", true)
 				break
 			}
 			if queueStatus == promptqueue.QueueOutcomeUnknown {
-				handler.logger.Info("[mobile-session] archive blocked by unknown task control", "device_id", sender.DeviceID(), "task_id", action.TaskID, "decision", "require_explicit_review")
-				setActionFailure(result, "invalid_action", false)
+				// Deliberately invalid_action, not internal: the archive is
+				// refused because a control still needs explicit review, which
+				// is a fact about this request, not an unexplained break.
+				handler.logger.Info("[mobile-session] archive blocked by unknown task control", "device_id", sender.DeviceID(), "task_id", action.TaskID, "decision", "require_explicit_review", "error_code", string(failureInvalidAction))
+				setActionFailure(result, string(failureInvalidAction), false)
 				break
 			}
 		}
@@ -825,6 +911,384 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	return nil
 }
 
+// capabilityActionParams carries the fields handleCapabilityAction needs out
+// of the wire action. It exists so a new capability action kind (like
+// capability_disconnect) can add one field without every call site growing
+// another positional string parameter.
+type capabilityActionParams struct {
+	ActionID    string
+	Kind        string
+	RequestID   string
+	Utterance   string
+	Fingerprint string
+	Decision    string
+	AdapterID   string
+}
+
+func (handler *Handler) handleCapabilityAction(ctx context.Context, sender transport.MessageSender, params capabilityActionParams) error {
+	actionID, kind, requestID, utterance, fingerprint, decision, adapterID :=
+		params.ActionID, params.Kind, params.RequestID, params.Utterance, params.Fingerprint, params.Decision, params.AdapterID
+	if handler.capabilityFlow == nil {
+		// There is no error to map here — this build was simply never given a
+		// capability flow, which happens on a desktop that has not wired one
+		// up. "desktop_incompatible" says exactly that.
+		return handler.publishCapabilityFailure(ctx, sender, actionID, failureDesktopIncompatible)
+	}
+	switch kind {
+	case "capability_request":
+		ownerID := capabilityOwner(sender)
+		preview, err := handler.capabilityFlow.Prepare(ctx, ownerID, actionID, utterance)
+		if err != nil {
+			// A question is not a failure. The flow returns QuestionError when
+			// it understood the request perfectly well and needs one more word
+			// before it can act — most often which of several people named
+			// "Maya" was meant. Nothing broke and nothing was refused, so
+			// "failed" with a hardcoded "invalid_action" tells the user their
+			// request was wrong when it was not.
+			//
+			// "cancelled" is the honest word the shipped phone will accept.
+			// Its decoder holds a closed set of error codes
+			// (ProtocolCodec.kt:618) and drops the whole envelope on an
+			// unknown one, so a new code like "needs_disambiguation" would
+			// mean the user is told nothing at all. "cancelled" is already a
+			// valid action state there (:601) and carries no error object
+			// (:216 permits one only on failed and outcome_unknown), which is
+			// exactly right: we stopped, we did not act, and nothing is wrong.
+			//
+			// Delivering the question text and routing an answer back is a
+			// wire change on both sides and is not done here.
+			var question *capabilityflow.QuestionError
+			if errors.As(err, &question) {
+				handler.logger.Info("[mobile-session] capability needs an answer before it can act", "device_id", sender.DeviceID(), "request_id", actionID, "question_length", len(question.Question))
+				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", question.Question)
+			}
+			code := capabilityFailureCode(err)
+			handler.logger.Error("[mobile-session] capability prepare failed", "device_id", sender.DeviceID(), "request_id", actionID, "error_class", fmt.Sprintf("%T", err), "code", code)
+			return handler.publishCapabilityFailure(ctx, sender, actionID, code)
+		}
+		body, err := json.Marshal(struct {
+			RequestID    string   `json:"requestId"`
+			AdapterID    string   `json:"adapterId"`
+			Verb         string   `json:"verb"`
+			Headline     string   `json:"headline"`
+			Lines        []string `json:"lines"`
+			ConfirmLabel string   `json:"confirmLabel"`
+			Fingerprint  string   `json:"fingerprint"`
+		}{preview.RequestID, preview.AdapterID, string(preview.Verb), preview.Headline, preview.Lines, preview.Confirm, preview.Fingerprint})
+		if err != nil {
+			return err
+		}
+		handler.logger.Info("[mobile-session] capability preview ready", "device_id", sender.DeviceID(), "request_id", actionID, "adapter_id", preview.AdapterID, "verb", preview.Verb, "line_count", len(preview.Lines))
+		return handler.send(ctx, sender, "capability_preview", nil, body)
+	case "capability_confirm":
+		ownerID := capabilityOwner(sender)
+		if decision == "cancel" {
+			if err := handler.capabilityFlow.Cancel(ownerID, requestID, fingerprint); err != nil {
+				code := capabilityFailureCode(err)
+				handler.logger.Error("[mobile-session] capability cancel failed", "device_id", sender.DeviceID(), "request_id", requestID, "error_class", fmt.Sprintf("%T", err), "code", code)
+				return handler.publishCapabilityFailure(ctx, sender, actionID, code)
+			}
+			return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled")
+		}
+		outcome, err := handler.capabilityFlow.Confirm(ctx, ownerID, requestID, fingerprint)
+		if err != nil {
+			// Device work is checked first because it is a different
+			// situation from the other two branches below, not because
+			// ordering could make one shadow another — the three error
+			// types are distinct, so any order would type-switch correctly.
+			var deviceWork *capabilityadapter.DeviceWorkError
+			if errors.As(err, &deviceWork) {
+				return handler.handOffToDevice(ctx, sender, actionID, requestID, deviceWork)
+			}
+			var unknown *capabilityadapter.OutcomeUnknownError
+			if errors.As(err, &unknown) {
+				handler.logger.Error("[mobile-session] capability execute outcome unknown", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", unknown.AdapterID, "verb", unknown.Verb)
+				return handler.publishCapabilityActionResult(ctx, sender, actionID, "outcome_unknown")
+			}
+			code := capabilityFailureCode(err)
+			handler.logger.Error("[mobile-session] capability execute failed", "device_id", sender.DeviceID(), "request_id", requestID, "error_class", fmt.Sprintf("%T", err), "code", code)
+			return handler.publishCapabilityFailure(ctx, sender, actionID, code)
+		}
+		body, err := json.Marshal(struct {
+			RequestID   string `json:"requestId"`
+			Ceiling     string `json:"ceiling"`
+			Done        bool   `json:"done"`
+			Detail      string `json:"detail"`
+			HandedOffTo string `json:"handedOffTo"`
+		}{requestID, string(outcome.Reached), outcome.Done, outcome.Detail, outcome.HandedOffTo})
+		if err != nil {
+			return err
+		}
+		event, err := handler.journal.Apply(ctx, "capability_result", body, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) { return current, nil })
+		if err != nil {
+			return err
+		}
+		handler.queueDelivery("capability_result", event.Sequence, body, []transport.MessageSender{sender})
+		handler.logger.Info("[mobile-session] capability result queued", "device_id", sender.DeviceID(), "request_id", requestID, "ceiling", outcome.Reached, "done", outcome.Done)
+		return nil
+	case "capability_disconnect":
+		if err := handler.capabilityFlow.Disconnect(ctx, adapterID); err != nil {
+			// The same rule as the confirm branch above, for the same reason.
+			// A revoke request that went out and lost its reply may already
+			// have killed the token; Google answers a second revoke of a dead
+			// token with a 4xx, so "failed" here would repeat forever while
+			// the access is in fact already gone.
+			var unknown *capabilityadapter.OutcomeUnknownError
+			if errors.As(err, &unknown) {
+				handler.logger.Error("[mobile-session] capability disconnect outcome unknown", "device_id", sender.DeviceID(), "adapter_id", adapterID, "verb", unknown.Verb)
+				return handler.publishCapabilityActionResult(ctx, sender, actionID, "outcome_unknown")
+			}
+			code := capabilityFailureCode(err)
+			handler.logger.Error("[mobile-session] capability disconnect failed", "device_id", sender.DeviceID(), "adapter_id", adapterID, "error_class", fmt.Sprintf("%T", err), "code", code)
+			return handler.publishCapabilityFailure(ctx, sender, actionID, code)
+		}
+		handler.logger.Info("[mobile-session] capability disconnected", "device_id", sender.DeviceID(), "adapter_id", adapterID)
+		return handler.publishCapabilityActionResult(ctx, sender, actionID, "confirmed")
+	default:
+		return ErrUnsupportedMessage
+	}
+}
+
+func capabilityOwner(sender transport.MessageSender) string {
+	return fmt.Sprintf("%s/%s/%d", sender.DeviceID(), sender.SessionID(), sender.ConnectionID())
+}
+
+// handOffToDevice records that requestID is now waiting on sender's phone
+// and asks it to carry out deviceWork's instruction. The ask goes out with
+// send, not through the journal: device_action is never replayed, because a
+// request the phone missed while offline has to expire rather than fire
+// late into a conversation that has moved on. No result frame is sent here
+// — until the phone answers, the honest thing to say is nothing at all.
+func (handler *Handler) handOffToDevice(ctx context.Context, sender transport.MessageSender, actionID, requestID string, deviceWork *capabilityadapter.DeviceWorkError) error {
+	// Resolve now, once, so nothing downstream has to ask what a blank
+	// ceiling means. An adapter that named nothing gets read as hands_off —
+	// the most modest claim, not the strongest.
+	ceiling := deviceWork.Ceiling.OrHandsOff()
+	record := devicework.Record{RequestID: requestID, DeviceID: sender.DeviceID(), Kind: deviceWork.Kind, ActionID: actionID, AdapterID: deviceWork.AdapterID, Ceiling: ceiling}
+	if !handler.deviceWork.Wait(record) {
+		// The request is already on the books. Handing it to the phone a
+		// second time would put the same message in front of a real person
+		// twice, so the honest response to a duplicate confirm is silence.
+		handler.logger.Info("[mobile-session] device action already outstanding", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", deviceWork.AdapterID, "kind", deviceWork.Kind, "ceiling", string(ceiling))
+		return nil
+	}
+	body, err := json.Marshal(struct {
+		RequestID string `json:"requestId"`
+		Kind      string `json:"kind"`
+		Handle    string `json:"handle"`
+		Text      string `json:"text"`
+	}{requestID, deviceWork.Kind, deviceWork.Handle, deviceWork.Text})
+	if err != nil {
+		return err
+	}
+	// Handle and Text are what a real person wrote — never in the log line.
+	// ceiling is the cap that will be applied to whatever the phone reports
+	// back, so it belongs in this log line rather than a new one.
+	handler.logger.Info("[mobile-session] device action handed to phone", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", deviceWork.AdapterID, "kind", deviceWork.Kind, "ceiling", string(ceiling))
+	return handler.send(ctx, sender, "device_action", nil, body)
+}
+
+// handleDeviceActionResult is the phone answering a device_action. Only the
+// first answer for a request is accepted — the ledger enforces that — so a
+// replay, a confused phone, or an answer that arrives after the request was
+// already given up on all land here as silence rather than as a second
+// capability_result.
+func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
+	var body struct {
+		RequestID string `json:"requestId"`
+		Outcome   string `json:"outcome"`
+	}
+	if err := json.Unmarshal(message.Body, &body); err != nil {
+		return err
+	}
+	handler.publishMu.Lock()
+	defer handler.publishMu.Unlock()
+	record, settled := handler.deviceWork.Settle(body.RequestID)
+	if !settled {
+		handler.logger.Info("[mobile-session] device action result for a request nobody is waiting on", "device_id", sender.DeviceID(), "request_id", body.RequestID)
+		return nil
+	}
+	var done bool
+	var detail string
+	switch body.Outcome {
+	case "handed_to_the_app":
+		done, detail = true, "Handed to the app — we can't see whether it reached them."
+	case "notification_gone":
+		done, detail = false, "The notification is gone, so there was no reply box left to use."
+	case "refused":
+		done, detail = false, "Nothing was sent — this one has to be replied to in its own app."
+	case "failed":
+		done, detail = false, "The reply didn't go through."
+	default:
+		// The contract validator rejects any outcome word it does not know,
+		// so this cannot actually be reached. It stays an explicit switch
+		// with its own default instead of falling through to "failed" —
+		// this codebase has been bitten before by a default that silently
+		// inherited the wrong branch.
+		handler.logger.Error("[mobile-session] device action reported an outcome word nobody defined", "device_id", sender.DeviceID(), "request_id", body.RequestID, "outcome", body.Outcome)
+		return nil
+	}
+	// The ceiling was fixed at hand-off time (handOffToDevice), from what the
+	// adapter actually declared it could do — not from what the phone says
+	// happened here. A refusal or failure still carries that same ceiling;
+	// only "done" changes with the outcome. A record from before this field
+	// existed would carry a blank Ceiling, so resolve it the same way
+	// hand-off does rather than trust it is always already set.
+	ceiling := record.Ceiling.OrHandsOff()
+	// A hands_off adapter is never allowed to claim it finished — that is
+	// the one claim its declared ceiling rules out. Device work never names
+	// a follow-up app (there is nothing here like "opened Spotify, go
+	// finish it there"), so hands_off can only ever mean "not done", the
+	// same rule the ordinary path enforces with its own clamp
+	// (execution/runner.go:215-230). Without this, a hands_off adapter whose
+	// reply the phone says it sent would still be reported as finished —
+	// the exact bug this file exists to close, just moved from the ceiling
+	// word to the done flag next to it.
+	if ceiling == manifest.HandsOff {
+		done = false
+	}
+	resultBody, err := json.Marshal(struct {
+		RequestID   string `json:"requestId"`
+		Ceiling     string `json:"ceiling"`
+		Done        bool   `json:"done"`
+		Detail      string `json:"detail"`
+		HandedOffTo string `json:"handedOffTo"`
+	}{record.RequestID, string(ceiling), done, detail, ""})
+	if err != nil {
+		return err
+	}
+	event, err := handler.journal.Apply(ctx, "capability_result", resultBody, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) { return current, nil })
+	if err != nil {
+		return err
+	}
+	handler.queueDelivery("capability_result", event.Sequence, resultBody, []transport.MessageSender{sender})
+	handler.logger.Info("[mobile-session] device action result closed the request", "device_id", sender.DeviceID(), "request_id", record.RequestID, "adapter_id", record.AdapterID, "outcome", body.Outcome, "ceiling", string(ceiling), "done", done)
+	return nil
+}
+
+// SweepDeviceWork reports outcome_unknown for every device_action whose wait
+// has run past DeviceWorkTimeout. It is safe to call with nothing
+// outstanding, and it has to be — the caller drives it opportunistically on
+// every message a live session receives, and there is no goroutine or
+// ticker inside the handler, because a background sweeper would make the
+// exact deadline a test observes unpredictable.
+func (handler *Handler) SweepDeviceWork(ctx context.Context) {
+	if handler == nil || handler.deviceWork == nil {
+		return
+	}
+	expired := handler.deviceWork.Expired()
+	if len(expired) == 0 {
+		return
+	}
+	handler.publishMu.Lock()
+	defer handler.publishMu.Unlock()
+	for _, record := range expired {
+		handler.mu.Lock()
+		sender := handler.active[record.DeviceID]
+		handler.mu.Unlock()
+		if err := handler.publishCapabilityActionResult(ctx, sender, record.ActionID, "outcome_unknown"); err != nil {
+			handler.logger.Error("[mobile-session] device action timeout report failed", "device_id", record.DeviceID, "request_id", record.RequestID, "action_id", record.ActionID, "error_class", fmt.Sprintf("%T", err))
+			continue
+		}
+		handler.logger.Info("[mobile-session] device action timed out", "device_id", record.DeviceID, "request_id", record.RequestID, "action_id", record.ActionID)
+	}
+}
+
+// actionFailureCode is one of the eleven words the phone's decoder accepts
+// (ProtocolCodec.kt:618). Anything outside that set makes the phone drop the
+// whole message, so the user is told nothing at all — worse than the wrong
+// word.
+type actionFailureCode string
+
+const (
+	failureUnauthorized        actionFailureCode = "unauthorized"
+	failureInvalidAction       actionFailureCode = "invalid_action"
+	failureDesktopIncompatible actionFailureCode = "desktop_incompatible"
+	failureInternal            actionFailureCode = "internal"
+)
+
+// capabilityFailureCode turns a Go error into the one word out of the
+// phone's fixed vocabulary that best tells the user what actually happened.
+//
+// "internal" is the default for anything not explicitly recognized below,
+// and that default is deliberate, not lazy: "internal" admits we cannot
+// explain what went wrong, while "invalid_action" claims to know the user
+// did something wrong. Only the errors listed below have actually
+// established that the request itself was the problem; every other error
+// gets the honest, unassuming answer.
+func capabilityFailureCode(err error) actionFailureCode {
+	switch {
+	case errors.Is(err, consent.ErrNotGranted), errors.Is(err, manifest.ErrGateNotCleared):
+		// The request was fine. The one thing missing is something the user
+		// can fix themselves — connect the app, or clear the checkpoint —
+		// and "unauthorized" is the only word in the set that says so.
+		return failureUnauthorized
+	case errors.Is(err, consent.ErrNeverShipped),
+		errors.Is(err, execution.ErrVerbNotOffered),
+		errors.Is(err, execution.ErrPreviewRequired),
+		errors.Is(err, capabilityflow.ErrUnknownRequest),
+		errors.Is(err, capabilityflow.ErrRequestExists),
+		errors.Is(err, capabilityflow.ErrFingerprintMismatch):
+		// These really are the user (or a stale client) asking for something
+		// that does not exist or does not match what was previewed.
+		// "invalid_action" is the truth here.
+		return failureInvalidAction
+	default:
+		return failureInternal
+	}
+}
+
+// publishCapabilityActionResult reports a non-failure outcome: confirmed,
+// cancelled, or outcome_unknown. A "failed" result always needs a caller to
+// say which of the eleven words explains it, so that state is not accepted
+// here — see publishCapabilityFailure.
+// question is variadic so every existing call site is untouched -- an
+// ordinary result must not grow the field just because this function learned
+// a new capability. Only the "cancelled" result that follows a QuestionError
+// passes one.
+func (handler *Handler) publishCapabilityActionResult(ctx context.Context, sender transport.MessageSender, actionID, state string, question ...string) error {
+	result := map[string]any{"actionId": actionID, "state": state}
+	if state == "outcome_unknown" {
+		result["error"] = map[string]any{"code": "outcome_unknown", "retryable": false}
+	}
+	if len(question) > 0 && question[0] != "" {
+		result["question"] = question[0]
+	}
+	return handler.publishCapabilityResult(ctx, sender, result)
+}
+
+// publishCapabilityFailure reports a "failed" result, always naming the
+// error code that explains it — there is no path that publishes "failed"
+// without one.
+func (handler *Handler) publishCapabilityFailure(ctx context.Context, sender transport.MessageSender, actionID string, code actionFailureCode) error {
+	result := map[string]any{"actionId": actionID, "state": "failed", "error": map[string]any{"code": string(code), "retryable": false}}
+	return handler.publishCapabilityResult(ctx, sender, result)
+}
+
+// publishCapabilityResult marshals an already-built action_result body,
+// records it in the journal, and delivers it to sender if one is connected.
+// It is the shared tail of publishCapabilityActionResult and
+// publishCapabilityFailure.
+func (handler *Handler) publishCapabilityResult(ctx context.Context, sender transport.MessageSender, result map[string]any) error {
+	body, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	event, err := handler.journal.Apply(ctx, "action_result", body, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) { return current, nil })
+	if err != nil {
+		return err
+	}
+	// sender is nil when the device that owed this answer is not currently
+	// connected — SweepDeviceWork hits this when a request times out after
+	// its phone has gone away. The journal has already recorded the event so
+	// the phone learns the outcome on its next reconnect; there is simply no
+	// live connection to push it to right now.
+	if sender != nil {
+		handler.queueDelivery("action_result", event.Sequence, body, []transport.MessageSender{sender})
+	}
+	return nil
+}
+
 func (handler *Handler) pendingDecision(taskID, requestID string) (decisions.Request, bool) {
 	if handler == nil || handler.decisionRouter == nil {
 		return decisions.Request{}, false
@@ -845,52 +1309,73 @@ const (
 	existingTaskOutcomeUnknown
 )
 
-func applyExistingTaskOutcome(result map[string]any, outcome existingTaskOutcome, resultCode string) {
+// applyExistingTaskOutcome reports the code startExistingTask or
+// stopExistingTask chose for a failure, rather than always saying
+// "invalid_action" - the same defect the new-task path had, on the path
+// used by steer_turn, interrupt_turn, and start_turn against an existing
+// task.
+func applyExistingTaskOutcome(result map[string]any, outcome existingTaskOutcome, code actionFailureCode, resultCode string) {
 	switch outcome {
 	case existingTaskAccepted:
 		result["resultCode"] = resultCode
 	case existingTaskOutcomeUnknown:
 		setActionOutcomeUnknown(result)
 	default:
-		setActionFailure(result, "invalid_action", false)
+		setActionFailure(result, string(code), code == failureInternal)
 	}
 }
 
-func (handler *Handler) startExistingTask(ctx context.Context, deviceID, actionID, taskID, prompt string, attachmentIDs []string, redirect bool) (existingTaskOutcome, string) {
-	if handler.existingTaskSource == nil || handler.promptQueue == nil {
-		return existingTaskFailed, ""
-	}
+// startExistingTask reports which of the eleven phone-accepted codes
+// explains a failure, the same way startNewTask does; the code is
+// meaningless on the existingTaskAccepted and existingTaskOutcomeUnknown
+// outcomes.
+func (handler *Handler) startExistingTask(ctx context.Context, deviceID, actionID, taskID, prompt string, attachmentIDs []string, redirect bool) (existingTaskOutcome, actionFailureCode, string) {
 	kind := "start_turn"
 	if redirect {
 		kind = "steer_turn"
+	}
+	if handler.existingTaskSource == nil || handler.promptQueue == nil {
+		handler.logger.Info("[mobile-session] existing task rejected", "task_id", taskID, "action_id", actionID, "action_kind", kind, "branch_reason", "no_task_management_component", "error_code", string(failureDesktopIncompatible))
+		return existingTaskFailed, failureDesktopIncompatible, ""
 	}
 	requestHash := requestHashWithAttachments([]string{kind, taskID, prompt}, deviceID, attachmentIDs)
 	stored, err := handler.promptQueue.Entry(ctx, actionID)
 	switch {
 	case err == nil:
 		if stored.RequestHash != requestHash || stored.ThreadID != taskID || stored.DeviceID != attachmentDeviceID(deviceID, attachmentIDs) || !slices.Equal(stored.AttachmentIDs, attachmentIDs) {
-			return existingTaskFailed, ""
+			handler.logger.Warn("[mobile-session] duplicate existing task action rejected", "task_id", taskID, "action_id", actionID, "action_kind", kind, "branch_reason", "request_hash_mismatch", "error_code", string(failureInvalidAction))
+			return existingTaskFailed, failureInvalidAction, ""
 		}
 		switch stored.State {
 		case promptqueue.StatePrepared:
-			return existingTaskAccepted, "queued"
+			return existingTaskAccepted, "", "queued"
 		case promptqueue.StateConfirmed:
-			return existingTaskAccepted, stored.Result.Code
+			return existingTaskAccepted, "", stored.Result.Code
 		case promptqueue.StateSentUnknown:
-			return existingTaskOutcomeUnknown, ""
+			return existingTaskOutcomeUnknown, "", ""
 		default:
-			return existingTaskFailed, ""
+			handler.logger.Info("[mobile-session] existing task rejected", "task_id", taskID, "action_id", actionID, "action_kind", kind, "branch_reason", "prepared_entry_unusable_state", "error_code", string(failureInternal))
+			return existingTaskFailed, failureInternal, ""
 		}
 	case !errors.Is(err, promptqueue.ErrActionNotFound):
-		return existingTaskFailed, ""
+		handler.logger.Error("[mobile-session] existing task lookup failed", "task_id", taskID, "action_id", actionID, "action_kind", kind, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+		return existingTaskFailed, failureInternal, ""
 	}
 	task, err := handler.existingTaskSource.CurrentTask(ctx, taskID)
-	if err != nil || task.ID != taskID {
-		handler.logger.Error("[mobile-session] existing task preflight failed", "task_id", taskID, "action_id", actionID, "action_kind", kind, "branch_reason", existingTaskErrorCode(err, task.ID == taskID), "error_class", fmt.Sprintf("%T", err))
-		return existingTaskFailed, ""
+	if err != nil {
+		handler.logger.Error("[mobile-session] existing task preflight failed", "task_id", taskID, "action_id", actionID, "action_kind", kind, "branch_reason", existingTaskErrorCode(err, task.ID == taskID), "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+		return existingTaskFailed, failureInternal, ""
+	}
+	if task.ID != taskID {
+		// The source answered without error but the task it returned is not
+		// the one the phone asked about - that is the request naming
+		// something we do not have, not a break in the source.
+		handler.logger.Info("[mobile-session] existing task rejected", "task_id", taskID, "action_id", actionID, "action_kind", kind, "branch_reason", "task_id_mismatch", "error_code", string(failureInvalidAction))
+		return existingTaskFailed, failureInvalidAction, ""
 	}
 	if err := handler.claimActionAttachments(deviceID, attachmentIDs, actionID); err != nil {
-		return existingTaskFailed, ""
+		handler.logger.Error("[mobile-session] existing task attachment claim failed", "task_id", taskID, "action_id", actionID, "action_kind", kind, "branch_reason", "attachment_claim_failed", "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+		return existingTaskFailed, failureInternal, ""
 	}
 	entry := promptqueue.Entry{
 		ActionID: actionID, QueueKey: taskID, ActionKind: kind, OwnerSource: string(task.Source), ThreadID: taskID, Prompt: prompt,
@@ -898,14 +1383,15 @@ func (handler *Handler) startExistingTask(ctx context.Context, deviceID, actionI
 	}
 	if err := handler.promptQueue.Enqueue(ctx, entry); err != nil {
 		handler.releaseActionAttachments(entry)
-		return existingTaskFailed, ""
+		handler.logger.Error("[mobile-session] existing task preparation failed", "task_id", taskID, "action_id", actionID, "action_kind", kind, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+		return existingTaskFailed, failureInternal, ""
 	}
 	busy := task.State == taskstate.Working || task.State == taskstate.WaitingForApproval || task.State == taskstate.WaitingForAnswer
 	if busy && !redirect {
-		return existingTaskAccepted, "queued"
+		return existingTaskAccepted, "", "queued"
 	}
 	if redirect && (!task.CanRedirect || task.State != taskstate.Working) {
-		return existingTaskAccepted, "queued"
+		return existingTaskAccepted, "", "queued"
 	}
 	result, dispatchErr := handler.promptQueue.DispatchNext(ctx, taskID, func(ctx context.Context, queued promptqueue.Entry) (promptqueue.Result, error) {
 		var controlled taskadapter.ExistingTaskResult
@@ -933,17 +1419,18 @@ func (handler *Handler) startExistingTask(ctx context.Context, deviceID, actionI
 		return promptqueue.Result{Code: code, ThreadID: controlled.ThreadID, TurnID: controlled.TurnID}, nil
 	}, nil, handler.now())
 	if errors.Is(dispatchErr, promptqueue.ErrSendDeferred) {
-		return existingTaskAccepted, "queued"
+		return existingTaskAccepted, "", "queued"
 	}
 	if errors.Is(dispatchErr, promptqueue.ErrOutcomeUnknown) {
-		return existingTaskOutcomeUnknown, ""
+		return existingTaskOutcomeUnknown, "", ""
 	}
 	if dispatchErr != nil {
 		handler.releaseActionAttachments(entry)
-		return existingTaskFailed, ""
+		handler.logger.Error("[mobile-session] existing task dispatch failed", "task_id", taskID, "action_id", actionID, "action_kind", kind, "error_class", fmt.Sprintf("%T", dispatchErr), "error_code", string(failureInternal))
+		return existingTaskFailed, failureInternal, ""
 	}
 	handler.releaseActionAttachments(entry)
-	return existingTaskAccepted, result.Code
+	return existingTaskAccepted, "", result.Code
 }
 
 func existingTaskErrorCode(err error, idMatches bool) string {
@@ -975,9 +1462,13 @@ func existingTaskErrorCode(err error, idMatches bool) string {
 	}
 }
 
-func (handler *Handler) stopExistingTask(ctx context.Context, actionID string, taskID string) (existingTaskOutcome, string) {
+// stopExistingTask reports which of the eleven phone-accepted codes explains
+// a failure, the same way startExistingTask does; the code is meaningless on
+// the existingTaskAccepted and existingTaskOutcomeUnknown outcomes.
+func (handler *Handler) stopExistingTask(ctx context.Context, actionID string, taskID string) (existingTaskOutcome, actionFailureCode, string) {
 	if handler.existingTaskSource == nil || handler.promptQueue == nil {
-		return existingTaskFailed, ""
+		handler.logger.Info("[mobile-session] interrupt rejected", "task_id", taskID, "action_id", actionID, "branch_reason", "no_task_management_component", "error_code", string(failureDesktopIncompatible))
+		return existingTaskFailed, failureDesktopIncompatible, ""
 	}
 	requestHash := newTaskRequestHash("interrupt_turn", taskID)
 	prepared := false
@@ -985,20 +1476,23 @@ func (handler *Handler) stopExistingTask(ctx context.Context, actionID string, t
 	switch {
 	case err == nil:
 		if stored.RequestHash != requestHash || stored.ThreadID != taskID || stored.ActionKind != "interrupt_turn" {
-			return existingTaskFailed, ""
+			handler.logger.Warn("[mobile-session] duplicate interrupt action rejected", "task_id", taskID, "action_id", actionID, "branch_reason", "request_hash_mismatch", "error_code", string(failureInvalidAction))
+			return existingTaskFailed, failureInvalidAction, ""
 		}
 		switch stored.State {
 		case promptqueue.StateConfirmed:
-			return existingTaskAccepted, stored.Result.Code
+			return existingTaskAccepted, "", stored.Result.Code
 		case promptqueue.StateSentUnknown:
-			return existingTaskOutcomeUnknown, ""
+			return existingTaskOutcomeUnknown, "", ""
 		case promptqueue.StatePrepared:
 			prepared = true
 		case promptqueue.StateFailed, promptqueue.StateCanceled:
-			return existingTaskFailed, ""
+			handler.logger.Info("[mobile-session] interrupt rejected", "task_id", taskID, "action_id", actionID, "branch_reason", "prepared_entry_unusable_state", "error_code", string(failureInternal))
+			return existingTaskFailed, failureInternal, ""
 		}
 	case !errors.Is(err, promptqueue.ErrActionNotFound):
-		return existingTaskFailed, ""
+		handler.logger.Error("[mobile-session] interrupt lookup failed", "task_id", taskID, "action_id", actionID, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+		return existingTaskFailed, failureInternal, ""
 	}
 	queueKey := "action:" + actionID
 	entry := promptqueue.Entry{
@@ -1007,7 +1501,8 @@ func (handler *Handler) stopExistingTask(ctx context.Context, actionID string, t
 	}
 	if !prepared {
 		if err := handler.promptQueue.Enqueue(ctx, entry); err != nil {
-			return existingTaskFailed, ""
+			handler.logger.Error("[mobile-session] interrupt preparation failed", "task_id", taskID, "action_id", actionID, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+			return existingTaskFailed, failureInternal, ""
 		}
 	}
 	result, err := handler.promptQueue.DispatchNext(ctx, queueKey, func(ctx context.Context, queued promptqueue.Entry) (promptqueue.Result, error) {
@@ -1024,12 +1519,13 @@ func (handler *Handler) stopExistingTask(ctx context.Context, actionID string, t
 		return promptqueue.Result{Code: "interrupted", ThreadID: controlled.ThreadID, TurnID: controlled.TurnID}, nil
 	}, nil, handler.now())
 	if errors.Is(err, promptqueue.ErrOutcomeUnknown) {
-		return existingTaskOutcomeUnknown, ""
+		return existingTaskOutcomeUnknown, "", ""
 	}
 	if err != nil {
-		return existingTaskFailed, ""
+		handler.logger.Error("[mobile-session] interrupt dispatch failed", "task_id", taskID, "action_id", actionID, "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+		return existingTaskFailed, failureInternal, ""
 	}
-	return existingTaskAccepted, result.Code
+	return existingTaskAccepted, "", result.Code
 }
 
 type newTaskOutcome uint8
@@ -1040,9 +1536,14 @@ const (
 	newTaskOutcomeUnknown
 )
 
-func (handler *Handler) startNewTask(ctx context.Context, deviceID, actionID, projectID, prompt, modelID, reasoningID, permissionModeID string, attachmentIDs []string) newTaskOutcome {
+// startNewTask reports which of the eleven phone-accepted codes explains a
+// failure, rather than collapsing every ending into "invalid_action". Each
+// return carries the actionFailureCode the caller should use; that value is
+// meaningless on the newTaskConfirmed and newTaskOutcomeUnknown outcomes.
+func (handler *Handler) startNewTask(ctx context.Context, deviceID, actionID, projectID, prompt, modelID, reasoningID, permissionModeID string, attachmentIDs []string) (newTaskOutcome, actionFailureCode) {
 	if handler.newTaskSource == nil || handler.optionSource == nil || handler.promptQueue == nil {
-		return newTaskFailed
+		handler.logger.Info("[mobile-session] new task rejected", "action_id", actionID, "branch_reason", "no_task_management_component", "error_code", string(failureDesktopIncompatible))
+		return newTaskFailed, failureDesktopIncompatible
 	}
 	requestHash := requestHashWithAttachments([]string{projectID, prompt, modelID, reasoningID, permissionModeID}, deviceID, attachmentIDs)
 	var prepared *promptqueue.Entry
@@ -1050,38 +1551,41 @@ func (handler *Handler) startNewTask(ctx context.Context, deviceID, actionID, pr
 	switch {
 	case storedErr == nil:
 		if stored.RequestHash != requestHash || stored.DeviceID != attachmentDeviceID(deviceID, attachmentIDs) || !slices.Equal(stored.AttachmentIDs, attachmentIDs) {
-			handler.logger.Warn("[mobile-session] duplicate new task rejected", "action_id", actionID, "branch_reason", "request_hash_mismatch")
-			return newTaskFailed
+			handler.logger.Warn("[mobile-session] duplicate new task rejected", "action_id", actionID, "branch_reason", "request_hash_mismatch", "error_code", string(failureInvalidAction))
+			return newTaskFailed, failureInvalidAction
 		}
 		switch stored.State {
 		case promptqueue.StateConfirmed:
-			return newTaskConfirmed
+			return newTaskConfirmed, ""
 		case promptqueue.StateFailed, promptqueue.StateCanceled:
-			return newTaskFailed
+			handler.logger.Info("[mobile-session] new task rejected", "action_id", actionID, "branch_reason", "prepared_entry_unusable_state", "error_code", string(failureInternal))
+			return newTaskFailed, failureInternal
 		case promptqueue.StateSentUnknown:
-			return newTaskOutcomeUnknown
+			return newTaskOutcomeUnknown, ""
 		case promptqueue.StatePrepared:
 			prepared = &stored
 		default:
-			return newTaskFailed
+			handler.logger.Info("[mobile-session] new task rejected", "action_id", actionID, "branch_reason", "prepared_entry_unusable_state", "error_code", string(failureInternal))
+			return newTaskFailed, failureInternal
 		}
 	case !errors.Is(storedErr, promptqueue.ErrActionNotFound):
-		handler.logger.Error("[mobile-session] new task lookup failed", "action_id", actionID, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", storedErr))
-		return newTaskFailed
+		handler.logger.Error("[mobile-session] new task lookup failed", "action_id", actionID, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", storedErr), "error_code", string(failureInternal))
+		return newTaskFailed, failureInternal
 	}
 	projectPath, err := handler.projects.Resolve(projectID)
 	if err != nil {
-		return newTaskFailed
+		handler.logger.Info("[mobile-session] new task rejected", "action_id", actionID, "project_id", projectID, "branch_reason", "project_not_resolved", "error_code", string(failureInvalidAction))
+		return newTaskFailed, failureInvalidAction
 	}
 	catalog, err := handler.optionSource.NewTaskOptions(ctx)
 	if err != nil {
-		handler.logger.Error("[mobile-session] new task option reload failed", "action_id", actionID, "branch_reason", "catalog_unavailable", "error_class", fmt.Sprintf("%T", err))
-		return newTaskFailed
+		handler.logger.Error("[mobile-session] new task option reload failed", "action_id", actionID, "branch_reason", "catalog_unavailable", "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+		return newTaskFailed, failureInternal
 	}
 	model, _, ok := resolveNewTaskOptions(catalog, modelID, reasoningID, permissionModeID)
 	if !ok {
-		handler.logger.Info("[mobile-session] new task rejected", "action_id", actionID, "branch_reason", "stale_or_unknown_option")
-		return newTaskFailed
+		handler.logger.Info("[mobile-session] new task rejected", "action_id", actionID, "branch_reason", "stale_or_unknown_option", "error_code", string(failureInvalidAction))
+		return newTaskFailed, failureInvalidAction
 	}
 	queueKey := "new:" + actionID
 	entry := promptqueue.Entry{
@@ -1092,17 +1596,19 @@ func (handler *Handler) startNewTask(ctx context.Context, deviceID, actionID, pr
 	if prepared != nil {
 		if prepared.Model != entry.Model {
 			_ = handler.promptQueue.CancelThread(ctx, queueKey, "stale_model_mapping", handler.now())
-			return newTaskFailed
+			handler.logger.Info("[mobile-session] new task rejected", "action_id", actionID, "branch_reason", "stale_model_mapping", "error_code", string(failureInvalidAction))
+			return newTaskFailed, failureInvalidAction
 		}
 		entry = *prepared
 	} else {
 		if err := handler.claimActionAttachments(deviceID, attachmentIDs, actionID); err != nil {
-			return newTaskFailed
+			handler.logger.Error("[mobile-session] new task attachment claim failed", "action_id", actionID, "branch_reason", "attachment_claim_failed", "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+			return newTaskFailed, failureInternal
 		}
 		if err := handler.promptQueue.Enqueue(ctx, entry); err != nil {
 			handler.releaseActionAttachments(entry)
-			handler.logger.Error("[mobile-session] new task preparation failed", "action_id", actionID, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", err))
-			return newTaskFailed
+			handler.logger.Error("[mobile-session] new task preparation failed", "action_id", actionID, "branch_reason", "durable_queue_unavailable", "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
+			return newTaskFailed, failureInternal
 		}
 	}
 	_, err = handler.promptQueue.DispatchNext(ctx, queueKey, func(ctx context.Context, queued promptqueue.Entry) (promptqueue.Result, error) {
@@ -1128,15 +1634,16 @@ func (handler *Handler) startNewTask(ctx context.Context, deviceID, actionID, pr
 		return promptqueue.Result{Code: "accepted", ThreadID: started.ThreadID, TurnID: started.TurnID}, nil
 	}, nil, handler.now())
 	if err != nil {
-		handler.logger.Error("[mobile-session] new task dispatch failed", "action_id", actionID, "project_id", projectID, "error_class", fmt.Sprintf("%T", err))
 		if errors.Is(err, promptqueue.ErrOutcomeUnknown) {
-			return newTaskOutcomeUnknown
+			handler.logger.Error("[mobile-session] new task dispatch failed", "action_id", actionID, "project_id", projectID, "error_class", fmt.Sprintf("%T", err), "error_code", "outcome_unknown")
+			return newTaskOutcomeUnknown, ""
 		}
+		handler.logger.Error("[mobile-session] new task dispatch failed", "action_id", actionID, "project_id", projectID, "error_class", fmt.Sprintf("%T", err), "error_code", string(failureInternal))
 		handler.releaseActionAttachments(entry)
-		return newTaskFailed
+		return newTaskFailed, failureInternal
 	}
 	handler.releaseActionAttachments(entry)
-	return newTaskConfirmed
+	return newTaskConfirmed, ""
 }
 
 func newTaskRequestHash(values ...string) string {
@@ -1650,7 +2157,7 @@ func (handler *Handler) send(ctx context.Context, sender transport.MessageSender
 	return nil
 }
 
-func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable, attachmentCapable, decisionCapable bool, options taskoptions.Catalog) json.RawMessage {
+func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable, attachmentCapable, decisionCapable, capabilityCapable bool, options taskoptions.Catalog) json.RawMessage {
 	capabilities := []string{"set_project"}
 	if taskCapable {
 		capabilities = append(capabilities, "desktop_tasks")
@@ -1669,6 +2176,9 @@ func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCap
 	}
 	if decisionCapable {
 		capabilities = append(capabilities, "decisions")
+	}
+	if capabilityCapable {
+		capabilities = append(capabilities, "capability_actions")
 	}
 	body, _ := json.Marshal(struct {
 		SessionID      string              `json:"sessionId"`

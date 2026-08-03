@@ -49,7 +49,7 @@ func DecodeText(frame []byte) (Message, error) {
 	if message.Version.Major != ProtocolMajor || message.Version.Minor < 0 || uint64(message.Version.Minor) > maxProtocolChunk {
 		return Message{}, ErrUnsupportedVersion
 	}
-	sequenceType := message.Type == "snapshot" || message.Type == "event" || message.Type == "action_result" || message.Type == "attachment_ack"
+	sequenceType := message.Type == "snapshot" || message.Type == "event" || message.Type == "action_result" || message.Type == "capability_result" || message.Type == "attachment_ack"
 	if sequenceType != (message.Sequence != nil) || message.Sequence != nil && (*message.Sequence == 0 || *message.Sequence > maxProtocolInteger) {
 		return Message{}, ErrInvalidEnvelope
 	}
@@ -571,15 +571,56 @@ func validateBody(message Message) error {
 		if message.Sender != "companion" || !validateDecisionPage(body) {
 			return ErrInvalidEnvelope
 		}
+	case "capability_preview":
+		if message.Sender != "companion" || !exactKeys(body, "requestId", "adapterId", "verb", "headline", "lines", "confirmLabel", "fingerprint") ||
+			!validID(stringValue(body["requestId"])) || !validID(stringValue(body["adapterId"])) || !knownCapabilityVerb(stringValue(body["verb"])) ||
+			!safeDisplayString(body["headline"], 256) || !safeDisplayString(body["confirmLabel"], 64) || !isSHA256(stringValue(body["fingerprint"])) ||
+			!validateCapabilityLines(body["lines"]) {
+			return ErrInvalidEnvelope
+		}
+	case "capability_result":
+		done, okay := boolValueOK(body["done"])
+		ceiling := stringValue(body["ceiling"])
+		handedOffTo := stringValue(body["handedOffTo"])
+		if message.Sender != "companion" || message.Sequence == nil || !exactKeys(body, "requestId", "ceiling", "done", "detail", "handedOffTo") ||
+			!validID(stringValue(body["requestId"])) || !knownCapabilityCeiling(ceiling) || !okay || !safeDisplayString(body["detail"], 2048) ||
+			(handedOffTo != "" && !safeDisplayString(body["handedOffTo"], 128)) ||
+			(ceiling == "hands_off" && done && handedOffTo == "") || (ceiling != "hands_off" && handedOffTo != "") || (!done && handedOffTo != "") {
+			return ErrInvalidEnvelope
+		}
+	case "device_action":
+		// This is the Mac asking the phone to carry out something only the
+		// phone can do, so the frame has to pin the one instruction the phone
+		// knows how to run and bound the two pieces of free text riding along
+		// with it: an unbounded reply could smuggle a whole document into a
+		// chat, and a handle with control characters could scramble however
+		// the phone chooses to render it.
+		if message.Sender != "companion" || !exactKeys(body, "requestId", "kind", "handle", "text") ||
+			!validID(stringValue(body["requestId"])) || !knownDeviceActionKind(stringValue(body["kind"])) ||
+			!safeDisplayString(body["handle"], 256) ||
+			!boundedString(body["text"], 4096) || strings.TrimSpace(stringValue(body["text"])) == "" {
+			return ErrInvalidEnvelope
+		}
+	case "device_action_result":
+		// The phone reports back with a single word for what happened rather
+		// than a sentence, because the sentence the user actually reads is
+		// assembled on the Mac alongside every other capability's outcome —
+		// letting the phone phrase its own would mean the same result could
+		// read two different ways depending on which machine wrote it.
+		if message.Sender != "phone" || !exactKeys(body, "requestId", "outcome") ||
+			!validID(stringValue(body["requestId"])) || !knownDeviceActionOutcome(stringValue(body["outcome"])) {
+			return ErrInvalidEnvelope
+		}
 	case "action_result":
 		state := stringValue(body["state"])
 		resultCode := stringValue(body["resultCode"])
 		forkTaskID := stringValue(body["forkTaskId"])
-		if message.Sender != "companion" || message.Sequence == nil || !onlyAllowedKeys(body, "actionId", "state", "resultCode", "error", "forkTaskId") ||
+		if message.Sender != "companion" || message.Sequence == nil || !onlyAllowedKeys(body, "actionId", "state", "resultCode", "error", "forkTaskId", "question") ||
 			!validID(stringValue(body["actionId"])) || !knownActionState(state) ||
 			(body["resultCode"] != nil && !knownActionResultCode(resultCode)) ||
 			(body["forkTaskId"] != nil && (!validID(forkTaskID) || state != "confirmed")) ||
-			!validateOptionalError(body["error"], state == "failed" || state == "outcome_unknown") {
+			!validateOptionalError(body["error"], state == "failed" || state == "outcome_unknown") ||
+			!validateOptionalQuestion(body["question"], state) {
 			return ErrInvalidActionState
 		}
 	case "ack":
@@ -897,6 +938,17 @@ func validateOptionalError(raw json.RawMessage, required bool) bool {
 		knownErrorCode(stringValue(value["code"])) && boolValue(value["retryable"]) != nil
 }
 
+// validateOptionalQuestion allows "question" only on a "cancelled" action
+// result. It is the sentence the Mac wrote for why it stopped -- a label this
+// app renders in its own UI, so it is display-stripped like any other label,
+// unlike free-form text a person wrote for another person.
+func validateOptionalQuestion(raw json.RawMessage, state string) bool {
+	if raw == nil {
+		return true
+	}
+	return state == "cancelled" && safeDisplayString(raw, 512)
+}
+
 func knownTaskState(state string) bool {
 	switch state {
 	case "working", "waiting_for_approval", "waiting_for_answer", "failed", "interrupted", "idle_after_reply":
@@ -955,6 +1007,20 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 	}
 	kind := stringValue(body["kind"])
 	switch kind {
+	case "capability_request":
+		if !exactKeys(body, "actionId", "kind", "utterance") || !boundedString(body["utterance"], 4096) || strings.TrimSpace(stringValue(body["utterance"])) == "" {
+			return ErrInvalidAction
+		}
+	case "capability_confirm":
+		decision := stringValue(body["decision"])
+		if !exactKeys(body, "actionId", "kind", "requestId", "fingerprint", "decision") || !validID(stringValue(body["requestId"])) ||
+			!isSHA256(stringValue(body["fingerprint"])) || (decision != "confirm" && decision != "cancel") {
+			return ErrInvalidAction
+		}
+	case "capability_disconnect":
+		if !exactKeys(body, "actionId", "kind", "adapterId") || !validID(stringValue(body["adapterId"])) {
+			return ErrInvalidAction
+		}
 	case "start_turn":
 		existingTask := onlyAllowedKeys(body, "actionId", "kind", "taskId", "text", "attachmentIds") &&
 			validID(stringValue(body["taskId"])) && boundedString(body["text"], 131072) && strings.TrimSpace(stringValue(body["text"])) != "" &&
@@ -1013,6 +1079,50 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 		return ErrInvalidAction
 	}
 	return nil
+}
+
+func validateCapabilityLines(raw json.RawMessage) bool {
+	var lines []json.RawMessage
+	if json.Unmarshal(raw, &lines) != nil || len(lines) == 0 || len(lines) > 8 {
+		return false
+	}
+	for _, line := range lines {
+		if !safeDisplayString(line, 1024) {
+			return false
+		}
+	}
+	return true
+}
+
+func knownCapabilityVerb(value string) bool {
+	switch value {
+	case "read", "compose", "send", "order", "book", "play", "write", "cancel", "modify":
+		return true
+	default:
+		return false
+	}
+}
+
+func knownCapabilityCeiling(value string) bool {
+	return value == "completes" || value == "one_tap" || value == "hands_off"
+}
+
+func knownDeviceActionKind(value string) bool {
+	switch value {
+	case "notification_reply":
+		return true
+	default:
+		return false
+	}
+}
+
+func knownDeviceActionOutcome(value string) bool {
+	switch value {
+	case "handed_to_the_app", "notification_gone", "failed", "refused":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateDecisionPage(body map[string]json.RawMessage) bool {

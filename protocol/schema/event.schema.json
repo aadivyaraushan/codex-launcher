@@ -74,9 +74,13 @@
       "properties": {
         "actionId": { "$ref": "#/$defs/id" },
         "state": { "enum": ["queued", "sent", "confirmed", "outcome_unknown", "failed", "cancelled"] },
-        "error": { "$ref": "#/$defs/error" }
+        "error": { "$ref": "#/$defs/error" },
+        "question": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" }
       },
-      "allOf": [{ "if": { "properties": { "state": { "enum": ["failed", "outcome_unknown"] } } }, "then": { "required": ["error"] } }]
+      "allOf": [
+        { "if": { "properties": { "state": { "enum": ["failed", "outcome_unknown"] } } }, "then": { "required": ["error"] } },
+        { "if": { "required": ["question"] }, "then": { "properties": { "state": { "const": "cancelled" } } } }
+      ]
     },
     "decisionPage": {
       "type": "object",
@@ -132,6 +136,57 @@
         "options": { "type": "array", "maxItems": 32, "items": { "type": "string", "minLength": 1, "maxLength": 512 } },
         "secret": { "type": "boolean" }
       }
+    },
+    "transcriptEntry": {
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["id", "turnId", "kind", "text"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "turnId": { "$ref": "#/$defs/id" },
+            "kind": { "enum": ["user", "agent", "reasoning", "plan", "activity"] },
+            "text": { "type": "string", "minLength": 1, "maxLength": 8192 }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["id", "turnId", "kind", "status", "command"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "turnId": { "$ref": "#/$defs/id" },
+            "kind": { "const": "command" },
+            "status": { "enum": ["inProgress", "completed", "failed", "declined"] },
+            "command": { "type": "string", "minLength": 1, "maxLength": 8192 },
+            "output": { "type": "string", "minLength": 1, "maxLength": 8192 }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["id", "turnId", "kind", "status", "changes"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "turnId": { "$ref": "#/$defs/id" },
+            "kind": { "const": "file_change" },
+            "status": { "enum": ["inProgress", "completed", "failed", "declined"] },
+            "changes": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["path", "kind"],
+                "properties": {
+                  "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                  "kind": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
+                  "diff": { "type": "string", "minLength": 1, "maxLength": 8192 }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

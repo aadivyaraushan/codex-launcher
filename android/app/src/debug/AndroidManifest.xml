@@ -1,12 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:usesCleartextTraffic="true">
+        <!--
+            showWhenLocked/turnScreenOn are what make the connected suite honest.
+
+            Measured 2026-08-03 on the Pixel: run UiScenarioActivityTest with the
+            phone unlocked and it is 23 of 23, three times over. Let the keyguard
+            come up and run the identical build again and it is 23 tests with 22
+            failures — every one of them a Compose timeout waiting for a hierarchy
+            that will never attach, because the lock screen is sitting on top of
+            the activity. Inside the full seven-minute suite the phone locks part
+            way through, so the failures start at a different test each run and
+            read exactly like flakiness. They are not.
+
+            This is a debug-only activity, shell-only (DUMP permission), and it
+            re-checks the debuggable flag before it draws anything. Everything it
+            shows is local synthetic sample data, never a real task or message, so
+            putting it over the lock screen exposes nothing.
+        -->
         <activity
             android:name=".debug.scenarios.UiScenarioActivity"
             android:excludeFromRecents="true"
             android:exported="true"
             android:launchMode="singleTask"
             android:permission="android.permission.DUMP"
-            android:taskAffinity="app.codexlauncher.debug.scenarios" />
+            android:showWhenLocked="true"
+            android:taskAffinity="app.codexlauncher.debug.scenarios"
+            android:turnScreenOn="true" />
     </application>
 </manifest>

@@ -9,8 +9,8 @@
   ],
 
   "classes": {
-    "messaging": { "adapters": ["sms", "whatsapp"], "addressed_to_person": true },
-    "notes": { "adapters": ["notion", "apple-notes"] }
+    "messaging": { "adapters": ["sms", "whatsapp"], "addressing": "to_a_person" },
+    "notes": { "adapters": ["notion", "apple-notes"], "addressing": "to_a_thing" }
   },
 
   "contacts": [

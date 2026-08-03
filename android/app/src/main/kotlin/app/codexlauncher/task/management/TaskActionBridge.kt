@@ -36,7 +36,12 @@ sealed interface TaskActionOutcome {
 
     data object Invalid : TaskActionOutcome
 
-    data object Unavailable : TaskActionOutcome
+    // The request never left the phone. Nothing anywhere changed, so it is safe to try again.
+    data object NotSent : TaskActionOutcome
+
+    // The request was sent (or already carried out) and we lost track of what happened.
+    // The person needs to check the computer, not just retry.
+    data object Unresolved : TaskActionOutcome
 
     data object NeedsReview : TaskActionOutcome
 
@@ -58,19 +63,19 @@ class TaskActionBridge(
         }
         if (action == TaskAction.Fork) {
             when (val unresolved = unresolvedForkTaskIdsOrNull()) {
-                null -> return TaskActionOutcome.Unavailable
+                null -> return TaskActionOutcome.NotSent
                 else -> if (taskId in unresolved) return TaskActionOutcome.NeedsReview
             }
         }
         val actionId = nextActionId()
         if (!actionId.matches(protocolIdPattern)) return TaskActionOutcome.Invalid
         val result = CompletableDeferred<TerminalTaskResult?>()
-        if (pending.putIfAbsent(actionId, result) != null) return TaskActionOutcome.Unavailable
+        if (pending.putIfAbsent(actionId, result) != null) return TaskActionOutcome.NotSent
         val encoded = encode(actionId, taskId, action)
         val prepared = journal.prepare(actionId, action.recordKind(), encoded, taskId, null)
         if (prepared == null) {
             pending.remove(actionId, result)
-            return TaskActionOutcome.Unavailable
+            return TaskActionOutcome.NotSent
         }
         var sentRecord: ActionRecord? = null
         val sendResult =
@@ -79,11 +84,11 @@ class TaskActionBridge(
             }
         if (sendResult == ActionSendResult.NOT_SENT) {
             pending.remove(actionId, result)
-            return TaskActionOutcome.Unavailable
+            return TaskActionOutcome.NotSent
         }
         return try {
-            val terminal = result.await() ?: return TaskActionOutcome.Unavailable
-            val sent = sentRecord ?: return TaskActionOutcome.Unavailable
+            val terminal = result.await() ?: return TaskActionOutcome.Unresolved
+            val sent = sentRecord ?: return TaskActionOutcome.Unresolved
             val error = terminal.errorCode?.let(ActionErrorCode::fromWire) ?: ActionErrorCode.INTERNAL
             val retainUnresolved =
                 action == TaskAction.Fork &&
@@ -96,15 +101,19 @@ class TaskActionBridge(
                     terminal.state == "failed" || terminal.state == "outcome_unknown" -> journal.confirm(sent, null, error)
                     else -> false
                 }
-            if (!stored) return TaskActionOutcome.Unavailable
+            if (!stored) return TaskActionOutcome.Unresolved
             onTerminalStored(actionId, terminal.sequence, terminal.state == "confirmed", retainUnresolved)
+            // "outcome_unknown", or any error the computer itself tagged as outcome-unknown, means
+            // we cannot tell what happened -- that is Unresolved, not a genuine Failed.
+            val outcomeUnknown = terminal.state == "outcome_unknown" || error == ActionErrorCode.OUTCOME_UNKNOWN
             when {
                 terminal.state == "confirmed" && action == TaskAction.Fork ->
-                    terminal.forkTaskId?.let { TaskActionOutcome.Forked(it) } ?: TaskActionOutcome.Unavailable
+                    terminal.forkTaskId?.let { TaskActionOutcome.Forked(it) } ?: TaskActionOutcome.Unresolved
                 terminal.state == "confirmed" -> TaskActionOutcome.Complete
                 retainUnresolved -> TaskActionOutcome.NeedsReview
-                terminal.state == "failed" || terminal.state == "outcome_unknown" -> TaskActionOutcome.Failed(error)
-                else -> TaskActionOutcome.Unavailable
+                outcomeUnknown -> TaskActionOutcome.Unresolved
+                terminal.state == "failed" -> TaskActionOutcome.Failed(error)
+                else -> TaskActionOutcome.Unresolved
             }
         } catch (error: CancellationException) {
             throw error

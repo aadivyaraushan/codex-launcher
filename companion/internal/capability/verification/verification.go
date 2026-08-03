@@ -185,6 +185,13 @@ func (t *Tier1Runner) Run(ctx context.Context, p Probe) (adapter.Outcome, error)
 	if isMutatingVerb(p.Verb) && !p.ContainerCreatedByAdapter {
 		return adapter.Outcome{}, fmt.Errorf("%w: %s into %q", ErrForeignContainer, p.Verb, p.Container)
 	}
+	// See the gate comment on execution.Runner.Execute: a declared checkpoint
+	// nothing can clear must stop the request before the adapter is touched
+	// at all, not just before Execute. This is the unattended path, so there
+	// is nobody watching to notice a charge here — the check has to be first.
+	if err := a.Describe().CheckGates(); err != nil {
+		return adapter.Outcome{}, err
+	}
 
 	plan, err := a.Resolve(ctx, adapter.Intent{AdapterID: p.AdapterID, Verb: p.Verb})
 	if err != nil {
@@ -233,6 +240,11 @@ func (t *Tier2Runner) ConnectLoop(ctx context.Context, adapterID string, target 
 	if !target.IsSelf {
 		return adapter.Outcome{}, fmt.Errorf("%w: %s", ErrNotSelf, target.Handle)
 	}
+	// See the gate comment in Tier1Runner.Run: the check has to come before
+	// the adapter is touched, not just before the send.
+	if err := a.Describe().CheckGates(); err != nil {
+		return adapter.Outcome{}, err
+	}
 
 	plan, err := a.Resolve(ctx, adapter.Intent{AdapterID: adapterID, Verb: manifest.Send, Handle: target.Handle})
 	if err != nil {
@@ -264,6 +276,13 @@ func (t *Tier2Runner) Heartbeat(ctx context.Context, adapterID string, verb mani
 
 	a, err := t.reg.Get(adapterID)
 	if err != nil {
+		return err
+	}
+	// See the gate comment in Tier1Runner.Run. Unlike the failures below, a
+	// gate refusal must not disable the adapter: disabling is what a *failed*
+	// heartbeat means (the session died), but a gate is not a failure — the
+	// adapter is fine and untouched, so it stays registered and enabled.
+	if err := a.Describe().CheckGates(); err != nil {
 		return err
 	}
 

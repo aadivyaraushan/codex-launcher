@@ -6,6 +6,7 @@ import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary
+import app.codexlauncher.task.summary.effectiveState
 
 data class HomeTask(
     val id: String,
@@ -29,6 +30,12 @@ private fun TaskState.toStateMark(): StateMark? =
         TaskState.ONE_TAP_LEFT -> StateMark.ONE_TAP_LEFT
         TaskState.HANDED_OFF -> StateMark.HANDED_OFF
         TaskState.FAILED -> StateMark.FAILED
+        // A task we lost track of gets its own mark. This reverses the
+        // earlier decision that UNVERIFIED needed none because "the sheet's
+        // CapabilityOutcome already carries it": that holds for a sheet open
+        // in front of you, not for a row in a list you are scrolling past,
+        // where nothing else says anything is wrong.
+        TaskState.UNVERIFIED -> StateMark.UNVERIFIED
         TaskState.WORKING,
         TaskState.WAITING_FOR_APPROVAL,
         TaskState.WAITING_FOR_ANSWER,
@@ -37,12 +44,19 @@ private fun TaskState.toStateMark(): StateMark? =
         -> null
     }
 
-internal fun TaskSummary.toHomeTask(): HomeTask =
-    HomeTask(
+internal fun TaskSummary.toHomeTask(): HomeTask {
+    val effective = effectiveState()
+    return HomeTask(
         id = id,
         title = title,
+        // Our own wording comes from the effective state, not the raw one: on
+        // a task we lost track of, `state` still says WORKING, and printing
+        // "Working" under the mark is a false sentence in our own voice. A
+        // status line that arrived from off-device still wins the words, the
+        // same as it does for every other state — the mark carries the
+        // warning in that case.
         stateLabel = statusSummary ?: run {
-            when (state) {
+            when (effective) {
                 TaskState.WORKING -> QuietInstrumentTokens.workingLabel
                 TaskState.WAITING_FOR_APPROVAL -> QuietInstrumentTokens.approvalLabel
                 TaskState.WAITING_FOR_ANSWER -> QuietInstrumentTokens.waitingLabel
@@ -51,13 +65,15 @@ internal fun TaskSummary.toHomeTask(): HomeTask =
                 TaskState.IDLE_AFTER_REPLY -> QuietInstrumentTokens.repliedLabel
                 TaskState.ONE_TAP_LEFT -> QuietInstrumentTokens.oneTapLeftLabel
                 TaskState.HANDED_OFF -> QuietInstrumentTokens.handedOffLabel
+                TaskState.UNVERIFIED -> QuietInstrumentTokens.unverifiedLabel
             }
         },
-        // Decided from `state`, never from `statusSummary`: a status line
-        // arriving from off-device is free text and must not get a say in
-        // whether the mark for "not actually done yet" is shown.
-        mark = state.toStateMark(),
+        // Decided from the task's effective state, never from `statusSummary`:
+        // a status line arriving from off-device is free text and must not
+        // get a say in whether the mark for "not actually done yet" is shown.
+        mark = effective.toStateMark(),
     )
+}
 
 data class HomeUiState(
     val computerName: String,

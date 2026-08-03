@@ -11,6 +11,31 @@ import (
 	"time"
 )
 
+func TestCapabilityFramesCarryOnlyRequestPreviewConfirmationAndOutcome(t *testing.T) {
+	valid := [][]byte{
+		[]byte(`{"version":{"major":1,"minor":0},"messageId":"cap-request","sender":"phone","type":"action","body":{"actionId":"cap-action-1","kind":"capability_request","utterance":"Add buy oat milk to Todoist"}}`),
+		[]byte(`{"version":{"major":1,"minor":0},"messageId":"cap-preview","sender":"companion","type":"capability_preview","body":{"requestId":"cap-action-1","adapterId":"todoist","verb":"write","headline":"Create a Todoist task","lines":["Buy oat milk","Before tomorrow"],"confirmLabel":"Create task","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}`),
+		[]byte(`{"version":{"major":1,"minor":0},"messageId":"cap-confirm","sender":"phone","type":"action","body":{"actionId":"cap-confirm-1","kind":"capability_confirm","requestId":"cap-action-1","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","decision":"confirm"}}`),
+		[]byte(`{"version":{"major":1,"minor":0},"messageId":"cap-result","sender":"companion","type":"capability_result","seq":2,"body":{"requestId":"cap-action-1","ceiling":"completes","done":true,"detail":"Created Todoist task","handedOffTo":""}}`),
+	}
+	for _, frame := range valid {
+		if _, err := DecodeText(frame); err != nil {
+			t.Fatalf("valid capability frame was rejected: %v\n%s", err, frame)
+		}
+	}
+
+	invalid := [][]byte{
+		[]byte(`{"version":{"major":1,"minor":0},"messageId":"secret","sender":"companion","type":"capability_preview","body":{"requestId":"cap-action-1","adapterId":"todoist","verb":"write","headline":"Create","lines":[],"confirmLabel":"Create","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","accessToken":"secret"}}`),
+		[]byte(`{"version":{"major":1,"minor":0},"messageId":"bad-fingerprint","sender":"phone","type":"action","body":{"actionId":"cap-confirm-1","kind":"capability_confirm","requestId":"cap-action-1","fingerprint":"changed","decision":"confirm"}}`),
+		[]byte(`{"version":{"major":1,"minor":0},"messageId":"bad-result","sender":"companion","type":"capability_result","body":{"requestId":"cap-action-1","ceiling":"completes","done":true,"detail":"Created","handedOffTo":""}}`),
+	}
+	for _, frame := range invalid {
+		if _, err := DecodeText(frame); err == nil {
+			t.Fatalf("invalid capability frame was accepted:\n%s", frame)
+		}
+	}
+}
+
 func TestGoldenFixturesDecodeThroughProductionContract(t *testing.T) {
 	for _, name := range []string{"session.jsonl", "approval.jsonl", "reconnect.jsonl"} {
 		data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "protocol", "fixtures", name))

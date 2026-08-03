@@ -3,7 +3,9 @@ package app.codexlauncher.launcher.surface
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -18,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.codexlauncher.capability.reply.guard.ThreadKey
 
 @Composable
 internal fun LauncherLoadingScreen() {
@@ -72,6 +75,55 @@ internal fun BackgroundConnectionWarningDialog(
         text = { Text(warning) },
         confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
     )
+}
+
+@Composable
+internal fun NotificationAccessDialog(onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Let Operator reply for you") },
+        text = {
+            Text(
+                "Replying means typing into the reply box Android puts in the notification, and Operator cannot reach that box until you turn on notification access. Nothing was sent.",
+            )
+        },
+        confirmButton = { TextButton(onClick = onOpenSettings) { Text("Open settings") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
+    )
+}
+
+/**
+ * Offers to stop a conversation right after a reply to it actually went out.
+ * Not a dialog: it appears after every successful reply, and a modal box
+ * that often would be intolerable. It matches the quiet, dismissible banner
+ * this app already uses for an outcome it cannot fully vouch for — plain
+ * text plus buttons, stacked on top of whatever screen is showing
+ * (`CapabilitySheet.kt`'s `unresolvedCheck` banner).
+ *
+ * The wording never says "sent" or "delivered": Operator handed the text to
+ * the app, and has no way to know whether the other person ever saw it.
+ */
+@Composable
+internal fun ReplyStopOfferRow(
+    key: ThreadKey,
+    appLabel: String,
+    onStop: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "Handed a reply to $appLabel for ${key.displayPerson}.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = onStop) { Text("Stop replying to ${key.displayPerson}") }
+            TextButton(onClick = onDismiss) { Text("OK") }
+        }
+    }
 }
 
 @Composable

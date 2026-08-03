@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
 )
 
 // DefaultTimeout bounds a single osascript invocation when
@@ -61,8 +63,24 @@ func (r OsascriptRunner) Run(ctx context.Context, s Script) (string, error) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return "", fmt.Errorf("osascript %s: %s", s.Name, msg)
+		return "", classifyOsascriptFailure(ctx, s.Name, fmt.Errorf("osascript %s: %s", s.Name, msg))
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+// classifyOsascriptFailure decides whether a failed osascript run is an
+// ordinary failure or an unknown outcome. It is unknown only for
+// ScriptCreateNote — the one script here that mutates something a duplicate
+// run would double, unlike ScriptCreateFolder, whose caller always checks
+// existence first and so is safe to simply retry — and only when ctx was
+// canceled or timed out, meaning Operator killed osascript without learning
+// whether the Apple Event it had already sent reached Notes.app. An
+// ordinary non-zero exit (osascript ran and told us it failed) is never
+// ambiguous.
+func classifyOsascriptFailure(ctx context.Context, scriptName string, err error) error {
+	if scriptName == ScriptCreateNote && ctx.Err() != nil {
+		return &adapter.OutcomeUnknownError{AdapterID: ID, Verb: "write", Cause: err}
+	}
+	return err
 }

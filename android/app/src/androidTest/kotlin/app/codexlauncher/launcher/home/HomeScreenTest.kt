@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
+import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
 import app.codexlauncher.task.configuration.PermissionModeOption
@@ -28,6 +29,7 @@ import app.codexlauncher.task.configuration.ReasoningOption
 import app.codexlauncher.task.configuration.TaskModelOption
 import app.codexlauncher.task.composer.DraftComposerPhase
 import app.codexlauncher.task.composer.DraftComposerState
+import app.codexlauncher.task.composer.DraftVersion
 import app.codexlauncher.task.attachments.AttachmentUploadState
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -40,6 +42,46 @@ import org.junit.Test
 class HomeScreenTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun homeComposerShowsWhereThePromptWillRunAndLetsTheUserChooseComputer() {
+        var destination by mutableStateOf(PromptDestination.AUTO)
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    promptDestination = destination,
+                    onPromptDestinationChange = { destination = it },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Auto destination selected").assertIsDisplayed()
+        compose.onNodeWithText("Apps first · Codex on studio-mac if none match").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Computer destination").performClick()
+        compose.onNodeWithContentDescription("Computer destination selected").assertIsDisplayed()
+        compose.onNodeWithText("Send directly to Codex on studio-mac").assertIsDisplayed()
+    }
+
+    @Test
+    fun appActionInProgressLocksTheDestinationAndSendControl() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.LIGHT) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    promptDestination = PromptDestination.AUTO,
+                    capabilityBusy = true,
+                    capabilityMessage = "Checking app actions…",
+                    composerState = readyDraft("Add milk to Todoist"),
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Auto destination selected").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Computer destination").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Send prompt using Auto").assertIsNotEnabled()
+        compose.onNodeWithText("Checking app actions…").assertIsDisplayed()
+    }
 
     @Test
     fun selectedAttachmentIsVisibleAndCanBeRemovedBeforeSend() {
@@ -102,7 +144,42 @@ class HomeScreenTest {
 
         compose.onNodeWithText("Private task title").assertIsDisplayed()
         compose.onNodeWithText("Choose project").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Send prompt").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Send prompt using Auto").assertIsNotEnabled()
+    }
+
+    @Test
+    fun sendStaysDisabledUntilNewTaskOptionsArrive() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    composerState = readyDraft("Open Uber"),
+                    newTaskOptions = null,
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Send prompt using Auto").assertIsNotEnabled()
+    }
+
+    @Test
+    fun sendStaysDisabledWhenDraftVersionIsMissing() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    composerState =
+                        DraftComposerState(
+                            text = "Open Uber",
+                            phase = DraftComposerPhase.READY,
+                            version = null,
+                        ),
+                    newTaskOptions = taskOptions(),
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Send prompt using Auto").assertIsNotEnabled()
     }
 
     @Test
@@ -113,6 +190,7 @@ class HomeScreenTest {
             QuietInstrumentTheme(AppearanceMode.DARK) {
                 HomeScreen(
                     state = onlineState(selectedProjectName = "Codex Launcher"),
+                    newTaskOptions = taskOptions(),
                     composerState = readyDraft(prompt),
                     onPromptChange = { prompt = it },
                     onSend = { prompt, _ -> sentPrompt = prompt },
@@ -122,7 +200,7 @@ class HomeScreenTest {
 
         compose.onNodeWithText("Codex Launcher").assertIsDisplayed()
         compose.onNodeWithContentDescription("Prompt").performClick().performTextInput("Run all tests")
-        compose.onNodeWithContentDescription("Send prompt").assertIsEnabled().performClick()
+        compose.onNodeWithContentDescription("Send prompt using Auto").assertIsEnabled().performClick()
         assertEquals("Run all tests", sentPrompt)
     }
 
@@ -151,7 +229,7 @@ class HomeScreenTest {
         compose.onNodeWithText("Codex can read and change files anywhere your computer account can access. Approvals still apply.").assertIsDisplayed()
 
         compose.onNodeWithContentDescription("Prompt").performClick().performTextInput("Run tests")
-        compose.onNodeWithContentDescription("Send prompt").performClick()
+        compose.onNodeWithContentDescription("Send prompt using Auto").performClick()
 
         assertEquals("Run tests" to NewTaskSelection("model-b", "low", "danger-full-access"), sent)
     }
@@ -210,7 +288,7 @@ class HomeScreenTest {
         }
 
         compose.onNodeWithText("Outcome unknown. Check Codex on your computer before sending again.").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Send prompt").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Send prompt using Auto").assertIsNotEnabled()
         compose.onNodeWithText("I checked Codex").performClick()
         assertEquals(1, dismisses)
     }
@@ -374,9 +452,9 @@ class HomeScreenTest {
             compose.onNodeWithContentDescription("Prompt").isDisplayed()
         }
         compose.onNodeWithContentDescription("Prompt").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Send prompt").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithContentDescription("Send prompt using Auto").assertIsDisplayed().assertIsEnabled()
         val visibleBottom = compose.onRoot().fetchSemanticsNode().boundsInRoot.bottom - imeBottomInset()
-        val actionBottom = compose.onNodeWithContentDescription("Send prompt").fetchSemanticsNode().boundsInRoot.bottom
+        val actionBottom = compose.onNodeWithContentDescription("Send prompt using Auto").fetchSemanticsNode().boundsInRoot.bottom
         assertTrue(
             "new-task actions leave excessive space above the keyboard: visible=$visibleBottom actions=$actionBottom",
             visibleBottom - actionBottom < 160f,
@@ -456,5 +534,10 @@ class HomeScreenTest {
                 ),
         )
 
-    private fun readyDraft(text: String) = DraftComposerState(text = text, phase = DraftComposerPhase.READY)
+    private fun readyDraft(text: String) =
+        DraftComposerState(
+            text = text,
+            phase = DraftComposerPhase.READY,
+            version = DraftVersion(generation = 1, revision = 1),
+        )
 }

@@ -12,7 +12,7 @@
         "kind": { "enum": ["start_turn", "steer_turn"] },
         "taskId": { "$ref": "#/$defs/id" },
         "text": { "type": "string", "minLength": 1, "maxLength": 131072, "pattern": "\\S" },
-        "attachmentIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+        "attachmentIds": { "type": "array", "uniqueItems": true, "maxItems": 16, "items": { "$ref": "#/$defs/id" } }
       }
     },
     {
@@ -64,6 +64,85 @@
         "actionId": { "$ref": "#/$defs/id" },
         "kind": { "const": "set_project" },
         "projectId": { "$ref": "#/$defs/projectId" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "projectId", "text", "modelId", "reasoningId", "permissionModeId"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "const": "start_turn" },
+        "projectId": { "$ref": "#/$defs/projectId" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 131072, "pattern": "\\S" },
+        "modelId": { "$ref": "#/$defs/id" },
+        "reasoningId": { "$ref": "#/$defs/id" },
+        "permissionModeId": { "$ref": "#/$defs/id" },
+        "attachmentIds": { "type": "array", "uniqueItems": true, "maxItems": 16, "items": { "$ref": "#/$defs/id" } }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "utterance"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "const": "capability_request" },
+        "utterance": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "requestId", "fingerprint", "decision"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "const": "capability_confirm" },
+        "requestId": { "$ref": "#/$defs/id" },
+        "fingerprint": { "type": "string", "pattern": "^[0-9A-Fa-f]{64}$" },
+        "decision": { "enum": ["confirm", "cancel"] }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "adapterId"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "const": "capability_disconnect" },
+        "adapterId": { "$ref": "#/$defs/id" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "targetActionId"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "const": "dismiss_unknown_control" },
+        "taskId": { "$ref": "#/$defs/id" },
+        "targetActionId": { "$ref": "#/$defs/id" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "taskId", "title"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "const": "rename_task" },
+        "taskId": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "taskId"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["archive_task", "fork_task"] },
+        "taskId": { "$ref": "#/$defs/id" }
       }
     }
   ],

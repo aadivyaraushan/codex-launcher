@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -41,6 +42,49 @@ class LauncherActivityTest {
                     LauncherActivity::class.java,
                 )
         scenario = ActivityScenario.launch(homeIntent)
+        // launch() returns once the activity is resumed, which on a real device is
+        // before Compose has attached its hierarchy. Every test below queries that
+        // hierarchy, so wait for it once here rather than racing it in each test.
+        awaitHierarchy()
+    }
+
+    /**
+     * Poll until [check] stops throwing.
+     *
+     * Catches IllegalStateException alongside AssertionError. Querying Compose
+     * before its hierarchy is attached throws "No compose hierarchies found in
+     * the app" — that is not a failed assertion, it is "not yet", and it is what
+     * made three of these tests fail on their first run against real hardware. A
+     * check that never succeeds still fails the test when the poll times out.
+     */
+    /**
+     * Wait until Compose has a hierarchy attached.
+     *
+     * Deliberately not onRoot(): a scenario showing a dialog has two Compose
+     * hierarchies, and onRoot() fails outright on more than one. What matters
+     * here is only that there is at least one.
+     */
+    private fun awaitHierarchy() {
+        compose.waitUntil(timeoutMillis = 5_000) {
+            try {
+                compose.onAllNodes(isRoot()).fetchSemanticsNodes().isNotEmpty()
+            } catch (_: IllegalStateException) {
+                false
+            }
+        }
+    }
+
+    private fun awaitUi(check: () -> Unit) {
+        compose.waitUntil(timeoutMillis = 5_000) {
+            try {
+                check()
+                true
+            } catch (_: AssertionError) {
+                false
+            } catch (_: IllegalStateException) {
+                false
+            }
+        }
     }
 
     @After
@@ -51,14 +95,7 @@ class LauncherActivityTest {
 
     @Test
     fun freshUnpairedLaunchShowsSetupWithoutComputerContent() {
-        compose.waitUntil(timeoutMillis = 3_000) {
-            try {
-                compose.onNodeWithText("Pair with your computer").assertIsDisplayed()
-                true
-            } catch (_: AssertionError) {
-                false
-            }
-        }
+        awaitUi { compose.onNodeWithText("Pair with your computer").assertIsDisplayed() }
         compose.onNodeWithText("Your ChatGPT sign-in stays on your computer. The phone stores only its pairing key and non-secret connection details.").assertIsDisplayed()
     }
 
@@ -73,28 +110,14 @@ class LauncherActivityTest {
 
     @Test
     fun homeOpensAllAppsAndPersistsAnAppearanceChoiceAcrossRecreation() {
-        compose.waitUntil(timeoutMillis = 3_000) {
-            try {
-                compose.onNodeWithText("All apps").assertIsDisplayed()
-                true
-            } catch (_: AssertionError) {
-                false
-            }
-        }
+        awaitUi { compose.onNodeWithText("All apps").assertIsDisplayed() }
         compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
         compose.onNodeWithText("Launcher settings").performClick()
         compose.onNodeWithText("Appearance").assertIsDisplayed()
 
         compose.onNodeWithText("Dark").performClick()
-        compose.waitUntil(timeoutMillis = 3_000) {
-            try {
-                compose.onNodeWithText("Dark").assertIsSelected()
-                true
-            } catch (_: AssertionError) {
-                false
-            }
-        }
+        awaitUi { compose.onNodeWithText("Dark").assertIsSelected() }
         scenario.recreate()
         compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithText("Launcher settings").performClick()
@@ -139,14 +162,7 @@ class LauncherActivityTest {
 
     @Test
     fun AndroidDeliversALaterHomeIntentAndTheLauncherReturnsHome() {
-        compose.waitUntil(timeoutMillis = 3_000) {
-            try {
-                compose.onNodeWithText("All apps").assertIsDisplayed()
-                true
-            } catch (_: AssertionError) {
-                false
-            }
-        }
+        awaitUi { compose.onNodeWithText("All apps").assertIsDisplayed() }
         compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
 
@@ -155,14 +171,7 @@ class LauncherActivityTest {
                 "-c android.intent.category.HOME -n app.codexlauncher/.LauncherActivity",
         )
 
-        compose.waitUntil(timeoutMillis = 3_000) {
-            try {
-                compose.onNodeWithText("Pair with your computer").assertIsDisplayed()
-                true
-            } catch (_: AssertionError) {
-                false
-            }
-        }
+        awaitUi { compose.onNodeWithText("Pair with your computer").assertIsDisplayed() }
     }
 
     private fun runShellCommand(command: String): String {

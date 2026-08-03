@@ -2,6 +2,7 @@ package app.codexlauncher.storage.wipe
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.codexlauncher.connection.pairing.network.PairedComputer
@@ -14,10 +15,14 @@ import app.codexlauncher.storage.actions.ActionRecordReadState
 import app.codexlauncher.storage.actions.ActionRecordState
 import app.codexlauncher.storage.actions.ActionRecordStore
 import app.codexlauncher.storage.actions.actionRecordDataStore
+import app.codexlauncher.storage.capability.unresolved.UnresolvedCapabilityCheck
+import app.codexlauncher.storage.capability.unresolved.UnresolvedCapabilityDataStore
+import app.codexlauncher.storage.capability.unresolved.unresolvedCapabilityDataStore
 import app.codexlauncher.storage.drafts.DraftKeyStore
 import app.codexlauncher.storage.drafts.EncryptedDraftStore
 import app.codexlauncher.storage.connection.lastseen.LastConnectionStore
 import app.codexlauncher.storage.connection.lastseen.lastConnectionDataStore
+import app.codexlauncher.storage.connection.resume.ResumeCursorStore
 import app.codexlauncher.storage.pairing.DeviceIdentityStore
 import app.codexlauncher.storage.pairing.PairingRecordStore
 import app.codexlauncher.storage.pairing.deviceIdentityDataStore
@@ -62,8 +67,10 @@ class LocalStateWiperInstrumentedTest {
         val projects = ProjectSelectionStore(context.projectSelectionDataStore, gate)
         val actions = ActionRecordStore(context.actionRecordDataStore, gate)
         val lastConnections = LastConnectionStore(context.lastConnectionDataStore, gate)
+        val resumeCursors = ResumeCursorStore(context, gate)
         val identity = DeviceIdentityStore(context.deviceIdentityDataStore)
         val drafts = EncryptedDraftStore(draftFile, draftKeys, Instant::now, Duration.ofDays(7), writeGate = gate)
+        val capabilityUnresolvedChecks = UnresolvedCapabilityDataStore(context.unresolvedCapabilityDataStore, gate)
         val intent = WipeIntentStore(context.wipeIntentDataStore)
 
         val deviceId = identity.loadOrCreate()
@@ -78,10 +85,13 @@ class LocalStateWiperInstrumentedTest {
         assertTrue(projects.save(ProjectChoice("project-main", "Main")))
         assertTrue(actions.save(actionRecord()))
         assertTrue(lastConnections.record(paired.pairingGeneration, 1_720_000_000_000))
+        assertTrue(resumeCursors.record(paired.pairingGeneration, 9L))
         assertTrue(drafts.save("private unfinished prompt"))
         assertTrue(pairingKeys.exists())
         assertTrue(draftKeys.exists())
         assertTrue(draftFile.exists())
+        context.unresolvedCapabilityDataStore.edit { it[stringPreferencesKey("message")] = "check the computer" }
+        assertTrue(capabilityUnresolvedChecks.load() is UnresolvedCapabilityCheck.Pending)
 
         val result =
             LocalStateWiper.fromStores(
@@ -90,11 +100,13 @@ class LocalStateWiperInstrumentedTest {
                 projects,
                 actions,
                 lastConnections,
+                resumeCursors,
                 drafts,
                 draftKeys,
                 identity,
                 pairingKeys,
                 pairingRecords,
+                capabilityUnresolvedChecks,
             ).wipe()
 
         assertEquals(WipeResult.Complete, result)
@@ -103,10 +115,12 @@ class LocalStateWiperInstrumentedTest {
         assertNull(projects.selected.first())
         assertTrue((actions.state.first() as ActionRecordReadState.Available).records.isEmpty())
         assertNull(lastConnections.forPairing(paired.pairingGeneration).first())
+        assertNull(resumeCursors.load(paired.pairingGeneration))
         assertTrue(context.deviceIdentityDataStore.data.first().asMap().isEmpty())
         assertFalse(draftFile.exists())
         assertFalse(pairingKeys.exists())
         assertFalse(draftKeys.exists())
+        assertEquals(UnresolvedCapabilityCheck.None, capabilityUnresolvedChecks.load())
         assertEquals(LocalStateWriteResult.Blocked, gate.withPairedWrite { true })
         assertEquals(LocalStateWriteResult.Completed(true), gate.withPairingWrite { true })
     }
@@ -118,6 +132,7 @@ class LocalStateWiperInstrumentedTest {
         context.lastConnectionDataStore.edit { it.clear() }
         context.deviceIdentityDataStore.edit { it.clear() }
         context.wipeIntentDataStore.edit { it.clear() }
+        context.unresolvedCapabilityDataStore.edit { it.clear() }
         draftFile.parentFile?.deleteRecursively()
         pairingKeys.delete()
         draftKeys.delete()

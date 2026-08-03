@@ -14,6 +14,7 @@ import kotlinx.coroutines.yield
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -110,7 +111,7 @@ class TaskActionBridgeTest {
             )
 
         assertEquals(TaskActionOutcome.Invalid, bridge.perform("thread-1", TaskAction.Rename("   ")))
-        assertEquals(TaskActionOutcome.Unavailable, bridge.perform("thread-1", TaskAction.Archive))
+        assertEquals(TaskActionOutcome.NotSent, bridge.perform("thread-1", TaskAction.Archive))
         assertEquals(0, sends)
     }
 
@@ -154,8 +155,39 @@ class TaskActionBridgeTest {
 
         bridge.close()
 
-        assertEquals(TaskActionOutcome.Unavailable, pending.await())
+        assertEquals(TaskActionOutcome.Unresolved, pending.await())
         assertFalse(pending.isCancelled)
+    }
+
+    // Two situations that could not be further apart for the person holding the
+    // phone: one where the request never left the device and nothing anywhere
+    // changed, and one where it was sent and the connection died before any
+    // answer came back. The first is safe to try again; the second may already
+    // have happened on the computer. They must not come back as the same word.
+    @Test
+    fun nothingSentIsNotReportedTheSameWayAsSentButNeverAnswered() = runBlocking {
+        val neverSent =
+            TaskActionBridge(
+                sendAction = { _, _ -> ActionSendResult.NOT_SENT },
+                journal = TaskRecordingJournal(),
+                nextActionId = { "action-never-sent" },
+            ).perform("thread-1", TaskAction.Archive)
+
+        val sentBridge =
+            TaskActionBridge(
+                sendAction = { _, beforeBoundary ->
+                    assertTrue(beforeBoundary())
+                    ActionSendResult.SENT_UNKNOWN
+                },
+                journal = TaskRecordingJournal(),
+                nextActionId = { "action-dropped" },
+            )
+        val pending = async { sentBridge.perform("thread-1", TaskAction.Archive) }
+        yield()
+        sentBridge.close()
+        val sentThenDropped = pending.await()
+
+        assertNotEquals(neverSent, sentThenDropped)
     }
 
     @Test
@@ -173,7 +205,7 @@ class TaskActionBridgeTest {
         val firstFork = async { firstBridge.perform("thread-1", TaskAction.Fork) }
         yield()
         firstBridge.close()
-        assertEquals(TaskActionOutcome.Unavailable, firstFork.await())
+        assertEquals(TaskActionOutcome.Unresolved, firstFork.await())
 
         var secondSends = 0
         val recreatedBridge =
