@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,18 +28,24 @@ func TestYouTubeFromStoredCredential(t *testing.T) {
 			t.Fatalf("store YouTube key: %v", err)
 		}
 	}
-	key, err := store.Get(ctx, "youtube_api_key")
-	if err != nil {
-		t.Fatalf("load stored YouTube key: %v", err)
+	key := strings.TrimSpace(os.Getenv("YOUTUBE_API_KEY"))
+	source := "environment"
+	if key == "" {
+		stored, err := store.Get(ctx, "youtube_api_key")
+		if err != nil {
+			t.Fatalf("load stored YouTube key: %v", err)
+		}
+		key = strings.TrimSpace(string(stored))
+		source = "keychain"
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	videos, err := youtube.NewHTTPClient("", string(key), nil, logger).Search(probeCtx, "OpenAI")
+	videos, err := youtube.NewHTTPClient("", key, nil, logger).Search(probeCtx, "OpenAI")
 	if err != nil {
 		t.Fatalf("YouTube search through stored key: %v", err)
 	}
 	if len(videos) == 0 {
 		t.Fatal("YouTube search returned no videos")
 	}
-	t.Logf("stored YouTube key verified; result_count=%d first_video_id_present=%t", len(videos), videos[0].ID != "")
+	t.Logf("YouTube %s credential verified; result_count=%d first_video_id_present=%t", source, len(videos), videos[0].ID != "")
 }
