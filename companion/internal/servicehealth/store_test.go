@@ -12,8 +12,8 @@ import (
 
 func TestNewAllowsProductionKeychainStartupToFinish(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "health.json"), time.Now)
-	if store.waitTimeout < 30*time.Second {
-		t.Fatalf("wait timeout = %s, want at least 30s for production Keychain startup", store.waitTimeout)
+	if store.waitTimeout < 90*time.Second {
+		t.Fatalf("wait timeout = %s, want at least 90s for production Keychain startup", store.waitTimeout)
 	}
 }
 
