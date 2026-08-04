@@ -1,7 +1,7 @@
 # Make YouTube playback work on the Pixel
 
 **Date:** 2026-08-04  
-**Status:** Approved autonomous implementation in progress  
+**Status:** Code, service, and live driver ready; real playback proof waiting for secure Pixel unlock
 **Scope:** Replace the YouTube home-screen handoff with exact-video playback through the existing confirmed capability route.
 
 ## Route
@@ -62,3 +62,13 @@ Pixel media session is PLAYING with video metadata
 2. Update the implementation plans and saved evidence with the verified boundary.
 3. Have a fresh judge define the quality bar and review the final code, tests, and live proof.
 4. Commit the reviewed source, tests, plan, and safe evidence on `worktree-phase0-notification-probe`.
+
+## Evidence so far
+
+- Exact URL route: committed in `88af8dc`; selected `watch_url` becomes a non-replayed `youtube_play` device action and Android opens that URL with `ACTION_VIEW` in `com.google.android.youtube`.
+- Router: committed in `0bfaa05`; an explicit named-app request routes locally when no OpenAI key is configured.
+- Background startup: committed in `301c615`; Keychain UI is disabled for the LaunchAgent, preventing rebuilds from opening repeated credential dialogs. The authorized Operator-project YouTube key is supplied only through launchd memory.
+- Installed service: replacement completed at 2026-08-04 22:40:37; logs show `source=explicit_app`, YouTube credential `source=environment`, 78 capabilities registered, and the paired Pixel authenticated.
+- Green checks: full companion `go test ./...`; Android unit tests, lint, and assembly; protocol 45 valid plus 45 invalid-rejection cases; Node release checks 23/23.
+- Live driver: commits `9cebbb3` and `312fe64` recognize `Open in YouTube`, confirm it, require the YouTube package to become foreground, and wait safely for an unlocked Compose hierarchy.
+- Not yet proved: the Pixel is currently at `AlternateBouncerView`. Two targeted runs sent nothing because the secure lock remained. Do not mark playback complete until the normal preview is confirmed and `dumpsys media_session` shows YouTube `PLAYING` with matching metadata.
