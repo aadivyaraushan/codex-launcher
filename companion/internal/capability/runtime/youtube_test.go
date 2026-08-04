@@ -31,7 +31,7 @@ func TestYouTubeFlowOpensAVideoThroughTheProductionRouter(t *testing.T) {
 	service, err := NewYouTube(YouTubeConfig{
 		API: api,
 		Model: func(context.Context, string) ([]byte, error) {
-			return []byte(`{"verb":"play","app_class":"entertainment","app_named":"YouTube","subject":"bicycle repair basics","body":"","confidence":0.94}`), nil
+			return []byte(`{"verb":"play","app_class":"media","app_named":"YouTube","subject":"bicycle repair basics","body":"","confidence":0.94}`), nil
 		},
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})

@@ -174,6 +174,32 @@ func (f *Flow) Callback(ctx context.Context, state, code string) (TokenSet, erro
 	return f.exchange(ctx, form, pending.scopes)
 }
 
+// Refresh exchanges the long-lived offline token for a new access token.
+// Google normally omits refresh_token from this response, so the existing
+// value is carried forward unless Google explicitly rotates it.
+func (f *Flow) Refresh(ctx context.Context, refreshToken string) (TokenSet, error) {
+	if strings.TrimSpace(f.clientID) == "" || strings.TrimSpace(f.clientSecret) == "" {
+		return TokenSet{}, ErrMissingCredential
+	}
+	if strings.TrimSpace(refreshToken) == "" {
+		return TokenSet{}, errors.New("google oauth: refresh token is required")
+	}
+	form := url.Values{
+		"client_id":     {f.clientID},
+		"client_secret": {f.clientSecret},
+		"refresh_token": {refreshToken},
+		"grant_type":    {"refresh_token"},
+	}
+	tokens, err := f.exchange(ctx, form, nil)
+	if err != nil {
+		return TokenSet{}, err
+	}
+	if tokens.RefreshToken == "" {
+		tokens.RefreshToken = refreshToken
+	}
+	return tokens, nil
+}
+
 func (f *Flow) exchange(ctx context.Context, form url.Values, scopes []string) (TokenSet, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.tokenURL, strings.NewReader(form.Encode()))
 	if err != nil {

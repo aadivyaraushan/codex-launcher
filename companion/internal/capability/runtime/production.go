@@ -1,11 +1,13 @@
 package runtime
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"strings"
 	"time"
 
+	beepermessage "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/beepermessage"
 	deeplinkadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/deeplink"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gcalendar"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gdrive"
@@ -49,6 +51,12 @@ var ErrMissingProductionDependency = errors.New("capability runtime: a routing m
 // asks, which is what makes adding the entry here mandatory rather than
 // optional.
 var classAddressing = map[string]stage2.Addressing{
+	"beeper_messaging":             stage2.ResolvedByAdapter,
+	"calendar":                     stage2.ToAThing,
+	"drive":                        stage2.ToAThing,
+	"email":                        stage2.ToAThing,
+	"music":                        stage2.ToAThing,
+	"slack":                        stage2.ToAThing,
 	"messaging":                    stage2.ToAPerson,
 	"money":                        stage2.ToAPerson,
 	notificationreplyadapter.Class: stage2.ResolvedOnTheDevice,
@@ -81,23 +89,10 @@ func classMapFor(byClass map[string][]string) stage2.ClassMap {
 	return classes
 }
 
-// oauthReason explains, in plain English, why Spotify, Todoist, Slack,
-// Google Calendar/Drive, Outlook, and Teams are never registered here even
-// when their client id and secret are present in the environment. Every one
-// of them needs a real user sign-in: a browser sent to a consent screen and
-// a loopback callback listener that blocks until that round trip finishes.
-// That flow exists today only inside the owner-only proof commands
-// (serve-spotify-proof and its siblings), which take an io.Writer to print
-// the sign-in link to and hold the process open while a person clicks
-// through it. Plain `serve` starts unattended on a machine nobody is
-// watching, so there is no moment to run that flow, and there is no stored,
-// refreshable token sitting around to load instead — persisting a token
-// across restarts is future work, not something to fake here by pretending
-// a client id is as good as a signed-in user. Registering one of these
-// adapters anyway would let the router choose it, let the user confirm a
-// preview, and only then discover — after they had already said yes — that
-// there was never a credential behind it.
-const oauthReason = "requires an interactive OAuth sign-in (browser + loopback callback) that only exists in the owner-only proof commands today; unattended serve has no moment to run it and no persisted refresh token to load instead"
+// oauthReason is recorded when no complete, refreshable user connection was
+// loaded at startup. A client id or secret alone is never treated as a signed
+// in account.
+const oauthReason = "no complete refreshable OAuth connection was loaded from macOS Keychain"
 
 // ConsentGate builds the gate a runtime hands its flow. Every adapter that
 // ships today is consent class A, which passes with nothing granted, so
@@ -127,6 +122,24 @@ type ProductionConfig struct {
 	// feed URL itself is the only thing standing between "nothing to
 	// search" and a working adapter.
 	PodcastsFeedURL string
+	// BeeperAPI is present only when the local or remote Beeper target is
+	// authenticated and write-enabled. It replaces the Instagram, Discord,
+	// and Google Messages hand-offs with confirmed send adapters.
+	BeeperAPI beepermessage.API
+	// Disconnected is the restart-safe set of adapters the user turned off.
+	// PersistDisconnect records a new disconnect before the live adapter is removed.
+	Disconnected      map[string]bool
+	PersistDisconnect func(context.Context, string) error
+	// OAuth APIs are constructed by serve only when a complete, refreshable
+	// token record was loaded from macOS Keychain.
+	GoogleCalendarAPI gcalendar.API
+	GoogleDriveAPI    gdrive.API
+	SlackAPI          slackadapter.API
+	OutlookAPI        outlook.API
+	SpotifyAPI        spotifyadapter.API
+	// NotionAdapter is already authenticated and connected by the startup
+	// path, which measures the workspace's live MCP tools before registration.
+	NotionAdapter *notionadapter.Adapter
 }
 
 // Inventory is the honest record of what NewProduction actually built: what
@@ -204,7 +217,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	byClass := map[string][]string{}
 
 	youtubeAPIKey := strings.TrimSpace(config.YouTubeAPIKey)
-	youtubeCredentialed := youtubeAPIKey != ""
+	youtubeCredentialed := youtubeAPIKey != "" && !config.Disconnected[youtubeadapter.ID]
 
 	// The credential-free deep-link pack is the floor every install gets,
 	// signed in or not: it can only open an app and hand it a prepared
@@ -214,8 +227,45 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	// over — the registry refuses two adapters under the same id, and the
 	// credentialed version can do strictly more than the hand-off, so it
 	// should win rather than sit unregistered beside it.
+	beeperSpecs := beepermessage.ProductionSpecs()
+	beeperIDs := map[string]bool{}
+	if config.BeeperAPI != nil {
+		for _, spec := range beeperSpecs {
+			if !config.Disconnected[spec.ID] {
+				beeperIDs[spec.ID] = true
+			}
+		}
+	}
+	credentialedIDs := map[string]bool{}
+	if config.GoogleCalendarAPI != nil {
+		credentialedIDs[gcalendar.ID] = true
+	}
+	if config.GoogleDriveAPI != nil {
+		credentialedIDs[gdrive.ID] = true
+	}
+	if config.SlackAPI != nil {
+		credentialedIDs[slackadapter.ID] = true
+	}
+	if config.OutlookAPI != nil {
+		credentialedIDs[outlook.ID] = true
+	}
+	if config.SpotifyAPI != nil {
+		credentialedIDs[spotifyadapter.ID] = true
+	}
+	if config.NotionAdapter != nil {
+		credentialedIDs[notionadapter.ID] = true
+	}
 	for _, spec := range deeplinkadapter.Wave1Specs() {
+		if config.Disconnected[spec.ID] {
+			continue
+		}
 		if spec.ID == youtubeadapter.ID && youtubeCredentialed {
+			continue
+		}
+		if beeperIDs[spec.ID] {
+			continue
+		}
+		if credentialedIDs[spec.ID] {
 			continue
 		}
 		if err := reg.Register(deeplinkadapter.New(spec, logger)); err != nil {
@@ -225,14 +275,33 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 		byClass[spec.AppClass] = append(byClass[spec.AppClass], spec.ID)
 	}
 
-	// Instagram never needed an account credential in the first place —
-	// it prepares a draft and opens the app, nothing more — so it is
-	// unconditional, the same as the deep-link pack.
-	if err := reg.Register(instagramadapter.New(logger)); err != nil {
-		return nil, Inventory{}, err
+	if config.BeeperAPI == nil {
+		// Without Beeper, Instagram keeps its narrow draft-and-open floor.
+		if err := reg.Register(instagramadapter.New(logger)); err != nil {
+			return nil, Inventory{}, err
+		}
+		inv.Registered = append(inv.Registered, instagramadapter.ID)
+		byClass["messaging"] = append(byClass["messaging"], instagramadapter.ID)
+	} else {
+		for _, spec := range beeperSpecs {
+			if config.Disconnected[spec.ID] {
+				inv.Skipped[spec.ID] = "disconnected by the user"
+				continue
+			}
+			adapterID := spec.ID
+			revoke := func(ctx context.Context) error {
+				if config.PersistDisconnect == nil {
+					return nil
+				}
+				return config.PersistDisconnect(ctx, adapterID)
+			}
+			if err := reg.Register(beepermessage.NewWithRevoke(spec, config.BeeperAPI, revoke, logger)); err != nil {
+				return nil, Inventory{}, err
+			}
+			inv.Registered = append(inv.Registered, spec.ID)
+			byClass["beeper_messaging"] = append(byClass["beeper_messaging"], spec.ID)
+		}
 	}
-	inv.Registered = append(inv.Registered, instagramadapter.ID)
-	byClass["messaging"] = append(byClass["messaging"], instagramadapter.ID)
 
 	// Notification reply needs no credential either — it never talks to a
 	// service at all, it hands the reply to the phone. Unconditional for the
@@ -264,14 +333,24 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	// it, the deep-link hand-off registered above already covers "open
 	// YouTube" — this only adds real search-and-play on top.
 	if !youtubeCredentialed {
-		inv.Skipped[youtubeadapter.ID] = "no YOUTUBE_API_KEY configured; the deep-link hand-off still covers opening the app"
+		if config.Disconnected[youtubeadapter.ID] {
+			inv.Skipped[youtubeadapter.ID] = "disconnected by the user; the deep-link hand-off still covers opening the app"
+		} else {
+			inv.Skipped[youtubeadapter.ID] = "no YOUTUBE_API_KEY configured; the deep-link hand-off still covers opening the app"
+		}
 	} else {
 		client := youtubeadapter.NewHTTPClient("", youtubeAPIKey, nil, logger)
-		if err := reg.Register(youtubeadapter.New(client, logger)); err != nil {
+		revoke := func(ctx context.Context) error {
+			if config.PersistDisconnect == nil {
+				return nil
+			}
+			return config.PersistDisconnect(ctx, youtubeadapter.ID)
+		}
+		if err := reg.Register(youtubeadapter.NewWithRevoke(client, revoke, logger)); err != nil {
 			return nil, Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, youtubeadapter.ID)
-		byClass["entertainment"] = append(byClass["entertainment"], youtubeadapter.ID)
+		byClass["media"] = append(byClass["media"], youtubeadapter.ID)
 	}
 
 	// Podcasts: a plain RSS feed URL is the only connection, no OAuth and
@@ -289,39 +368,74 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 		byClass["media"] = append(byClass["media"], podcastsadapter.ID)
 	}
 
-	// Every adapter that needs the interactive OAuth sign-in described in
-	// oauthReason. There is no environment variable that substitutes for a
-	// person clicking through a consent screen, so these are always left out
-	// of an unattended production build.
+	if config.GoogleCalendarAPI != nil {
+		if err := reg.Register(gcalendar.New(config.GoogleCalendarAPI, logger)); err != nil {
+			return nil, Inventory{}, err
+		}
+		inv.Registered = append(inv.Registered, gcalendar.ID)
+		byClass["calendar"] = append(byClass["calendar"], gcalendar.ID)
+	} else {
+		inv.Skipped[gcalendar.ID] = oauthReason
+	}
+	if config.GoogleDriveAPI != nil {
+		if err := reg.Register(gdrive.New(config.GoogleDriveAPI, logger)); err != nil {
+			return nil, Inventory{}, err
+		}
+		inv.Registered = append(inv.Registered, gdrive.ID)
+		byClass["drive"] = append(byClass["drive"], gdrive.ID)
+	} else {
+		inv.Skipped[gdrive.ID] = oauthReason
+	}
+	if config.SlackAPI != nil {
+		if err := reg.Register(slackadapter.New(config.SlackAPI, logger)); err != nil {
+			return nil, Inventory{}, err
+		}
+		inv.Registered = append(inv.Registered, slackadapter.ID)
+		byClass["slack"] = append(byClass["slack"], slackadapter.ID)
+	} else {
+		inv.Skipped[slackadapter.ID] = oauthReason
+	}
+	if config.OutlookAPI != nil {
+		if err := reg.Register(outlook.New(config.OutlookAPI, logger)); err != nil {
+			return nil, Inventory{}, err
+		}
+		inv.Registered = append(inv.Registered, outlook.ID)
+		byClass["email"] = append(byClass["email"], outlook.ID)
+	} else {
+		inv.Skipped[outlook.ID] = oauthReason
+	}
+	if config.SpotifyAPI != nil {
+		if err := reg.Register(spotifyadapter.New(config.SpotifyAPI, logger)); err != nil {
+			return nil, Inventory{}, err
+		}
+		inv.Registered = append(inv.Registered, spotifyadapter.ID)
+		byClass["media"] = append(byClass["media"], spotifyadapter.ID)
+	} else {
+		inv.Skipped[spotifyadapter.ID] = oauthReason +
+			"; the hand-off adapter of the same id is registered in its place, so Spotify still opens on the phone — it just cannot be driven"
+	}
+	if config.NotionAdapter != nil {
+		if err := reg.Register(config.NotionAdapter); err != nil {
+			return nil, Inventory{}, err
+		}
+		inv.Registered = append(inv.Registered, notionadapter.ID)
+		byClass["notes"] = append(byClass["notes"], notionadapter.ID)
+	} else {
+		inv.Skipped[notionadapter.ID] = oauthReason
+	}
+
+	// These remaining adapters still have no persisted production connection.
 	//
 	// This list has to match what the adapters themselves declare
 	// (Auth: AuthOAuth). Nothing here can check that on its own, because
 	// these adapters are never constructed in this build and an unbuilt
 	// adapter has no manifest to ask. signin_accounted_for_test.go does the
 	// checking instead: it builds every adapter in the repo, reads what each
-	// declared, and fails if one that needs a sign-in is missing from this
-	// map. Notion was missing from it until that test was written, so it
-	// appeared in neither Registered nor Skipped and the inventory simply
-	// did not mention it.
+	// declared, and fails if one that needs a sign-in is missing from either
+	// production wiring or this map.
 	for id, reason := range map[string]string{
 		todoistadapter.ID: oauthReason,
-		slackadapter.ID:   oauthReason,
-		gcalendar.ID:      oauthReason,
-		gdrive.ID:         oauthReason,
-		outlook.ID:        oauthReason,
 		msteams.ID:        oauthReason,
-		notionadapter.ID:  oauthReason,
-
-		// Spotify is the one id two different adapters answer to: this
-		// full-control one, and a hand-off that only opens the app. The
-		// registry is keyed by id, so the hand-off is what actually ships
-		// until the sign-in exists — the demotion to class H the
-		// authorization gate describes. Saying only "skipped, needs OAuth"
-		// here would contradict the same id appearing in Registered, and
-		// leave whoever reads the inventory unable to tell which of the two
-		// the user actually gets.
-		spotifyadapter.ID: oauthReason +
-			"; the hand-off adapter of the same id is registered in its place, so Spotify still opens on the phone — it just cannot be driven",
 	} {
 		inv.Skipped[id] = reason
 	}

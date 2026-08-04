@@ -22,6 +22,13 @@ const APIBaseURL = "https://graph.microsoft.com"
 
 var ErrTokenCannotBeCleared = errors.New("outlook: token source cannot clear its token")
 
+type AccountIdentity struct {
+	ID                string `json:"id"`
+	DisplayName       string `json:"displayName"`
+	Mail              string `json:"mail"`
+	UserPrincipalName string `json:"userPrincipalName"`
+}
+
 type TokenSource interface {
 	AccessToken(context.Context) (string, error)
 }
@@ -90,6 +97,17 @@ func (c *HTTPClient) ListMessages(ctx context.Context, query string) ([]Message,
 	}
 	c.logger.Info("[outlook] list complete", "message_count", len(messages), "query_length", len(query))
 	return messages, nil
+}
+
+// Identity verifies which Microsoft account the delegated token represents.
+func (c *HTTPClient) Identity(ctx context.Context) (AccountIdentity, error) {
+	var identity AccountIdentity
+	values := url.Values{"$select": {"id,displayName,mail,userPrincipalName"}}
+	if err := c.do(ctx, http.MethodGet, "/v1.0/me?"+values.Encode(), nil, &identity); err != nil {
+		return AccountIdentity{}, err
+	}
+	c.logger.Info("[outlook] identity verified", "account_id_present", identity.ID != "", "mail_present", identity.Mail != "", "principal_present", identity.UserPrincipalName != "")
+	return identity, nil
 }
 
 func (c *HTTPClient) CreateDraft(ctx context.Context, request CreateDraft) (Message, error) {

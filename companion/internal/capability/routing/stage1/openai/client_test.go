@@ -66,7 +66,7 @@ func TestModelUsesResponsesStructuredOutputAndReturnsAParsedRoute(t *testing.T) 
 	}
 }
 
-func TestStage1InstructionsCoachSpotifyPrepareAndOpenAsMedia(t *testing.T) {
+func TestStage1InstructionsCoachConnectedSpotifyAndItsHandoffFallbackAsMedia(t *testing.T) {
 	var request map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -88,13 +88,66 @@ func TestStage1InstructionsCoachSpotifyPrepareAndOpenAsMedia(t *testing.T) {
 	}
 	instructions, _ := request["instructions"].(string)
 	lower := strings.ToLower(instructions)
-	for _, want := range []string{"spotify", "media", "play", "write", "prepare-and-open"} {
+	for _, want := range []string{"spotify", "media", "play", "connected", "playback", "hand-off"} {
 		if !strings.Contains(lower, want) {
 			t.Fatalf("stage1 instructions missing %q: %s", want, instructions)
 		}
 	}
-	if strings.Contains(lower, "playback api") || strings.Contains(lower, "spotify token") {
-		t.Fatalf("instructions must not coach API/token control: %s", instructions)
+	if strings.Contains(lower, "spotify token") {
+		t.Fatalf("instructions must not expose token details: %s", instructions)
+	}
+}
+
+func TestStage1InstructionsNameEveryPersistedOAuthProductionClass(t *testing.T) {
+	var request map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		_, _ = io.WriteString(w, `{"id":"resp_1","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"verb\":\"read\",\"app_class\":\"calendar\",\"app_named\":\"gcalendar\",\"subject\":\"today\",\"body\":\"\",\"confidence\":0.97}"}]}],"usage":{"input_tokens":10,"output_tokens":10,"total_tokens":20}}`)
+	}))
+	defer server.Close()
+	client, err := New(Config{APIKey: "paid-secret", BaseURL: server.URL, HTTPClient: server.Client(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := client.Model(t.Context(), "show today's calendar"); err != nil {
+		t.Fatalf("Model: %v", err)
+	}
+	instructions, _ := request["instructions"].(string)
+	lower := strings.ToLower(instructions)
+	for _, want := range []string{
+		"app_class calendar", "app_named gcalendar", "app_class drive", "app_named gdrive",
+		"app_class slack", "app_named slack", "app_class email", "app_named outlook",
+	} {
+		if !strings.Contains(lower, want) {
+			t.Fatalf("stage1 instructions missing %q: %s", want, instructions)
+		}
+	}
+}
+
+func TestStage1InstructionsSeparateBeeperSendsFromDraftsAndNotificationReplies(t *testing.T) {
+	var request map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		_, _ = io.WriteString(w, `{"id":"resp_1","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"verb\":\"send\",\"app_class\":\"beeper_messaging\",\"app_named\":\"discord\",\"subject\":\"Raina\",\"body\":\"hello\",\"confidence\":0.97}"}]}],"usage":{"input_tokens":10,"output_tokens":10,"total_tokens":20}}`)
+	}))
+	defer server.Close()
+	client, err := New(Config{APIKey: "paid-secret", BaseURL: server.URL, HTTPClient: server.Client(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := client.Model(t.Context(), "send Raina hello on Discord"); err != nil {
+		t.Fatalf("Model: %v", err)
+	}
+	instructions, _ := request["instructions"].(string)
+	lower := strings.ToLower(instructions)
+	for _, want := range []string{"beeper_messaging", "discord", "instagram", "google messages", "verb send", "subject", "body", "notification_reply", "prepare-and-open"} {
+		if !strings.Contains(lower, want) {
+			t.Fatalf("instructions do not explain %q: %s", want, instructions)
+		}
 	}
 }
 
@@ -542,7 +595,7 @@ func TestStage1InstructionsCoachNetflixPrepareAndOpenAsMedia(t *testing.T) {
 	}
 }
 
-func TestStage1InstructionsCoachYouTubePrepareAndOpenAsMedia(t *testing.T) {
+func TestStage1InstructionsCoachConnectedYouTubeAndItsHandoffFallbackAsMedia(t *testing.T) {
 	// Callers: go test ./companion/internal/capability/routing/stage1/openai/
 	// Covers stage1 coaching for Wave-1 YouTube prepare-and-open (media play|read).
 	// User: "HandOffActions + stage1 + proof media log + tests."
@@ -567,13 +620,10 @@ func TestStage1InstructionsCoachYouTubePrepareAndOpenAsMedia(t *testing.T) {
 	}
 	instructions, _ := request["instructions"].(string)
 	lower := strings.ToLower(instructions)
-	for _, want := range []string{"youtube", "media", "play", "read", "prepare-and-open"} {
+	for _, want := range []string{"youtube", "media", "play", "read", "data api", "connected", "hand-off"} {
 		if !strings.Contains(lower, want) {
 			t.Fatalf("stage1 instructions missing %q: %s", want, instructions)
 		}
-	}
-	if !strings.Contains(lower, "never claim") || !strings.Contains(lower, "played") {
-		t.Fatalf("instructions must refuse played completion claims: %s", instructions)
 	}
 }
 
@@ -1159,7 +1209,6 @@ func TestStage1InstructionsCoachYouTubeMusicAndSoundCloudPrepareAndOpen(t *testi
 		}
 	}
 }
-
 
 // Callers: Wave1Specs → stage1 coaching, HandOffActions, deeplink_proof, this test.
 // User ask: Wave1Specs 61 → 64 — Pandora media play|read; never claim played/station changed.

@@ -7,8 +7,11 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/app/credentialstore"
+	oauthcredential "github.com/codex-launcher/codex-launcher/companion/internal/app/credentialstore/oauth"
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gcalendar"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gdrive"
@@ -51,6 +54,23 @@ func startGoogleProof(ctx context.Context, output io.Writer) (mobilesession.Capa
 	if err != nil {
 		return nil, nil, err
 	}
+	tokens := connection.Snapshot()
+	record := oauthcredential.Record{
+		Provider: "google", AccessToken: tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken, TokenType: tokens.TokenType, Scopes: tokens.Scopes, ExpiresAt: tokens.ExpiresAt,
+		Metadata: map[string]string{"requested_account": strings.TrimSpace(os.Getenv("GOOGLE_ACCOUNT"))},
+	}
+	store := credentialstore.NewKeychain(logger)
+	for _, name := range []string{"google_calendar_oauth", "google_drive_oauth"} {
+		if err := oauthcredential.Save(ctx, store, name, record); err != nil {
+			_ = connection.Close()
+			return nil, nil, fmt.Errorf("google proof serve: persist OAuth: %w", err)
+		}
+	}
+	if err := store.Delete(ctx, "google_oauth"); err != nil {
+		_ = connection.Close()
+		return nil, nil, fmt.Errorf("google proof serve: remove legacy OAuth record: %w", err)
+	}
 	calendarAPI := gcalendar.NewHTTPClient("", connection, nil, logger)
 	driveAPI := gdrive.NewHTTPClient("", connection, nil, logger)
 	service, err := capabilityruntime.NewGoogle(capabilityruntime.GoogleConfig{
@@ -60,7 +80,7 @@ func startGoogleProof(ctx context.Context, output io.Writer) (mobilesession.Capa
 		_ = connection.Close()
 		return nil, nil, err
 	}
-	logger.Info("[google-proof-serve] ephemeral capability flow ready",
-		"token_storage", "memory_only", "adapter_count", 2, "user_oauth", true)
+	logger.Info("[google-proof-serve] capability flow ready",
+		"token_storage", "macos_keychain", "adapter_count", 2, "user_oauth", true)
 	return service, connection, nil
 }

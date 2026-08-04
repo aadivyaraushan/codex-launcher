@@ -102,16 +102,16 @@ func NewWithAPIKey(key string) (*Adapter, error) {
 // adapter's best case; the per-account truth comes from Connect.
 func (a *Adapter) Describe() manifest.Manifest {
 	return manifest.Manifest{
-		ID:            ID,
-		Runtime:       manifest.RT1,
-		Verbs:         []manifest.Verb{manifest.Read, manifest.Write},
-		Ceiling:       manifest.Completes,
-		Consent:       manifest.ConsentA,
-		Auth:          manifest.AuthOAuth,
-		Cost:          manifest.CostFree,
-		Gates:         []manifest.Gate{manifest.GateNone},
-		Capacity:      manifest.Capacity{Kind: manifest.CapacityNone},
-		Region:        []string{"global"},
+		ID:       ID,
+		Runtime:  manifest.RT1,
+		Verbs:    []manifest.Verb{manifest.Read, manifest.Write},
+		Ceiling:  manifest.Completes,
+		Consent:  manifest.ConsentA,
+		Auth:     manifest.AuthOAuth,
+		Cost:     manifest.CostFree,
+		Gates:    []manifest.Gate{manifest.GateNone},
+		Capacity: manifest.Capacity{Kind: manifest.CapacityNone},
+		Region:   []string{"global"},
 		// android, not both: no iPhone has run any part of this yet.
 		Platform:      manifest.PlatformAndroid,
 		ProvesCeiling: "notion_read_roundtrip_smoke",
@@ -183,7 +183,7 @@ func (a *Adapter) resolveRead(ctx context.Context, intent adapter.Intent) (adapt
 			Details:   map[string]string{"page_id": h.ID, "title": h.Title},
 		}, nil
 	default:
-		return adapter.Plan{}, ErrAmbiguousPage
+		return adapter.Plan{}, &adapter.ClarificationError{Question: "Which matching Notion page did you mean?", Cause: ErrAmbiguousPage}
 	}
 }
 
@@ -341,6 +341,11 @@ func (a *Adapter) executeWrite(ctx context.Context, plan adapter.Plan) (adapter.
 // Revoke drops the session, so every call made afterwards is refused with
 // ErrNotConnected rather than reaching a now-unauthorized server.
 func (a *Adapter) Revoke(ctx context.Context) error {
+	if clearer, ok := a.session.(interface{ Clear(context.Context) error }); ok {
+		if err := clearer.Clear(ctx); err != nil {
+			return err
+		}
+	}
 	a.session = nil
 	a.connected = false
 	a.tools = nil

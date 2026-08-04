@@ -116,7 +116,7 @@ func (a *Adapter) resolveChannel(ctx context.Context, query string, verb manifes
 		return adapter.Plan{}, ErrNoChannel
 	}
 	if len(matches) > 1 {
-		return adapter.Plan{}, ErrAmbiguousChannel
+		return adapter.Plan{}, &adapter.ClarificationError{Question: "Which matching Slack channel did you mean?", Cause: ErrAmbiguousChannel}
 	}
 	channel := matches[0]
 	summary := "Read a Slack channel"

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -47,6 +48,23 @@ func TestHTTPClientBuildsAV3SearchRequestAndParsesTheFirstVideo(t *testing.T) {
 	}
 }
 
+func TestHTTPClientDropsResultsWithoutAVideoID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[{"id":{},"snippet":{"title":"Unusable","channelTitle":"Channel"}},{"id":{"videoId":"vid2"},"snippet":{"title":"Usable","channelTitle":"Channel"}}]}`))
+	}))
+	defer server.Close()
+
+	client := NewHTTPClient(server.URL, "test-key", nil, nil)
+	videos, err := client.Search(context.Background(), "query")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(videos) != 1 || videos[0].ID != "vid2" {
+		t.Fatalf("videos = %+v, want only the result with a video id", videos)
+	}
+}
+
 func TestHTTPClientNeverLeaksTheAPIKeyInAnError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
@@ -76,4 +94,20 @@ func TestSearchResponseShapeDecodesVideoID(t *testing.T) {
 	if len(parsed.Items) != 1 || parsed.Items[0].ID.VideoID != "xyz" {
 		t.Fatalf("parsed = %+v", parsed)
 	}
+}
+
+func TestLiveSearchWithConfiguredOperatorKey(t *testing.T) {
+	key := os.Getenv("YOUTUBE_API_KEY")
+	if key == "" {
+		t.Skip("live YouTube key not supplied")
+	}
+	client := NewHTTPClient("", key, nil, nil)
+	videos, err := client.Search(t.Context(), "bicycle repair basics")
+	if err != nil {
+		t.Fatalf("live search: %v", err)
+	}
+	if len(videos) == 0 || videos[0].ID == "" || videos[0].Title == "" {
+		t.Fatalf("live search returned no usable video metadata: %+v", videos)
+	}
+	t.Logf("live search result_count=%d first_title_length=%d channel_present=%t", len(videos), len(videos[0].Title), videos[0].ChannelTitle != "")
 }

@@ -1,5 +1,29 @@
 # Consumer app implementation — building all of it
 
+> ### EXECUTION UPDATE 2026-08-04 — this block is the current status
+>
+> **Approved implementation slice: working and verified. The whole multi-wave
+> plan is not complete.** The current run finished the owner-selected Wave 1
+> integrations plus Discord and YouTube. It did not silently include deferred
+> networks, iOS, public Play submission, legal/payment steps, or the later
+> launch-operations work.
+>
+> | Surface | Current evidence-backed status |
+> |---|---|
+> | Beeper messaging | **The three approved live proofs completed:** one outgoing `Operator verification 2026-08-04` record exists for Discord, Instagram, and Google Messages. Google Messages resolved the approved phone to `wife`; the exact text is also visible in the `wife` thread on Pixel 9. For future sends, production discovers the connected network account, waits until confirmation before `POST /v1/chats/start`, and reports outcome unknown while Beeper returns only a pending id; a separate readback is required before claiming thread visibility. |
+> | Messaging deployment | The proven route is the approved Beeper CLI/Desktop API target on the paired Mac. A phone-local headless Beeper Server is **not** proven and is no longer allowed to erase the working paired-computer route. It remains separate deployment work if fully phone-local messaging is later required. |
+> | Google Calendar + Drive | **Connected and restart-safe:** owner-selected OAuth completed and the stored connection was rechecked in macOS Keychain. The requested email is retained only as a label; the current scopes do not independently verify it through a Google identity endpoint. Calendar and Drive now use separate local records so disconnecting one does not break the other. |
+> | Slack | **Connected and restart-safe:** user OAuth completed for the `ssdear` identity and the approved workspace; `auth.test` succeeded and the token is stored. No arbitrary channel message was sent. |
+> | Microsoft Outlook | **Connected and restart-safe for `ssdear@gmail.com`:** Microsoft accepted a public-client PKCE exchange, Graph verified the identity, and the refreshable record is stored. The stale client-secret dependency was removed. Teams remains owner-deferred. |
+> | Spotify | **COMPLETE on Pixel 9:** the stored OAuth record searched, found the active `Pixel 9` device, and Web API playback returned HTTP 204 for “Here Comes The Sun - Remastered 2009”; Android then reported `PAUSED(2)` after the proof stopped playback. |
+> | YouTube | **Read/search COMPLETE; play is a generic HAND-OFF.** The stale local key was replaced with the YouTube-only key from Google Cloud project `operator-504223` (`Operator`) and stored in Keychain. The stored-key integration probe returned five results. The current Android hand-off opens YouTube's main activity; it does not deep-link the resolved video or claim playback. |
+> | Notion + Apple Notes | **Connected/proven in this run:** Notion's hosted MCP measured `completes` and is stored; Apple Notes permission and live adapter access were proven. |
+> | Deferred by owner | WhatsApp, Facebook Messenger, Signal, Telegram, Microsoft Teams, iOS, and external Play/legal/payment/public-posting steps. These are deferred, not technical blockers. |
+> | Durable disconnect | Google Calendar and Drive have independent records, and the retry-safe legacy migration removes the shared record only after both writes succeed. YouTube and each Beeper network persist an adapter-specific disconnect marker before removal, so process restart does not silently reconnect them. Marker-read errors fail startup closed. Explicit proof/reconnect commands clear the selected marker. |
+> | Verification | `go test ./companion/... -count=1` green; Android unit + lint green; retained Pixel connected XML reports 130 tests, 0 failures, and 5 intentional live-injection skips; protocol 45 valid + 45 invalid-rejection cases; release checks 23/23. |
+>
+> Full commands and reproducible evidence: `saved-results/operator-consumer-messaging-autonomous-run-2026-08-04.md`.
+
 **Date:** 2026-07-31 (messaging COMPLETE fork embedded 2026-08-02)
 **Turns into a build:** [consumer-app-coverage-plan.md](consumer-app-coverage-plan.md),
 which established *which door* each app has. This plan establishes *what we
@@ -2723,10 +2747,8 @@ and recurring test-account sign-ins;
 **the Android home-prompt behavior is named** — Auto tries app actions first
 and falls back to a Codex task, while the visible Computer override sends
 directly to the paired computer;
-**Spotify's route is Web API COMPLETE by design** (search + start playback via
-user OAuth), but **ships `unverified` as of 2026-08-03** — adapter and OAuth
-flow are built and tests pass, but no user token exists yet, so playback has
-never been driven, one owner consent click away;
+**Spotify's route is Web API COMPLETE** (search + start playback via user OAuth)
+and was driven on Pixel 9 on 2026-08-04 using the stored refreshable token;
 playlist/library write stays out of v1;
 **Snapchat is dropped** — there is no probe or build work for it in this plan;
 **Kernel personal-account automation is retired as a release route**;
@@ -2750,10 +2772,10 @@ open-the-app floor is stated once and applies to every row including Class C;
 `cancel` and `modify` are in the verb set; eBay checkout, Apple Health, Netflix
 playback and the cloud-Android-device option are all in the registry rather than
 only in prose; Instagram **feed** post/reel/story stays draft-and-open, while
-Instagram **DM send** was planned COMPLETE via Beeper Server after smoke
-(messaging fork), not Operator browser automation — **HAND-OFF as of
-2026-08-03** because that smoke failed (Beeper's only Linux build is an
-AppImage that will not start on the phone); the notification-reply probe remains Wave 0
+Instagram **DM send** uses the approved Beeper CLI/Desktop API route, not
+Operator browser automation; the 2026-08-04 approved live proof has a matching
+outgoing readback, while future pending sends remain outcome-unknown until the
+same readback succeeds; the notification-reply probe remains Wave 0
 evidence only; the cloud token
 store has a custody gate rather than no security model at all; the Apple
 guideline question stays a Wave 0 spike even though the iOS client is deferred,

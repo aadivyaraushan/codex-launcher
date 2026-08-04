@@ -101,6 +101,10 @@ func (c *HTTPClient) Search(ctx context.Context, query string) ([]Video, error) 
 	}
 	videos := make([]Video, 0, len(parsed.Items))
 	for _, item := range parsed.Items {
+		if strings.TrimSpace(item.ID.VideoID) == "" {
+			c.logger.Warn("[youtube] dropping unusable search result", "reason", "missing_video_id")
+			continue
+		}
 		videos = append(videos, Video{
 			ID: item.ID.VideoID, Title: item.Snippet.Title, ChannelTitle: item.Snippet.ChannelTitle,
 		})

@@ -125,7 +125,7 @@ func (a *Adapter) resolveRead(ctx context.Context, query string) (adapter.Plan, 
 		return adapter.Plan{}, ErrNoEvent
 	}
 	if len(matches) > 1 {
-		return adapter.Plan{}, ErrAmbiguousEvent
+		return adapter.Plan{}, &adapter.ClarificationError{Question: "Which matching Google Calendar event did you mean?", Cause: ErrAmbiguousEvent}
 	}
 	event := matches[0]
 	return adapter.Plan{

@@ -26,7 +26,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: proveadapter <notes|reminders|killswitch|notion|todoist|spotify|rotate>")
+		fmt.Fprintln(os.Stderr, "usage: proveadapter <notes|reminders|killswitch|notion|todoist|spotify|beeper|beeper-reconnect|rotate>")
 		os.Exit(2)
 	}
 
@@ -44,10 +44,14 @@ func main() {
 		err = runTodoist(os.Args[2:])
 	case "spotify":
 		err = runSpotify(os.Args[2:])
+	case "beeper":
+		err = runBeeper(os.Args[2:])
+	case "beeper-reconnect":
+		err = runBeeperReconnect(os.Args[2:])
 	case "rotate":
 		err = runRotate(os.Args[2:])
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand %q; want notes, reminders, killswitch, notion, todoist, spotify, or rotate\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "unknown subcommand %q; want notes, reminders, killswitch, notion, todoist, spotify, beeper, beeper-reconnect, or rotate\n", os.Args[1])
 		os.Exit(2)
 	}
 	if err != nil {
@@ -283,32 +287,4 @@ func adapterIDs(as []adapter.Adapter) string {
 		ids = append(ids, a.Describe().ID)
 	}
 	return strings.Join(ids, ", ")
-}
-
-// ---- notion ---------------------------------------------------------------
-
-// runNotion prints what a real proving run against Notion would require and
-// stops there. Notion's hosted MCP server is OAuth-only, and the sign-in
-// belongs to the repo owner's account — not to this command. This function
-// takes no flag, reads no environment variable, and reads no stdin that
-// could carry a token, key, or password; there is no code path here that
-// accepts a credential.
-func runNotion(args []string) error {
-	fs := flag.NewFlagSet("notion", flag.ExitOnError)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	step(1, "What a real Notion proving run would need")
-	line("Notion's hosted MCP server: %s", notion.ServerURL)
-	line("that server requires user-based OAuth; it refuses static API keys entirely")
-	line("(notion.NewWithAPIKey in this codebase always returns notion.ErrBearerNotSupported)")
-	line("the sign-in belongs to the repo owner's own Notion account, not to this command")
-	line("this command accepts no flag, env var, or stdin input that could carry a token, key, or password")
-
-	step(2, "Stop here")
-	line("a real run needs a browser sign-in by the owner before any adapter call can be made")
-
-	verdict("blocked: needs the owner's OAuth sign-in")
-	return errors.New("blocked: needs the owner's OAuth sign-in")
 }

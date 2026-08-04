@@ -55,6 +55,7 @@ type AuthorizationConfig struct {
 	ListenAddress string
 	RedirectURI   string
 	Flow          OAuthFlow
+	Verbs         []manifest.Verb
 	Output        io.Writer
 	Logger        *slog.Logger
 	TLSConfig     *tls.Config
@@ -64,21 +65,29 @@ type AuthorizationConfig struct {
 // when Clear runs and is never written to disk or printed.
 type Connection struct {
 	mu     sync.RWMutex
-	access string
+	tokens slackoauth.TokenSet
 }
 
 func (c *Connection) AccessToken(context.Context) (string, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if c.access == "" {
+	if c.tokens.AccessToken == "" {
 		return "", slackadapter.ErrNotConnected
 	}
-	return c.access, nil
+	return c.tokens.AccessToken, nil
+}
+
+func (c *Connection) Snapshot() slackoauth.TokenSet {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	snapshot := c.tokens
+	snapshot.Scopes = append([]string(nil), c.tokens.Scopes...)
+	return snapshot
 }
 
 func (c *Connection) Clear(context.Context) error {
 	c.mu.Lock()
-	c.access = ""
+	c.tokens = slackoauth.TokenSet{}
 	c.mu.Unlock()
 	return nil
 }
@@ -187,7 +196,11 @@ func Authorize(ctx context.Context, config AuthorizationConfig) (*Connection, er
 	}
 	tlsListener := tls.NewListener(listener, tlsConfig)
 
-	authorization, err := config.Flow.Start(ctx, config.RedirectURI, []manifest.Verb{manifest.Read})
+	verbs := config.Verbs
+	if len(verbs) == 0 {
+		verbs = []manifest.Verb{manifest.Read}
+	}
+	authorization, err := config.Flow.Start(ctx, config.RedirectURI, verbs)
 	if err != nil {
 		return nil, fmt.Errorf("slack proof: start OAuth: %w", err)
 	}
@@ -241,7 +254,7 @@ func Authorize(ctx context.Context, config AuthorizationConfig) (*Connection, er
 		return nil, fmt.Errorf("slack proof: OAuth callback: %w", err)
 	case tokenSet = <-tokens:
 	}
-	return &Connection{access: tokenSet.AccessToken}, nil
+	return &Connection{tokens: tokenSet}, nil
 }
 
 func selfSignedTLSConfig(host string) (*tls.Config, error) {

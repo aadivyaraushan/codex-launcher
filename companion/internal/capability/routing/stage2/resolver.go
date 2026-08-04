@@ -52,6 +52,12 @@ const (
 	// the route's Subject straight through as the Handle and lets the
 	// adapter's one surviving choice carry it to the device unresolved.
 	ResolvedOnTheDevice
+	// ResolvedByAdapter marks a class whose one selected adapter owns the
+	// authoritative directory. Beeper is the first case: its live chat list,
+	// not the Mac address book, decides which conversation a visible name
+	// refers to. Stage 2 chooses the named network adapter and leaves the
+	// person unresolved for that adapter to search.
+	ResolvedByAdapter
 )
 
 // String names an Addressing the way a class declaration or an error
@@ -66,6 +72,8 @@ func (a Addressing) String() string {
 		return "to_a_thing"
 	case ResolvedOnTheDevice:
 		return "resolved_on_the_device"
+	case ResolvedByAdapter:
+		return "resolved_by_adapter"
 	default:
 		return "undeclared"
 	}
@@ -94,6 +102,8 @@ func (a *Addressing) UnmarshalJSON(data []byte) error {
 		*a = ToAThing
 	case "resolved_on_the_device":
 		*a = ResolvedOnTheDevice
+	case "resolved_by_adapter":
+		*a = ResolvedByAdapter
 	case "undeclared":
 		*a = AddressingUndeclared
 	default:
@@ -308,7 +318,7 @@ func (r *Resolver) Resolve(_ context.Context, route stage1.Route) (Decision, err
 	// the same way a class with no person to resolve would (exactly one
 	// surviving adapter, or ask), and then hands that adapter the subject
 	// exactly as the router produced it, unresolved.
-	if class.Addressing == ResolvedOnTheDevice {
+	if class.Addressing == ResolvedOnTheDevice || class.Addressing == ResolvedByAdapter {
 		if len(survivors) == 0 {
 			dec.MustAsk = true
 			dec.Question = "No available app can handle this right now."
@@ -320,7 +330,9 @@ func (r *Resolver) Resolve(_ context.Context, route stage1.Route) (Decision, err
 			return dec, nil
 		}
 		dec.AdapterID = survivors[0]
-		dec.Handle = route.Subject
+		if class.Addressing == ResolvedOnTheDevice {
+			dec.Handle = route.Subject
+		}
 		return dec, nil
 	}
 

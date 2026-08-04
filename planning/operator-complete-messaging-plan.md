@@ -1,5 +1,38 @@
 # Operator complete messaging — Beeper Server on phone Linux
 
+> ### EXECUTION UPDATE 2026-08-04 — this block is the active route and status
+>
+> The earlier phone-Linux failure is not the current product result. The owner
+> approved **Beeper CLI as the primary route**, and the existing paired Mac
+> target provides the same authenticated Desktop API contract. The current run
+> therefore proved the paired-computer route instead of pretending that a
+> phone-local server was the only possible deployment.
+>
+> | Network | Result |
+> |---|---|
+> | Discord | **Approved live proof complete:** exactly one outgoing verification message is present in the Discord bridge. Future sends remain outcome-unknown until readback confirms visibility. |
+> | Instagram DM | **Approved live proof complete:** exactly one outgoing verification message is present in the Instagram bridge. Future sends use the same pending-then-readback rule. Feed post/reel/story remains a separate prepare-and-open hand-off. |
+> | Google Messages | **Approved live proof complete and Pixel-visible:** one confirmed send was accepted, one outgoing record exists, and the exact text is visible in the `wife` thread on Pixel 9. Production discovers the connected Google Messages account from `GET /v1/accounts`, defers `POST /v1/chats/start` until after confirmation, and shows the approved phone in the pre-send preview. Final visibility requires readback. |
+> | WhatsApp | Owner-deferred; not connected in Beeper. |
+> | Facebook Messenger | Owner-deferred. |
+> | Signal | Owner-deferred. |
+> | Telegram | Owner-deferred pending credentials. |
+>
+> Safety properties remain unchanged: network and conversation are resolved
+> before preview; the whole message is shown; no send occurs without the
+> preview-bound confirmation; ambiguity asks instead of guessing; logs record
+> lengths and ids, not message content or tokens. Android Direct Reply remains
+> useful for replying to an existing notification, but it is not used as a
+> substitute for starting a Beeper conversation.
+> A per-network disconnect is stored before the adapter is removed and is
+> applied again at startup, without logging out or disabling sibling Beeper
+> networks. `proveadapter beeper-reconnect --network <name>` explicitly clears
+> one selected network's marker; Keychain read errors fail startup closed.
+>
+> The fully phone-local Beeper Server path is still unproven. That is a future
+> deployment choice, not a reason to label the working paired-computer route
+> blocked. Evidence: `saved-results/operator-consumer-messaging-autonomous-run-2026-08-04.md`.
+
 **Date:** 2026-08-02 (spike result added 2026-08-03)  
 **Status:** **BLOCKER WITHDRAWN 2026-08-03 (later same day) — the spike tested the wrong artifact. See the correction block immediately below; it outranks every "BLOCKED"/"HAND-OFF"/"superseded" line in this file.** Previously read: *"SPIKE FAILED 2026-08-03 — messaging COMPLETE is BLOCKED for v1."* Evidence, now carrying a correction header: `saved-results/beeper-server-phone-linux-spike.md`.
 
@@ -123,13 +156,13 @@ than anything above, and it was already sitting in the repo unused:
 
 ## Scope matrix (v1)
 
-**Ceilings after the 2026-08-03 spike failure.** The "v1 (planned)" column is what this plan set out to build; "v1 (actual)" is what the spike-fail exit table forces. Row 1 of that table applies — "P2 userspace or Beeper Server won't run on phone" — which blocks messaging COMPLETE outright rather than demoting one net at a time.
+**Historical 2026-08-03 spike table, corrected by the active 2026-08-04 block above.** The phone-local failure did not block the approved paired-computer Beeper CLI route.
 
-| Surface | v1 (planned) | v1 (actual, 2026-08-03) |
+| Surface | v1 (planned) | Current approved route |
 |---|---|---|
-| Instagram DMs | COMPLETE via Server API | **HAND-OFF** — Server never ran, send gate never reached |
-| Discord | COMPLETE via Server API | **HAND-OFF** — prepare-and-open, as `adapters/deeplink/adapter.go:60` already builds |
-| Google Messages (SMS+RCS) | COMPLETE via Server API | **HAND-OFF** — note RT-4 notification reply is a separate, unaffected path |
+| Instagram DMs | COMPLETE via Server API | Beeper CLI/Desktop API live proof + readback complete; future sends require readback |
+| Discord | COMPLETE via Server API | Beeper CLI/Desktop API live proof + readback complete; future sends require readback |
+| Google Messages (SMS+RCS) | COMPLETE via Server API | Beeper CLI/Desktop API live proof + readback complete and visible on Pixel |
 
 **What Direct Reply changes (revised route, 2026-08-03).** Replying to a live
 thread and starting a new one are different jobs, and only the first one gets

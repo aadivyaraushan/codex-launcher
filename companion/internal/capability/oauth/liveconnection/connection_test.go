@@ -264,7 +264,7 @@ func TestGoogleAndMicrosoftEndpointsStillMatchLiveDiscovery(t *testing.T) {
 			discoveryURL: "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
 			authorizeURL: startedAuthorizeURL(t, func() (string, error) {
 				flow := microsoft.New(microsoft.Config{
-					ClientID: "probe", ClientSecret: "probe", Tenant: "common", Logger: quietLogger(),
+					ClientID: "probe", Tenant: "common", Logger: quietLogger(),
 				})
 				auth, err := flow.Start(context.Background(), "http://127.0.0.1:9187/callback",
 					[]manifest.Verb{manifest.Read})

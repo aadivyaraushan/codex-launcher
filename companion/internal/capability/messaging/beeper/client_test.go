@@ -67,6 +67,25 @@ func TestSearchChatsSendsBearerTokenAndReturnsTypedChats(t *testing.T) {
 	}
 }
 
+func TestAccountsReturnsTheConnectedNetworkAccountIDs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/accounts" {
+			t.Fatalf("request = %s %s, want GET /v1/accounts", r.Method, r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `[{"accountID":"google-account-live","network":"Google Messages","status":"connected"}]`)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, staticToken("tok"), server.Client(), discardLogger())
+	accounts, err := client.Accounts(t.Context())
+	if err != nil {
+		t.Fatalf("Accounts: %v", err)
+	}
+	if len(accounts) != 1 || accounts[0].ID != "google-account-live" || accounts[0].Network != "Google Messages" || accounts[0].Status != "connected" {
+		t.Fatalf("accounts = %+v", accounts)
+	}
+}
+
 // Regression: a real Beeper rejects "?query=" with
 // VALIDATION_ERROR "String must contain at least 1 character(s)". An empty
 // search must omit the parameter, not send it blank. The fake server in these
@@ -98,6 +117,40 @@ func TestSearchChatsFailsLoudlyWhenBeeperRejectsTheRequest(t *testing.T) {
 	client := NewClient(server.URL, staticToken("bad"), server.Client(), discardLogger())
 	if _, err := client.SearchChats(context.Background(), "Maya"); err == nil {
 		t.Fatal("a 401 from Beeper must be an error, not an empty result")
+	}
+}
+
+func TestStartChatPostsAnExactPhoneToTheSelectedAccount(t *testing.T) {
+	var gotPath, gotMethod string
+	var gotBody struct {
+		AccountID string `json:"accountID"`
+		User      struct {
+			PhoneNumber string `json:"phoneNumber"`
+		} `json:"user"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"google-chat-1","accountID":"gmessages","network":"Google Messages","title":"wife","type":"single"}`)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, staticToken("tok"), server.Client(), discardLogger())
+	chat, err := client.StartChat(t.Context(), "gmessages", "+12243228828")
+	if err != nil {
+		t.Fatalf("StartChat: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/v1/chats/start" {
+		t.Fatalf("request = %s %s, want POST /v1/chats/start", gotMethod, gotPath)
+	}
+	if gotBody.AccountID != "gmessages" || gotBody.User.PhoneNumber != "+12243228828" {
+		t.Fatalf("start body = %+v", gotBody)
+	}
+	if chat.ID != "google-chat-1" || chat.Title != "wife" || chat.Network != "Google Messages" {
+		t.Fatalf("chat = %+v", chat)
 	}
 }
 

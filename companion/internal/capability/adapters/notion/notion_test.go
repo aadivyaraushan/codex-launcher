@@ -19,6 +19,7 @@ type fakeSession struct {
 	replies map[string]json.RawMessage
 	errs    map[string]error
 	calls   []call
+	clears  int
 }
 
 type call struct {
@@ -35,6 +36,8 @@ func newSession(tools ...string) *fakeSession {
 }
 
 func (f *fakeSession) ListTools(context.Context) ([]string, error) { return f.tools, nil }
+
+func (f *fakeSession) Clear(context.Context) error { f.clears++; return nil }
 
 func (f *fakeSession) Call(_ context.Context, tool string, args map[string]any) (json.RawMessage, error) {
 	f.calls = append(f.calls, call{tool: tool, args: args})
@@ -252,6 +255,10 @@ func TestSeveralPagesWithSimilarNamesIsAnAskNotAPick(t *testing.T) {
 	if !errors.Is(err, ErrAmbiguousPage) {
 		t.Fatalf("the adapter picked between two similar pages: %v", err)
 	}
+	var question *adapter.ClarificationError
+	if !errors.As(err, &question) || question.Question == "" {
+		t.Fatalf("ambiguous page is not a user question: %T %v", err, err)
+	}
 }
 
 // ---- writes go only where the adapter itself made room ------------------
@@ -377,6 +384,9 @@ func TestRevokeDropsTheSessionSoNothingElseCanBeCalled(t *testing.T) {
 
 	if err := a.Revoke(ctx); err != nil {
 		t.Fatalf("Revoke failed: %v", err)
+	}
+	if s.clears != 1 {
+		t.Fatalf("durable credential clears = %d, want 1", s.clears)
 	}
 	if _, err := a.Resolve(ctx, adapter.Intent{AdapterID: ID, Verb: manifest.Read, Subject: "anything"}); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("the adapter still works after a revoke: %v", err)

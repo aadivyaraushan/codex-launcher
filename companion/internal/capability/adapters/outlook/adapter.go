@@ -143,7 +143,7 @@ func (a *Adapter) resolveRead(ctx context.Context, query string) (adapter.Plan, 
 		return adapter.Plan{}, ErrNoMessage
 	}
 	if len(matches) > 1 {
-		return adapter.Plan{}, ErrAmbiguousMessage
+		return adapter.Plan{}, &adapter.ClarificationError{Question: "Which matching Outlook message did you mean?", Cause: ErrAmbiguousMessage}
 	}
 	message := matches[0]
 	return adapter.Plan{

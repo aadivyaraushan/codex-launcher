@@ -8,11 +8,27 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 )
+
+// ClarificationError means an adapter found a real choice it cannot safely
+// make, such as two Beeper conversations with the same visible name. The flow
+// turns this into a question for the phone instead of reporting a broken
+// capability or guessing a recipient.
+type ClarificationError struct {
+	Question string
+	Cause    error
+}
+
+func (e *ClarificationError) Error() string {
+	return fmt.Sprintf("capability needs clarification: %s", e.Question)
+}
+
+func (e *ClarificationError) Unwrap() error { return e.Cause }
 
 // Intent is what the cloud router asked for, before anything on the device
 // has resolved it. Subject is the unresolved name from the router (a

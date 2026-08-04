@@ -24,7 +24,7 @@ type YouTubeConfig struct {
 }
 
 // NewYouTube builds the companion-side flow for YouTube search/open: stage 1
-// routing, local stage 2 selection under entertainment, preview, and the
+// routing, local stage 2 selection under media, preview, and the
 // real YouTube adapter. No OAuth — the Data API v3 key is the only
 // connection.
 func NewYouTube(config YouTubeConfig) (*flow.Service, error) {
@@ -41,7 +41,7 @@ func NewYouTube(config YouTubeConfig) (*flow.Service, error) {
 	resolver := stage2.New(
 		reg,
 		contacts.NewGraph(time.Now),
-		stage2.ClassMap{"entertainment": {Adapters: []string{youtubeadapter.ID}, Addressing: stage2.ToAThing}},
+		stage2.ClassMap{"media": {Adapters: []string{youtubeadapter.ID}, Addressing: stage2.ToAThing}},
 		manifest.PlatformAndroid,
 	)
 	config.Logger.Info("[capability-runtime] YouTube flow ready", "adapter_count", 1, "class_count", 1, "platform", manifest.PlatformAndroid)

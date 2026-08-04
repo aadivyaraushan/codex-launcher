@@ -2,10 +2,19 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gcalendar"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gdrive"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/notion"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/outlook"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/slack"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/spotify"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/messaging/beeper"
 )
 
 // The gap these tests close: every adapter in this repo was reachable only
@@ -140,9 +149,9 @@ func TestAnAdapterWithNoCredentialIsLeftOutAndTheReasonIsRecorded(t *testing.T) 
 // change nothing.
 func TestSupplyingACredentialAddsThatAdapterAndMakesItRoutable(t *testing.T) {
 	_, inv, err := NewProduction(ProductionConfig{
-		Model:       stubModel,
-		Logger:      quietLogger(),
-		MapsAPIKey:  "test-maps-key",
+		Model:      stubModel,
+		Logger:     quietLogger(),
+		MapsAPIKey: "test-maps-key",
 	})
 	if err != nil {
 		t.Fatalf("NewProduction failed: %v", err)
@@ -172,6 +181,142 @@ func TestSupplyingACredentialAddsThatAdapterAndMakesItRoutable(t *testing.T) {
 	}
 	if !routable {
 		t.Error("Maps was registered but no class routes to it, so the key changed nothing")
+	}
+}
+
+type fakeOAuthAPIs struct{}
+
+type fakeNotionSession struct{}
+
+func (*fakeNotionSession) ListTools(context.Context) ([]string, error) {
+	return []string{notion.ToolSearch, notion.ToolFetch, notion.ToolCreatePages, notion.ToolUpdatePage}, nil
+}
+func (*fakeNotionSession) Call(context.Context, string, map[string]any) (json.RawMessage, error) {
+	return nil, nil
+}
+
+func (*fakeOAuthAPIs) ListEvents(context.Context, string) ([]gcalendar.Event, error) { return nil, nil }
+func (*fakeOAuthAPIs) CreateEvent(context.Context, gcalendar.CreateEvent) (gcalendar.Event, error) {
+	return gcalendar.Event{}, nil
+}
+func (*fakeOAuthAPIs) ListFiles(context.Context, string) ([]gdrive.File, error) { return nil, nil }
+func (*fakeOAuthAPIs) CreateFile(context.Context, gdrive.CreateFile) (gdrive.File, error) {
+	return gdrive.File{}, nil
+}
+func (*fakeOAuthAPIs) ListChannels(context.Context) ([]slack.Channel, error) { return nil, nil }
+func (*fakeOAuthAPIs) PostMessage(context.Context, slack.PostMessage) (slack.PostedMessage, error) {
+	return slack.PostedMessage{}, nil
+}
+func (*fakeOAuthAPIs) ListMessages(context.Context, string) ([]outlook.Message, error) {
+	return nil, nil
+}
+func (*fakeOAuthAPIs) CreateDraft(context.Context, outlook.CreateDraft) (outlook.Message, error) {
+	return outlook.Message{}, nil
+}
+func (*fakeOAuthAPIs) SendMail(context.Context, outlook.SendMail) error        { return nil }
+func (*fakeOAuthAPIs) Search(context.Context, string) ([]spotify.Track, error) { return nil, nil }
+func (*fakeOAuthAPIs) Devices(context.Context) ([]spotify.Device, error)       { return nil, nil }
+func (*fakeOAuthAPIs) Play(context.Context, string, string) error              { return nil }
+func (*fakeOAuthAPIs) Clear(context.Context) error                             { return nil }
+
+func TestPersistedOAuthAPIsReplaceHandoffsAndBecomeRoutable(t *testing.T) {
+	apis := &fakeOAuthAPIs{}
+	notionAdapter, err := notion.New(&fakeNotionSession{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := notionAdapter.Connect(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	_, inv, err := NewProduction(ProductionConfig{
+		Model: stubModel, Logger: quietLogger(),
+		GoogleCalendarAPI: apis, GoogleDriveAPI: apis, SlackAPI: apis,
+		OutlookAPI: apis, SpotifyAPI: apis, NotionAdapter: notionAdapter,
+	})
+	if err != nil {
+		t.Fatalf("NewProduction: %v", err)
+	}
+	wantClasses := map[string]string{
+		gcalendar.ID: "calendar", gdrive.ID: "drive", slack.ID: "slack",
+		outlook.ID: "email", spotify.ID: "media", notion.ID: "notes",
+	}
+	for id, class := range wantClasses {
+		found := false
+		for _, candidate := range inv.Classes[class] {
+			if candidate == id {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("OAuth adapter %q not routable from class %q: classes=%v", id, class, inv.Classes)
+		}
+		if _, skipped := inv.Skipped[id]; skipped {
+			t.Errorf("OAuth adapter %q is registered and still reported skipped", id)
+		}
+	}
+}
+
+type fakeProductionBeeper struct{}
+
+func (*fakeProductionBeeper) SearchChats(context.Context, string) ([]beeper.Chat, error) {
+	return []beeper.Chat{{ID: "chat-1", Network: "Discord", Title: "Aadivya"}}, nil
+}
+func (*fakeProductionBeeper) Accounts(context.Context) ([]beeper.Account, error) {
+	return []beeper.Account{{ID: "google-account-live", Network: "Google Messages", Status: "connected"}}, nil
+}
+func (*fakeProductionBeeper) StartChat(context.Context, string, string) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1", Network: "Google Messages", Title: "wife"}, nil
+}
+func (*fakeProductionBeeper) Send(context.Context, string, string) (beeper.Sent, error) {
+	return beeper.Sent{ChatID: "chat-1", PendingMessageID: "pending-1"}, nil
+}
+
+func TestBeeperConnectionReplacesTheThreeMessagingHandoffsWithConfirmedSendAdapters(t *testing.T) {
+	_, inv, err := NewProduction(ProductionConfig{
+		Model: stubModel, Logger: quietLogger(), BeeperAPI: &fakeProductionBeeper{},
+	})
+	if err != nil {
+		t.Fatalf("NewProduction: %v", err)
+	}
+
+	want := map[string]bool{"instagram": false, "discord": false, "messages": false}
+	for _, id := range inv.Classes["beeper_messaging"] {
+		if _, ok := want[id]; ok {
+			want[id] = true
+		}
+	}
+	for id, found := range want {
+		if !found {
+			t.Errorf("Beeper send adapter %q is not routable: classes=%v", id, inv.Classes)
+		}
+	}
+	if inv.Classes["messaging"] == nil {
+		t.Fatal("the ordinary prepare-and-open messaging class disappeared")
+	}
+}
+
+func TestPersistentlyDisconnectedCredentialedAdaptersStayOutAfterRebuild(t *testing.T) {
+	revoked := []string{}
+	_, inv, err := NewProduction(ProductionConfig{
+		Model: stubModel, Logger: quietLogger(), YouTubeAPIKey: "test-youtube-key", BeeperAPI: &fakeProductionBeeper{},
+		Disconnected: map[string]bool{"youtube": true, "discord": true},
+		PersistDisconnect: func(_ context.Context, id string) error {
+			revoked = append(revoked, id)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProduction: %v", err)
+	}
+	registered := map[string]bool{}
+	for _, id := range inv.Registered {
+		registered[id] = true
+	}
+	if registered["youtube"] || registered["discord"] {
+		t.Fatalf("disconnected adapters were rebuilt: registered=%v", inv.Registered)
+	}
+	if !registered["instagram"] || !registered["messages"] {
+		t.Fatalf("one Beeper network disconnect removed its siblings: registered=%v", inv.Registered)
 	}
 }
 

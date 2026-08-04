@@ -172,6 +172,29 @@ func TestOnlyOneAdapterInTheClassResolvesWithoutAsking(t *testing.T) {
 	}
 }
 
+func TestResolvedByAdapterPassesTheUnchangedPersonNameToOneNamedAdapter(t *testing.T) {
+	reg := registry.New()
+	if err := reg.Register(adapterFor("discord", manifest.Send)); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	resolver := New(reg, contacts.NewGraph(func() time.Time { return now }), ClassMap{
+		"beeper_messaging": {Adapters: []string{"discord"}, Addressing: ResolvedByAdapter},
+	}, manifest.PlatformAndroid)
+	rt := route(manifest.Send, "beeper_messaging", "Raina K", 0.99)
+	rt.AppNamed = "discord"
+
+	got, err := resolver.Resolve(t.Context(), rt)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.MustAsk || got.AdapterID != "discord" {
+		t.Fatalf("decision=%+v", got)
+	}
+	if got.Handle != "" {
+		t.Fatalf("stage 2 invented a handle before Beeper searched: %q", got.Handle)
+	}
+}
+
 // ---- the doors stay shut ------------------------------------------------
 
 func TestASwitchedOffAdapterIsNeverRoutedTo(t *testing.T) {

@@ -1,11 +1,10 @@
 // Package youtube is Operator's RT-2 adapter for YouTube search and open.
 // It uses the YouTube Data API v3 (search.list) with a plain project API
 // key — there is no per-user OAuth step. Both the read (search) verb and the
-// play (open a video) verb resolve through that same search.list call, and
-// the live key comes back with a 403 because its Google Cloud project is
-// restricted. So neither verb has ever actually gone all the way through
-// this adapter. A ceiling is supposed to be a measured fact, not a hope, so
-// the whole adapter reads hands_off until a real run proves otherwise.
+// play (open a video) verb resolve through that same search.list call. The
+// Operator project key completed that exact call on 2026-08-04, returning
+// five usable video rows, so read now has a measured completes ceiling.
+// Play still returns hands_off because it opens the resolved URL on Android.
 // Like/subscribe and in-app chrome remote control are explicitly deferred.
 package youtube
 
@@ -38,25 +37,30 @@ type API interface {
 
 type Adapter struct {
 	api    API
+	revoke func(context.Context) error
 	logger *slog.Logger
 }
 
 var _ adapter.Adapter = (*Adapter)(nil)
 
 func New(api API, logger *slog.Logger) *Adapter {
+	return NewWithRevoke(api, nil, logger)
+}
+
+func NewWithRevoke(api API, revoke func(context.Context) error, logger *slog.Logger) *Adapter {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Adapter{api: api, logger: logger}
+	return &Adapter{api: api, revoke: revoke, logger: logger}
 }
 
 func (a *Adapter) Describe() manifest.Manifest {
 	return manifest.Manifest{
 		ID: ID, Runtime: manifest.RT2,
-		Verbs:        []manifest.Verb{manifest.Read, manifest.Play},
-		Ceiling:      manifest.HandsOff,
-		Consent:      manifest.ConsentA,
-		Auth:         manifest.AuthNone, Cost: manifest.CostFree,
+		Verbs:   []manifest.Verb{manifest.Read, manifest.Play},
+		Ceiling: manifest.Completes,
+		Consent: manifest.ConsentA,
+		Auth:    manifest.AuthNone, Cost: manifest.CostFree,
 		Gates:    []manifest.Gate{manifest.GateNone},
 		Capacity: manifest.Capacity{Kind: manifest.CapacityCapped, Limit: 100},
 		Region:   []string{"global"}, Platform: manifest.PlatformAndroid,
@@ -134,7 +138,7 @@ func (a *Adapter) Execute(_ context.Context, plan adapter.Plan) (adapter.Outcome
 	case manifest.Play:
 		return adapter.Outcome{
 			Reached: manifest.HandsOff, Done: true, HandedOffTo: "YouTube",
-			Detail: fmt.Sprintf("Opened %q by %s in YouTube.", plan.Details["title"], plan.Details["channel"]),
+			Detail: fmt.Sprintf("Found %q by %s. Open YouTube to choose and play it; Operator cannot deep-link this result yet.", plan.Details["title"], plan.Details["channel"]),
 		}, nil
 	default:
 		return adapter.Outcome{}, fmt.Errorf("youtube: verb %q is not supported", plan.Verb)
@@ -144,9 +148,15 @@ func (a *Adapter) Execute(_ context.Context, plan adapter.Plan) (adapter.Outcome
 // Revoke of an already-disconnected adapter reports success, not
 // ErrNotConnected — see the comment on todoist's Revoke for why (a retried
 // revoke should never look like a failed disconnect).
-func (a *Adapter) Revoke(context.Context) error {
+func (a *Adapter) Revoke(ctx context.Context) error {
 	if a.api == nil {
 		return nil
+	}
+	if a.revoke != nil {
+		if err := a.revoke(ctx); err != nil {
+			a.logger.Error("[youtube] persistent revoke failed", "error", err)
+			return err
+		}
 	}
 	a.api = nil
 	a.logger.Info("[youtube] revoked")

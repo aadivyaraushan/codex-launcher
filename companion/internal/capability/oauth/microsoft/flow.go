@@ -6,6 +6,7 @@ package microsoft
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -42,16 +43,15 @@ const (
 )
 
 var (
-	ErrInvalidState            = errors.New("microsoft oauth: invalid or already used state")
-	ErrNoScopes                = errors.New("microsoft oauth: the requested verbs need no supported scope")
-	ErrMissingCredential       = errors.New("microsoft oauth: client id and client secret are required")
-	ErrLoopbackRequired        = errors.New("microsoft oauth: redirect URI must be loopback (127.0.0.1 or localhost)")
-	ErrConsumersTenantForChat  = errors.New("microsoft oauth: Teams chat authorize cannot use consumers tenant")
+	ErrInvalidState           = errors.New("microsoft oauth: invalid or already used state")
+	ErrNoScopes               = errors.New("microsoft oauth: the requested verbs need no supported scope")
+	ErrMissingCredential      = errors.New("microsoft oauth: client id is required")
+	ErrLoopbackRequired       = errors.New("microsoft oauth: redirect URI must be loopback (127.0.0.1 or localhost)")
+	ErrConsumersTenantForChat = errors.New("microsoft oauth: Teams chat authorize cannot use consumers tenant")
 )
 
 type Config struct {
 	ClientID     string
-	ClientSecret string
 	Tenant       string
 	AuthorizeURL string
 	TokenURL     string
@@ -74,13 +74,13 @@ type TokenSet struct {
 }
 
 type pendingAuthorization struct {
-	redirectURI string
-	scopes      []string
+	redirectURI  string
+	scopes       []string
+	codeVerifier string
 }
 
 type Flow struct {
 	clientID     string
-	clientSecret string
 	tenant       string
 	authorizeURL string
 	tokenURL     string
@@ -113,7 +113,7 @@ func New(config Config) *Flow {
 		config.RandomBytes = rand.Reader
 	}
 	return &Flow{
-		clientID: config.ClientID, clientSecret: config.ClientSecret, tenant: tenant,
+		clientID: config.ClientID, tenant: tenant,
 		authorizeURL: config.AuthorizeURL, tokenURL: config.TokenURL,
 		http: config.HTTPClient, logger: config.Logger, random: config.RandomBytes,
 		pending: make(map[string]pendingAuthorization),
@@ -200,7 +200,7 @@ func (f *Flow) StartChat(ctx context.Context, redirectURI string, verbs []manife
 
 func (f *Flow) start(ctx context.Context, redirectURI string, scopes []string) (Authorization, error) {
 	_ = ctx
-	if strings.TrimSpace(f.clientID) == "" || strings.TrimSpace(f.clientSecret) == "" {
+	if strings.TrimSpace(f.clientID) == "" {
 		return Authorization{}, ErrMissingCredential
 	}
 	parsedRedirect, err := url.Parse(redirectURI)
@@ -215,17 +215,25 @@ func (f *Flow) start(ctx context.Context, redirectURI string, scopes []string) (
 	if err != nil {
 		return Authorization{}, fmt.Errorf("microsoft oauth: generate state: %w", err)
 	}
+	codeVerifier, err := f.randomString(32)
+	if err != nil {
+		return Authorization{}, fmt.Errorf("microsoft oauth: generate PKCE verifier: %w", err)
+	}
+	challenge := sha256.Sum256([]byte(codeVerifier))
+	codeChallenge := base64.RawURLEncoding.EncodeToString(challenge[:])
 	f.mu.Lock()
-	f.pending[state] = pendingAuthorization{redirectURI: redirectURI, scopes: scopes}
+	f.pending[state] = pendingAuthorization{redirectURI: redirectURI, scopes: scopes, codeVerifier: codeVerifier}
 	f.mu.Unlock()
 
 	query := url.Values{
-		"client_id":     {f.clientID},
-		"redirect_uri":  {redirectURI},
-		"response_type": {"code"},
-		"response_mode": {"query"},
-		"scope":         {strings.Join(scopes, " ")},
-		"state":         {state},
+		"client_id":             {f.clientID},
+		"redirect_uri":          {redirectURI},
+		"response_type":         {"code"},
+		"response_mode":         {"query"},
+		"scope":                 {strings.Join(scopes, " ")},
+		"state":                 {state},
+		"code_challenge":        {codeChallenge},
+		"code_challenge_method": {"S256"},
 	}
 	f.logger.Info("[microsoft-oauth] authorization ready",
 		"scope_count", len(scopes), "redirect_host", safeHost(redirectURI),
@@ -246,12 +254,41 @@ func (f *Flow) Callback(ctx context.Context, state, code string) (TokenSet, erro
 	}
 	form := url.Values{
 		"client_id":     {f.clientID},
-		"client_secret": {f.clientSecret},
 		"code":          {code},
+		"code_verifier": {pending.codeVerifier},
 		"redirect_uri":  {pending.redirectURI},
 		"grant_type":    {"authorization_code"},
+		"scope":         {strings.Join(pending.scopes, " ")},
 	}
 	return f.exchange(ctx, form, pending.scopes)
+}
+
+// Refresh uses the stored offline token and the same or narrower scopes.
+// Microsoft can rotate refresh tokens, so callers must persist the returned
+// set instead of keeping the previous value unconditionally.
+func (f *Flow) Refresh(ctx context.Context, refreshToken string, scopes []string) (TokenSet, error) {
+	if strings.TrimSpace(f.clientID) == "" {
+		return TokenSet{}, ErrMissingCredential
+	}
+	if strings.TrimSpace(refreshToken) == "" {
+		return TokenSet{}, errors.New("microsoft oauth: refresh token is required")
+	}
+	form := url.Values{
+		"client_id":     {f.clientID},
+		"refresh_token": {refreshToken},
+		"grant_type":    {"refresh_token"},
+	}
+	if len(scopes) > 0 {
+		form.Set("scope", strings.Join(scopes, " "))
+	}
+	tokens, err := f.exchange(ctx, form, scopes)
+	if err != nil {
+		return TokenSet{}, err
+	}
+	if tokens.RefreshToken == "" {
+		tokens.RefreshToken = refreshToken
+	}
+	return tokens, nil
 }
 
 func (f *Flow) exchange(ctx context.Context, form url.Values, scopes []string) (TokenSet, error) {
@@ -271,7 +308,25 @@ func (f *Flow) exchange(ctx context.Context, form url.Values, scopes []string) (
 		return TokenSet{}, fmt.Errorf("microsoft oauth: read token response: %w", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		f.logger.Error("[microsoft-oauth] token rejected", "status", response.StatusCode)
+		var providerError struct {
+			Error            string `json:"error"`
+			ErrorDescription string `json:"error_description"`
+			ErrorCodes       []int  `json:"error_codes"`
+		}
+		_ = json.Unmarshal(body, &providerError)
+		providerCode := 0
+		if len(providerError.ErrorCodes) > 0 {
+			providerCode = providerError.ErrorCodes[0]
+		}
+		missingParameter := microsoftMissingParameter(providerError.ErrorDescription)
+		f.logger.Error("[microsoft-oauth] token rejected", "status", response.StatusCode, "microsoft_error", providerError.Error, "microsoft_error_code", providerCode, "missing_parameter", missingParameter)
+		if providerError.Error != "" {
+			suffix := ""
+			if missingParameter != "" {
+				suffix = " missing_parameter=" + missingParameter
+			}
+			return TokenSet{}, fmt.Errorf("microsoft oauth: token endpoint status %d error %s code %d%s", response.StatusCode, providerError.Error, providerCode, suffix)
+		}
 		return TokenSet{}, fmt.Errorf("microsoft oauth: token endpoint returned status %d", response.StatusCode)
 	}
 	var raw struct {
@@ -305,6 +360,26 @@ func (f *Flow) exchange(ctx context.Context, form url.Values, scopes []string) (
 		AccessToken: raw.AccessToken, RefreshToken: raw.RefreshToken,
 		TokenType: raw.TokenType, Scopes: scopes, ExpiresAt: expiresAt,
 	}, nil
+}
+
+func microsoftMissingParameter(description string) string {
+	const marker = "following parameter:"
+	index := strings.Index(strings.ToLower(description), marker)
+	if index < 0 {
+		return ""
+	}
+	remainder := strings.TrimSpace(description[index+len(marker):])
+	remainder = strings.TrimLeft(remainder, "'\"")
+	end := strings.IndexAny(remainder, "'\". ,:;\r\n\t")
+	if end >= 0 {
+		remainder = remainder[:end]
+	}
+	for _, r := range remainder {
+		if !(r == '_' || r == '-' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') {
+			return ""
+		}
+	}
+	return remainder
 }
 
 func (f *Flow) randomString(size int) (string, error) {

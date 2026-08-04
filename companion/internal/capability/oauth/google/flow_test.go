@@ -131,6 +131,37 @@ func TestStartRequiresConfiguredCredentials(t *testing.T) {
 	}
 }
 
+func TestRefreshUsesOfflineGrantAndPreservesRefreshTokenWhenGoogleOmitsIt(t *testing.T) {
+	var tokenForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parse form: %v", err)
+		}
+		tokenForm = r.Form
+		_, _ = io.WriteString(w, `{"access_token":"new-access","expires_in":3600,"token_type":"Bearer","scope":"scope-a scope-b"}`)
+	}))
+	defer server.Close()
+	flow := New(Config{
+		ClientID: "google-client-id", ClientSecret: "google-client-secret",
+		TokenURL: server.URL, HTTPClient: server.Client(),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	tokens, err := flow.Refresh(t.Context(), "existing-refresh")
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if tokenForm.Get("grant_type") != "refresh_token" || tokenForm.Get("refresh_token") != "existing-refresh" {
+		t.Fatalf("refresh form=%v", tokenForm)
+	}
+	if tokenForm.Get("client_id") != "google-client-id" || tokenForm.Get("client_secret") != "google-client-secret" {
+		t.Fatalf("refresh credentials missing: %v", tokenForm)
+	}
+	if tokens.AccessToken != "new-access" || tokens.RefreshToken != "existing-refresh" {
+		t.Fatalf("tokens=%+v", tokens)
+	}
+}
+
 func TestLiveOAuthStartAgainstGoogleWhenEnvPresent(t *testing.T) {
 	clientID := os.Getenv("GOOGLE_CLIENT_ID")
 	clientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")

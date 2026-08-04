@@ -48,7 +48,7 @@ func (f *fakeFlow) Callback(_ context.Context, state, code string) (googleoauth.
 	if state != f.state || code != "approved-code" {
 		return googleoauth.TokenSet{}, googleoauth.ErrInvalidState
 	}
-	return googleoauth.TokenSet{AccessToken: "ya29.access-secret", TokenType: "Bearer"}, nil
+	return googleoauth.TokenSet{AccessToken: "ya29.access-secret", RefreshToken: "1//refresh-secret", TokenType: "Bearer", Scopes: []string{"calendar"}}, nil
 }
 
 func (f *fakeFlow) callbackURL() string {
@@ -91,9 +91,9 @@ func TestRunWaitsForOAuthThenProvesCalendarAndDriveReadAndRevoke(t *testing.T) {
 
 	go completeOAuth(t, ctx, flow)
 	err := googleproof.Run(ctx, googleproof.Config{
-		ListenAddress: "127.0.0.1:0",
-		RedirectURI:   "http://127.0.0.1:9194/oauth/google/callback",
-		Flow:          flow,
+		ListenAddress:  "127.0.0.1:0",
+		RedirectURI:    "http://127.0.0.1:9194/oauth/google/callback",
+		Flow:           flow,
 		NewCalendarAPI: func(*googleproof.Connection) gcalendar.API { return calendarAPI },
 		NewDriveAPI:    func(*googleproof.Connection) gdrive.API { return driveAPI },
 		Output:         &output,
@@ -144,6 +144,16 @@ func TestAuthorizeUsesConfiguredHTTPRedirectPath(t *testing.T) {
 	token, err := connection.AccessToken(ctx)
 	if err != nil || token != "ya29.access-secret" {
 		t.Fatalf("token=%q err=%v", token, err)
+	}
+	snapshot := connection.Snapshot()
+	if snapshot.AccessToken != "ya29.access-secret" || snapshot.RefreshToken != "1//refresh-secret" || len(snapshot.Scopes) != 1 {
+		t.Fatalf("snapshot did not preserve the full token set")
+	}
+	if err := connection.Clear(ctx); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if cleared := connection.Snapshot(); cleared.AccessToken != "" || cleared.RefreshToken != "" {
+		t.Fatal("Clear left token material in the connection")
 	}
 }
 

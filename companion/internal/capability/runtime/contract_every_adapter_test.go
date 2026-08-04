@@ -11,6 +11,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/applenotes"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/applereminders"
+	beepermessage "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/beepermessage"
 	deeplinkadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/deeplink"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gcalendar"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gdrive"
@@ -26,6 +27,7 @@ import (
 	todoistadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/todoist"
 	youtubeadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/youtube"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/messaging/beeper"
 )
 
 // The other half of the contract suite, and the reason it needed one.
@@ -165,6 +167,33 @@ func (s stubNotion) Call(context.Context, string, map[string]any) (json.RawMessa
 	return nil, s.err
 }
 
+type stubBeeper struct{ serviceState }
+
+func (s stubBeeper) SearchChats(context.Context, string) ([]beeper.Chat, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return []beeper.Chat{{ID: "contract-chat", Network: "Contract Network", Title: "contract suite probe"}}, nil
+}
+func (s stubBeeper) Accounts(context.Context) ([]beeper.Account, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return []beeper.Account{{ID: "contract-account", Network: "Google Messages", Status: "connected"}}, nil
+}
+func (s stubBeeper) StartChat(context.Context, string, string) (beeper.Chat, error) {
+	if s.err != nil {
+		return beeper.Chat{}, s.err
+	}
+	return beeper.Chat{ID: "contract-chat", Network: "Google Messages", Title: "wife"}, nil
+}
+func (s stubBeeper) Send(context.Context, string, string) (beeper.Sent, error) {
+	if s.err != nil {
+		return beeper.Sent{}, s.err
+	}
+	return beeper.Sent{ChatID: "contract-chat", PendingMessageID: "contract-pending"}, nil
+}
+
 // ---- building the whole set ----------------------------------------------
 
 // builtAdapter pairs an adapter with whether a service sits behind it.
@@ -207,6 +236,7 @@ func everyAdapter(t *testing.T, err error) []builtAdapter {
 		// the *successful* path, so the rules below have to keep telling
 		// "the phone is doing it" apart from "it failed".
 		{a: notificationreplyadapter.New(log)},
+		{a: beepermessage.New(beepermessage.Spec{ID: "beeper-contract", Network: "Contract Network", Auth: manifest.AuthNone, Unshipped: "contract-suite stand-in only"}, stubBeeper{serviceState{err}}, log), backed: true},
 
 		{a: mapsadapter.New(stubMaps{serviceState{err}}, log), backed: true},
 		{a: youtubeadapter.New(stubYouTube{serviceState{err}}, log), backed: true},
@@ -443,7 +473,7 @@ func TestTheHandWrittenListCoversEveryAdapterPackage(t *testing.T) {
 	// which of them the rules in this file cover. Comparing those two is the
 	// whole point. Comparing the expectation to itself was the bug.
 	covered := []string{
-		"applenotes", "applereminders", "deeplink", "gcalendar", "gdrive",
+		"applenotes", "applereminders", "beepermessage", "deeplink", "gcalendar", "gdrive",
 		"instagram", "maps", "msteams", "notion", "outlook",
 		"notificationreply", "podcasts", "slack", "spotify", "todoist", "youtube",
 	}

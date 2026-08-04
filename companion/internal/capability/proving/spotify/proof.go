@@ -65,21 +65,29 @@ type AuthorizationConfig struct {
 // when Clear runs and is never written to disk or printed.
 type Connection struct {
 	mu     sync.RWMutex
-	access string
+	tokens spotifyoauth.TokenSet
 }
 
 func (c *Connection) AccessToken(context.Context) (string, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if c.access == "" {
+	if c.tokens.AccessToken == "" {
 		return "", spotifyadapter.ErrNotConnected
 	}
-	return c.access, nil
+	return c.tokens.AccessToken, nil
+}
+
+func (c *Connection) Snapshot() spotifyoauth.TokenSet {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	snapshot := c.tokens
+	snapshot.Scopes = append([]string(nil), c.tokens.Scopes...)
+	return snapshot
 }
 
 func (c *Connection) Clear(context.Context) error {
 	c.mu.Lock()
-	c.access = ""
+	c.tokens = spotifyoauth.TokenSet{}
 	c.mu.Unlock()
 	return nil
 }
@@ -250,5 +258,5 @@ func Authorize(ctx context.Context, config AuthorizationConfig) (*Connection, er
 		return nil, fmt.Errorf("spotify proof: OAuth callback: %w", err)
 	case tokenSet = <-tokens:
 	}
-	return &Connection{access: tokenSet.AccessToken}, nil
+	return &Connection{tokens: tokenSet}, nil
 }

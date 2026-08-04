@@ -115,6 +115,11 @@ func (s *Service) Prepare(ctx context.Context, ownerID, requestID, utterance str
 		Fields: decision.Fields,
 	})
 	if err != nil {
+		var clarification *adapter.ClarificationError
+		if errors.As(err, &clarification) {
+			s.logger.Info("[capability-flow] question required", "request_id", requestID, "adapter_id", decision.AdapterID, "reason", "adapter_not_unique")
+			return Preview{}, &QuestionError{Question: clarification.Question}
+		}
 		return Preview{}, err
 	}
 	shown, err := s.runner.Preview(ctx, plan)

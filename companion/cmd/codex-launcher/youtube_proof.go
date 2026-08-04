@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/app/credentialstore"
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	youtubeadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/youtube"
 	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
@@ -23,12 +24,12 @@ import (
 // API v3 answer into an Operator session preview like Maps and Podcasts
 // already do, instead of only proving it via adb.
 func startYouTubeProof(ctx context.Context, output io.Writer) (mobilesession.CapabilityFlow, error) {
-	_ = ctx
 	_ = output
 	logger := slog.Default()
-	apiKey := strings.TrimSpace(os.Getenv("YOUTUBE_API_KEY"))
+	secrets := credentialstore.NewKeychain(logger)
+	apiKey := strings.TrimSpace(productionSecret(ctx, os.Getenv("YOUTUBE_API_KEY"), "youtube_api_key", secrets, logger))
 	if apiKey == "" {
-		return nil, fmt.Errorf("youtube proof serve: YOUTUBE_API_KEY is required")
+		return nil, fmt.Errorf("youtube proof serve: YOUTUBE_API_KEY or Keychain youtube_api_key is required")
 	}
 	router, err := stage1openai.New(stage1openai.Config{APIKey: os.Getenv("OPENAI_API_KEY"), Logger: logger})
 	if err != nil {
@@ -42,6 +43,9 @@ func startYouTubeProof(ctx context.Context, output io.Writer) (mobilesession.Cap
 	})
 	if err != nil {
 		return nil, err
+	}
+	if err := clearProductionDisconnect(ctx, secrets, youtubeadapter.ID); err != nil {
+		return nil, fmt.Errorf("youtube proof serve: clear prior disconnect: %w", err)
 	}
 	logger.Info("[youtube-proof-serve] capability flow ready",
 		"adapter_count", 1,

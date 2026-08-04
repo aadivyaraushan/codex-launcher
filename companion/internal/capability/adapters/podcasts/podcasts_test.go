@@ -154,6 +154,10 @@ func TestPlayResolvesOneEpisodeEnclosureAndCompletes(t *testing.T) {
 	if !errors.Is(err, ErrAmbiguousEpisode) {
 		t.Fatalf("ambiguous play returned %v", err)
 	}
+	var question *adapter.ClarificationError
+	if !errors.As(err, &question) || question.Question == "" {
+		t.Fatalf("ambiguous play is not a user question: %T %v", err, err)
+	}
 
 	plan, err := a.Resolve(context.Background(), adapter.Intent{
 		AdapterID: ID, Verb: manifest.Play, Subject: "Hello Feed",

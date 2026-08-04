@@ -136,7 +136,7 @@ func matchEpisode(episodes []Episode, query string) (Episode, error) {
 			return Episode{}, ErrNoEpisode
 		}
 		if len(episodes) > 1 {
-			return Episode{}, ErrAmbiguousEpisode
+			return Episode{}, &adapter.ClarificationError{Question: "Which matching podcast episode did you mean?", Cause: ErrAmbiguousEpisode}
 		}
 		return episodes[0], nil
 	}
@@ -158,7 +158,7 @@ func matchEpisode(episodes []Episode, query string) (Episode, error) {
 		return Episode{}, ErrNoEpisode
 	}
 	if len(matches) > 1 {
-		return Episode{}, ErrAmbiguousEpisode
+		return Episode{}, &adapter.ClarificationError{Question: "Which matching podcast episode did you mean?", Cause: ErrAmbiguousEpisode}
 	}
 	return matches[0], nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,8 +10,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/app/credentialstore"
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
+	beepermessage "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/beepermessage"
+	notionadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/notion"
+	youtubeadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/youtube"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/killswitch"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/messaging/beeper"
 	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
 	capabilityruntime "github.com/codex-launcher/codex-launcher/companion/internal/capability/runtime"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/verification/alerts"
@@ -42,26 +48,68 @@ const alertSweepInterval = 5 * time.Minute
 // GOOGLE_MAPS_API_KEY, YOUTUBE_API_KEY, and PODCASTS_FEED_URL happen to be
 // set) and hands them to capabilityruntime.NewProduction.
 //
-// Unlike the proof commands, nothing here waits on a person clicking
-// through an OAuth consent screen: `serve` starts unattended, so Spotify,
-// Todoist, Slack, Google Calendar/Drive, Outlook, and Teams are never
-// registered by this path — see the oauthReason comment next to
-// ProductionConfig in internal/capability/runtime/production.go for why.
+// `serve` never waits on an interactive consent screen. Instead it restores
+// the restart-safe OAuth records created by the proof commands and registers
+// the connections that are currently usable. Providers with no complete
+// stored record stay absent, so startup remains unattended.
 //
 // Callers: main.go runWith's plain "serve" branch.
 func startProductionCapabilityFlow(ctx context.Context, output io.Writer) (mobilesession.CapabilityFlow, error) {
 	_ = output
 	logger := slog.Default()
+	secrets := credentialstore.NewKeychain(logger)
+	disconnectIDs := []string{youtubeadapter.ID}
+	for _, spec := range beepermessage.ProductionSpecs() {
+		disconnectIDs = append(disconnectIDs, spec.ID)
+	}
+	disconnected, err := productionDisconnects(ctx, secrets, disconnectIDs, logger)
+	if err != nil {
+		return nil, fmt.Errorf("production capability flow: load durable disconnects: %w", err)
+	}
+	oauthConnections := loadProductionOAuth(ctx, secrets, logger)
 	router, err := stage1openai.New(stage1openai.Config{APIKey: os.Getenv("OPENAI_API_KEY"), Logger: logger})
 	if err != nil {
 		return nil, fmt.Errorf("production capability flow: stage 1 router: %w", err)
 	}
+	var connectedNotion *notionadapter.Adapter
+	if oauthConnections.Notion != nil {
+		candidate, buildErr := notionadapter.New(oauthConnections.Notion)
+		if buildErr == nil {
+			ceiling, connectErr := candidate.Connect(ctx)
+			buildErr = connectErr
+			if connectErr == nil {
+				connectedNotion = candidate
+				logger.Info("[production-serve] Notion enabled", "measured_ceiling", ceiling)
+			}
+		}
+		if buildErr != nil {
+			logger.Warn("[production-serve] Notion connection unavailable", "error", buildErr)
+		}
+	}
+	var beeperAPI *beeper.Client
+	beeperToken := strings.TrimSpace(os.Getenv("BEEPER_ACCESS_TOKEN"))
+	beeperReadOnly := envEnabled(os.Getenv("BEEPER_READONLY"))
+	if beeperToken != "" && !beeperReadOnly {
+		beeperAPI = beeper.NewClient(os.Getenv("BEEPER_DESKTOP_BASE_URL"), beeper.StaticToken(beeperToken), nil, logger)
+		logger.Info("[production-serve] Beeper messaging enabled", "write_enabled", true, "token_present", true)
+	} else {
+		logger.Info("[production-serve] Beeper messaging unavailable", "token_present", beeperToken != "", "read_only", beeperReadOnly)
+	}
 	service, inventory, err := capabilityruntime.NewProduction(capabilityruntime.ProductionConfig{
-		Model:           router.Model,
-		Logger:          logger,
-		MapsAPIKey:      os.Getenv("GOOGLE_MAPS_API_KEY"),
-		YouTubeAPIKey:   os.Getenv("YOUTUBE_API_KEY"),
-		PodcastsFeedURL: os.Getenv("PODCASTS_FEED_URL"),
+		Model:             router.Model,
+		Logger:            logger,
+		MapsAPIKey:        os.Getenv("GOOGLE_MAPS_API_KEY"),
+		YouTubeAPIKey:     productionSecret(ctx, os.Getenv("YOUTUBE_API_KEY"), "youtube_api_key", secrets, logger),
+		PodcastsFeedURL:   os.Getenv("PODCASTS_FEED_URL"),
+		BeeperAPI:         beeperAPI,
+		GoogleCalendarAPI: oauthConnections.GoogleCalendar,
+		GoogleDriveAPI:    oauthConnections.GoogleDrive,
+		SlackAPI:          oauthConnections.Slack,
+		OutlookAPI:        oauthConnections.Outlook,
+		SpotifyAPI:        oauthConnections.Spotify,
+		NotionAdapter:     connectedNotion,
+		Disconnected:      disconnected,
+		PersistDisconnect: func(ctx context.Context, id string) error { return persistProductionDisconnect(ctx, secrets, id) },
 	})
 	if err != nil {
 		return nil, fmt.Errorf("production capability flow: %w", err)
@@ -75,6 +123,68 @@ func startProductionCapabilityFlow(ctx context.Context, output io.Writer) (mobil
 	startAlertWatcher(ctx, inventory, logger)
 
 	return service, nil
+}
+
+type secretReader interface {
+	Get(context.Context, string) ([]byte, error)
+}
+
+type disconnectStore interface {
+	Get(context.Context, string) ([]byte, error)
+	Put(context.Context, string, []byte) error
+	Delete(context.Context, string) error
+}
+
+func productionDisconnectName(id string) string {
+	return credentialstore.AdapterDisconnectName(id)
+}
+
+func productionDisconnects(ctx context.Context, store disconnectStore, ids []string, logger *slog.Logger) (map[string]bool, error) {
+	disconnected := map[string]bool{}
+	for _, id := range ids {
+		if _, err := store.Get(ctx, productionDisconnectName(id)); err == nil {
+			disconnected[id] = true
+			logger.Info("[production-serve] adapter remains disconnected", "adapter_id", id)
+		} else if !errors.Is(err, credentialstore.ErrNotFound) {
+			logger.Error("[production-serve] disconnect state unavailable", "adapter_id", id, "error", err)
+			return nil, fmt.Errorf("read disconnect state for %s: %w", id, err)
+		}
+	}
+	return disconnected, nil
+}
+
+func persistProductionDisconnect(ctx context.Context, store disconnectStore, id string) error {
+	return store.Put(ctx, productionDisconnectName(id), []byte("1"))
+}
+
+func clearProductionDisconnect(ctx context.Context, store disconnectStore, id string) error {
+	return store.Delete(ctx, productionDisconnectName(id))
+}
+
+// productionSecret keeps explicit process configuration as the override, then
+// falls back to the logged-in user's Keychain for restart-safe local service.
+// It logs only where the value came from, never the value itself.
+func productionSecret(ctx context.Context, environmentValue, name string, store secretReader, logger *slog.Logger) string {
+	if value := strings.TrimSpace(environmentValue); value != "" {
+		logger.Info("[production-serve] credential loaded", "name", name, "source", "environment")
+		return value
+	}
+	secret, err := store.Get(ctx, name)
+	if err != nil {
+		logger.Info("[production-serve] credential unavailable", "name", name, "source", "keychain")
+		return ""
+	}
+	logger.Info("[production-serve] credential loaded", "name", name, "source", "keychain")
+	return strings.TrimSpace(string(secret))
+}
+
+func envEnabled(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // startAlertWatcher wires the alert sweep to the registry and Telemetry

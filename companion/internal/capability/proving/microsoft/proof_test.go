@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -28,15 +29,39 @@ type fakeFlow struct {
 	state     string
 	callback  int
 	chatStart bool
+	mailVerbs []manifest.Verb
 	chatVerbs []manifest.Verb
 }
 
-func (f *fakeFlow) Start(_ context.Context, redirect string, _ []manifest.Verb) (msoauth.Authorization, error) {
+func (f *fakeFlow) Start(_ context.Context, redirect string, verbs []manifest.Verb) (msoauth.Authorization, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.redirect = redirect
 	f.state = "expected-state"
+	f.mailVerbs = append([]manifest.Verb(nil), verbs...)
 	return msoauth.Authorization{URL: "https://login.microsoft.test/consumers/oauth2/v2.0/authorize?state=expected-state", State: f.state}, nil
+}
+
+func TestAuthorizeRequestsConfiguredMailScopes(t *testing.T) {
+	flow := &fakeFlow{}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	go completeOAuth(t, ctx, flow)
+	connection, err := msproof.Authorize(ctx, msproof.AuthorizationConfig{
+		ListenAddress: "127.0.0.1:0",
+		RedirectURI:   "http://127.0.0.1:9195/oauth/microsoft/callback",
+		Flow:          flow,
+		Verbs:         []manifest.Verb{manifest.Read, manifest.Write, manifest.Send},
+		Output:        io.Discard,
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if err != nil {
+		t.Fatalf("Authorize: %v", err)
+	}
+	defer connection.Close()
+	if len(flow.mailVerbs) != 3 || flow.mailVerbs[0] != manifest.Read || flow.mailVerbs[1] != manifest.Write || flow.mailVerbs[2] != manifest.Send {
+		t.Fatalf("mail verbs=%v, want [read write send]", flow.mailVerbs)
+	}
 }
 
 func (f *fakeFlow) StartChat(_ context.Context, redirect string, verbs []manifest.Verb) (msoauth.Authorization, error) {
@@ -148,6 +173,29 @@ func TestAuthorizeUsesConfiguredHTTPRedirectPath(t *testing.T) {
 	}
 }
 
+func TestAuthorizeSurfacesProviderCallbackErrorWithoutTokenExchange(t *testing.T) {
+	flow := &fakeFlow{}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	go completeOAuthError(t, ctx, flow)
+	_, err := msproof.Authorize(ctx, msproof.AuthorizationConfig{
+		ListenAddress: "127.0.0.1:0",
+		RedirectURI:   "http://127.0.0.1:9195/oauth/microsoft/callback",
+		Flow:          flow,
+		Output:        io.Discard,
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid_request") || !strings.Contains(err.Error(), "AADSTS900144") {
+		t.Fatalf("Authorize error = %v, want safe provider callback error", err)
+	}
+	if strings.Contains(err.Error(), "private account detail") {
+		t.Fatalf("Authorize leaked provider description: %v", err)
+	}
+	if flow.callback != 0 {
+		t.Fatalf("token exchange ran %d times after provider callback error", flow.callback)
+	}
+}
+
 // Callers: proof_test. Covers portless localhost rebuild before Start.
 // User: follow-up on Microsoft judge — unit-test portless redirect rebuild.
 func TestAuthorizeRebuildsPortlessLocalhostRedirect(t *testing.T) {
@@ -156,7 +204,7 @@ func TestAuthorizeRebuildsPortlessLocalhostRedirect(t *testing.T) {
 	defer cancel()
 	go completeOAuth(t, ctx, flow)
 	connection, err := msproof.Authorize(ctx, msproof.AuthorizationConfig{
-		ListenAddress: "127.0.0.1:9195",
+		ListenAddress: "127.0.0.1:0",
 		RedirectURI:   "http://localhost/oauth/microsoft/callback",
 		Flow:          flow,
 		Output:        io.Discard,
@@ -213,7 +261,7 @@ func TestAuthorizeChatStartsWithChatScopes(t *testing.T) {
 // (work/school Graph chat is not supported for personal Microsoft accounts).
 func TestAuthorizeChatRejectsConsumersTenant(t *testing.T) {
 	flow := msoauth.New(msoauth.Config{
-		ClientID: "ms-client-id", ClientSecret: "ms-client-secret", Tenant: "consumers",
+		ClientID: "ms-client-id", Tenant: "consumers",
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -255,4 +303,42 @@ func completeOAuth(t *testing.T, ctx context.Context, flow *fakeFlow) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Error("oauth callback never became ready")
+}
+
+func completeOAuthError(t *testing.T, ctx context.Context, flow *fakeFlow) {
+	t.Helper()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		redirect := flow.callbackURL()
+		if redirect == "" {
+			time.Sleep(time.Millisecond)
+			continue
+		}
+		u, err := url.Parse(redirect)
+		if err != nil {
+			t.Errorf("parse redirect: %v", err)
+			return
+		}
+		q := u.Query()
+		q.Set("state", "expected-state")
+		q.Set("error", "invalid_request")
+		q.Set("error_description", "AADSTS900144: private account detail")
+		u.RawQuery = q.Encode()
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+		if err != nil {
+			t.Errorf("build callback: %v", err)
+			return
+		}
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			time.Sleep(5 * time.Millisecond)
+			continue
+		}
+		_ = response.Body.Close()
+		return
+	}
 }

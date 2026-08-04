@@ -59,6 +59,10 @@ func TestReadFindsOneChannelAndRefusesAmbiguousMatch(t *testing.T) {
 	if !errors.Is(err, ErrAmbiguousChannel) {
 		t.Fatalf("ambiguous read returned %v", err)
 	}
+	var question *adapter.ClarificationError
+	if !errors.As(err, &question) || question.Question == "" {
+		t.Fatalf("ambiguous read is not a user question: %T %v", err, err)
+	}
 	plan, err := a.Resolve(context.Background(), adapter.Intent{AdapterID: ID, Verb: manifest.Read, Subject: "alerts"})
 	if err != nil {
 		t.Fatalf("exact read: %v", err)
@@ -167,6 +171,28 @@ func TestHTTPClientListsChannelsAndPostsWithUserToken(t *testing.T) {
 	joined := strings.Join(paths, " ")
 	if !strings.Contains(joined, "/api/conversations.list") || !strings.Contains(joined, "/api/chat.postMessage") {
 		t.Fatalf("paths=%v", paths)
+	}
+}
+
+func TestHTTPClientReadsAuthenticatedWorkspaceIdentity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/auth.test" || r.Method != http.MethodPost {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer xoxp-user" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		_, _ = io.WriteString(w, `{"ok":true,"url":"https://aadivyasagents.slack.com/","team":"aadivya's agents","user":"aadivya","team_id":"T1","user_id":"U1"}`)
+	}))
+	defer server.Close()
+
+	client := NewHTTPClient(server.URL, &staticTokens{token: "xoxp-user"}, server.Client(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	identity, err := client.Identity(context.Background())
+	if err != nil {
+		t.Fatalf("Identity: %v", err)
+	}
+	if identity.Team != "aadivya's agents" || identity.URL != "https://aadivyasagents.slack.com/" || identity.TeamID != "T1" || identity.UserID != "U1" {
+		t.Fatalf("Identity = %+v", identity)
 	}
 }
 

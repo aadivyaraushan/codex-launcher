@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codex-launcher/codex-launcher/companion/internal/app/credentialstore"
+	oauthcredential "github.com/codex-launcher/codex-launcher/companion/internal/app/credentialstore/oauth"
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	spotifyadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/spotify"
 	spotifyoauth "github.com/codex-launcher/codex-launcher/companion/internal/capability/oauth/spotify"
@@ -59,6 +61,14 @@ func startSpotifyProof(ctx context.Context, output io.Writer) (mobilesession.Cap
 	if err != nil {
 		return nil, nil, err
 	}
+	tokens := connection.Snapshot()
+	if err := oauthcredential.Save(ctx, credentialstore.NewKeychain(logger), "spotify_oauth", oauthcredential.Record{
+		Provider: "spotify", Account: os.Getenv("SPOTIFY_ACCOUNT"), AccessToken: tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken, TokenType: tokens.TokenType, Scopes: tokens.Scopes, ExpiresAt: tokens.ExpiresAt,
+	}); err != nil {
+		_ = connection.Close()
+		return nil, nil, fmt.Errorf("spotify proof serve: persist OAuth: %w", err)
+	}
 	api := spotifyadapter.NewHTTPClient("", connection, nil, logger)
 	service, err := capabilityruntime.NewSpotify(capabilityruntime.SpotifyConfig{
 		API: api, Model: router.Model, Logger: logger,
@@ -67,7 +77,7 @@ func startSpotifyProof(ctx context.Context, output io.Writer) (mobilesession.Cap
 		_ = connection.Close()
 		return nil, nil, err
 	}
-	logger.Info("[spotify-proof-serve] ephemeral capability flow ready", "token_storage", "memory_only", "adapter_count", 1)
+	logger.Info("[spotify-proof-serve] capability flow ready", "token_storage", "macos_keychain", "adapter_count", 1)
 	return service, connection, nil
 }
 

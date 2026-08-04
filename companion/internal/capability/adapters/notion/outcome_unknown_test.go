@@ -46,7 +46,7 @@ func TestHTTPSessionClassifiesLostRepliesByToolMutation(t *testing.T) {
 	t.Run("a mutating tool call whose reply never arrives is an unknown outcome", func(t *testing.T) {
 		server := swallowsTheRequest(t)
 
-		session := NewHTTPSession(server.Client(), server.URL, "token")
+		session := newInitializedHTTPSession(server.Client(), server.URL, "token")
 		_, err := session.Call(context.Background(), ToolCreatePages, map[string]any{"title": "Operator"})
 
 		var unknown *capabilityadapter.OutcomeUnknownError
@@ -65,7 +65,7 @@ func TestHTTPSessionClassifiesLostRepliesByToolMutation(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 		server.Close() // nothing is listening: the connection is refused
 
-		session := NewHTTPSession(http.DefaultClient, server.URL, "token")
+		session := newInitializedHTTPSession(http.DefaultClient, server.URL, "token")
 		_, err := session.Call(context.Background(), ToolCreatePages, map[string]any{"title": "Operator"})
 
 		var unknown *capabilityadapter.OutcomeUnknownError
@@ -80,7 +80,7 @@ func TestHTTPSessionClassifiesLostRepliesByToolMutation(t *testing.T) {
 	t.Run("a read tool call whose reply never arrives is a plain failure", func(t *testing.T) {
 		server := swallowsTheRequest(t)
 
-		session := NewHTTPSession(server.Client(), server.URL, "token")
+		session := newInitializedHTTPSession(server.Client(), server.URL, "token")
 		_, err := session.Call(context.Background(), ToolSearch, map[string]any{"query": "Operator"})
 
 		var unknown *capabilityadapter.OutcomeUnknownError
@@ -95,7 +95,7 @@ func TestHTTPSessionClassifiesLostRepliesByToolMutation(t *testing.T) {
 	t.Run("tools/list whose reply never arrives is a plain failure", func(t *testing.T) {
 		server := swallowsTheRequest(t)
 
-		session := NewHTTPSession(server.Client(), server.URL, "token")
+		session := newInitializedHTTPSession(server.Client(), server.URL, "token")
 		_, err := session.ListTools(context.Background())
 
 		var unknown *capabilityadapter.OutcomeUnknownError
@@ -113,7 +113,7 @@ func TestHTTPSessionClassifiesLostRepliesByToolMutation(t *testing.T) {
 		}))
 		defer server.Close()
 
-		session := NewHTTPSession(server.Client(), server.URL, "token")
+		session := newInitializedHTTPSession(server.Client(), server.URL, "token")
 		_, err := session.Call(context.Background(), ToolCreatePages, map[string]any{"title": "Operator"})
 
 		var unknown *capabilityadapter.OutcomeUnknownError

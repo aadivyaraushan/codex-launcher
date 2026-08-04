@@ -33,7 +33,9 @@ var (
 	// ErrNoMatch means the search found nobody, which is not an empty success.
 	ErrNoMatch = errors.New("beeper: no chat matched")
 	// ErrEmptyMessage means there was nothing to send.
-	ErrEmptyMessage = errors.New("beeper: refusing to send an empty message")
+	ErrEmptyMessage   = errors.New("beeper: refusing to send an empty message")
+	ErrMissingAccount = errors.New("beeper: account id is required to start a chat")
+	ErrMissingUser    = errors.New("beeper: phone number is required to start a chat")
 )
 
 // Chat is one conversation on one bridged network.
@@ -44,6 +46,14 @@ type Chat struct {
 	Network     string `json:"network"`
 	Title       string `json:"title"`
 	Type        string `json:"type"`
+}
+
+// Account identifies one connected bridge. Account IDs are assigned by
+// Beeper and must be discovered rather than guessed from a network name.
+type Account struct {
+	ID      string `json:"accountID"`
+	Network string `json:"network"`
+	Status  string `json:"status"`
 }
 
 // Sent is what Beeper hands back after accepting a message. The message is
@@ -134,6 +144,46 @@ func (c *Client) SearchChats(ctx context.Context, query string) ([]Chat, error) 
 	c.logger.Info("[beeper] chat search complete",
 		"query_length", len(query), "match_count", len(page.Items))
 	return page.Items, nil
+}
+
+// Accounts returns the bridge accounts currently known to Beeper.
+func (c *Client) Accounts(ctx context.Context) ([]Account, error) {
+	var accounts []Account
+	if err := c.do(ctx, http.MethodGet, "/v1/accounts", nil, &accounts); err != nil {
+		return nil, err
+	}
+	c.logger.Info("[beeper] accounts listed", "account_count", len(accounts))
+	return accounts, nil
+}
+
+// StartChat opens or reuses a direct conversation for an exact phone number on
+// one selected Beeper account. It is used only after ordinary chat search has
+// found no match.
+func (c *Client) StartChat(ctx context.Context, accountID, phoneNumber string) (Chat, error) {
+	accountID = strings.TrimSpace(accountID)
+	phoneNumber = strings.TrimSpace(phoneNumber)
+	if accountID == "" {
+		return Chat{}, ErrMissingAccount
+	}
+	if phoneNumber == "" {
+		return Chat{}, ErrMissingUser
+	}
+	if c.readOnly {
+		c.logger.Warn("[beeper] start chat refused, client is read-only", "account_id", accountID)
+		return Chat{}, ErrReadOnly
+	}
+	var chat Chat
+	body := map[string]any{
+		"accountID": accountID,
+		"user":      map[string]string{"phoneNumber": phoneNumber},
+	}
+	if err := c.do(ctx, http.MethodPost, "/v1/chats/start", body, &chat); err != nil {
+		return Chat{}, err
+	}
+	c.logger.Info("[beeper] chat start complete",
+		"account_id", accountID, "chat_id", chat.ID, "network", chat.Network,
+		"phone_length", len(phoneNumber))
+	return chat, nil
 }
 
 // ResolveOne turns a name into exactly one chat, or an error explaining why it

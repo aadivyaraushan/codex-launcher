@@ -47,7 +47,7 @@ func TestWave1ScopesStayInsideMailCeiling(t *testing.T) {
 
 func TestStartBuildsMicrosoftAuthorizeURL(t *testing.T) {
 	flow := New(Config{
-		ClientID: "ms-client-id", ClientSecret: "ms-client-secret", Tenant: "consumers",
+		ClientID: "ms-client-id", Tenant: "consumers",
 		AuthorizeURL: "https://login.microsoft.test/consumers/oauth2/v2.0/authorize",
 		TokenURL:     "https://login.microsoft.test/consumers/oauth2/v2.0/token",
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -99,7 +99,7 @@ func TestCallbackRejectsWrongStateAndReturnsTokens(t *testing.T) {
 	defer server.Close()
 
 	flow := New(Config{
-		ClientID: "ms-client-id", ClientSecret: "ms-client-secret", Tenant: "consumers",
+		ClientID: "ms-client-id", Tenant: "consumers",
 		AuthorizeURL: server.URL + "/oauth2/v2.0/authorize",
 		TokenURL:     server.URL + "/token",
 		HTTPClient:   server.Client(),
@@ -121,14 +121,83 @@ func TestCallbackRejectsWrongStateAndReturnsTokens(t *testing.T) {
 	if tokens.AccessToken != "eyJaccess" || tokens.RefreshToken != "0.Refresh" || tokens.TokenType != "Bearer" {
 		t.Fatalf("tokens=%+v", tokens)
 	}
-	if tokenForm.Get("client_id") != "ms-client-id" || tokenForm.Get("client_secret") != "ms-client-secret" {
-		t.Fatalf("token form credentials missing: %v", tokenForm)
+	if tokenForm.Get("client_id") != "ms-client-id" || tokenForm.Get("client_secret") != "" || tokenForm.Get("code_verifier") == "" {
+		t.Fatalf("public-client token form is wrong: %v", tokenForm)
 	}
 	if tokenForm.Get("code") != "auth-code" || tokenForm.Get("redirect_uri") != redirect {
 		t.Fatalf("token form=%v", tokenForm)
 	}
 	if tokenForm.Get("grant_type") != "authorization_code" {
 		t.Fatalf("grant_type=%q", tokenForm.Get("grant_type"))
+	}
+	if tokenForm.Get("scope") != strings.Join([]string{ScopeOfflineAccess, ScopeUserRead, ScopeMailRead}, " ") {
+		t.Fatalf("scope=%q", tokenForm.Get("scope"))
+	}
+}
+
+// Personal Outlook uses Microsoft's public-client authorization-code flow.
+// PKCE proves that the callback belongs to the process that started sign-in,
+// so no client secret is stored or sent by Operator.
+func TestPublicClientUsesPKCEWithoutAClientSecret(t *testing.T) {
+	var tokenForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parse form: %v", err)
+		}
+		tokenForm = r.Form
+		_, _ = io.WriteString(w, `{"access_token":"eyJaccess","refresh_token":"0.Refresh","expires_in":3600,"token_type":"Bearer","scope":"Mail.Read offline_access User.Read"}`)
+	}))
+	defer server.Close()
+
+	flow := New(Config{
+		ClientID: "ms-public-client", Tenant: "consumers",
+		AuthorizeURL: server.URL + "/authorize", TokenURL: server.URL + "/token",
+		HTTPClient: server.Client(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		RandomBytes: bytes.NewReader(bytes.Repeat([]byte{12}, 96)),
+	})
+	auth, err := flow.Start(t.Context(), "http://localhost:9195/oauth/microsoft/callback", []manifest.Verb{manifest.Read})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	authorizeURL, err := url.Parse(auth.URL)
+	if err != nil {
+		t.Fatalf("parse authorize URL: %v", err)
+	}
+	if authorizeURL.Query().Get("code_challenge_method") != "S256" || authorizeURL.Query().Get("code_challenge") == "" {
+		t.Fatalf("authorize query is missing PKCE: %v", authorizeURL.Query())
+	}
+	if _, err := flow.Callback(t.Context(), auth.State, "approved-code"); err != nil {
+		t.Fatalf("Callback: %v", err)
+	}
+	if tokenForm.Get("code_verifier") == "" {
+		t.Fatalf("token form is missing PKCE verifier: %v", tokenForm)
+	}
+	if tokenForm.Get("client_secret") != "" {
+		t.Fatalf("public client sent a client secret: %v", tokenForm)
+	}
+}
+
+func TestCallbackReportsSafeMicrosoftErrorCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":"invalid_request","error_description":"AADSTS900144: The request body must contain the following parameter: 'scope'. Private account detail","error_codes":[900144],"correlation_id":"safe-correlation"}`)
+	}))
+	defer server.Close()
+	flow := New(Config{
+		ClientID: "ms-client-id", Tenant: "organizations",
+		AuthorizeURL: server.URL, TokenURL: server.URL, HTTPClient: server.Client(),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), RandomBytes: bytes.NewReader(bytes.Repeat([]byte{4}, 64)),
+	})
+	auth, err := flow.Start(t.Context(), "http://127.0.0.1:9195/oauth/microsoft/callback", []manifest.Verb{manifest.Read})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	_, err = flow.Callback(t.Context(), auth.State, "rejected-code")
+	if err == nil || !strings.Contains(err.Error(), "invalid_request") || !strings.Contains(err.Error(), "900144") || !strings.Contains(err.Error(), "missing_parameter=scope") {
+		t.Fatalf("Callback error = %v, want safe provider error and numeric code", err)
+	}
+	if strings.Contains(err.Error(), "private account detail") {
+		t.Fatalf("Callback leaked provider description: %v", err)
 	}
 }
 
@@ -139,11 +208,46 @@ func TestStartRequiresConfiguredCredentials(t *testing.T) {
 	}
 }
 
+func TestRefreshUsesOfflineGrantScopesAndKeepsRotatedRefreshToken(t *testing.T) {
+	var tokenForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parse form: %v", err)
+		}
+		tokenForm = r.Form
+		_, _ = io.WriteString(w, `{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600,"token_type":"Bearer","scope":"Mail.Read offline_access User.Read"}`)
+	}))
+	defer server.Close()
+	flow := New(Config{
+		ClientID: "ms-client-id", Tenant: "consumers",
+		TokenURL: server.URL, HTTPClient: server.Client(),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	scopes := []string{ScopeMailRead, ScopeOfflineAccess, ScopeUserRead}
+
+	tokens, err := flow.Refresh(t.Context(), "existing-refresh", scopes)
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if tokenForm.Get("grant_type") != "refresh_token" || tokenForm.Get("refresh_token") != "existing-refresh" {
+		t.Fatalf("refresh form=%v", tokenForm)
+	}
+	if tokenForm.Get("scope") != strings.Join(scopes, " ") {
+		t.Fatalf("scope=%q", tokenForm.Get("scope"))
+	}
+	if tokenForm.Get("client_id") != "ms-client-id" || tokenForm.Get("client_secret") != "" {
+		t.Fatalf("public-client refresh form is wrong: %v", tokenForm)
+	}
+	if tokens.AccessToken != "new-access" || tokens.RefreshToken != "new-refresh" {
+		t.Fatalf("tokens=%+v", tokens)
+	}
+}
+
 // Callers: oauth/microsoft tests. Affected API: Flow.Start loopback gate.
 // User: follow-up on Microsoft judge — enforce loopback in Flow.Start.
 func TestStartRejectsNonLoopbackRedirect(t *testing.T) {
 	flow := New(Config{
-		ClientID: "ms-client-id", ClientSecret: "ms-client-secret",
+		ClientID:    "ms-client-id",
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		RandomBytes: bytes.NewReader(bytes.Repeat([]byte{5}, 64)),
 	})
@@ -155,7 +259,7 @@ func TestStartRejectsNonLoopbackRedirect(t *testing.T) {
 
 func TestStartDefaultsTenantToConsumers(t *testing.T) {
 	flow := New(Config{
-		ClientID: "ms-client-id", ClientSecret: "ms-client-secret",
+		ClientID:    "ms-client-id",
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		RandomBytes: bytes.NewReader(bytes.Repeat([]byte{3}, 64)),
 	})
@@ -209,7 +313,7 @@ func TestChatScopesForTeamsVerbsLeaveMailScopesUnchanged(t *testing.T) {
 
 func TestStartChatUsesOrganizationsTenantAndChatScopes(t *testing.T) {
 	flow := New(Config{
-		ClientID: "ms-client-id", ClientSecret: "ms-client-secret", Tenant: TenantOrganizations,
+		ClientID: "ms-client-id", Tenant: TenantOrganizations,
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		RandomBytes: bytes.NewReader(bytes.Repeat([]byte{11}, 64)),
 	})
@@ -239,7 +343,7 @@ func TestStartChatUsesOrganizationsTenantAndChatScopes(t *testing.T) {
 
 func TestStartChatRejectsConsumersTenant(t *testing.T) {
 	flow := New(Config{
-		ClientID: "ms-client-id", ClientSecret: "ms-client-secret", Tenant: "consumers",
+		ClientID: "ms-client-id", Tenant: "consumers",
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		RandomBytes: bytes.NewReader(bytes.Repeat([]byte{11}, 64)),
 	})
@@ -251,9 +355,8 @@ func TestStartChatRejectsConsumersTenant(t *testing.T) {
 
 func TestLiveChatOAuthStartAgainstMicrosoftWhenEnvPresent(t *testing.T) {
 	clientID := os.Getenv("MICROSOFT_CLIENT_ID")
-	clientSecret := os.Getenv("MICROSOFT_CLIENT_SECRET")
 	redirect := os.Getenv("MICROSOFT_REDIRECT_URI")
-	if clientID == "" || clientSecret == "" || redirect == "" {
+	if clientID == "" || redirect == "" {
 		t.Skip("live Microsoft credentials not present in env")
 	}
 	tenant := os.Getenv("MICROSOFT_TEAMS_TENANT")
@@ -268,7 +371,7 @@ func TestLiveChatOAuthStartAgainstMicrosoftWhenEnvPresent(t *testing.T) {
 		tenant, parsed.Scheme, parsed.Host, safePath(redirect))
 
 	flow := New(Config{
-		ClientID: clientID, ClientSecret: clientSecret, Tenant: tenant,
+		ClientID: clientID, Tenant: tenant,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	auth, err := flow.StartChat(context.Background(), redirect, []manifest.Verb{manifest.Read, manifest.Send})
@@ -322,10 +425,9 @@ func TestLiveChatOAuthStartAgainstMicrosoftWhenEnvPresent(t *testing.T) {
 
 func TestLiveOAuthStartAgainstMicrosoftWhenEnvPresent(t *testing.T) {
 	clientID := os.Getenv("MICROSOFT_CLIENT_ID")
-	clientSecret := os.Getenv("MICROSOFT_CLIENT_SECRET")
 	redirect := os.Getenv("MICROSOFT_REDIRECT_URI")
 	tenant := os.Getenv("MICROSOFT_TENANT")
-	if clientID == "" || clientSecret == "" || redirect == "" {
+	if clientID == "" || redirect == "" {
 		t.Skip("live Microsoft credentials not present in env")
 	}
 	if tenant == "" {
@@ -339,7 +441,7 @@ func TestLiveOAuthStartAgainstMicrosoftWhenEnvPresent(t *testing.T) {
 		tenant, parsed.Scheme, parsed.Host, safePath(redirect))
 
 	flow := New(Config{
-		ClientID: clientID, ClientSecret: clientSecret, Tenant: tenant,
+		ClientID: clientID, Tenant: tenant,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	auth, err := flow.Start(context.Background(), redirect, []manifest.Verb{manifest.Read})

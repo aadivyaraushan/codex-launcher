@@ -97,6 +97,52 @@ func TestLowConfidenceRouteReturnsTheQuestionAndCreatesNothing(t *testing.T) {
 	}
 }
 
+type clarificationAdapter struct{}
+
+func (*clarificationAdapter) Describe() manifest.Manifest {
+	return manifest.Manifest{
+		ID: "clarifier", Runtime: manifest.RT2, Verbs: []manifest.Verb{manifest.Send},
+		Ceiling: manifest.Completes, Consent: manifest.ConsentA, Auth: manifest.AuthOAuth,
+		Cost: manifest.CostFree, Gates: []manifest.Gate{manifest.GateNone},
+		Capacity: manifest.Capacity{Kind: manifest.CapacityNone}, Region: []string{"global"},
+		Platform: manifest.PlatformAndroid, ProvesCeiling: "clarifier-smoke",
+	}
+}
+func (*clarificationAdapter) Resolve(context.Context, adapter.Intent) (adapter.Plan, error) {
+	return adapter.Plan{}, &adapter.ClarificationError{Question: "Which Discord conversation did you mean?"}
+}
+func (*clarificationAdapter) Preview(context.Context, adapter.Plan) (adapter.Preview, error) {
+	panic("preview must not run while a question is unanswered")
+}
+func (*clarificationAdapter) Execute(context.Context, adapter.Plan) (adapter.Outcome, error) {
+	panic("execute must not run while a question is unanswered")
+}
+func (*clarificationAdapter) Revoke(context.Context) error { return nil }
+
+func TestAnAdapterClarificationReachesThePhoneAsAQuestion(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	reg := registry.New()
+	if err := reg.Register(&clarificationAdapter{}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	resolver := stage2.New(reg, contacts.NewGraph(time.Now), stage2.ClassMap{
+		"beeper_messaging": {Adapters: []string{"clarifier"}, Addressing: stage2.ResolvedByAdapter},
+	}, manifest.PlatformAndroid)
+	model := func(context.Context, string) ([]byte, error) {
+		return []byte(`{"verb":"send","app_class":"beeper_messaging","app_named":"clarifier","subject":"Raina","body":"hello","confidence":0.99}`), nil
+	}
+	service := New(stage1.New(model), resolver, execution.New(reg), consent.New(time.Now, nil, consent.NoVault{}, consent.NoVault{}), logger)
+
+	_, err := service.Prepare(t.Context(), "owner", "request", "message Raina on Discord")
+	var question *QuestionError
+	if !errors.As(err, &question) {
+		t.Fatalf("Prepare returned %T %v, want QuestionError", err, err)
+	}
+	if question.Question != "Which Discord conversation did you mean?" {
+		t.Fatalf("question=%q", question.Question)
+	}
+}
+
 func TestCancelDropsThePendingPreviewWithoutExecuting(t *testing.T) {
 	service, api := todoistService(t, func(context.Context, string) ([]byte, error) {
 		return []byte(`{"verb":"write","app_class":"tasks","app_named":"todoist","subject":"Buy oat milk","body":"","confidence":0.99}`), nil

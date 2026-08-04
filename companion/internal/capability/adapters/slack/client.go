@@ -34,6 +34,15 @@ type PostedMessage struct {
 	Timestamp string `json:"ts"`
 }
 
+// WorkspaceIdentity is Slack's authenticated account and workspace result.
+type WorkspaceIdentity struct {
+	URL    string `json:"url"`
+	Team   string `json:"team"`
+	User   string `json:"user"`
+	TeamID string `json:"team_id"`
+	UserID string `json:"user_id"`
+}
+
 type TokenSource interface {
 	AccessToken(context.Context) (string, error)
 }
@@ -118,6 +127,24 @@ func (c *HTTPClient) PostMessage(ctx context.Context, request PostMessage) (Post
 		return PostedMessage{}, fmt.Errorf("slack: chat.postMessage error %s", response.Error)
 	}
 	return PostedMessage{Channel: response.Channel, Timestamp: response.TS}, nil
+}
+
+// Identity uses Slack's no-extra-scope auth.test endpoint to verify which
+// workspace and user the OAuth token actually represents.
+func (c *HTTPClient) Identity(ctx context.Context) (WorkspaceIdentity, error) {
+	var response struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+		WorkspaceIdentity
+	}
+	if err := c.do(ctx, http.MethodPost, "/api/auth.test", map[string]any{}, &response); err != nil {
+		return WorkspaceIdentity{}, err
+	}
+	if !response.OK {
+		return WorkspaceIdentity{}, fmt.Errorf("slack: auth.test error %s", response.Error)
+	}
+	c.logger.Info("[slack] identity verified", "team_id_present", response.TeamID != "", "user_id_present", response.UserID != "")
+	return response.WorkspaceIdentity, nil
 }
 
 func (c *HTTPClient) Clear(ctx context.Context) error {

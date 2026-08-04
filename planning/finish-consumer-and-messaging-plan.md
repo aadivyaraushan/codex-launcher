@@ -1,7 +1,7 @@
 # Finish the consumer and messaging plans
 
 **Date:** 2026-08-04  
-**Status:** Preflight only — implementation has not started  
+**Status:** Approved implementation slice completed and verified 2026-08-04; deferred/external work remains explicitly out of scope
 **Scope authority:** `consumer-app-implementation-plan.md` and `operator-complete-messaging-plan.md`
 
 ## Shape of the run

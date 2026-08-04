@@ -33,12 +33,10 @@ func TestManifestIsTheCappedAndroidRT2YouTubeRoute(t *testing.T) {
 	if err := m.Validate(); err != nil {
 		t.Fatalf("manifest is invalid: %v", err)
 	}
-	// Evidence: saved-results/wave1-youtube-maps-complete.md. Both verbs go
-	// through search.list, and the live API key returns 403 because its Google
-	// Cloud project is restricted, so nothing has ever been carried to the end
-	// through this adapter. A ceiling is a measured fact, so it reads
-	// hands_off until a real run says otherwise.
-	if m.ID != ID || m.Runtime != manifest.RT2 || m.Ceiling != manifest.HandsOff {
+	// Measured 2026-08-04 against the Operator project: the exact HTTPClient
+	// search.list path returned five usable videos. Read therefore completes;
+	// Play still returns its own hands_off outcome after resolving a real URL.
+	if m.ID != ID || m.Runtime != manifest.RT2 || m.Ceiling != manifest.Completes {
 		t.Fatalf("unexpected manifest: %+v", m)
 	}
 	if !m.Allows(manifest.Read) || !m.Allows(manifest.Play) {
@@ -91,14 +89,8 @@ func TestSearchReturnsAVideoIDAndPreviewShowsTheTitle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	// The adapter's own Read case reports completes, and on its own terms
-	// that is honest — it returns a real answer and hands nothing off. But
-	// the manifest ships hands_off, and a manifest is a cap: the runner
-	// pulls the outcome down to it. That is the point of the clamp. If the
-	// API key's restriction is ever lifted and a real run proves the search
-	// works, raise the manifest and this expectation moves with it.
-	if out.Reached != manifest.HandsOff || out.Done {
-		t.Fatalf("outcome = %+v, want the runner to clamp it to the manifest's hands_off", out)
+	if out.Reached != manifest.Completes || !out.Done {
+		t.Fatalf("outcome = %+v, want the measured read result to complete", out)
 	}
 }
 
@@ -158,5 +150,22 @@ func TestPlayCannotOutrunSearchBecauseItIsTheSameCall(t *testing.T) {
 		if !errors.Is(err, broken) {
 			t.Errorf("Resolve(%s) error = %v, want the search failure — no verb survives a broken search", verb, err)
 		}
+	}
+}
+
+func TestRevokePersistsTheDisconnectBeforeClearingTheLiveClient(t *testing.T) {
+	revokes := 0
+	a := NewWithRevoke(&fakeAPI{}, func(context.Context) error {
+		revokes++
+		return nil
+	}, newLogger())
+	if err := a.Revoke(t.Context()); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	if revokes != 1 {
+		t.Fatalf("persistent revoke calls = %d, want 1", revokes)
+	}
+	if _, err := a.Resolve(t.Context(), adapter.Intent{AdapterID: ID, Verb: manifest.Read, Subject: "query"}); !errors.Is(err, ErrNotConnected) {
+		t.Fatalf("Resolve after revoke = %v, want ErrNotConnected", err)
 	}
 }

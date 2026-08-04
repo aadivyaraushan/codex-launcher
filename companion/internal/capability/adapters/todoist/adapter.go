@@ -104,7 +104,7 @@ func (a *Adapter) resolveRead(ctx context.Context, query string) (adapter.Plan, 
 		return adapter.Plan{}, ErrNoTask
 	}
 	if len(matches) > 1 {
-		return adapter.Plan{}, ErrAmbiguousTask
+		return adapter.Plan{}, &adapter.ClarificationError{Question: "Which matching Todoist task did you mean?", Cause: ErrAmbiguousTask}
 	}
 	task := matches[0]
 	return adapter.Plan{

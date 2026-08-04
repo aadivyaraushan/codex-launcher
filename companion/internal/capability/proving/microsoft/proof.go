@@ -46,6 +46,7 @@ type AuthorizationConfig struct {
 	ListenAddress string
 	RedirectURI   string
 	Flow          OAuthFlow
+	Verbs         []manifest.Verb
 	Output        io.Writer
 	Logger        *slog.Logger
 }
@@ -54,21 +55,29 @@ type AuthorizationConfig struct {
 // when Clear runs and is never written to disk or printed.
 type Connection struct {
 	mu     sync.RWMutex
-	access string
+	tokens msoauth.TokenSet
 }
 
 func (c *Connection) AccessToken(context.Context) (string, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if c.access == "" {
+	if c.tokens.AccessToken == "" {
 		return "", outlook.ErrNotConnected
 	}
-	return c.access, nil
+	return c.tokens.AccessToken, nil
+}
+
+func (c *Connection) Snapshot() msoauth.TokenSet {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	snapshot := c.tokens
+	snapshot.Scopes = append([]string(nil), c.tokens.Scopes...)
+	return snapshot
 }
 
 func (c *Connection) Clear(context.Context) error {
 	c.mu.Lock()
-	c.access = ""
+	c.tokens = msoauth.TokenSet{}
 	c.mu.Unlock()
 	return nil
 }
@@ -119,8 +128,11 @@ func Run(ctx context.Context, config Config) error {
 // Mail path: Start with Mail.Read on the configured tenant (usually consumers).
 func Authorize(ctx context.Context, config AuthorizationConfig) (*Connection, error) {
 	return authorize(ctx, config, func(ctx context.Context, redirect string) (msoauth.Authorization, error) {
-		// Read-safe authorize: Mail.Read only. Serve wiring can request write/send later.
-		return config.Flow.Start(ctx, redirect, []manifest.Verb{manifest.Read})
+		verbs := config.Verbs
+		if len(verbs) == 0 {
+			verbs = []manifest.Verb{manifest.Read}
+		}
+		return config.Flow.Start(ctx, redirect, verbs)
 	})
 }
 
@@ -162,17 +174,7 @@ func authorize(ctx context.Context, config AuthorizationConfig, start func(conte
 		return nil, fmt.Errorf("microsoft proof: listen for OAuth callback: %w", err)
 	}
 	defer listener.Close()
-	if strings.Contains(config.RedirectURI, ":0/") || strings.HasSuffix(config.ListenAddress, ":0") {
-		path := parsed.Path
-		if path == "" {
-			path = "/oauth/microsoft/callback"
-		}
-		config.RedirectURI = parsed.Scheme + "://" + listener.Addr().String() + path
-		parsed, err = url.Parse(config.RedirectURI)
-		if err != nil {
-			return nil, fmt.Errorf("microsoft proof: rebuild redirect URI: %w", err)
-		}
-	} else if parsed.Port() == "" && (host == "localhost" || host == "127.0.0.1") {
+	if parsed.Port() == "" && (host == "localhost" || host == "127.0.0.1") {
 		// Env may register host-only localhost (port 80). Bind the configured
 		// listen port and rebuild the redirect so the callback can land, while
 		// keeping the registered hostname (Microsoft treats localhost specially).
@@ -194,6 +196,16 @@ func authorize(ctx context.Context, config AuthorizationConfig, start func(conte
 		}
 		config.Logger.Warn("[microsoft-proof] rebuilt portless redirect to listen port",
 			"callback_host", host+":"+port, "redirect_path", path)
+	} else if strings.Contains(config.RedirectURI, ":0/") || strings.HasSuffix(config.ListenAddress, ":0") {
+		path := parsed.Path
+		if path == "" {
+			path = "/oauth/microsoft/callback"
+		}
+		config.RedirectURI = parsed.Scheme + "://" + listener.Addr().String() + path
+		parsed, err = url.Parse(config.RedirectURI)
+		if err != nil {
+			return nil, fmt.Errorf("microsoft proof: rebuild redirect URI: %w", err)
+		}
 	}
 
 	authorization, err := start(ctx, config.RedirectURI)
@@ -211,6 +223,15 @@ func authorize(ctx context.Context, config AuthorizationConfig, start func(conte
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if providerErr := microsoftCallbackError(r.URL.Query()); providerErr != nil {
+			config.Logger.Warn("[microsoft-proof] OAuth provider callback rejected", "error", providerErr)
+			http.Error(w, "Microsoft sign-in could not be accepted. Return to Operator and try again.", http.StatusBadRequest)
+			select {
+			case callbackErrors <- providerErr:
+			default:
+			}
 			return
 		}
 		set, callbackErr := config.Flow.Callback(ctx, r.URL.Query().Get("state"), r.URL.Query().Get("code"))
@@ -257,5 +278,39 @@ func authorize(ctx context.Context, config AuthorizationConfig, start func(conte
 		return nil, fmt.Errorf("microsoft proof: OAuth callback: %w", err)
 	case tokenSet = <-tokens:
 	}
-	return &Connection{access: tokenSet.AccessToken}, nil
+	return &Connection{tokens: tokenSet}, nil
+}
+
+func microsoftCallbackError(query url.Values) error {
+	kind := strings.TrimSpace(query.Get("error"))
+	if kind == "" {
+		return nil
+	}
+	for _, r := range kind {
+		if !(r == '_' || r == '-' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') {
+			kind = "provider_error"
+			break
+		}
+	}
+	code := microsoftAADSTSCode(query.Get("error_description"))
+	if code == "" {
+		return fmt.Errorf("microsoft proof: authorization callback error %s", kind)
+	}
+	return fmt.Errorf("microsoft proof: authorization callback error %s code %s", kind, code)
+}
+
+func microsoftAADSTSCode(description string) string {
+	upper := strings.ToUpper(description)
+	index := strings.Index(upper, "AADSTS")
+	if index < 0 {
+		return ""
+	}
+	end := index + len("AADSTS")
+	for end < len(upper) && upper[end] >= '0' && upper[end] <= '9' {
+		end++
+	}
+	if end == index+len("AADSTS") {
+		return ""
+	}
+	return upper[index:end]
 }

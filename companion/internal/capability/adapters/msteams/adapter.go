@@ -131,7 +131,7 @@ func (a *Adapter) findChat(ctx context.Context, query string, verb manifest.Verb
 		return adapter.Plan{}, ErrNoChat
 	}
 	if len(matches) > 1 {
-		return adapter.Plan{}, ErrAmbiguousChat
+		return adapter.Plan{}, &adapter.ClarificationError{Question: "Which matching Microsoft Teams chat did you mean?", Cause: ErrAmbiguousChat}
 	}
 	chat := matches[0]
 	summary := "Read a Teams work chat"

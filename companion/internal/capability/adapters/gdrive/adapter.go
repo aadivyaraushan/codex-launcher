@@ -116,7 +116,7 @@ func (a *Adapter) resolveRead(ctx context.Context, query string) (adapter.Plan, 
 		return adapter.Plan{}, ErrNoFile
 	}
 	if len(matches) > 1 {
-		return adapter.Plan{}, ErrAmbiguousFile
+		return adapter.Plan{}, &adapter.ClarificationError{Question: "Which matching Google Drive file did you mean?", Cause: ErrAmbiguousFile}
 	}
 	file := matches[0]
 	return adapter.Plan{

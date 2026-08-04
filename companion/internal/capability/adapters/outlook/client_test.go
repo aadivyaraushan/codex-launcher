@@ -72,3 +72,24 @@ func TestHTTPClientListsDraftsAndSendsWithBearerAuth(t *testing.T) {
 		t.Fatalf("sawList=%v sawDraft=%v sawSend=%v", sawList, sawDraft, sawSend)
 	}
 }
+
+func TestHTTPClientReadsAuthenticatedAccountIdentity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1.0/me" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("$select"); got != "id,displayName,mail,userPrincipalName" {
+			t.Fatalf("$select = %q", got)
+		}
+		_, _ = io.WriteString(w, `{"id":"U1","displayName":"Aadivya","mail":"ssdear@gmail.com","userPrincipalName":"ssdear@gmail.com"}`)
+	}))
+	defer server.Close()
+	client := NewHTTPClient(server.URL, staticToken("access-secret"), server.Client(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	identity, err := client.Identity(context.Background())
+	if err != nil {
+		t.Fatalf("Identity: %v", err)
+	}
+	if identity.Mail != "ssdear@gmail.com" || identity.UserPrincipalName != "ssdear@gmail.com" || identity.ID != "U1" {
+		t.Fatalf("Identity = %+v", identity)
+	}
+}

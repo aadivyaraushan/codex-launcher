@@ -118,6 +118,10 @@ func TestReadFindsOneTaskAndRefusesAnAmbiguousMatch(t *testing.T) {
 	if !errors.Is(err, ErrAmbiguousTask) {
 		t.Fatalf("ambiguous read returned %v", err)
 	}
+	var question *adapter.ClarificationError
+	if !errors.As(err, &question) || question.Question == "" {
+		t.Fatalf("ambiguous read is not a user question: %T %v", err, err)
+	}
 
 	plan, err := a.Resolve(context.Background(), adapter.Intent{
 		AdapterID: ID, Verb: manifest.Read, Subject: "Buy oat milk for office",

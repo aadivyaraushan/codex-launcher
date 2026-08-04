@@ -20,7 +20,7 @@ import (
 
 // Callers: main.go liveDependencies.startMSTeamsProof / serve-msteams-proof.
 // User: "Mirror serve-microsoft-proof / microsoft_proof.go for work Teams chat"
-// Env schemas (never logged): MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET,
+// Env schemas (never logged): MICROSOFT_CLIENT_ID,
 // MICROSOFT_TEAMS_REDIRECT_URI or MICROSOFT_REDIRECT_URI, MICROSOFT_TEAMS_TENANT
 // (default organizations). Port 9196 (distinct from Outlook 9195). No data files.
 //
@@ -31,7 +31,6 @@ import (
 func startMSTeamsProof(ctx context.Context, output io.Writer) (mobilesession.CapabilityFlow, io.Closer, error) {
 	logger := slog.Default()
 	clientID := os.Getenv("MICROSOFT_CLIENT_ID")
-	clientSecret := os.Getenv("MICROSOFT_CLIENT_SECRET")
 	tenant := strings.TrimSpace(os.Getenv("MICROSOFT_TEAMS_TENANT"))
 	if tenant == "" {
 		tenant = msoauth.TenantOrganizations
@@ -65,7 +64,7 @@ func startMSTeamsProof(ctx context.Context, output io.Writer) (mobilesession.Cap
 		ListenAddress: listenAddress,
 		RedirectURI:   redirectURI,
 		Flow: msoauth.New(msoauth.Config{
-			ClientID: clientID, ClientSecret: clientSecret, Tenant: tenant, Logger: logger,
+			ClientID: clientID, Tenant: tenant, Logger: logger,
 		}),
 		Output: output,
 		Logger: logger,

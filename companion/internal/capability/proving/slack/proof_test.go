@@ -121,6 +121,7 @@ func TestAuthorizeRequestsReadOnlyScopes(t *testing.T) {
 	go completeOAuth(t, ctx, flow)
 	conn, err := Authorize(ctx, AuthorizationConfig{
 		Flow:          flow,
+		Verbs:         []manifest.Verb{manifest.Read},
 		ListenAddress: "127.0.0.1:0",
 		RedirectURI:   "https://127.0.0.1:0/oauth/slack/callback",
 		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -136,6 +137,33 @@ func TestAuthorizeRequestsReadOnlyScopes(t *testing.T) {
 	flow.mu.Unlock()
 	if len(verbs) != 1 || verbs[0] != manifest.Read {
 		t.Fatalf("Authorize verbs=%v, want [read] only (no chat:write)", verbs)
+	}
+}
+
+func TestAuthorizeRequestsConfiguredSendScope(t *testing.T) {
+	flow := &fakeFlow{}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	go completeOAuth(t, ctx, flow)
+	conn, err := Authorize(ctx, AuthorizationConfig{
+		Flow:          flow,
+		Verbs:         []manifest.Verb{manifest.Read, manifest.Send},
+		ListenAddress: "127.0.0.1:0",
+		RedirectURI:   "https://127.0.0.1:0/oauth/slack/callback",
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Output:        io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("Authorize: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	flow.mu.Lock()
+	verbs := append([]manifest.Verb(nil), flow.verbs...)
+	flow.mu.Unlock()
+	if len(verbs) != 2 || verbs[0] != manifest.Read || verbs[1] != manifest.Send {
+		t.Fatalf("Authorize verbs=%v, want [read send]", verbs)
 	}
 }
 
