@@ -1,7 +1,7 @@
 # Make YouTube playback work on the Pixel
 
 **Date:** 2026-08-04  
-**Status:** Code, service, and live driver ready; real playback proof waiting for secure Pixel unlock
+**Status:** COMPLETE — normal Operator route and selected-video playback proved on Pixel 9
 **Scope:** Replace the YouTube home-screen handoff with exact-video playback through the existing confirmed capability route.
 
 ## Route
@@ -75,4 +75,5 @@ separate Pixel proof: media session is PLAYING with video metadata
 - Installed service: the native replacement started as PID 5856 at 2026-08-04 23:04:07. Logs show silent Keychain denials instead of dialogs, `source=explicit_app`, YouTube credential `source=environment`, 78 capabilities registered, and mobile transport ready.
 - Green checks: full companion `go test ./...` after the title and honesty fixes; Android unit tests, lint, and assembly; protocol 45 valid plus 45 invalid-rejection cases; Node release checks 23/23.
 - Live driver: commits `9cebbb3` and `312fe64` recognize `Open in YouTube`, confirm it, require the YouTube package to become foreground, and wait safely for an unlocked Compose hierarchy.
-- Not yet proved: the Pixel is currently at `AlternateBouncerView`. Two targeted runs sent nothing because the secure lock remained. Do not mark playback complete until the normal preview is confirmed and `dumpsys media_session` shows YouTube `PLAYING` with matching metadata.
+- Pixel proof: at 2026-08-05 00:29, the strict targeted driver passed in 14.626 seconds with `OK (1 test)`. Companion logs show explicit YouTube routing, five search results, confirmation, and a non-replayed `youtube_play` action. YouTube became foreground and `dumpsys media_session` reported `PLAYING(3)` with metadata `Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)` by Rick Astley.
+- Saved evidence: `saved-results/youtube-playback-pixel-proof.md` records the secret-free commands, logs, result boundary, and reproduction steps.
