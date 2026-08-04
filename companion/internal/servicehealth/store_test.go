@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+func TestNewAllowsProductionKeychainStartupToFinish(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "health.json"), time.Now)
+	if store.waitTimeout < 30*time.Second {
+		t.Fatalf("wait timeout = %s, want at least 30s for production Keychain startup", store.waitTimeout)
+	}
+}
+
 func TestUpdatePersistsOnlyStateAndFixedLastErrorWithOwnerOnlyMode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "health.json")
 	now := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)

@@ -61,7 +61,7 @@ func New(path string, now func() time.Time) *Store {
 	if now == nil {
 		now = time.Now
 	}
-	return &Store{path: path, now: now, random: rand.Reader, waitTimeout: 15 * time.Second, pollInterval: 50 * time.Millisecond}
+	return &Store{path: path, now: now, random: rand.Reader, waitTimeout: 45 * time.Second, pollInterval: 50 * time.Millisecond}
 }
 
 func (store *Store) Update(state State, errorCode string) error {
