@@ -4,7 +4,8 @@
 // play (open a video) verb resolve through that same search.list call. The
 // Operator project key completed that exact call on 2026-08-04, returning
 // five usable video rows, so read now has a measured completes ceiling.
-// Play still returns hands_off because it opens the resolved URL on Android.
+// Play hands the resolved URL to Android through a non-replayed device action,
+// then waits for the phone's acknowledgement before reporting an outcome.
 // Like/subscribe and in-app chrome remote control are explicitly deferred.
 package youtube
 
@@ -24,9 +25,10 @@ const ID = "youtube"
 const androidPackage = "com.google.android.youtube"
 
 var (
-	ErrNotConnected = errors.New("youtube: adapter is not connected")
-	ErrEmptyQuery   = errors.New("youtube: search query must not be empty")
-	ErrNoResults    = errors.New("youtube: no video matches the search")
+	ErrNotConnected    = errors.New("youtube: adapter is not connected")
+	ErrEmptyQuery      = errors.New("youtube: search query must not be empty")
+	ErrNoResults       = errors.New("youtube: no video matches the search")
+	ErrInvalidVideoURL = errors.New("youtube: resolved video URL is invalid")
 )
 
 // API is the small part of YouTube the adapter needs. HTTPClient is the
@@ -136,13 +138,35 @@ func (a *Adapter) Execute(_ context.Context, plan adapter.Plan) (adapter.Outcome
 			Detail: fmt.Sprintf("Found %q by %s on YouTube.", plan.Details["title"], plan.Details["channel"]),
 		}, nil
 	case manifest.Play:
-		return adapter.Outcome{
-			Reached: manifest.HandsOff, Done: true, HandedOffTo: "YouTube",
-			Detail: fmt.Sprintf("Found %q by %s. Open YouTube to choose and play it; Operator cannot deep-link this result yet.", plan.Details["title"], plan.Details["channel"]),
-		}, nil
+		watchURL := plan.Details["watch_url"]
+		videoID := plan.Details["video_id"]
+		if watchURL != "https://www.youtube.com/watch?v="+videoID || !validVideoID(videoID) {
+			a.logger.Error("[youtube] play target refused", "reason", "invalid_watch_url")
+			return adapter.Outcome{}, ErrInvalidVideoURL
+		}
+		a.logger.Info("[youtube] play handed to phone", "kind", "youtube_play", "video_id_length", len(videoID))
+		return adapter.Outcome{}, &adapter.DeviceWorkError{
+			AdapterID: ID,
+			Kind:      "youtube_play",
+			Handle:    watchURL,
+			Text:      plan.Details["title"],
+			Ceiling:   manifest.Completes,
+		}
 	default:
 		return adapter.Outcome{}, fmt.Errorf("youtube: verb %q is not supported", plan.Verb)
 	}
+}
+
+func validVideoID(videoID string) bool {
+	if len(videoID) != 11 {
+		return false
+	}
+	for _, char := range videoID {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '-' && char != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 // Revoke of an already-disconnected adapter reports success, not

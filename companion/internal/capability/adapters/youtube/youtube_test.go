@@ -94,31 +94,56 @@ func TestSearchReturnsAVideoIDAndPreviewShowsTheTitle(t *testing.T) {
 	}
 }
 
-// Requirement: search + open video (Play verb) opens the YouTube app.
-// Opening an app is a hand-off, so the outcome says so.
-func TestPlayResolvesAndHandsOffToYouTube(t *testing.T) {
+// Requirement: search + play keeps the resolved video URL until the phone can
+// open that exact video. The device action is deliberately not an ordinary
+// outcome: the Mac cannot claim success before the Pixel answers.
+func TestPlayResolvesAndHandsTheExactVideoToThePixel(t *testing.T) {
 	api := &fakeAPI{videos: []Video{
-		{ID: "abc123", Title: "Some Song", ChannelTitle: "Some Artist"},
+		{ID: "dQw4w9WgXcQ", Title: "Never Gonna Give You Up", ChannelTitle: "Rick Astley"},
 	}}
 	a := New(api, newLogger())
 	ctx := context.Background()
 
-	plan, err := a.Resolve(ctx, adapter.Intent{AdapterID: ID, Verb: manifest.Play, Subject: "some song"})
+	plan, err := a.Resolve(ctx, adapter.Intent{AdapterID: ID, Verb: manifest.Play, Subject: "never gonna give you up"})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if plan.Details["watch_url"] != "https://www.youtube.com/watch?v=abc123" {
+	if plan.Details["watch_url"] != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" {
 		t.Fatalf("watch_url = %q", plan.Details["watch_url"])
 	}
 	out, err := a.Execute(ctx, plan)
-	if err != nil {
-		t.Fatalf("execute: %v", err)
+	var deviceWork *adapter.DeviceWorkError
+	if !errors.As(err, &deviceWork) {
+		t.Fatalf("execute error = %v, want DeviceWorkError", err)
 	}
-	// Opening the app is a hand-off: the video is playing in YouTube, and
-	// what happens next is between the user and YouTube. An outcome that
-	// names an app it handed to may not also claim it finished the job.
-	if out.Reached != manifest.HandsOff || !out.Done || out.HandedOffTo != "YouTube" {
-		t.Fatalf("outcome = %+v, want hands_off, done, handed off to YouTube", out)
+	if out != (adapter.Outcome{}) {
+		t.Fatalf("execute claimed an outcome before the phone answered: %+v", out)
+	}
+	if deviceWork.AdapterID != ID || deviceWork.Kind != "youtube_play" {
+		t.Fatalf("device work route = %+v, want youtube/youtube_play", deviceWork)
+	}
+	if deviceWork.Handle != plan.Details["watch_url"] || deviceWork.Text != plan.Details["title"] {
+		t.Fatalf("device work lost the selected video: %+v", deviceWork)
+	}
+	if deviceWork.Ceiling != manifest.Completes {
+		t.Fatalf("device work ceiling = %q, want completes", deviceWork.Ceiling)
+	}
+}
+
+func TestPlayRefusesAWatchURLThatWasChangedAfterResolve(t *testing.T) {
+	a := New(&fakeAPI{}, newLogger())
+	plan := adapter.Plan{
+		AdapterID: ID,
+		Verb:      manifest.Play,
+		Details: map[string]string{
+			"watch_url": "https://example.com/watch?v=dQw4w9WgXcQ",
+			"title":     "Changed target",
+		},
+	}
+
+	_, err := a.Execute(context.Background(), plan)
+	if !errors.Is(err, ErrInvalidVideoURL) {
+		t.Fatalf("execute error = %v, want ErrInvalidVideoURL", err)
 	}
 }
 

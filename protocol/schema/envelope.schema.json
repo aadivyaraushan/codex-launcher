@@ -238,7 +238,7 @@
             "required": ["requestId", "kind", "handle", "text"],
             "properties": {
               "requestId": { "$ref": "#/$defs/id" },
-              "kind": { "enum": ["notification_reply"] },
+              "kind": { "enum": ["notification_reply", "youtube_play"] },
               "handle": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s*$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
               "text": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?!\\s*$)[\\s\\S]+$" }
             }

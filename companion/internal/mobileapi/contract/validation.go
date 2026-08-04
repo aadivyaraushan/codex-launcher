@@ -1109,7 +1109,7 @@ func knownCapabilityCeiling(value string) bool {
 
 func knownDeviceActionKind(value string) bool {
 	switch value {
-	case "notification_reply":
+	case "notification_reply", "youtube_play":
 		return true
 	default:
 		return false

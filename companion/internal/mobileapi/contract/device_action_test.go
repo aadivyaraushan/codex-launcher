@@ -56,6 +56,18 @@ func TestTheMacCanAskThePhoneToSendAReply(t *testing.T) {
 	}
 }
 
+func TestTheMacCanAskThePhoneToPlayAnExactYouTubeVideo(t *testing.T) {
+	frame := deviceAction(`{"requestId":"cap-action-1","kind":"youtube_play","handle":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","text":"Never Gonna Give You Up"}`)
+
+	message, err := DecodeText(frame)
+	if err != nil {
+		t.Fatalf("a well-formed YouTube device action was rejected: %v", err)
+	}
+	if message.Type != "device_action" {
+		t.Fatalf("type = %q", message.Type)
+	}
+}
+
 func TestThePhoneCanReportEveryWayAReplyCanEnd(t *testing.T) {
 	// Four answers, because the phone can distinguish four situations and the
 	// Mac needs all four. "notification_gone" is not a failure the user caused

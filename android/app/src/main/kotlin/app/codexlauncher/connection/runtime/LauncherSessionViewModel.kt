@@ -87,6 +87,7 @@ class LauncherSessionViewModel(
     clearProject: suspend () -> Boolean,
     private val actionJournal: ActionJournal,
     private val carryOutDeviceReply: (handle: String, text: String) -> String = { _, _ -> "refused" },
+    private val carryOutYouTubePlayback: (watchUrl: String) -> String = { "refused" },
     private val clearConfirmedDraft: suspend (DraftVersion) -> Boolean = { false },
     private val onSuccessfulConnection: suspend (pairingGeneration: String, epochMillis: Long) -> Unit = { _, _ -> },
     private val recordResumeCursor: suspend (pairingGeneration: String, throughSequence: Long) -> Boolean = { _, _ -> true },
@@ -1179,28 +1180,31 @@ class LauncherSessionViewModel(
     }
 
     /**
-     * Answers a `device_action` the Mac could not send itself. Two rules do
-     * the work: always answer, and never re-word. `carryOutDeviceReply`
-     * decides the one word that goes back — this only has to get that word
-     * onto the wire, even when the attempt throws, because an unanswered
-     * request costs the user the Mac's whole timeout for something the phone
-     * already knows the answer to.
+     * Answers a `device_action` the Mac could not carry out itself. The action
+     * kind selects the phone-side implementation; that implementation decides
+     * the one outcome word that goes back. This layer always answers, including
+     * when the attempt throws, because silence costs the user the full timeout.
      */
     private fun handleDeviceAction(expectedGeneration: Long, message: ProtocolMessage) {
         if (generation.get() != expectedGeneration) return
         val requestId = message.body.getValue("requestId").jsonPrimitive.content
+        val kind = message.body.getValue("kind").jsonPrimitive.content
         val handle = message.body.getValue("handle").jsonPrimitive.content
         val text = message.body.getValue("text").jsonPrimitive.content
 
         val outcome =
             try {
-                carryOutDeviceReply(handle, text)
+                when (kind) {
+                    "notification_reply" -> carryOutDeviceReply(handle, text)
+                    "youtube_play" -> carryOutYouTubePlayback(handle)
+                    else -> "refused"
+                }
             } catch (error: Exception) {
                 AppLog.error(
                     feature = "connection-runtime",
-                    message = "device reply attempt threw",
+                    message = "device action attempt threw",
                     error = error,
-                    fields = mapOf("request_id" to requestId, "decision" to "answer_failed"),
+                    fields = mapOf("request_id" to requestId, "kind" to kind, "decision" to "answer_failed"),
                 )
                 "failed"
             }

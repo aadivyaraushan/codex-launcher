@@ -610,7 +610,7 @@ object ProtocolCodec {
     // Closed set of things this phone knows how to be asked to do. A wire
     // format that let this grow silently would let the Mac ask for an act
     // the phone was never built to carry out.
-    private val deviceActionKinds = setOf("notification_reply")
+    private val deviceActionKinds = setOf("notification_reply", "youtube_play")
     // Four endings, not a boolean. "notification_gone" is neither a success
     // nor a failure worth retrying: the conversation moved on before the
     // phone could act, and lumping it in with "failed" would make the Mac

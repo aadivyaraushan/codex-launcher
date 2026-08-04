@@ -68,6 +68,28 @@ class DeviceReplyRouteTest {
     }
 
     @Test
+    fun `a youtube action opens the exact selected video instead of using the reply route`() = runBlocking {
+        var openedUrl: String? = null
+        var replyCalls = 0
+        val session =
+            start(
+                carryOut = { _, _ -> replyCalls++; "handed_to_the_app" },
+                playYouTube = { url -> openedUrl = url; "handed_to_the_app" },
+            )
+
+        session.deliverDeviceAction(
+            requestId = "cap-youtube-1",
+            kind = "youtube_play",
+            handle = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            text = "Never Gonna Give You Up",
+        )
+
+        assertEquals("handed_to_the_app", session.awaitDeviceResult().body.getValue("outcome").jsonPrimitive.content)
+        assertEquals("https://www.youtube.com/watch?v=dQw4w9WgXcQ", openedUrl)
+        assertEquals(0, replyCalls)
+    }
+
+    @Test
     fun `the person and the words arrive exactly as the mac wrote them`() = runBlocking {
         // The Mac composed this text for a real person and it goes out
         // verbatim. Anything this layer did to it — trimming, escaping for
@@ -193,10 +215,15 @@ class DeviceReplyRouteTest {
         val connection: FakeSessionConnection,
         val observer: SessionObserver,
     ) {
-        fun deliverDeviceAction(requestId: String, handle: String, text: String) {
+        fun deliverDeviceAction(
+            requestId: String,
+            handle: String,
+            text: String,
+            kind: String = "notification_reply",
+        ) {
             observer.onMessage(
                 ProtocolCodec.decodeText(
-                    """{"version":{"major":1,"minor":0},"messageId":"$requestId-ask","sender":"companion","type":"device_action","body":{"requestId":"$requestId","kind":"notification_reply","handle":"$handle","text":"$text"}}""",
+                    """{"version":{"major":1,"minor":0},"messageId":"$requestId-ask","sender":"companion","type":"device_action","body":{"requestId":"$requestId","kind":"$kind","handle":"$handle","text":"$text"}}""",
                 ),
             )
         }
@@ -218,7 +245,10 @@ class DeviceReplyRouteTest {
     }
 
     /** Brings a session all the way up to the point where the Mac can hand it work. */
-    private fun start(carryOut: ((String, String) -> String)?): Session {
+    private fun start(
+        carryOut: ((String, String) -> String)?,
+        playYouTube: ((String) -> String)? = null,
+    ): Session {
         lateinit var observer: SessionObserver
         val connection = FakeSessionConnection()
         val viewModel =
@@ -229,6 +259,7 @@ class DeviceReplyRouteTest {
                     saveProject = { true },
                     clearProject = { true },
                     actionJournal = FakeActionJournal(),
+                    carryOutYouTubePlayback = playYouTube ?: { "refused" },
                     workScope = CoroutineScope(Dispatchers.Unconfined),
                 )
             } else {
@@ -239,6 +270,7 @@ class DeviceReplyRouteTest {
                     clearProject = { true },
                     actionJournal = FakeActionJournal(),
                     carryOutDeviceReply = carryOut,
+                    carryOutYouTubePlayback = playYouTube ?: { "refused" },
                     workScope = CoroutineScope(Dispatchers.Unconfined),
                 )
             }

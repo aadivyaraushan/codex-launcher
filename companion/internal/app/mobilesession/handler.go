@@ -1112,7 +1112,11 @@ func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender tra
 	var detail string
 	switch body.Outcome {
 	case "handed_to_the_app":
-		done, detail = true, "Handed to the app — we can't see whether it reached them."
+		if record.Kind == "youtube_play" {
+			done, detail = true, "Opened the selected video in YouTube."
+		} else {
+			done, detail = true, "Handed to the app — we can't see whether it reached them."
+		}
 	case "notification_gone":
 		done, detail = false, "The notification is gone, so there was no reply box left to use."
 	case "refused":

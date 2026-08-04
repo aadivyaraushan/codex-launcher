@@ -50,6 +50,19 @@ func (f *notificationReplyFlow) Confirm(_ context.Context, _, _, _ string) (capa
 	}
 }
 
+type youtubePlaybackFlow struct{ recordingCapabilityFlow }
+
+func (f *youtubePlaybackFlow) Confirm(_ context.Context, _, _, _ string) (capabilityadapter.Outcome, error) {
+	f.confirmed++
+	return capabilityadapter.Outcome{}, &capabilityadapter.DeviceWorkError{
+		AdapterID: "youtube",
+		Kind:      "youtube_play",
+		Handle:    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+		Text:      "Never Gonna Give You Up",
+		Ceiling:   "completes",
+	}
+}
+
 // movableClock lets a test step past the wait deadline instead of sleeping for
 // it. The shared newTestHandler helper pins time to a single instant, which is
 // right for every other test here and useless for this one.
@@ -94,7 +107,12 @@ const (
 // reply, and returns the device_action frame that went out.
 func handOff(t *testing.T, handler *Handler, sender *recordingSender) contract.Message {
 	t.Helper()
-	handler.EnableCapabilities(&notificationReplyFlow{})
+	return handOffWithFlow(t, handler, sender, &notificationReplyFlow{})
+}
+
+func handOffWithFlow(t *testing.T, handler *Handler, sender *recordingSender, flow CapabilityFlow) contract.Message {
+	t.Helper()
+	handler.EnableCapabilities(flow)
 	if err := handler.Handle(context.Background(), sender, decode(t, helloFrame)); err != nil {
 		t.Fatal(err)
 	}
@@ -184,6 +202,23 @@ func TestAPhoneThatHandedOffTheReplyClosesTheRequest(t *testing.T) {
 	}
 }
 
+func TestAYouTubePlaybackThatOpenedNamesTheSelectedVideoRoute(t *testing.T) {
+	handler, sender, _ := newDeviceWorkHandler(t)
+	message := handOffWithFlow(t, handler, sender, &youtubePlaybackFlow{})
+	body := bodyOf(t, message)
+	if body["kind"] != "youtube_play" || body["handle"] != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" {
+		t.Fatalf("the YouTube action lost its exact target: %v", body)
+	}
+
+	if err := handler.Handle(context.Background(), sender, decode(t, answerFrame("handed_to_the_app"))); err != nil {
+		t.Fatal(err)
+	}
+	result := bodyOf(t, awaitSentMessage(t, sender.sent))
+	if result["ceiling"] != "completes" || result["done"] != true || result["detail"] != "Opened the selected video in YouTube." {
+		t.Fatalf("the YouTube acknowledgement was reported incorrectly: %v", result)
+	}
+}
+
 func TestEveryWayAReplyCanMissComesBackAsNotDone(t *testing.T) {
 	// Three ways to not send, each with its own sentence. They share done=false
 	// because none of them put anything in anybody's chat — this is the half of
@@ -198,7 +233,7 @@ func TestEveryWayAReplyCanMissComesBackAsNotDone(t *testing.T) {
 		// the Mac inventing a fact, which is the thing this whole round is about.
 		// What is true either way is that nothing was sent and the app still can.
 		"refused": "Nothing was sent — this one has to be replied to in its own app.",
-		"failed":            "The reply didn't go through.",
+		"failed":  "The reply didn't go through.",
 	} {
 		t.Run(outcome, func(t *testing.T) {
 			handler, sender, _ := newDeviceWorkHandler(t)

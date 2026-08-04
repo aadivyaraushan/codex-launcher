@@ -51,6 +51,21 @@ class DeviceActionContractTest {
     }
 
     @Test
+    fun `the phone accepts an exact youtube video the mac asked it to play`() {
+        val message =
+            ProtocolCodec.decodeText(
+                wellFormedAction(
+                    kind = "youtube_play",
+                    handle = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                    text = "Never Gonna Give You Up",
+                ),
+            )
+
+        assertEquals(MessageType.DEVICE_ACTION, message.type)
+        assertEquals(Sender.COMPANION, message.sender)
+    }
+
+    @Test
     fun `the phone can report every way a reply can end`() {
         // Four answers, because the phone can tell these four apart and the Mac
         // needs all four. "notification_gone" is not a failure anybody caused
