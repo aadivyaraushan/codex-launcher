@@ -142,26 +142,41 @@ class LiveAutoSendInjectTest {
         // that contain the substring "Open" (e.g. "Open Google Play account setup").
         compose.waitUntil(timeoutMillis = 120_000) {
             try {
-                compose.onNodeWithText("Handed off", substring = true).assertIsDisplayed()
+                compose.onNodeWithText("Open in YouTube").assertIsDisplayed()
                 true
             } catch (_: AssertionError) {
                 try {
-                    compose.onNodeWithText("Open Google Maps").assertIsDisplayed()
+                    compose.onNodeWithText("Handed off", substring = true).assertIsDisplayed()
                     true
                 } catch (_: AssertionError) {
                     try {
-                        compose.onNodeWithText("Prepare an", substring = true).assertIsDisplayed()
+                        compose.onNodeWithText("Open Google Maps").assertIsDisplayed()
                         true
                     } catch (_: AssertionError) {
                         try {
-                            compose.onNodeWithText("googlemaps", substring = true, ignoreCase = true).assertIsDisplayed()
+                            compose.onNodeWithText("Prepare an", substring = true).assertIsDisplayed()
                             true
                         } catch (_: AssertionError) {
-                            false
+                            try {
+                                compose.onNodeWithText("googlemaps", substring = true, ignoreCase = true).assertIsDisplayed()
+                                true
+                            } catch (_: AssertionError) {
+                                false
+                            }
                         }
                     }
                 }
             }
+        }
+        try {
+            compose.onNodeWithText("Open in YouTube").performClick()
+            compose.waitUntil(timeoutMillis = 60_000) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow?.packageName?.toString() ==
+                    "com.google.android.youtube"
+            }
+            return
+        } catch (_: AssertionError) {
+            // This is another app's existing Auto→Open smoke.
         }
         try {
             compose.onNodeWithText("Open Google Maps").performClick()
