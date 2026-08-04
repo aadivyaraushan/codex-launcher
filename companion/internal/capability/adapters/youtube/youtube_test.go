@@ -125,8 +125,8 @@ func TestPlayResolvesAndHandsTheExactVideoToThePixel(t *testing.T) {
 	if deviceWork.Handle != plan.Details["watch_url"] || deviceWork.Text != plan.Details["title"] {
 		t.Fatalf("device work lost the selected video: %+v", deviceWork)
 	}
-	if deviceWork.Ceiling != manifest.Completes {
-		t.Fatalf("device work ceiling = %q, want completes", deviceWork.Ceiling)
+	if deviceWork.Ceiling != manifest.HandsOff {
+		t.Fatalf("device work ceiling = %q, want hands_off until Android verifies playback", deviceWork.Ceiling)
 	}
 }
 

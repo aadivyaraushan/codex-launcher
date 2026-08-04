@@ -8,6 +8,7 @@ import (
 	"time"
 
 	capabilityadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/contract"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
@@ -59,7 +60,7 @@ func (f *youtubePlaybackFlow) Confirm(_ context.Context, _, _, _ string) (capabi
 		Kind:      "youtube_play",
 		Handle:    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
 		Text:      "Never Gonna Give You Up",
-		Ceiling:   "completes",
+		Ceiling:   manifest.HandsOff,
 	}
 }
 
@@ -214,7 +215,7 @@ func TestAYouTubePlaybackThatOpenedNamesTheSelectedVideoRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := bodyOf(t, awaitSentMessage(t, sender.sent))
-	if result["ceiling"] != "completes" || result["done"] != true || result["detail"] != "Opened the selected video in YouTube." {
+	if result["ceiling"] != "hands_off" || result["done"] != false || result["detail"] != "Opened the selected video in YouTube; playback was not verified." {
 		t.Fatalf("the YouTube acknowledgement was reported incorrectly: %v", result)
 	}
 }

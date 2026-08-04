@@ -1113,7 +1113,7 @@ func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender tra
 	switch body.Outcome {
 	case "handed_to_the_app":
 		if record.Kind == "youtube_play" {
-			done, detail = true, "Opened the selected video in YouTube."
+			done, detail = false, "Opened the selected video in YouTube; playback was not verified."
 		} else {
 			done, detail = true, "Handed to the app — we can't see whether it reached them."
 		}

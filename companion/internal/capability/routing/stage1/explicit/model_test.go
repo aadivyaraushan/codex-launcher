@@ -34,6 +34,34 @@ func TestAnExplicitYouTubePlayRequestRoutesWithoutACloudKey(t *testing.T) {
 	}
 }
 
+func TestWordsInAYouTubeTitleDoNotBecomeExtraCommands(t *testing.T) {
+	model := testModel(Rule{ID: "youtube", Name: "YouTube", AppClass: "media", Verbs: []manifest.Verb{manifest.Play, manifest.Read}})
+
+	for _, title := range []string{"Read My Mind", "Show Me How", "Watch Me"} {
+		t.Run(title, func(t *testing.T) {
+			raw, err := model.Route(context.Background(), "Play "+title+" on YouTube")
+			if err != nil {
+				t.Fatal(err)
+			}
+			route, err := stage1.ParseRoute(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if route.Verb != manifest.Play || route.Subject != title {
+				t.Fatalf("route = %+v", route)
+			}
+		})
+	}
+}
+
+func TestSeparateConflictingCommandsAreStillRefused(t *testing.T) {
+	model := testModel(Rule{ID: "youtube", Name: "YouTube", AppClass: "media", Verbs: []manifest.Verb{manifest.Play, manifest.Read}})
+
+	if _, err := model.Route(context.Background(), "Search and then play Never Gonna Give You Up on YouTube"); !errors.Is(err, ErrVerbUnclear) {
+		t.Fatalf("conflicting command error = %v", err)
+	}
+}
+
 func TestTheLongestExplicitAppNameWins(t *testing.T) {
 	model := testModel(
 		Rule{ID: "youtube", Name: "YouTube", AppClass: "media", Verbs: []manifest.Verb{manifest.Play}},

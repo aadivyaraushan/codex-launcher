@@ -150,7 +150,7 @@ func (a *Adapter) Execute(_ context.Context, plan adapter.Plan) (adapter.Outcome
 			Kind:      "youtube_play",
 			Handle:    watchURL,
 			Text:      plan.Details["title"],
-			Ceiling:   manifest.Completes,
+			Ceiling:   manifest.HandsOff,
 		}
 	default:
 		return adapter.Outcome{}, fmt.Errorf("youtube: verb %q is not supported", plan.Verb)

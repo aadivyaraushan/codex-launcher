@@ -27,9 +27,10 @@ ACTION_VIEW exact URL in com.google.android.youtube
         |
         v
 phone acknowledgement -> capability result
+"opened exact video; playback not verified"
         |
         v
-Pixel media session is PLAYING with video metadata
+separate Pixel proof: media session is PLAYING with video metadata
 ```
 
 ## Observable done
@@ -67,8 +68,11 @@ Pixel media session is PLAYING with video metadata
 
 - Exact URL route: committed in `88af8dc`; selected `watch_url` becomes a non-replayed `youtube_play` device action and Android opens that URL with `ACTION_VIEW` in `com.google.android.youtube`.
 - Router: committed in `0bfaa05`; an explicit named-app request routes locally when no OpenAI key is configured.
+- Title parsing: a 2026-08-04 follow-up keeps command-like title words such as `Read`, `Show`, and `Watch` in the video query while still refusing a separate `search and then play` instruction.
+- Honest outcome: opening the exact URL now reports `hands_off`, `done=false`, and `Opened the selected video in YouTube; playback was not verified.` The stronger playback claim remains gated on the separate Pixel observation below.
 - Background startup: committed in `301c615`; Keychain UI is disabled for the LaunchAgent, preventing rebuilds from opening repeated credential dialogs. The authorized Operator-project YouTube key is supplied only through launchd memory.
-- Installed service: replacement completed at 2026-08-04 22:40:37; logs show `source=explicit_app`, YouTube credential `source=environment`, 78 capabilities registered, and the paired Pixel authenticated.
-- Green checks: full companion `go test ./...`; Android unit tests, lint, and assembly; protocol 45 valid plus 45 invalid-rejection cases; Node release checks 23/23.
+- Credential rotation: the previously exposed key and an unused intermediate replacement were deleted. Active resource `b3b0d7a1-008a-443c-9b36-780a1265280f` is restricted to `youtube.googleapis.com`; its secret value is not recorded here.
+- Installed service: the native replacement started as PID 5856 at 2026-08-04 23:04:07. Logs show silent Keychain denials instead of dialogs, `source=explicit_app`, YouTube credential `source=environment`, 78 capabilities registered, and mobile transport ready.
+- Green checks: full companion `go test ./...` after the title and honesty fixes; Android unit tests, lint, and assembly; protocol 45 valid plus 45 invalid-rejection cases; Node release checks 23/23.
 - Live driver: commits `9cebbb3` and `312fe64` recognize `Open in YouTube`, confirm it, require the YouTube package to become foreground, and wait safely for an unlocked Compose hierarchy.
 - Not yet proved: the Pixel is currently at `AlternateBouncerView`. Two targeted runs sent nothing because the secure lock remained. Do not mark playback complete until the normal preview is confirmed and `dumpsys media_session` shows YouTube `PLAYING` with matching metadata.

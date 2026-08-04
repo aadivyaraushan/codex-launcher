@@ -125,11 +125,15 @@ func chooseVerb(words []word, allowed []manifest.Verb) (manifest.Verb, *verbMatc
 		if !known {
 			continue
 		}
-		if !allowedSet[verb] || (selected != nil && selected.verb != verb) {
-			return "", nil, ErrVerbUnclear
-		}
 		if selected == nil {
+			if !allowedSet[verb] {
+				return "", nil, ErrVerbUnclear
+			}
 			selected = &verbMatch{verb: verb, index: index}
+			continue
+		}
+		if selected.verb != verb && startsAnotherCommand(words, index) {
+			return "", nil, ErrVerbUnclear
 		}
 	}
 	if selected != nil {
@@ -139,6 +143,18 @@ func chooseVerb(words []word, allowed []manifest.Verb) (manifest.Verb, *verbMatc
 		return allowed[0], nil, nil
 	}
 	return "", nil, ErrVerbUnclear
+}
+
+func startsAnotherCommand(words []word, index int) bool {
+	if index == 0 {
+		return false
+	}
+	switch words[index-1].lower {
+	case "and", "then", "or", "also":
+		return true
+	default:
+		return false
+	}
 }
 
 func routeSubject(words []word, app appMatch, verb *verbMatch) string {
