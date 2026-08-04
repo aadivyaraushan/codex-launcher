@@ -23,6 +23,7 @@ import org.junit.Test
 /**
  * Opt-in physical Auto→Open helper. Run only with:
  * `-e promptB64 <base64(utf8 prompt)>`
+ * Add `-e expectedAppPackage com.google.android.youtube` for strict YouTube proof.
  * Never logs the decoded prompt.
  *
  * Gate facts (pre-create):
@@ -64,6 +65,8 @@ class LiveAutoSendInjectTest {
         assumeTrue("promptB64 instrumentation arg required", encoded.isNotEmpty())
         val prompt = String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
         assumeTrue("decoded prompt must be non-blank", prompt.isNotBlank())
+        val expectedAppPackage =
+            InstrumentationRegistry.getArguments().getString("expectedAppPackage").orEmpty().trim()
 
         // Home Send stays disabled until session snapshot + project + draft version exist.
         compose.waitUntil(timeoutMillis = 60_000) {
@@ -141,45 +144,50 @@ class LiveAutoSendInjectTest {
         }
         compose.onNodeWithContentDescription("Send prompt using Auto").performScrollTo().performClick()
 
+        if (expectedAppPackage.isNotEmpty()) {
+            require(expectedAppPackage == "com.google.android.youtube") {
+                "unsupported strict live-proof package"
+            }
+            compose.waitUntil(timeoutMillis = 120_000) {
+                try {
+                    compose.onNodeWithText("Open in YouTube").assertIsDisplayed()
+                    true
+                } catch (_: AssertionError) {
+                    false
+                }
+            }
+            compose.onNodeWithText("Open in YouTube").performClick()
+            compose.waitUntil(timeoutMillis = 60_000) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow?.packageName?.toString() ==
+                    expectedAppPackage
+            }
+            return
+        }
+
         // Prefer exact capability preview/result copy — avoid matching unrelated task titles
         // that contain the substring "Open" (e.g. "Open Google Play account setup").
         compose.waitUntil(timeoutMillis = 120_000) {
             try {
-                compose.onNodeWithText("Open in YouTube").assertIsDisplayed()
+                compose.onNodeWithText("Handed off", substring = true).assertIsDisplayed()
                 true
             } catch (_: AssertionError) {
                 try {
-                    compose.onNodeWithText("Handed off", substring = true).assertIsDisplayed()
+                    compose.onNodeWithText("Open Google Maps").assertIsDisplayed()
                     true
                 } catch (_: AssertionError) {
                     try {
-                        compose.onNodeWithText("Open Google Maps").assertIsDisplayed()
+                        compose.onNodeWithText("Prepare an", substring = true).assertIsDisplayed()
                         true
                     } catch (_: AssertionError) {
                         try {
-                            compose.onNodeWithText("Prepare an", substring = true).assertIsDisplayed()
+                            compose.onNodeWithText("googlemaps", substring = true, ignoreCase = true).assertIsDisplayed()
                             true
                         } catch (_: AssertionError) {
-                            try {
-                                compose.onNodeWithText("googlemaps", substring = true, ignoreCase = true).assertIsDisplayed()
-                                true
-                            } catch (_: AssertionError) {
-                                false
-                            }
+                            false
                         }
                     }
                 }
             }
-        }
-        try {
-            compose.onNodeWithText("Open in YouTube").performClick()
-            compose.waitUntil(timeoutMillis = 60_000) {
-                InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow?.packageName?.toString() ==
-                    "com.google.android.youtube"
-            }
-            return
-        } catch (_: AssertionError) {
-            // This is another app's existing Auto→Open smoke.
         }
         try {
             compose.onNodeWithText("Open Google Maps").performClick()
