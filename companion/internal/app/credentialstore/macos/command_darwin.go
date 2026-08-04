@@ -10,6 +10,10 @@ package macos
 #include <Security/Security.h>
 #include <stdlib.h>
 
+static OSStatus operator_keychain_disable_interaction(void) {
+  return SecKeychainSetUserInteractionAllowed(0);
+}
+
 static OSStatus operator_keychain_put(
     const char *service, UInt32 service_length,
     const char *account, UInt32 account_length,
@@ -64,6 +68,10 @@ import (
 	"unsafe"
 )
 
+var ErrInteractionNotAllowed = errors.New("native keychain interaction is disabled")
+
+var statusInteractionNotAllowed = int32(C.errSecInteractionNotAllowed)
+
 // Command implements the narrow security-command contract expected by the
 // parent package without starting a subprocess or opening a terminal prompt.
 type Command struct{}
@@ -74,6 +82,9 @@ func (Command) Run(ctx context.Context, input string, args ...string) ([]byte, e
 	}
 	if len(args) == 0 {
 		return nil, errors.New("native keychain: operation is required")
+	}
+	if err := statusError("disable interaction", int32(C.operator_keychain_disable_interaction())); err != nil {
+		return nil, err
 	}
 	service, account, err := identifiers(args)
 	if err != nil {
@@ -95,7 +106,7 @@ func (Command) Run(ctx context.Context, input string, args ...string) ([]byte, e
 			svc, C.UInt32(len(service)), acct, C.UInt32(len(account)),
 			unsafe.Pointer(&secret[0]), C.UInt32(len(secret)),
 		)
-		return nil, statusError("store", status)
+		return nil, statusError("store", int32(status))
 	case "find-generic-password":
 		var secretLength C.UInt32
 		var secret unsafe.Pointer
@@ -103,7 +114,7 @@ func (Command) Run(ctx context.Context, input string, args ...string) ([]byte, e
 			svc, C.UInt32(len(service)), acct, C.UInt32(len(account)),
 			&secretLength, &secret,
 		)
-		if err := statusError("load", status); err != nil {
+		if err := statusError("load", int32(status)); err != nil {
 			return nil, err
 		}
 		defer C.SecKeychainItemFreeContent(nil, secret)
@@ -112,7 +123,7 @@ func (Command) Run(ctx context.Context, input string, args ...string) ([]byte, e
 		status := C.operator_keychain_delete(
 			svc, C.UInt32(len(service)), acct, C.UInt32(len(account)),
 		)
-		return nil, statusError("delete", status)
+		return nil, statusError("delete", int32(status))
 	default:
 		return nil, fmt.Errorf("native keychain: unsupported operation %q", args[0])
 	}
@@ -134,12 +145,15 @@ func identifiers(args []string) (string, string, error) {
 	return service, account, nil
 }
 
-func statusError(operation string, status C.OSStatus) error {
-	if status == C.errSecSuccess {
+func statusError(operation string, status int32) error {
+	if status == int32(C.errSecSuccess) {
 		return nil
 	}
-	if status == C.errSecItemNotFound {
+	if status == int32(C.errSecItemNotFound) {
 		return fmt.Errorf("native keychain %s: the specified item could not be found", operation)
 	}
-	return fmt.Errorf("native keychain %s failed with status %d", operation, int32(status))
+	if status == statusInteractionNotAllowed {
+		return fmt.Errorf("native keychain %s: %w", operation, ErrInteractionNotAllowed)
+	}
+	return fmt.Errorf("native keychain %s failed with status %d", operation, status)
 }
