@@ -13,10 +13,13 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/credentialstore"
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	beepermessage "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/beepermessage"
+	deeplinkadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/deeplink"
 	notionadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/notion"
 	youtubeadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/youtube"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/killswitch"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/messaging/beeper"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1"
+	stage1explicit "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/explicit"
 	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
 	capabilityruntime "github.com/codex-launcher/codex-launcher/companion/internal/capability/runtime"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/verification/alerts"
@@ -67,10 +70,11 @@ func startProductionCapabilityFlow(ctx context.Context, output io.Writer) (mobil
 		return nil, fmt.Errorf("production capability flow: load durable disconnects: %w", err)
 	}
 	oauthConnections := loadProductionOAuth(ctx, secrets, logger)
-	router, err := stage1openai.New(stage1openai.Config{APIKey: os.Getenv("OPENAI_API_KEY"), Logger: logger})
+	routingModel, routingSource, err := productionRoutingModel(logger)
 	if err != nil {
 		return nil, fmt.Errorf("production capability flow: stage 1 router: %w", err)
 	}
+	logger.Info("[production-serve] stage 1 router ready", "source", routingSource)
 	var connectedNotion *notionadapter.Adapter
 	if oauthConnections.Notion != nil {
 		candidate, buildErr := notionadapter.New(oauthConnections.Notion)
@@ -96,7 +100,7 @@ func startProductionCapabilityFlow(ctx context.Context, output io.Writer) (mobil
 		logger.Info("[production-serve] Beeper messaging unavailable", "token_present", beeperToken != "", "read_only", beeperReadOnly)
 	}
 	service, inventory, err := capabilityruntime.NewProduction(capabilityruntime.ProductionConfig{
-		Model:             router.Model,
+		Model:             routingModel,
 		Logger:            logger,
 		MapsAPIKey:        os.Getenv("GOOGLE_MAPS_API_KEY"),
 		YouTubeAPIKey:     productionSecret(ctx, os.Getenv("YOUTUBE_API_KEY"), "youtube_api_key", secrets, logger),
@@ -123,6 +127,23 @@ func startProductionCapabilityFlow(ctx context.Context, output io.Writer) (mobil
 	startAlertWatcher(ctx, inventory, logger)
 
 	return service, nil
+}
+
+func productionRoutingModel(logger *slog.Logger) (stage1.ModelFunc, string, error) {
+	if strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "" {
+		client, err := stage1openai.New(stage1openai.Config{APIKey: os.Getenv("OPENAI_API_KEY"), Logger: logger})
+		if err != nil {
+			return nil, "", err
+		}
+		return client.Model, "openai", nil
+	}
+	specs := deeplinkadapter.Wave1Specs()
+	rules := make([]stage1explicit.Rule, 0, len(specs))
+	for _, spec := range specs {
+		rules = append(rules, stage1explicit.Rule{ID: spec.ID, Name: spec.AppName, AppClass: spec.AppClass, Verbs: spec.Verbs})
+	}
+	model := stage1explicit.New(rules, logger)
+	return model.Route, "explicit_app", nil
 }
 
 type secretReader interface {

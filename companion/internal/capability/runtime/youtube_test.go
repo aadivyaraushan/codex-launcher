@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -26,7 +27,7 @@ func (f *fakeYouTubeAPI) Search(_ context.Context, query string) ([]youtubeadapt
 
 func TestYouTubeFlowOpensAVideoThroughTheProductionRouter(t *testing.T) {
 	api := &fakeYouTubeAPI{videos: []youtubeadapter.Video{
-		{ID: "v-1", Title: "Bicycle Repair Basics", ChannelTitle: "Park Tool"},
+		{ID: "dQw4w9WgXcQ", Title: "Bicycle Repair Basics", ChannelTitle: "Park Tool"},
 	}}
 	service, err := NewYouTube(YouTubeConfig{
 		API: api,
@@ -52,16 +53,15 @@ func TestYouTubeFlowOpensAVideoThroughTheProductionRouter(t *testing.T) {
 	}
 
 	outcome, err := service.Confirm(context.Background(), "pixel/session/1", "request-1", preview.Fingerprint)
-	if err != nil {
-		t.Fatalf("Confirm: %v", err)
+	var deviceWork *capabilityadapter.DeviceWorkError
+	if !errors.As(err, &deviceWork) {
+		t.Fatalf("Confirm error = %v, want DeviceWorkError", err)
 	}
-	// The whole adapter ships hands_off, so the production stack must report
-	// hands_off however confident the adapter's own code is.
-	// The whole adapter ships hands_off, so the production stack reports
-	// hands_off however confident the adapter's own code is. It is still
-	// done: Operator opened the video and its part is over.
-	if !outcome.Done || outcome.Reached != manifest.HandsOff {
-		t.Fatalf("outcome=%+v, want hands_off and done", outcome)
+	if deviceWork.Kind != "youtube_play" || deviceWork.Handle != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" || deviceWork.Text != "Bicycle Repair Basics" {
+		t.Fatalf("device work = %+v", deviceWork)
+	}
+	if outcome != (capabilityadapter.Outcome{}) {
+		t.Fatalf("outcome=%+v, want zero outcome before phone playback", outcome)
 	}
 	if len(api.queries) != 1 {
 		t.Fatalf("search calls=%d, want 1 at resolve", len(api.queries))
