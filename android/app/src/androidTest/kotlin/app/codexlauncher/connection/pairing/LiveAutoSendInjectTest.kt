@@ -72,6 +72,9 @@ class LiveAutoSendInjectTest {
                 true
             } catch (_: AssertionError) {
                 false
+            } catch (_: IllegalStateException) {
+                // The activity exists behind a secure keyguard but has no Compose hierarchy yet.
+                false
             }
         }
 
