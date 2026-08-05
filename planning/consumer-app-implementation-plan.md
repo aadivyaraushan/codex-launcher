@@ -1,5 +1,16 @@
 # Consumer app implementation — building all of it
 
+> ### DEMOTION 2026-08-05 — Android-only finish plan is now the authority
+>
+> **Do not treat the 2026-08-04 Mac-companion COMPLETE rows below as production
+> truth.** Scope authority is
+> [finish-consumer-and-messaging-plan.md](finish-consumer-and-messaging-plan.md):
+> production must work with the Mac shut down, credentials on Android, and
+> Beeper on the phone-local Linux runtime. Until that plan’s Waves 0–4 exit
+> criteria pass with evidence, treat Mac Keychain / paired-computer Beeper /
+> Pixel-only “COMPLETE” language in this file as historical notes only.
+
+
 > ### EXECUTION UPDATE 2026-08-04 — this block is the current status
 >
 > **Approved implementation slice: working and verified. The whole multi-wave

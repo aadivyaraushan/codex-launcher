@@ -1,0 +1,20 @@
+{
+  "service": "slack",
+  "verb": "send+readback",
+  "marker": "OP-SLACK-20260805T225059Z",
+  "channel_id": "C0BK1RZJVPX",
+  "channel_name": "social",
+  "ts": "1785970260.935869",
+  "post_ok": true,
+  "history_ok": false,
+  "history_error": "missing_scope",
+  "history_matched": false,
+  "permalink_ok": true,
+  "permalink_error": null,
+  "permalink_present": true,
+  "post_message_text_matched": true,
+  "team": "aadivya's agents",
+  "user": "ssdear",
+  "ok": true,
+  "readback": "postMessage.message+chat.getPermalink"
+}

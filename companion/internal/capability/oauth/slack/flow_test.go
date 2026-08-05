@@ -185,19 +185,39 @@ func TestStartRequiresConfiguredCredentials(t *testing.T) {
 	}
 }
 
-// Callers of Flow.Start: proving/slack.Authorize, live probe test, unit tests.
-// Affected API: Start must reject non-https redirectURI (Slack docs). No new schema.
-// User: follow-up on Slack judge — enforce HTTPS in Flow.Start.
-func TestStartRejectsHTTPRedirectURI(t *testing.T) {
+// Callers of Flow.Start: proving/slack.Authorize, serve-slack-proof, live probe, unit tests.
+// Affected API: Start accepts http://127.0.0.1|localhost redirect; rejects non-loopback http. No schema.
+// User: "Change Slack OAuth redirect to http://127.0.0.1:PORT/oauth/slack/callback (or http://localhost) so no cert warning"
+func TestStartAcceptsHTTPLoopbackRedirectURI(t *testing.T) {
 	flow := New(Config{
 		ClientID: "slack-client-id", ClientSecret: "slack-client-secret",
 		AuthorizeURL: "https://slack.test/oauth/v2_user/authorize",
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		RandomBytes:  bytes.NewReader(bytes.Repeat([]byte{5}, 64)),
 	})
-	_, err := flow.Start(context.Background(), "http://127.0.0.1:9192/oauth/slack/callback", []manifest.Verb{manifest.Read})
-	if !errors.Is(err, ErrHTTPSRequired) {
-		t.Fatalf("err=%v, want ErrHTTPSRequired", err)
+	auth, err := flow.Start(context.Background(), "http://127.0.0.1:9192/oauth/slack/callback", []manifest.Verb{manifest.Read})
+	if err != nil {
+		t.Fatalf("Start http loopback: %v", err)
+	}
+	parsed, err := url.Parse(auth.URL)
+	if err != nil {
+		t.Fatalf("parse authorize URL: %v", err)
+	}
+	if got := parsed.Query().Get("redirect_uri"); got != "http://127.0.0.1:9192/oauth/slack/callback" {
+		t.Fatalf("redirect_uri=%q", got)
+	}
+}
+
+func TestStartRejectsNonLoopbackHTTPRedirectURI(t *testing.T) {
+	flow := New(Config{
+		ClientID: "slack-client-id", ClientSecret: "slack-client-secret",
+		AuthorizeURL: "https://slack.test/oauth/v2_user/authorize",
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		RandomBytes:  bytes.NewReader(bytes.Repeat([]byte{5}, 64)),
+	})
+	_, err := flow.Start(context.Background(), "http://example.com/oauth/slack/callback", []manifest.Verb{manifest.Read})
+	if !errors.Is(err, ErrInvalidRedirectURI) {
+		t.Fatalf("err=%v, want ErrInvalidRedirectURI", err)
 	}
 }
 
@@ -208,8 +228,8 @@ func TestLiveOAuthStartAgainstSlackWhenEnvPresent(t *testing.T) {
 	if clientID == "" || clientSecret == "" || redirect == "" {
 		t.Skip("live Slack credentials not present in env")
 	}
-	if !strings.HasPrefix(redirect, "https://") {
-		t.Fatalf("Slack redirect must be https, got %q", redirect)
+	if !strings.HasPrefix(redirect, "https://") && !strings.HasPrefix(redirect, "http://127.0.0.1") && !strings.HasPrefix(redirect, "http://localhost") {
+		t.Fatalf("Slack redirect must be https or http loopback, got %q", redirect)
 	}
 	flow := New(Config{
 		ClientID: clientID, ClientSecret: clientSecret,

@@ -1,0 +1,7 @@
+4:[1] Reuse the fresh Notion workspace connection from macOS Keychain
+8:    measured ceiling: completes
+11:    tools measured; ceiling=completes
+12:    write done under Operator; marker=OP-NOTION-20260805T224322Z page_id=3b3e6004-5e9f-812d-bf5b-d8749a887296
+13:    read matched marker; page_id_present=true
+15:VERDICT: Notion live write+read under Operator container proven (marker matched)
+17:VERDICT: Notion OAuth, hosted MCP connect, and Operator-container write+read completed

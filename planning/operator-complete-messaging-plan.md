@@ -1,5 +1,15 @@
 # Operator complete messaging — Beeper Server on phone Linux
 
+> ### DEMOTION 2026-08-05 — phone-local Beeper is required for production
+>
+> **Paired-Mac Beeper proofs below are not a production pass.** Authority is
+> [finish-consumer-and-messaging-plan.md](finish-consumer-and-messaging-plan.md).
+> Production messaging must use the phone-local Beeper Server under Termux/
+> proot Debian; a Mac Desktop API route must not remain the accepted finish
+> line. Until Wave 2 exit on that plan passes with on-phone evidence, treat
+> the 2026-08-04 Mac live proofs as historical only.
+
+
 > ### EXECUTION UPDATE 2026-08-04 — this block is the active route and status
 >
 > The earlier phone-Linux failure is not the current product result. The owner

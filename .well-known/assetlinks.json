@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.codexlauncher",
+      "sha256_cert_fingerprints": [
+        "C6:13:E6:60:7C:40:40:42:E6:91:35:17:27:86:38:94:6B:29:C1:8D:C1:CD:81:E9:2C:9D:36:99:A5:80:C2:5D"
+      ]
+    }
+  }
+]

@@ -1,0 +1,6 @@
+channel=#social (C0BK1RZJVPX)
+marker=OP-SLACK-20260805T225059Z
+ts=1785970260.935869
+ok=True
+readback=postMessage.message+chat.getPermalink
+history_error=missing_scope

@@ -1,0 +1,1 @@
+{"ok":false,"error":"missing_scope","needed":"channels:history,groups:history,mpim:history,im:history","provided":"identify,channels:read,groups:read,chat:write"}

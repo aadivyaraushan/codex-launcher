@@ -261,6 +261,26 @@ func TestSeveralPagesWithSimilarNamesIsAnAskNotAPick(t *testing.T) {
 	}
 }
 
+func TestExactTitleAmongFuzzySearchHitsIsNotAmbiguous(t *testing.T) {
+	// Callers: resolveRead / live write→search→fetch proof.
+	// Affected API: notion-search may return fuzzy neighbors; exact title wins.
+	// User: "Run live Notion read/write proof per plan with durable evidence."
+	s := newSession(fullToolset()...)
+	s.replies[ToolSearch] = json.RawMessage(
+		`{"results":[{"id":"near","title":"OP-NOTION-old"},{"id":"exact","title":"OP-NOTION-20260805T222820Z"},{"id":"other","title":"OP notes"}]}`)
+	a := connected(t, s)
+
+	plan, err := a.Resolve(context.Background(), adapter.Intent{
+		AdapterID: ID, Verb: manifest.Read, Subject: "OP-NOTION-20260805T222820Z",
+	})
+	if err != nil {
+		t.Fatalf("exact title should resolve: %v", err)
+	}
+	if plan.Details["page_id"] != "exact" {
+		t.Fatalf("page_id = %q, want exact", plan.Details["page_id"])
+	}
+}
+
 // ---- writes go only where the adapter itself made room ------------------
 
 func TestAnUnattendedWriteGoesIntoTheAdaptersOwnPage(t *testing.T) {
@@ -280,13 +300,70 @@ func TestAnUnattendedWriteGoesIntoTheAdaptersOwnPage(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 
-	c, ok := s.lastCall(ToolCreatePages)
-	if !ok {
-		t.Fatal("nothing was written")
+	// Callers: Adapter.Execute write path / proveNotionReadWrite.
+	// Affected API: Notion MCP notion-create-pages (parent + pages[]).
+	// Schema: pages[].properties.title, pages[].content; reply pages[].id.
+	// User: "Run live Notion read/write proof per plan with durable evidence."
+	var writeCall call
+	var found bool
+	for _, c := range s.calls {
+		if c.tool != ToolCreatePages {
+			continue
+		}
+		parent, _ := c.args["parent"].(map[string]any)
+		if parent != nil && parent["page_id"] == "own-page" {
+			writeCall = c
+			found = true
+		}
 	}
-	parent, _ := c.args["parent"].(map[string]any)
-	if parent == nil || parent["page_id"] != "own-page" {
-		t.Errorf("the write landed under %v, not under the adapter's own page", c.args["parent"])
+	if !found {
+		t.Fatal("nothing was written under the adapter's own page")
+	}
+	pages, ok := writeCall.args["pages"].([]map[string]any)
+	if !ok || len(pages) != 1 {
+		t.Fatalf("create-pages pages = %#v, want one page object", writeCall.args["pages"])
+	}
+	props, _ := pages[0]["properties"].(map[string]any)
+	if props["title"] != "verification" {
+		t.Errorf("write title = %v, want verification", props["title"])
+	}
+	if pages[0]["content"] != "nightly check ok" {
+		t.Errorf("write content = %v", pages[0]["content"])
+	}
+}
+
+func TestWriteOutcomeNamesTheCreatedPageID(t *testing.T) {
+	// Callers: proveNotionReadWrite fetches by page_id (search index lag).
+	// User: "Run live Notion read/write proof per plan with durable evidence."
+	s := newSession(fullToolset()...)
+	s.replies[ToolSearch] = json.RawMessage(`{"results":[{"id":"own-page","title":"` + ContainerTitle + `"}]}`)
+	s.replies[ToolCreatePages] = json.RawMessage(`{"pages":[{"id":"child-1","title":"verification"}]}`)
+	a := connected(t, s)
+	ctx := context.Background()
+	plan, err := a.Resolve(ctx, adapter.Intent{
+		AdapterID: ID, Verb: manifest.Write, Subject: "verification", Body: "nightly check ok",
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	out, err := a.Execute(ctx, plan)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(out.Detail, "page_id=child-1") {
+		t.Fatalf("write detail missing page_id: %q", out.Detail)
+	}
+}
+
+func TestParseCreatedPageAcceptsPagesArrayReply(t *testing.T) {
+	page, err := parseCreatedPage(json.RawMessage(
+		`[{"type":"text","text":"{\"pages\":[{\"id\":\"pg-1\",\"url\":\"https://notion.so/p/pg-1\",\"properties\":{\"title\":\"Operator\"}}]}"}]`,
+	))
+	if err != nil {
+		t.Fatalf("parseCreatedPage: %v", err)
+	}
+	if page.ID != "pg-1" {
+		t.Errorf("id = %q, want pg-1", page.ID)
 	}
 }
 
@@ -339,6 +416,9 @@ func TestThePreviewNamesThePageAndTheTextBeforeAnythingIsWritten(t *testing.T) {
 }
 
 func TestAReadReportsWhatItRead(t *testing.T) {
+	// Callers: executeRead. Notion MCP notion-fetch takes `id` (not page_id).
+	// Docs: developers.notion.com/guides/mcp (2026-08-06).
+	// User: "Run live Notion read/write proof per plan with durable evidence."
 	s := newSession(fullToolset()...)
 	s.replies[ToolSearch] = searchHit("page-123", "Weekly meeting notes")
 	s.replies[ToolFetch] = json.RawMessage(`{"id":"page-123","content":"ship Wave 0 on Friday"}`)
@@ -355,6 +435,32 @@ func TestAReadReportsWhatItRead(t *testing.T) {
 	}
 	if !strings.Contains(out.Detail, "ship Wave 0 on Friday") {
 		t.Errorf("the outcome does not carry what was read: %q", out.Detail)
+	}
+	c, ok := s.lastCall(ToolFetch)
+	if !ok {
+		t.Fatal("fetch was not called")
+	}
+	if c.args["id"] != "page-123" {
+		t.Fatalf("fetch args = %#v, want id=page-123", c.args)
+	}
+	if _, has := c.args["page_id"]; has {
+		t.Fatalf("fetch still sends page_id: %#v", c.args)
+	}
+}
+
+func TestParseFetchedPageAcceptsLiveTextTitleShape(t *testing.T) {
+	// Live MCP returns title+text (not content). Captured 2026-08-05.
+	page, err := parseFetchedPage(json.RawMessage(
+		`[{"type":"text","text":"{\"metadata\":{\"type\":\"page\"},\"title\":\"OP-NOTION-X\",\"url\":\"https://app.notion.com/p/x\",\"text\":\"<content>\\nOP-NOTION-X live proof\\n</content>\"}"}]`,
+	))
+	if err != nil {
+		t.Fatalf("parseFetchedPage: %v", err)
+	}
+	if !strings.Contains(page.Content, "OP-NOTION-X live proof") {
+		t.Fatalf("content = %q", page.Content)
+	}
+	if page.Title != "OP-NOTION-X" {
+		t.Fatalf("title = %q", page.Title)
 	}
 }
 

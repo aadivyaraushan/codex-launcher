@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -30,6 +31,14 @@ func runNotion(args []string) error {
 	reauthorize := fs.Bool("reauthorize", false, "ignore a fresh stored connection and run browser OAuth again")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	// Escape hatch when Keychain ACL is apple-tool-only / -25293: pass a token
+	// already obtained (never invent). Callers: live proof after security -w export.
+	if tok := strings.TrimSpace(os.Getenv("OPERATOR_NOTION_ACCESS_TOKEN")); tok != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		step(1, "Use OPERATOR_NOTION_ACCESS_TOKEN (Keychain ACL bypass for this run)")
+		return measureNotionConnection(ctx, tok)
 	}
 	parsed, err := url.Parse(*redirectURI)
 	if err != nil || parsed.Scheme != "http" || parsed.Hostname() != "127.0.0.1" {
@@ -126,6 +135,7 @@ func runNotion(args []string) error {
 	return measureNotionConnection(ctx, tokenSet.AccessToken)
 }
 
+// Callers: runNotion after Keychain load or OAuth callback. User: live Notion proof.
 func measureNotionConnection(ctx context.Context, accessToken string) error {
 	step(3, "Measure the connected workspace's live MCP tools")
 	session := notionadapter.NewHTTPSession(nil, notionadapter.ServerURL, accessToken)
@@ -138,10 +148,20 @@ func measureNotionConnection(ctx context.Context, accessToken string) error {
 		return fmt.Errorf("notion proof: connect hosted MCP: %w", err)
 	}
 	line("measured ceiling: %s", ceiling)
-	verdict("Notion OAuth and hosted MCP connection completed; restart-safe token stored")
+	if err := proveNotionReadWrite(ctx, accessToken); err != nil {
+		return err
+	}
+	verdict("Notion OAuth, hosted MCP connect, and Operator-container write+read completed")
 	return nil
 }
 
+// Callers: runNotion in this file (~line 62). Existing helper — not a new file.
+// Data: Keychain JSON ClientRegistration {client_id, client_secret,...}; no date fields.
+// User: "Diagnose macOS status -25293... Smallest fix so user (or agent) can load Notion client"
+//
+// Reuses a Keychain-stored DCR client, or registers a new one. go-run ACLs bind by
+// cdhash; when that binary is gone, Get returns -25293 (interaction disabled) — delete
+// and re-register instead of hard-failing (do not invent secrets).
 func loadOrRegisterNotionClient(ctx context.Context, store *credentialstore.Keychain, flow *notionoauth.Flow, metadata notionoauth.Metadata, redirectURI string) (notionoauth.ClientRegistration, bool, error) {
 	encoded, err := store.Get(ctx, notionClientRecord)
 	if err == nil {
@@ -149,9 +169,14 @@ func loadOrRegisterNotionClient(ctx context.Context, store *credentialstore.Keyc
 		if json.Unmarshal(encoded, &client) == nil && client.ClientID != "" {
 			return client, true, nil
 		}
-	}
-	if err != nil && !errors.Is(err, credentialstore.ErrNotFound) {
-		return notionoauth.ClientRegistration{}, false, err
+		_ = store.Delete(ctx, notionClientRecord)
+	} else if !errors.Is(err, credentialstore.ErrNotFound) {
+		if delErr := store.Delete(ctx, notionClientRecord); delErr != nil {
+			return notionoauth.ClientRegistration{}, false, fmt.Errorf(
+				"notion proof: Keychain item %q is unreadable (%v); delete it in Keychain Access (login → %s / %s) or run: security delete-generic-password -s %s -a %s — then re-run proveadapter notion: %w",
+				notionClientRecord, err, credentialstore.Service, notionClientRecord, credentialstore.Service, notionClientRecord, delErr,
+			)
+		}
 	}
 	client, err := flow.Register(ctx, metadata, redirectURI)
 	if err != nil {

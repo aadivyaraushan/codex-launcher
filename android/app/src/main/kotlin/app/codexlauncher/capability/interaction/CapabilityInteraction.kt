@@ -71,6 +71,8 @@ sealed interface CapabilityEffect {
 
     data class FallbackToComputer(val requestId: String) : CapabilityEffect
 
+    data class UnsupportedLocally(val requestId: String) : CapabilityEffect
+
     data class ConfirmationFailed(val requestId: String) : CapabilityEffect
 
     data class Cancelled(val requestId: String) : CapabilityEffect
@@ -91,12 +93,18 @@ class CapabilityInteraction(
     private val sendAction: suspend (String, suspend () -> Boolean) -> ActionSendResult,
     private val nextActionId: () -> String = { UUID.randomUUID().toString() },
     private val unresolvedStore: UnresolvedCapabilityStore? = null,
+    computerFallbackEnabled: Boolean = true,
 ) {
     private val mutableState = MutableStateFlow(CapabilityInteractionState())
     private var routeActionId: String? = null
     private var confirmationActionId: String? = null
     private var pendingDecision: String? = null
     private var disconnectActionId: String? = null
+    private var computerFallbackEnabled = computerFallbackEnabled
+
+    fun setComputerFallbackEnabled(enabled: Boolean) {
+        computerFallbackEnabled = enabled
+    }
 
     // Lives outside the state object so that no wholesale state replacement
     // can silently wipe it. Every publish re-applies it onto whatever state
@@ -219,7 +227,13 @@ class CapabilityInteraction(
         if (encoded == null || sendAction(encoded) { true } == ActionSendResult.NOT_SENT) {
             synchronized(this) {
                 clearPending()
-                publish(mutableState.value.copy(phase = CapabilityPhase.IDLE, message = "App actions unavailable. Sending to computer…"))
+                val message =
+                    if (computerFallbackEnabled) {
+                        "App actions unavailable. Sending to computer…"
+                    } else {
+                        "Operator services unavailable."
+                    }
+                publish(mutableState.value.copy(phase = CapabilityPhase.IDLE, message = message))
             }
             return null
         }
@@ -279,7 +293,13 @@ class CapabilityInteraction(
                 if (confirmationActionId != action.first) return false
                 confirmationActionId = null
                 pendingDecision = null
-                publish(mutableState.value.copy(phase = CapabilityPhase.PREVIEW, message = "Couldn’t reach the computer. Nothing was changed."))
+                val unreachable =
+                    if (computerFallbackEnabled) {
+                        "Couldn’t reach the computer. Nothing was changed."
+                    } else {
+                        "Couldn’t reach Operator services. Nothing was changed."
+                    }
+                publish(mutableState.value.copy(phase = CapabilityPhase.PREVIEW, message = unreachable))
             }
             return false
         }
@@ -338,8 +358,13 @@ class CapabilityInteraction(
             val question = message.body["question"]?.jsonPrimitive?.content
             clearPending()
             return if (resultState == "failed") {
-                publish(mutableState.value.copy(phase = CapabilityPhase.IDLE, message = "No app action matched. Sending to computer…"))
-                CapabilityEffect.FallbackToComputer(requestId)
+                if (computerFallbackEnabled) {
+                    publish(mutableState.value.copy(phase = CapabilityPhase.IDLE, message = "No app action matched. Sending to computer…"))
+                    CapabilityEffect.FallbackToComputer(requestId)
+                } else {
+                    publish(mutableState.value.copy(phase = CapabilityPhase.FAILED, message = "No supported action matched."))
+                    CapabilityEffect.UnsupportedLocally(requestId)
+                }
             } else if (resultState == "cancelled" && question != null) {
                 publish(mutableState.value.copy(phase = CapabilityPhase.QUESTION, message = question))
                 CapabilityEffect.None

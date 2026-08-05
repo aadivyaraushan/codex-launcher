@@ -56,5 +56,69 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".runtime.LocalPairAwaitActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="Link local runtime"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
+        <activity
+            android:name=".runtime.LocalPairImportActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.app.codexlauncher.local-pair+json" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".runtime.broker.OAuthCallbackActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="tryoperator.net"
+                    android:pathPrefix="/oauth/android/" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".runtime.broker.google.GoogleAuthorizeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="Google Calendar and Drive"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
+        <activity
+            android:name=".runtime.broker.outlook.OutlookAuthorizeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="Outlook mail"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
+        <activity
+            android:name="com.microsoft.identity.client.BrowserTabActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="msauth"
+                    android:host="app.codexlauncher"
+                    android:path="/96ha9R3kgapcHRIRwPGNGwaDxX8=" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

@@ -21,13 +21,15 @@ import (
 	capabilityruntime "github.com/codex-launcher/codex-launcher/companion/internal/capability/runtime"
 )
 
+// Callers: main serve-slack-proof. Default http loopback avoids self-signed TLS browser blocks. No schema.
+// User: "Change Slack OAuth redirect to http://127.0.0.1:PORT/oauth/slack/callback (or http://localhost) so no cert warning"
 func startSlackProof(ctx context.Context, output io.Writer) (mobilesession.CapabilityFlow, io.Closer, error) {
 	logger := slog.Default()
 	clientID := os.Getenv("SLACK_CLIENT_ID")
 	clientSecret := os.Getenv("SLACK_CLIENT_SECRET")
 	redirectURI := os.Getenv("SLACK_REDIRECT_URI")
 	if redirectURI == "" {
-		redirectURI = "https://127.0.0.1:9192/oauth/slack/callback"
+		redirectURI = "http://127.0.0.1:9192/oauth/slack/callback"
 	}
 	router, err := stage1openai.New(stage1openai.Config{APIKey: os.Getenv("OPENAI_API_KEY"), Logger: logger})
 	if err != nil {

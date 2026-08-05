@@ -14,6 +14,8 @@ cameraX = "1.6.1"
 lifecycle = "2.10.0"
 zxing = "3.5.4"
 tink = "1.23.0"
+playServicesAuth = "21.6.0"
+msal = "8.4.1"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
@@ -40,6 +42,8 @@ lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-com
 lifecycle-viewmodel-ktx = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "tink" }
+play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "playServicesAuth" }
+msal = { module = "com.microsoft.identity.client:msal", version.ref = "msal" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -74,10 +74,12 @@ func TestRunWaitsForOAuthThenProvesChannelReadAndRevoke(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
+	// Callers: Run→Authorize (serve-slack-proof). API: HTTP loopback callback. No schema.
+	// User: "Change Slack OAuth redirect to http://127.0.0.1:PORT/oauth/slack/callback"
 	go completeOAuth(t, ctx, flow)
 	err := Run(ctx, Config{
 		ListenAddress: "127.0.0.1:0",
-		RedirectURI:   "https://127.0.0.1:9192/oauth/slack/callback",
+		RedirectURI:   "http://127.0.0.1:9192/oauth/slack/callback",
 		Flow:          flow,
 		NewAPI:        func(*Connection) slackadapter.API { return api },
 		Output:        &output,
@@ -91,7 +93,7 @@ func TestRunWaitsForOAuthThenProvesChannelReadAndRevoke(t *testing.T) {
 		t.Fatalf("clear calls=%d, want 1", api.cleared)
 	}
 	transcript := output.String()
-	for _, want := range []string{"AUTH_URL=", "REDIRECT_URI=https://", "READ:", "VERDICT: slack user OAuth proven"} {
+	for _, want := range []string{"AUTH_URL=", "REDIRECT_URI=http://", "READ:", "VERDICT: slack user OAuth proven"} {
 		if !strings.Contains(transcript, want) {
 			t.Fatalf("transcript lacks %q:\n%s", want, transcript)
 		}
@@ -101,15 +103,38 @@ func TestRunWaitsForOAuthThenProvesChannelReadAndRevoke(t *testing.T) {
 	}
 }
 
-func TestAuthorizeRejectsHTTPRedirectURI(t *testing.T) {
+func TestAuthorizeRejectsNonLoopbackHTTPRedirectURI(t *testing.T) {
 	_, err := Authorize(context.Background(), AuthorizationConfig{
 		Flow:          &fakeFlow{},
 		ListenAddress: "127.0.0.1:0",
-		RedirectURI:   "http://127.0.0.1:9192/oauth/slack/callback",
+		RedirectURI:   "http://example.com/oauth/slack/callback",
 		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
-	if !errors.Is(err, ErrHTTPSRequired) {
-		t.Fatalf("err=%v", err)
+	if !errors.Is(err, ErrInvalidRedirectURI) {
+		t.Fatalf("err=%v, want ErrInvalidRedirectURI", err)
+	}
+}
+
+func TestAuthorizeServesHTTPLoopbackCallback(t *testing.T) {
+	flow := &fakeFlow{}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	go completeOAuth(t, ctx, flow)
+	conn, err := Authorize(ctx, AuthorizationConfig{
+		Flow:          flow,
+		Verbs:         []manifest.Verb{manifest.Read},
+		ListenAddress: "127.0.0.1:0",
+		RedirectURI:   "http://127.0.0.1:0/oauth/slack/callback",
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Output:        io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("Authorize http loopback: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if !strings.HasPrefix(flow.callbackURL(), "http://127.0.0.1:") {
+		t.Fatalf("callback URL=%q, want http loopback", flow.callbackURL())
 	}
 }
 

@@ -333,6 +333,7 @@ class LauncherSessionViewModel(
                 ?.coerceAtMost(ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong())
                 ?: ProtocolCodec.MAX_ATTACHMENT_BYTES.toLong()
         val taskControlsCapable = "desktop_tasks" in capabilities
+        capabilityController.setComputerFallbackEnabled(taskControlsCapable)
         val newTaskOptions =
             if ("new_task_options" in capabilities) NewTaskOptions.fromWelcome(message.body) else null
         mutableState.value =
@@ -459,6 +460,18 @@ class LauncherSessionViewModel(
         val routeThroughApps =
             capabilityActionsCapable && capabilityInteraction.value.destination == PromptDestination.AUTO
         if (!routeThroughApps) {
+            if (!mutableState.value.taskControlsAvailable) {
+                AppLog.info(
+                    feature = "capability-interaction",
+                    message = "home prompt kept local because phone runtime has no desktop tasks",
+                    fields = mapOf(
+                        "destination" to capabilityInteraction.value.destination.name.lowercase(),
+                        "capability_available" to capabilityActionsCapable,
+                        "prompt_length" to prompt.length,
+                    ),
+                )
+                return
+            }
             AppLog.info(
                 feature = "capability-interaction",
                 message = "home prompt sent directly to paired computer",
@@ -479,6 +492,14 @@ class LauncherSessionViewModel(
         val requestId = capabilityController.request(prompt)
         if (requestId != null) return
         val fallback = synchronized(this) { pendingHomePrompt.also { pendingHomePrompt = null } } ?: return
+        if (!mutableState.value.taskControlsAvailable) {
+            AppLog.info(
+                feature = "capability-interaction",
+                message = "app action route unavailable; kept local on standalone phone",
+                fields = mapOf("prompt_length" to fallback.prompt.length),
+            )
+            return
+        }
         startNewTask(fallback.prompt, fallback.selection, fallback.draftVersion)
     }
 
@@ -506,6 +527,18 @@ class LauncherSessionViewModel(
         submissionScope.launch {
             acknowledge(expectedGeneration, sequence)
             if (effect is CapabilityEffect.FallbackToComputer && pending != null) {
+                if (!mutableState.value.taskControlsAvailable) {
+                    AppLog.info(
+                        feature = "capability-interaction",
+                        message = "app action route did not match; kept local on standalone phone",
+                        fields = mapOf(
+                            "request_id" to effect.requestId,
+                            "decision" to "unsupported_locally",
+                            "prompt_length" to pending.prompt.length,
+                        ),
+                    )
+                    return@launch
+                }
                 AppLog.info(
                     feature = "capability-interaction",
                     message = "app action route did not match",

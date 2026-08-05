@@ -81,6 +81,8 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.ktx)
     implementation(libs.zxing.core)
     implementation(libs.tink.android)
+    implementation(libs.play.services.auth)
+    implementation(libs.msal)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.junit)

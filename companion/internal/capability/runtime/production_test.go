@@ -184,6 +184,33 @@ func TestSupplyingACredentialAddsThatAdapterAndMakesItRoutable(t *testing.T) {
 	}
 }
 
+// Fact-force: extends existing production_test.go; callers=go test ./.../runtime;
+// purpose=MapsBrokerBaseURL path (no duplicate file); no data files;
+// user: "Maps Go→Android Places/Routes RPC"
+func TestMapsBrokerBaseURLRegistersMapsWithoutLinuxAPIKey(t *testing.T) {
+	_, inv, err := NewProduction(ProductionConfig{
+		Model:             stubModel,
+		Logger:            quietLogger(),
+		MapsBrokerBaseURL: "http://127.0.0.1:9451",
+	})
+	if err != nil {
+		t.Fatalf("NewProduction failed: %v", err)
+	}
+	var found bool
+	for _, id := range inv.Registered {
+		if id == "maps" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Android maps broker URL supplied but maps missing: registered=%v skipped=%v",
+			inv.Registered, inv.Skipped)
+	}
+	if _, stillSkipped := inv.Skipped["maps"]; stillSkipped {
+		t.Error("Maps was registered and also skipped")
+	}
+}
+
 type fakeOAuthAPIs struct{}
 
 type fakeNotionSession struct{}

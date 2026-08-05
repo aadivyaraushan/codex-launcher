@@ -72,6 +72,36 @@ class CapabilityInteractionTest {
     }
 
     @Test
+    fun standalonePhoneRouteMissStaysLocalAndNeverFallsBackToComputer() = runBlocking {
+        val interaction =
+            CapabilityInteraction(
+                sendAction = { _, _ -> ActionSendResult.SENT_UNKNOWN },
+                nextActionId = { "route-standalone" },
+                computerFallbackEnabled = false,
+            )
+        assertEquals("route-standalone", interaction.request("do something no adapter knows"))
+        val effect = interaction.acceptActionResult(actionFailure("route-standalone", 11))
+        assertTrue(effect is CapabilityEffect.UnsupportedLocally)
+        assertEquals(CapabilityPhase.FAILED, interaction.state.value.phase)
+        assertEquals("No supported action matched.", interaction.state.value.message)
+        assertFalse(effect is CapabilityEffect.FallbackToComputer)
+    }
+
+    @Test
+    fun standalonePhoneUnavailableSendDoesNotClaimComputerHandoff() = runBlocking {
+        val interaction =
+            CapabilityInteraction(
+                sendAction = { _, _ -> ActionSendResult.NOT_SENT },
+                nextActionId = { "route-standalone" },
+                computerFallbackEnabled = false,
+            )
+        assertNull(interaction.request("open Instagram"))
+        assertEquals(CapabilityPhase.IDLE, interaction.state.value.phase)
+        assertEquals("Operator services unavailable.", interaction.state.value.message)
+        assertFalse(interaction.state.value.message!!.contains("computer", ignoreCase = true))
+    }
+
+    @Test
     fun computerModeBypassesRoutingAndCompletedResultMapsToVisibleOutcome() = runBlocking {
         val ids = ArrayDeque(listOf("route-action", "confirm-action"))
         val interaction =
@@ -150,6 +180,27 @@ class CapabilityInteractionTest {
         assertEquals("Instagram", outcome?.handedOffToApp)
         assertEquals("Running ten minutes late", interaction.state.value.handOffDraft)
         assertFalse(outcome?.claimsSuccess == true)
+    }
+
+    @Test
+    fun standaloneConfirmSendFailureDoesNotMentionComputer() = runBlocking {
+        var sends = 0
+        val ids = ArrayDeque(listOf("route-action", "confirm-action"))
+        val interaction =
+            CapabilityInteraction(
+                sendAction = { _, _ ->
+                    sends += 1
+                    if (sends == 1) ActionSendResult.SENT_UNKNOWN else ActionSendResult.NOT_SENT
+                },
+                nextActionId = ids::removeFirst,
+                computerFallbackEnabled = false,
+            )
+        interaction.request("Add a task")
+        assertTrue(interaction.acceptPreview(previewFrame()))
+        assertFalse(interaction.respond(confirm = true))
+        assertEquals(CapabilityPhase.PREVIEW, interaction.state.value.phase)
+        assertFalse(interaction.state.value.message!!.contains("computer", ignoreCase = true))
+        assertEquals("Couldn’t reach Operator services. Nothing was changed.", interaction.state.value.message)
     }
 
     private fun previewFrame(requestId: String = "route-action") =

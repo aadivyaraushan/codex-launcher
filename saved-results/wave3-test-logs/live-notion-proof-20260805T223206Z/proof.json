@@ -1,0 +1,9 @@
+{
+  "service": "notion",
+  "verb": "write+read",
+  "ok": true,
+  "marker": "OP-NOTION-20260805T223215Z",
+  "ceiling_completes": true,
+  "keychain": "OPERATOR_NOTION_ACCESS_TOKEN from hex-decoded com.operator.credentials/notion_oauth",
+  "evidence": "/Users/aadivyar/Documents/Startups/ai native mobile software/codex-launcher/.claude/worktrees/phase0-notification-probe/saved-results/wave3-test-logs/live-notion-proof-20260805T223206Z"
+}

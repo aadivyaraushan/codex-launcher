@@ -10,11 +10,13 @@
 // says so rather than pretending otherwise.
 package notion
 
+// Callers: Resolve/Execute Notion adapter. User: live Notion read/write proof.
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
@@ -163,8 +165,9 @@ func (a *Adapter) Resolve(ctx context.Context, intent adapter.Intent) (adapter.P
 
 // resolveRead always goes through notion-search with the user's own words;
 // an id is never hardcoded. Zero results is an honest failure, not an empty
-// read. Two or more results is ErrAmbiguousPage: real data is messier than a
-// test page, and similar titles are exactly what makes this hard.
+// read. When search returns several hits, an exact title match on the subject
+// wins (Notion search is fuzzy). Two or more non-exact / several exact titles
+// is ErrAmbiguousPage.
 func (a *Adapter) resolveRead(ctx context.Context, intent adapter.Intent) (adapter.Plan, error) {
 	hits, err := a.search(ctx, intent.Subject)
 	if err != nil {
@@ -174,16 +177,28 @@ func (a *Adapter) resolveRead(ctx context.Context, intent adapter.Intent) (adapt
 	case 0:
 		return adapter.Plan{}, fmt.Errorf("notion: no page matches %q", intent.Subject)
 	case 1:
-		h := hits[0]
-		return adapter.Plan{
-			AdapterID: ID,
-			Verb:      manifest.Read,
-			Handle:    h.ID,
-			Summary:   fmt.Sprintf("Read %q", h.Title),
-			Details:   map[string]string{"page_id": h.ID, "title": h.Title},
-		}, nil
+		return readPlanForHit(hits[0]), nil
 	default:
+		var exact []hit
+		for _, h := range hits {
+			if h.Title == intent.Subject {
+				exact = append(exact, h)
+			}
+		}
+		if len(exact) == 1 {
+			return readPlanForHit(exact[0]), nil
+		}
 		return adapter.Plan{}, &adapter.ClarificationError{Question: "Which matching Notion page did you mean?", Cause: ErrAmbiguousPage}
+	}
+}
+
+func readPlanForHit(h hit) adapter.Plan {
+	return adapter.Plan{
+		AdapterID: ID,
+		Verb:      manifest.Read,
+		Handle:    h.ID,
+		Summary:   fmt.Sprintf("Read %q", h.Title),
+		Details:   map[string]string{"page_id": h.ID, "title": h.Title},
 	}
 }
 
@@ -237,7 +252,10 @@ func (a *Adapter) findOrCreateContainer(ctx context.Context) (string, error) {
 		}
 	}
 
-	raw, err := a.session.Call(ctx, ToolCreatePages, map[string]any{"title": ContainerTitle})
+	// Callers: Resolve write → findOrCreateContainer. Live MCP create-pages
+	// requires pages[]; bare title is rejected (isError). Docs: developers.notion.com/guides/mcp.
+	// User: "Run live Notion read/write proof per plan with durable evidence."
+	raw, err := a.session.Call(ctx, ToolCreatePages, createPagesArgs("", ContainerTitle, ""))
 	if err != nil {
 		return "", fmt.Errorf("notion: %s: %w", ToolCreatePages, err)
 	}
@@ -246,6 +264,24 @@ func (a *Adapter) findOrCreateContainer(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return page.ID, nil
+}
+
+// createPagesArgs builds notion-create-pages arguments (parent optional;
+// empty parent creates a private page). Checked against Notion MCP docs 2026-08-06.
+func createPagesArgs(parentPageID, title, content string) map[string]any {
+	page := map[string]any{
+		"properties": map[string]any{"title": title},
+	}
+	if content != "" {
+		page["content"] = content
+	}
+	args := map[string]any{
+		"pages": []map[string]any{page},
+	}
+	if parentPageID != "" {
+		args["parent"] = map[string]any{"page_id": parentPageID}
+	}
+	return args
 }
 
 // search wraps a notion-search call and its reply parsing in one place,
@@ -302,7 +338,9 @@ func (a *Adapter) Execute(ctx context.Context, plan adapter.Plan) (adapter.Outco
 }
 
 func (a *Adapter) executeRead(ctx context.Context, plan adapter.Plan) (adapter.Outcome, error) {
-	raw, err := a.session.Call(ctx, ToolFetch, map[string]any{"page_id": plan.Details["page_id"]})
+	// Notion MCP notion-fetch requires `id` (docs 2026-08-06). Plan still
+	// stores page_id internally for Resolve/Handle consistency.
+	raw, err := a.session.Call(ctx, ToolFetch, map[string]any{"id": plan.Details["page_id"]})
 	if err != nil {
 		return adapter.Outcome{Done: false}, fmt.Errorf("notion: %s: %w", ToolFetch, err)
 	}
@@ -318,11 +356,7 @@ func (a *Adapter) executeRead(ctx context.Context, plan adapter.Plan) (adapter.O
 }
 
 func (a *Adapter) executeWrite(ctx context.Context, plan adapter.Plan) (adapter.Outcome, error) {
-	args := map[string]any{
-		"parent":  map[string]any{"page_id": plan.Details["container_id"]},
-		"title":   plan.Details["title"],
-		"content": plan.Details["body"],
-	}
+	args := createPagesArgs(plan.Details["container_id"], plan.Details["title"], plan.Details["body"])
 	raw, err := a.session.Call(ctx, ToolCreatePages, args)
 	if err != nil {
 		return adapter.Outcome{Done: false}, fmt.Errorf("notion: %s: %w", ToolCreatePages, err)
@@ -331,10 +365,15 @@ func (a *Adapter) executeWrite(ctx context.Context, plan adapter.Plan) (adapter.
 	if err != nil {
 		return adapter.Outcome{Done: false}, err
 	}
+	title := page.Title
+	if title == "" {
+		title = plan.Details["title"]
+	}
 	return adapter.Outcome{
 		Reached: manifest.Completes,
 		Done:    true,
-		Detail:  fmt.Sprintf("wrote %q to %s", plan.Details["title"], page.Title),
+		// page_id lets callers fetch without waiting on Notion search index lag.
+		Detail: fmt.Sprintf("wrote %q page_id=%s", title, page.ID),
 	}, nil
 }
 
@@ -364,17 +403,47 @@ type hit struct {
 	Title string `json:"title"`
 }
 
+// Callers: search/findOrCreateContainer. Live MCP may return {results:[]}, a
+// bare hit array, or MCP content [{"type":"text","text":"<json>"}].
+// User: "Run live Notion read/write proof per plan with durable evidence."
 func parseSearchResults(raw json.RawMessage) ([]hit, error) {
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("notion: %s: empty reply", ToolSearch)
 	}
+	raw = unwrapMCPTextContent(raw)
 	var parsed struct {
 		Results []hit `json:"results"`
 	}
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("notion: %s: unexpected reply shape: %w", ToolSearch, err)
+	if err := json.Unmarshal(raw, &parsed); err == nil && parsed.Results != nil {
+		return parsed.Results, nil
 	}
-	return parsed.Results, nil
+	var hits []hit
+	if err := json.Unmarshal(raw, &hits); err == nil {
+		return hits, nil
+	}
+	return nil, fmt.Errorf("notion: %s: unexpected reply shape: %s", ToolSearch, truncateRaw(raw, 120))
+}
+
+func unwrapMCPTextContent(raw json.RawMessage) json.RawMessage {
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &parts); err != nil || len(parts) == 0 {
+		return raw
+	}
+	if parts[0].Type == "text" && strings.TrimSpace(parts[0].Text) != "" {
+		return json.RawMessage(parts[0].Text)
+	}
+	return raw
+}
+
+func truncateRaw(raw json.RawMessage, n int) string {
+	s := string(raw)
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // createdPage is the reply shape of notion-create-pages.
@@ -387,6 +456,13 @@ func parseCreatedPage(raw json.RawMessage) (createdPage, error) {
 	if len(raw) == 0 {
 		return createdPage{}, fmt.Errorf("notion: %s: empty reply", ToolCreatePages)
 	}
+	raw = unwrapMCPTextContent(raw)
+	var wrapped struct {
+		Pages []createdPage `json:"pages"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil && len(wrapped.Pages) > 0 && wrapped.Pages[0].ID != "" {
+		return wrapped.Pages[0], nil
+	}
 	var page createdPage
 	if err := json.Unmarshal(raw, &page); err != nil {
 		return createdPage{}, fmt.Errorf("notion: %s: unexpected reply shape: %w", ToolCreatePages, err)
@@ -397,19 +473,32 @@ func parseCreatedPage(raw json.RawMessage) (createdPage, error) {
 	return page, nil
 }
 
-// fetchedPage is the reply shape of notion-fetch.
+// fetchedPage is the reply shape of notion-fetch. Live MCP (2026-08) returns
+// title+text; older fixtures use id+content — accept both.
 type fetchedPage struct {
 	ID      string `json:"id"`
+	Title   string `json:"title"`
 	Content string `json:"content"`
+	Text    string `json:"text"`
 }
 
 func parseFetchedPage(raw json.RawMessage) (fetchedPage, error) {
 	if len(raw) == 0 {
 		return fetchedPage{}, fmt.Errorf("notion: %s: empty reply", ToolFetch)
 	}
+	raw = unwrapMCPTextContent(raw)
 	var page fetchedPage
 	if err := json.Unmarshal(raw, &page); err != nil {
 		return fetchedPage{}, fmt.Errorf("notion: %s: unexpected reply shape: %w", ToolFetch, err)
+	}
+	if page.Content == "" && page.Text != "" {
+		page.Content = page.Text
+	}
+	if page.Content == "" && page.Title != "" {
+		page.Content = page.Title
+	}
+	if page.Content == "" {
+		return fetchedPage{}, fmt.Errorf("notion: %s: reply named no content", ToolFetch)
 	}
 	return page, nil
 }

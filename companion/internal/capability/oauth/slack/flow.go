@@ -26,11 +26,13 @@ const (
 )
 
 var (
-	ErrInvalidState      = errors.New("slack oauth: invalid or already used state")
-	ErrNoScopes          = errors.New("slack oauth: the requested verbs need no supported scope")
-	ErrMissingCredential = errors.New("slack oauth: client id and client secret are required")
-	ErrBotToken          = errors.New("slack oauth: refused a bot token; user OAuth is required")
-	ErrHTTPSRequired     = errors.New("slack oauth: Slack requires an HTTPS redirect URI")
+	// Callers: Flow.Start, proving/slack.Authorize, serve-slack-proof. API: redirect validation.
+	// User: "Change Slack OAuth redirect to http://127.0.0.1:PORT/oauth/slack/callback ... so no cert warning"
+	ErrInvalidState       = errors.New("slack oauth: invalid or already used state")
+	ErrNoScopes           = errors.New("slack oauth: the requested verbs need no supported scope")
+	ErrMissingCredential  = errors.New("slack oauth: client id and client secret are required")
+	ErrBotToken           = errors.New("slack oauth: refused a bot token; user OAuth is required")
+	ErrInvalidRedirectURI = errors.New("slack oauth: redirect URI must be https, or http on 127.0.0.1/localhost")
 )
 
 type Config struct {
@@ -123,14 +125,32 @@ func ScopesForVerbs(verbs []manifest.Verb) ([]string, error) {
 	return scopes, nil
 }
 
+func validateRedirectURI(redirectURI string) (*url.URL, error) {
+	parsedRedirect, err := url.Parse(redirectURI)
+	if err != nil || parsedRedirect.Scheme == "" || parsedRedirect.Host == "" {
+		return nil, fmt.Errorf("%w: got %q", ErrInvalidRedirectURI, redirectURI)
+	}
+	host := strings.ToLower(parsedRedirect.Hostname())
+	switch parsedRedirect.Scheme {
+	case "https":
+		return parsedRedirect, nil
+	case "http":
+		if host == "127.0.0.1" || host == "localhost" {
+			return parsedRedirect, nil
+		}
+		return nil, fmt.Errorf("%w: http requires loopback host, got %q", ErrInvalidRedirectURI, host)
+	default:
+		return nil, fmt.Errorf("%w: got %q", ErrInvalidRedirectURI, redirectURI)
+	}
+}
+
 func (f *Flow) Start(ctx context.Context, redirectURI string, verbs []manifest.Verb) (Authorization, error) {
 	_ = ctx
 	if strings.TrimSpace(f.clientID) == "" || strings.TrimSpace(f.clientSecret) == "" {
 		return Authorization{}, ErrMissingCredential
 	}
-	parsedRedirect, err := url.Parse(redirectURI)
-	if err != nil || parsedRedirect.Scheme != "https" {
-		return Authorization{}, fmt.Errorf("%w: got %q", ErrHTTPSRequired, redirectURI)
+	if _, err := validateRedirectURI(redirectURI); err != nil {
+		return Authorization{}, err
 	}
 	scopes, err := ScopesForVerbs(verbs)
 	if err != nil {

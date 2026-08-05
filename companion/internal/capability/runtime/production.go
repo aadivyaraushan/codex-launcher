@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	// Fact-force: callers=NewProduction maps switch; API=MapsBrokerBaseURL;
+	// user: "Maps Go→Android Places/Routes RPC"
+	mapsbroker "github.com/codex-launcher/codex-launcher/companion/internal/androidbroker/maps"
 	beepermessage "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/beepermessage"
 	deeplinkadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/deeplink"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gcalendar"
@@ -115,6 +118,10 @@ type ProductionConfig struct {
 
 	// MapsAPIKey is the Google Places/Routes API key (GOOGLE_MAPS_API_KEY).
 	MapsAPIKey string
+	// MapsBrokerBaseURL is the Android loopback Maps broker (e.g.
+	// http://127.0.0.1:9451). Used when MapsAPIKey is empty so the key can
+	// stay in the Android Keystore vault.
+	MapsBrokerBaseURL string
 	// YouTubeAPIKey is the YouTube Data API v3 key (YOUTUBE_API_KEY).
 	YouTubeAPIKey string
 	// PodcastsFeedURL is the one RSS feed the Podcasts adapter reads
@@ -313,20 +320,28 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	inv.Registered = append(inv.Registered, notificationreplyadapter.ID)
 	byClass[notificationreplyadapter.Class] = append(byClass[notificationreplyadapter.Class], notificationreplyadapter.ID)
 
-	// Maps: a Places/Routes API key is the only connection, no OAuth. With
-	// no key the adapter would fail the moment anyone asked it to look
-	// something up, so it is left out entirely rather than registered to
-	// fail after a preview has already been confirmed.
+	// Maps: Places/Routes via Linux API key, or Android Keystore broker over
+	// loopback (phone-runtime). With neither, leave it out rather than fail
+	// after a preview has already been confirmed.
 	mapsAPIKey := strings.TrimSpace(config.MapsAPIKey)
-	if mapsAPIKey == "" {
-		inv.Skipped[mapsadapter.ID] = "no GOOGLE_MAPS_API_KEY configured"
-	} else {
+	mapsBrokerURL := strings.TrimSpace(config.MapsBrokerBaseURL)
+	switch {
+	case mapsAPIKey != "":
 		client := mapsadapter.NewHTTPClient("", "", mapsAPIKey, nil, logger)
 		if err := reg.Register(mapsadapter.New(client, logger)); err != nil {
 			return nil, Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, mapsadapter.ID)
 		byClass["travel"] = append(byClass["travel"], mapsadapter.ID)
+	case mapsBrokerURL != "":
+		client := mapsbroker.NewClient(mapsBrokerURL, nil, logger)
+		if err := reg.Register(mapsadapter.New(client, logger)); err != nil {
+			return nil, Inventory{}, err
+		}
+		inv.Registered = append(inv.Registered, mapsadapter.ID)
+		byClass["travel"] = append(byClass["travel"], mapsadapter.ID)
+	default:
+		inv.Skipped[mapsadapter.ID] = "no GOOGLE_MAPS_API_KEY or Android maps broker URL configured"
 	}
 
 	// YouTube: a Data API v3 key is the only connection, no OAuth. Without

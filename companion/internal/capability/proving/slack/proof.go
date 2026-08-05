@@ -31,9 +31,11 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/registry"
 )
 
+// Callers: Authorize/Run, serve-slack-proof, proof tests. API: redirect scheme validation.
+// User: "Change Slack OAuth redirect to http://127.0.0.1:PORT/oauth/slack/callback ... so no cert warning"
 var (
 	ErrMissingDependencies = errors.New("slack proof: flow and API factory are required")
-	ErrHTTPSRequired       = errors.New("slack proof: Slack requires an HTTPS redirect URI")
+	ErrInvalidRedirectURI  = errors.New("slack proof: redirect URI must be https, or http on 127.0.0.1/localhost")
 )
 
 type OAuthFlow interface {
@@ -150,8 +152,8 @@ func Run(ctx context.Context, config Config) error {
 	return nil
 }
 
-// Authorize completes the owner-only OAuth callback over HTTPS and returns an
-// in-memory token source. Callers must close it when their serving process stops.
+// Authorize completes the owner-only OAuth callback and returns an in-memory
+// token source. HTTP is used for loopback redirects; HTTPS keeps a local cert.
 func Authorize(ctx context.Context, config AuthorizationConfig) (*Connection, error) {
 	if config.Flow == nil {
 		return nil, errors.New("slack proof: OAuth flow is required")
@@ -160,7 +162,7 @@ func Authorize(ctx context.Context, config AuthorizationConfig) (*Connection, er
 		config.ListenAddress = "127.0.0.1:9192"
 	}
 	if config.RedirectURI == "" {
-		config.RedirectURI = "https://127.0.0.1:9192/oauth/slack/callback"
+		config.RedirectURI = "http://127.0.0.1:9192/oauth/slack/callback"
 	}
 	if config.Output == nil {
 		config.Output = io.Discard
@@ -169,8 +171,12 @@ func Authorize(ctx context.Context, config AuthorizationConfig) (*Connection, er
 		config.Logger = slog.Default()
 	}
 	parsed, err := url.Parse(config.RedirectURI)
-	if err != nil || parsed.Scheme != "https" {
-		return nil, fmt.Errorf("%w: got %q", ErrHTTPSRequired, config.RedirectURI)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, fmt.Errorf("%w: got %q", ErrInvalidRedirectURI, config.RedirectURI)
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if parsed.Scheme == "http" && host != "127.0.0.1" && host != "localhost" {
+		return nil, fmt.Errorf("%w: http requires loopback host, got %q", ErrInvalidRedirectURI, host)
 	}
 
 	listener, err := net.Listen("tcp", config.ListenAddress)
@@ -179,22 +185,29 @@ func Authorize(ctx context.Context, config AuthorizationConfig) (*Connection, er
 	}
 	defer listener.Close()
 	if strings.Contains(config.RedirectURI, ":0/") || strings.HasSuffix(config.ListenAddress, ":0") {
-		// Tests bind an ephemeral port; rebuild the HTTPS redirect to match it.
-		config.RedirectURI = "https://" + listener.Addr().String() + "/oauth/slack/callback"
+		path := parsed.Path
+		if path == "" {
+			path = "/oauth/slack/callback"
+		}
+		config.RedirectURI = parsed.Scheme + "://" + listener.Addr().String() + path
 		parsed, err = url.Parse(config.RedirectURI)
 		if err != nil {
 			return nil, fmt.Errorf("slack proof: rebuild redirect URI: %w", err)
 		}
 	}
 
-	tlsConfig := config.TLSConfig
-	if tlsConfig == nil {
-		tlsConfig, err = selfSignedTLSConfig(parsed.Hostname())
-		if err != nil {
-			return nil, fmt.Errorf("slack proof: build local TLS cert: %w", err)
+	serveListener := net.Listener(listener)
+	useHTTPS := parsed.Scheme == "https"
+	if useHTTPS {
+		tlsConfig := config.TLSConfig
+		if tlsConfig == nil {
+			tlsConfig, err = selfSignedTLSConfig(parsed.Hostname())
+			if err != nil {
+				return nil, fmt.Errorf("slack proof: build local TLS cert: %w", err)
+			}
 		}
+		serveListener = tls.NewListener(listener, tlsConfig)
 	}
-	tlsListener := tls.NewListener(listener, tlsConfig)
 
 	verbs := config.Verbs
 	if len(verbs) == 0 {
@@ -232,7 +245,7 @@ func Authorize(ctx context.Context, config AuthorizationConfig) (*Connection, er
 	server := &http.Server{Handler: mux}
 	serveErrors := make(chan error, 1)
 	go func() {
-		if serveErr := server.Serve(tlsListener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		if serveErr := server.Serve(serveListener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			serveErrors <- serveErr
 		}
 	}()
@@ -241,8 +254,10 @@ func Authorize(ctx context.Context, config AuthorizationConfig) (*Connection, er
 	fmt.Fprintf(config.Output, "AUTH_URL=%s\n", authorization.URL)
 	fmt.Fprintf(config.Output, "REDIRECT_URI=%s\n", config.RedirectURI)
 	fmt.Fprintln(config.Output, "Open that URL, approve Slack as yourself (user OAuth), and return here after the browser says it is connected.")
-	fmt.Fprintln(config.Output, "NOTE: callback uses a local self-signed HTTPS cert; browsers may warn before continuing.")
-	config.Logger.Info("[slack-proof] waiting for OAuth", "callback_host", listener.Addr().String(), "https", true)
+	if useHTTPS {
+		fmt.Fprintln(config.Output, "NOTE: callback uses a local self-signed HTTPS cert; browsers may warn before continuing.")
+	}
+	config.Logger.Info("[slack-proof] waiting for OAuth", "callback_host", listener.Addr().String(), "https", useHTTPS)
 
 	var tokenSet slackoauth.TokenSet
 	select {

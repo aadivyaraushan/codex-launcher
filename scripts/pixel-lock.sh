@@ -1,7 +1,8 @@
 #!/bin/bash
 # Serialize Pixel 9 (adb) access between parallel agents.
 # Usage: scripts/pixel-lock.sh <timeout-seconds> <command...>
-# Example: scripts/pixel-lock.sh 300 adb shell am start -a android.intent.action.VIEW -d "https://open.spotify.com"
+# Example: scripts/pixel-lock.sh 300 scripts/adb-open-url.sh https://open.spotify.com
+# Query/OAuth URLs with & must use scripts/adb-open-url.sh (not bare adb shell -d).
 #
 # Uses mkdir as the lock because macOS has no flock. A lock older than
 # 900 seconds is treated as abandoned and taken over.

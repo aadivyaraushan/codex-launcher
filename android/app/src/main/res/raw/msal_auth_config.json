@@ -1,0 +1,16 @@
+{
+  "client_id": "ed4e4e74-ad37-4ddf-a4ca-59d3731be5e6",
+  "authorization_user_agent": "DEFAULT",
+  "redirect_uri": "msauth://app.codexlauncher/96ha9R3kgapcHRIRwPGNGwaDxX8=",
+  "account_mode": "SINGLE",
+  "broker_redirect_uri_registered": false,
+  "authorities": [
+    {
+      "type": "AAD",
+      "audience": {
+        "type": "PersonalMicrosoftAccount"
+      },
+      "default": true
+    }
+  ]
+}

@@ -205,33 +205,13 @@ func (a *Adapter) executePlay(ctx context.Context, plan adapter.Plan) (adapter.O
 		}, nil
 	}
 	if errors.Is(err, ErrNoActiveDevice) {
-		a.logger.Warn("[spotify] no active device; demoting to hand-off", "track", plan.Details["track_name"])
-		out := noActiveDeviceOutcome(trackLine(plan.Details))
-		a.logger.Info("[spotify] execute complete", "reached", out.Reached, "done", out.Done, "handed_off_to", out.HandedOffTo)
-		return out, nil
+		a.logger.Warn("[spotify] no active device; play fails closed (no hand-off demotion)", "track", plan.Details["track_name"])
+		return adapter.Outcome{}, ErrNoActiveDevice
 	}
 	a.logger.Error("[spotify] play failed", "error", err)
 	return adapter.Outcome{}, err
 }
 
-// noActiveDeviceOutcome is the demoted outcome for a play attempt that
-// failed because Spotify reported no active device — the plan's fail
-// condition, per planning/consumer-app-implementation-plan.md's Pixel 9
-// self-verification table: "Clear 'no active device' = fail, not COMPLETE".
-// It never claims playback started, matching the wire contract that
-// handoff.DraftOutcome uses elsewhere: hands_off, done=true, a named
-// HandedOffTo, and an honest "cannot know" detail.
-func noActiveDeviceOutcome(track string) adapter.Outcome {
-	return adapter.Outcome{
-		Reached:     manifest.HandsOff,
-		Done:        true,
-		HandedOffTo: AppName,
-		Detail: fmt.Sprintf(
-			"Spotify reported no active device for %s. Operator opened Spotify so you can pick a device and press play yourself — it cannot know whether that worked.",
-			track,
-		),
-	}
-}
 
 // Revoke of an already-disconnected adapter reports success, not
 // ErrNotConnected — see the comment on todoist's Revoke for why (a retried

@@ -144,9 +144,9 @@ func TestExecutePlayReachesCompletesWhenSpotifyStartsPlayback(t *testing.T) {
 	}
 }
 
-// Execute when Spotify reports no active device returns a hands_off outcome
-// that opens the app, and never claims playback started.
-func TestExecutePlayDemotesToHandsOffOnNoActiveDevice(t *testing.T) {
+// finish-consumer plan: Spotify play cannot demote to a hand-off. No active
+// device is a hard failure of the play verb.
+func TestExecutePlayFailsClosedOnNoActiveDevice(t *testing.T) {
 	api := &fakeAPI{
 		tracks:  []Track{{ID: "t1", Name: "Bohemian Rhapsody", Artist: "Queen", URI: "spotify:track:t1"}},
 		devices: nil,
@@ -160,23 +160,11 @@ func TestExecutePlayDemotesToHandsOffOnNoActiveDevice(t *testing.T) {
 		t.Fatalf("resolve: %v", err)
 	}
 	out, err := a.Execute(context.Background(), plan)
-	if err != nil {
-		t.Fatalf("execute: %v", err)
+	if !errors.Is(err, ErrNoActiveDevice) {
+		t.Fatalf("execute err=%v out=%+v, want ErrNoActiveDevice", err, out)
 	}
-	if out.Reached != manifest.HandsOff || !out.Done || out.HandedOffTo != "Spotify" {
-		t.Fatalf("outcome=%+v, want demoted hands_off handed off to Spotify", out)
-	}
-	lower := strings.ToLower(out.Detail)
-	for _, claim := range []string{"now playing", "playback started", "started playing", "is playing"} {
-		if strings.Contains(lower, claim) {
-			t.Fatalf("detail falsely claims playback started (%q): %q", claim, out.Detail)
-		}
-	}
-	if !strings.Contains(lower, "cannot") {
-		t.Fatalf("detail must say Operator cannot know whether playback started: %q", out.Detail)
-	}
-	if !strings.Contains(out.Detail, "Bohemian Rhapsody") {
-		t.Fatalf("detail dropped which track was attempted: %q", out.Detail)
+	if out.HandedOffTo != "" || out.Reached == manifest.HandsOff {
+		t.Fatalf("must not demote play to hand-off: %+v", out)
 	}
 }
 

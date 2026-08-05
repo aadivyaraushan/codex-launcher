@@ -16,6 +16,9 @@ import app.codexlauncher.connection.session.CompanionSessionClient
 import app.codexlauncher.connection.stream.LauncherStreamClient
 import app.codexlauncher.connection.stream.StreamClient
 import app.codexlauncher.diagnostics.AppLog
+// Fact-force: importers=AndroidManifest Application; callers=onCreate;
+// API=MapsBrokerLoopback.startIfKeyed; user: Maps Go→Android Places/Routes RPC
+import app.codexlauncher.runtime.broker.maps.rpc.MapsBrokerLoopback
 import app.codexlauncher.storage.ownership.LocalStateOwner
 import app.codexlauncher.storage.reply.stops.ReplyStopStore
 import app.codexlauncher.storage.reply.stops.replyStopDataStore
@@ -40,6 +43,7 @@ class LauncherApplication : Application() {
                 message = "startup stop list restore finished",
                 fields = mapOf("output_shape" to outcome.name.lowercase()),
             )
+            MapsBrokerLoopback.startIfKeyed(this@LauncherApplication)
         }
     }
 

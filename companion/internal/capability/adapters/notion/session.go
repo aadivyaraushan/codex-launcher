@@ -345,8 +345,15 @@ func (s *HTTPSession) Call(ctx context.Context, tool string, args map[string]any
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return raw, nil
 	}
+	// Callers: HTTPSession.Call (adapter write/read). Surface MCP isError body.
+	// Affected API: tools/call result {isError, content}. Schema: MCP content[].
+	// User: "Run live Notion read/write proof per plan with durable evidence."
 	if parsed.IsError {
-		return nil, fmt.Errorf("notion: tool %s reported an error", tool)
+		detail := strings.TrimSpace(string(parsed.Content))
+		if detail == "" {
+			return nil, fmt.Errorf("notion: tool %s reported an error", tool)
+		}
+		return nil, fmt.Errorf("notion: tool %s reported an error: %s", tool, truncateRaw(json.RawMessage(detail), 240))
 	}
 	if len(parsed.Content) > 0 {
 		return parsed.Content, nil

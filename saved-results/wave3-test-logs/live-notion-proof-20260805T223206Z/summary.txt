@@ -1,0 +1,7 @@
+5:    measured ceiling: completes
+7:[4] Live Notion write under Operator container, then search+fetch marker
+8:    tools measured; ceiling=completes
+9:    write done under Operator; marker=OP-NOTION-20260805T223215Z page_id=3b3e6004-5e9f-8162-be08-c67daa84b867
+10:    read matched marker; page_id_present=true
+12:VERDICT: Notion live write+read under Operator container proven (marker matched)
+14:VERDICT: Notion OAuth, hosted MCP connect, and Operator-container write+read completed
