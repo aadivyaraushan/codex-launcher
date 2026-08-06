@@ -273,8 +273,8 @@ object OAuthCallbackParse {
                 if (idx <= 0) {
                     null
                 } else {
-                    java.net.URLDecoder.decode(part.substring(0, idx), Charsets.UTF_8) to
-                        java.net.URLDecoder.decode(part.substring(idx + 1), Charsets.UTF_8)
+                    java.net.URLDecoder.decode(part.substring(0, idx), "UTF-8") to
+                        java.net.URLDecoder.decode(part.substring(idx + 1), "UTF-8")
                 }
             }.toMap()
         val code = params["code"].orEmpty()
@@ -306,7 +306,7 @@ object TodoistPublicClientRegistration {
         state: String,
         codeChallenge: String,
     ): String {
-        val enc = java.net.URLEncoder.encode(redirectUri, Charsets.UTF_8)
+        val enc = java.net.URLEncoder.encode(redirectUri, "UTF-8")
         // Docs source: Context7 /websites/developer_todoist_api_v1 (app.todoist.com authorize).
         return "https://app.todoist.com/oauth/authorize?" +
             "client_id=$clientId&response_type=code&scope=data:read_write" +
@@ -320,7 +320,7 @@ object TodoistPublicClientRegistration {
         redirectUri: String,
         codeVerifier: String,
     ): String {
-        val enc = java.net.URLEncoder.encode(redirectUri, Charsets.UTF_8)
+        val enc = java.net.URLEncoder.encode(redirectUri, "UTF-8")
         return "client_id=$clientId&code=$code&redirect_uri=$enc&code_verifier=$codeVerifier"
     }
 }
