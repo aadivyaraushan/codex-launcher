@@ -1,0 +1,2 @@
+google_ok=False
+last_texts=['Google authorization error (8).']

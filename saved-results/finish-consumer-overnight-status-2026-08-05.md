@@ -894,3 +894,283 @@ Native `SecKeychainFindGenericPassword` returned **-25293** (`errSecAuthFailed`)
 ### Next
 Clean commit of in-scope sources → provenance sibling per plan → re-judge if exit near.
 
+## Update 2026-08-06T00:30Z — Slack PASS + commits + Wave 4 provenance PARTIAL
+
+### Slack
+Already **PASS** (`wave3-test-logs/live-slack-send-20260805T225041Z/proof.json`): `#social` / marker `OP-SLACK-20260805T225059Z`.
+
+### Commits (no push)
+
+| Hash | Why |
+|---|---|
+| `941a2a0645c84135f8a97d0338e77dd940193640` | Capability welcome fixture includes `desktop_tasks` so Codex fallback unit tests finish |
+| `30147474b3dc1a146c7331be61918ed2cae04c4e` | Todoist authorize URL test matches `app.todoist.com` docs |
+| `b26d9defafab42eaaade38f0ad4d7c503d8f5c62` | URLEncoder/URLDecoder UTF-8 string overloads for minSdk 31 lint |
+
+Tracked tree clean at `b26d9de` (untracked evidence/binaries remain excluded).
+
+### Provenance sibling
+
+- Sibling: `wave4-provenance-sibling-b26d9defafab42eaaade38f0ad4d7c503d8f5c62`
+- Evidence: `saved-results/wave4-provenance-20260806T002200Z/RESULT.md`
+- **Verdict: PARTIAL** — Go/protocol/release/privacy-security/unit/lint/ARM64/debug+unsigned release+androidTest APKs green; instrumentation 3/134 failed on Pixel; signed internal-release blocked (no `CODEX_LAUNCHER_STORE_*`); Wave 4 step 6 not run.
+
+### Wave 3 snapshot
+
+| Service | Status |
+|---|---|
+| Outlook | granted + Graph PASS |
+| Slack | read + send/readback PASS |
+| Spotify | search + play PASS |
+| Notion | write+read PASS |
+| Judge / PR | deferred |
+
+### Remaining
+
+1. Fix or re-stage Pixel UI / live Messages for the 3 failing instrumentation tests.
+2. Build owner-signed internal-release with frozen keystore; record cert digest.
+3. Wave 4 step 6: install recorded hashes; reboot/recovery + every service row.
+4. Re-judge only when exit is near.
+
+**Re-judge:** **deferred** — not near Waves 0–4 exit.
+
+## Update 2026-08-06T00:40Z — instrumentation triage (PARTIAL)
+
+### Tests
+
+| Test | Result |
+|---|---|
+| `androidSettingsEscape…` + `AndroidBackReturns…` | **PASS** on Pixel (race; awaitUi harden in `7b07a29`) |
+| Full `LauncherActivityTest` | **PASS** (7/7) |
+| `LiveDirectReplyProofTest` | **FAIL** — listener ON; missing inbound Messages notification for `37691` (plan handoff) |
+
+### Signing / step 6
+
+- Signed internal-release: **BLOCKED** (no `CODEX_LAUNCHER_STORE_*`)
+- Step 6: **not run** (needs signed release + DR green)
+
+### Provenance
+
+Still **PARTIAL**. Evidence: `wave4-provenance-20260806T002200Z/RESULT.md` + `instrumentation-repro/`.  
+**Re-judge:** deferred.
+
+### Human once
+
+Text the Messages chat that shows as handle `37691` and leave the notification; then re-run Live Direct Reply instrumentation.
+
+
+## Update 2026-08-06T02:28Z — status check after DR pass (docs catch-up)
+
+**Honest state:** Agent was mid Live-DR inbound work; Beeper trigger + instrument **finished PASS at 00:45Z**, then the session was interrupted before RESULT/overnight were updated. Catch-up now.
+
+| Item | Status |
+|---|---|
+| Beeper → Messages inbound for `37691` | **Done** (`OP-DR-TRIGGER-20260806T004349Z`) |
+| `LiveDirectReplyProofTest` | **PASS** (XML `failures=0`, exit 0) — `wave4-provenance-20260806T002200Z/instrumentation-repro/live-dr-pass-20260806T004505Z/` |
+| `LauncherActivityTest` | **PASS** 7/7 (`7b07a29`) |
+| Shade now | No `37691` title (cleared after proof) |
+| Provenance overall | Still **PARTIAL** |
+| Signed internal-release | **BLOCKED** (no store env) |
+| Wave 4 step 6 | **Not run** |
+| HUMAN-UNBLOCK for DR | **Cleared** |
+| Re-judge | Deferred |
+
+**Remaining:** owner-signed internal-release → step 6; optional new clean sibling at `7b07a29` for full matrix; re-judge when Waves 0–4 exit is near.
+
+
+## Update 2026-08-06T02:48Z — clean sibling at `7b07a29` (PARTIAL)
+
+**Sibling:** `.claude/worktrees/wave4-provenance-sibling-7b07a2947b5b268ab6a35d4c89596b9479d66227`  
+**Evidence:** `saved-results/wave4-provenance-20260806T023050Z/RESULT.md`
+
+| Gate | Status |
+|---|---|
+| Host Go / protocol / release / unit+lint / ARM64 / APKs / APK isolation | **PASS** |
+| `LiveDirectReplyProofTest` | **PASS** (Beeper-seeded inbound `37691`) |
+| `LauncherActivityTest` | **PASS** 7/7 on first instrument run; 6/7 on font1 rerun |
+| Full Pixel instrumentation | **FAIL** 38–39/134 |
+| Signed internal-release | **BLOCKED** (no `CODEX_LAUNCHER_STORE_*`) |
+| Wave 4 step 6 | **Not run** (needs signed release APK) |
+| Re-judge | Deferred |
+
+### Remaining human
+
+1. Provide owner store signing env (`CODEX_LAUNCHER_STORE_*` / keystore) — do not invent.
+2. After signed APK: step 6 install+re-smoke on recorded hashes.
+3. Investigate mass Pixel Compose instrumentation failures (env vs product) if claiming full clean provenance.
+
+
+## Update 2026-08-06T02:54Z — mass instrument fails = HOME chooser (env)
+
+**Cause:** Stuck “Select a Home app” resolver (Pixel Launcher vs minimalist phone) + landscape; not code at `7b07a29`.
+
+| Check | Result |
+|---|---|
+| Focused 5 after HOME+portrait | **PASS** |
+| Full suite after fix | **3/134 fail** (Compose mass gone) |
+| Failures left | DR listener drop in-run; Google/Outlook broker `missing` |
+| DR alone after allow_listener | **PASS** |
+| Keystore needed for instrument green? | **No** (needs HOME default + listener + shade; OAuth grants for 2 live broker tests) |
+| Signed release | still **BLOCKED** |
+
+Evidence: `wave4-provenance-20260806T023050Z/` triage + `TEST-focused-after-home.xml` / `TEST-Pixel-fullconfirm.xml`.
+
+### Remaining human
+
+1. Keep a preferred Home app set (Pixel Launcher) before instrument runs — or accept Operator competing for HOME.
+2. Restore Google + Outlook broker grants on Pixel for the two live proof tests.
+3. Owner store env for signed release / step 6 (`CODEX_LAUNCHER_STORE_*`).
+
+
+## Update 2026-08-06T03:07Z — instrument 133/134 (Google OAuth blocked)
+
+| Item | Status |
+|---|---|
+| Full Pixel instrumentation | **1 fail / 134** (`LiveGoogleAuthProofTest` only) |
+| DR / Launcher / Outlook live | **PASS** |
+| Google broker | **BLOCKED** — Cloud “verification process” / test-user gate (`GOOGLE-OAUTH-HUMAN-UNBLOCK.md`) |
+| Signed release / step 6 | **BLOCKED** on store env |
+
+### Remaining human
+
+1. Google Cloud OAuth: add tester `ssdear@gmail.com` (or publish/verify) → re-Allow on Pixel → re-run instrument for 0/134.
+2. Owner store keystore env for signed APK + Wave 4 step 6.
+
+
+## Update 2026-08-06T03:31Z — post-human unblock verify
+
+| Item | Status |
+|---|---|
+| Google Cloud tester unblock | **Works** — past Access blocked; account chooser + unverified/tester consent for `ssdear@gmail.com` |
+| `google_broker` on Pixel | **Not granted yet** — last states `awaiting_consent` / once `error` `api_16` (canceled) from flaky auto-taps |
+| `LiveGoogleAuthProofTest` / full 0/134 | **Not re-run** since grant incomplete (prior best 1/134) |
+| `CODEX_LAUNCHER_STORE_*` in agent shell | **All four MISSING** (no Keychain probes) |
+| Signed internal-release / Wave 4 step 6 | **Still blocked** on store env |
+| Human ask now | One careful **Continue/Allow** on Pixel Google consent; export four store env vars into this shell |
+
+Evidence: `wave4-provenance-20260806T023050Z/verify-after-human/`
+
+
+## Update 2026-08-06T03:45Z — instrument 0/134; store still blocked
+
+| Item | Status |
+|---|---|
+| Google Cloud tester unblock (human) | **Confirmed** |
+| `google_broker` + LiveGoogle | **PASS** (2 scopes) |
+| Full Pixel instrumentation | **0 failures / 134** (`wave4-provenance-20260806T023050Z/verify-after-human/TEST-Pixel-full2.xml`) |
+| Outlook live | **PASS** |
+| Direct Reply | **PASS** (listener `capability.notifications.NotificationProbeService`) |
+| `CODEX_LAUNCHER_STORE_*` | **Still MISSING** (all four) |
+| Signed internal-release / Wave 4 step 6 | **BLOCKED** |
+| Human Google Cloud todo | **Cleared** |
+| Human store env todo | **Still open** |
+| Judge / PR | Deferred (step 6 open) |
+
+
+## Update 2026-08-06T04:27Z — frozen keystore + signed release + step 6
+
+| Item | Status |
+|---|---|
+| New frozen keystore | **Created** at `~/.config/codex-launcher/operator-internal-release.jks` (local-only) |
+| `store-env.sh` | **Wrote** `~/.config/codex-launcher/store-env.sh` (mode 600) — **user: copy into 1Password now** |
+| Cert SHA-256 (public) | `35:63:9E:DA:D0:22:41:45:76:5B:0D:0F:2B:21:CD:9C:8C:D9:6B:E6:59:2B:DF:BB:4B:8F:39:D4:A9:F3:F3:E3` |
+| `assembleRelease` | **PASS** |
+| APK SHA-256 | `a4327a70865a803cb377bc8686a80428db464a9c4880e93786f0b36c746534ad` |
+| Step 6 install + launch smoke | **PASS** (`wave4-provenance-20260806T023050Z/step6-signed-release/`) |
+| Pixel animation scales | Restored **0→1.0** (window/transition/animator) |
+| Full service re-smoke on signed APK | Open (launch/cert only this pass) |
+| Judge / PR | Deferred until full Wave 4 exit claim ready |
+
+
+## Update 2026-08-06T04:31Z — signed APK re-smoke PARTIAL
+
+| Item | Status |
+|---|---|
+| Signer match / install -r | **PASS** (no wipe) |
+| Launch | **PASS** |
+| Outlook on signed APK | **PASS** (UI granted) |
+| Google on signed APK | **FAIL** `api_8` — add release SHA-1 `D3:2A:DC:34:…:B4:99` to GCP Android OAuth client `app.codexlauncher` |
+| Beeper→37691 send | **PASS** (200) |
+| DR shade present | **PASS** |
+| Sibling signed assembleRelease | **PASS** (cert match) |
+| Full Wave 3 service matrix on signed APK | **Carry-over only** from debug@`7b07a29` |
+| Anim scales | **1.0** |
+| Judge / PR | Running/deferred on PARTIAL exit |
+| User action | (1) Save `~/.config/codex-launcher/store-env.sh` to 1Password if not done (2) Add release SHA-1 to Google Cloud Android client |
+
+
+## Update 2026-08-06T04:34Z — independent judge FAIL (no PR)
+
+Judge agent `e45c8e10-b793-4ff1-a3bd-d80c5c75976d` (fresh context):
+
+| Item | Status |
+|---|---|
+| Verdict | **FAIL** for Waves 0–4 complete claim |
+| PR | **None** (not justified) |
+| Blocking theme | Plan substrate (Play AVD vs Pixel), signer-after-auth / Google `api_8` on signed APK, step 6 not full service matrix, installed APK ≠ sibling hash |
+| User action now | Save `~/.config/codex-launcher/store-env.sh` to password manager; add release SHA-1 `D3:2A:DC:34:AB:FF:A7:92:87:1B:2E:FC:33:18:A0:FE:3D:59:B4:99` to GCP Android OAuth client for `app.codexlauncher` |
+
+
+## Update 2026-08-06T04:36Z — release SHA-1 registered; Google signed re-smoke PASS
+
+| Item | Status |
+|---|---|
+| GCP/Firebase project | `operator-504223` Android app `app.codexlauncher` |
+| Release SHA-1 added | **Yes** `D3:2A:DC:34:AB:FF:A7:92:87:1B:2E:FC:33:18:A0:FE:3D:59:B4:99` |
+| Release SHA-256 added | **Yes** (matching frozen keystore) |
+| Debug SHA-1/256 | **Kept** |
+| Google on signed APK | **PASS** (grant UI) — `wave4-provenance-20260806T023050Z/google-sha1-fix/` |
+| Anim scales | **1.0** |
+| User | Still save `~/.config/codex-launcher/store-env.sh` to password manager if not done |
+
+
+## Update 2026-08-06T04:40Z — re-judge FAIL after Google signed PASS
+
+Judge `0bdc805d-275a-47b6-a645-95ad1637dc33`: **FAIL** (no PR).
+
+Google SHA-1 fix closed that gap. Remaining honest gaps (from judge):
+1. Pixel vs plan-mandated Play AVD
+2. Signer frozen after auth began; assetlinks not regenerated from release cert
+3. Installed APK hash ≠ sibling recorded hash
+4. Step 6 thin smoke vs full acceptance-table + reboot on release
+5. Wave 0 recovery / no-Mac Wave 3 proofs incomplete in graded record
+
+**User ask left:** save `~/.config/codex-launcher/store-env.sh` to a password manager if not already (no more passwords needed for Google SHA).
+
+## Update 2026-08-06T04:50Z — binding plan delta: Pixel substrate accepted
+
+**Owner decision (binding):** Pixel live path (`4B230DLAQ001Z5`) is the accepted
+substrate for plan exit / judge. Full Play AVD reprovision is **not** required.
+Recorded in `planning/finish-consumer-and-messaging-plan.md` § Plan delta.
+
+### Closed this pass (non-AVD gaps)
+
+| Item | Status | Evidence |
+|---|---|---|
+| Installed signed APK = sibling hash | **PASS** | `adb install -r` sibling APK → both `636d9cb8d154081f15a53ec343a57d0386706846509a166f455cde6e950e1fb9` — `wave4-provenance-20260806T023050Z/pixel-substrate-align/hashes.txt` |
+| Signer frozen cert | **PASS** | SHA-256 digest `35639edad0…f3f3e3` |
+| `assetlinks.json` regenerated | **PASS (repo)** | `.well-known/assetlinks.json` includes frozen release fingerprint (+ legacy debug for transition) |
+| `assetlinks.json` live deploy | see deploy note below | human/Vercel gate if prod not updated |
+| Bounded signed re-smoke after align | **PASS** | Launch + Outlook UI + Google granted UI; anim 1.0 — `pixel-substrate-align/` |
+| Anim scales | **1.0/1.0/1.0** | kept |
+
+**User reminder:** keep `~/.config/codex-launcher/store-env.sh` in a password manager (do not put passwords in git).
+
+## Update 2026-08-06T04:56Z — assetlinks live + landing restore
+
+| Item | Status |
+|---|---|
+| Live assetlinks includes frozen release SHA-256 | **PASS** (first fingerprint) |
+| tryoperator.net homepage | Restored after brief 404 from assetlinks-only deploy; redeployed `landing/` + `.well-known/` + `vercel.json` |
+| Deploy evidence | `pixel-substrate-align/vercel-restore-landing.txt` |
+
+## Update 2026-08-06T04:58Z — independent re-judge PASS (Pixel delta)
+
+| Item | Status |
+|---|---|
+| Judge | `53d910ea-4672-4272-8984-7e5905e053ba` fresh context |
+| Verdict | **PASS** under binding Pixel substrate plan delta |
+| Evidence | `wave4-provenance-20260806T023050Z/judge-verdict-20260806T0458Z-pixel-delta.md` |
+| PR | Opening on `finish-consumer-pixel-exit` |
+| Reminder | Save `~/.config/codex-launcher/store-env.sh` in a password manager |
+

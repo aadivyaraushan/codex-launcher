@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="3" failures="3" errors="0" skipped="0" time="31.537" timestamp="2026-08-06T02:52:25" hostname="localhost">
+  <testsuite name="app.codexlauncher.capability.reply.live.LiveDirectReplyProofTest" tests="1" failures="1" errors="0" skipped="0" time="30.118" timestamp="2026-08-06T02:52:25" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="firesRemoteInputIntoLiveMessagesNotification" classname="app.codexlauncher.capability.reply.live.LiveDirectReplyProofTest" time="30.118">
+      <failure>java.lang.AssertionError: NotificationProbeService not connected (enable Operator in notification access; cmd notification allow_listener app.codexlauncher/app.codexlauncher.capability.notifications.NotificationProbeService)
+at org.junit.Assert.fail(Assert.java:89)
+at org.junit.Assert.assertTrue(Assert.java:42)
+at org.junit.Assert.assertNotNull(Assert.java:713)
+at app.codexlauncher.capability.reply.live.LiveDirectReplyProofTest.firesRemoteInputIntoLiveMessagesNotification(LiveDirectReplyProofTest.kt:40)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest" tests="1" failures="1" errors="0" skipped="0" time="0.002" timestamp="2026-08-06T02:52:25" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="silentAuthorizeThenCalendarAndDrive" classname="app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest" time="0.002">
+      <failure>org.junit.ComparisonFailure: google_broker must already be granted expected:&lt;[granted]&gt; but was:&lt;[missing]&gt;
+at org.junit.Assert.assertEquals(Assert.java:117)
+at app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest.silentAuthorizeThenCalendarAndDrive(LiveGoogleAuthProofTest.kt:32)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest" tests="1" failures="1" errors="0" skipped="0" time="0.001" timestamp="2026-08-06T02:52:25" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="silentTokenThenGraphReadAndDraft" classname="app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest" time="0.001">
+      <failure>org.junit.ComparisonFailure: outlook_broker must already be granted expected:&lt;[granted]&gt; but was:&lt;[missing]&gt;
+at org.junit.Assert.assertEquals(Assert.java:117)
+at app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest.silentTokenThenGraphReadAndDraft(LiveOutlookGraphProofTest.kt:37)
+</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

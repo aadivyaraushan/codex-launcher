@@ -1,0 +1,23 @@
+Retrieving project…
+Deploying aadivyaraushans-projects/operator
+Uploading [--------------------] (0.0B/1.1GB)
+Uploading [=====---------------] (291.6MB/1.1GB)
+Uploading [==========----------] (583.2MB/1.1GB)
+Uploading [===============-----] (874.8MB/1.1GB)
+Uploading [====================] (1.1GB/1.1GB)
+Inspect: https://vercel.com/aadivyaraushans-projects/operator/8CGb6xWozobnqBvsB8fBU333nipZ [2m]
+Production: https://operator-5mjh88z69-aadivyaraushans-projects.vercel.app [2m]
+Building...
+Building...
+Building: Running build in Washington, D.C., USA (East) – iad1
+Building: Build machine configuration: 2 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Previous build caches not available.
+Building: Downloading 13476 deployment files...
+Building: Running "vercel build"
+Building: Vercel CLI 58.1.0
+Building: Build Completed in /vercel/output [8s]
+Building: Deploying outputs...
+Building: Deployment completed
+Building: Creating build cache...
+Building: Skipping cache upload because no files were prepared

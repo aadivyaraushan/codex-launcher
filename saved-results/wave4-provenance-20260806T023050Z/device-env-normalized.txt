@@ -1,0 +1,6 @@
+font_scale=1.0
+animator=0
+transition=0
+window=0
+a11y=com.wispr.flowapp/com.wispr.flowapp.service.FlowAccessibilityService
+a11y_enabled=0

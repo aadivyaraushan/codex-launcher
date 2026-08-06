@@ -1,0 +1,3 @@
+117:    versionCode=1 minSdk=31 targetSdk=36
+119:    versionName=0.1.0-alpha.1
+139:    lastUpdateTime=2026-08-06 08:26:53

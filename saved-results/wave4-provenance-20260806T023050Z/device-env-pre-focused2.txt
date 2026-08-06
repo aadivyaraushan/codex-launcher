@@ -1,0 +1,5 @@
+focus=  mCurrentFocus=Window{66f0757 u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+home_resolve=com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+font=1.0
+anim=0
+rot=0

@@ -1,0 +1,19 @@
+font_scale=1.3
+animator=1.0
+transition=1.0
+window=1.0
+density=Physical density: 420
+size=Physical size: 1080x2424
+stay_awake=15
+immersive=null
+33:    mKeyguardOccluded=false mKeyguardOccludedChanged=false mPendingKeyguardOccluded=false
+45:    KeyguardServiceDelegate
+52:      deviceHasKeyguard=true
+59:      KeyguardStateMonitor
+60:        mIsShowing=false
+146:  mCurrentFocus=Window{5fadce8 u0 android/com.android.internal.app.ResolverActivity}
+147:  mFocusedApp=ActivityRecord{33381753 u0 android/com.android.internal.app.ResolverActivity t14456}
+268:    mKeyguardDrawComplete=true mWindowManagerDrawComplete=true
+274:    isKeyguardShowing=false
+460:    SettingsEntry{mWindowingMode=0, mUserRotationMode=null, mUserRotation=null, mForcedWidth=0, mForcedHeight=0, mForcedDensity=0, mForcedDensityRatio=0.0, mForcedScalingMode=null, mRemoveContentMode=0, mShouldShowWithInsecureKeyguard=null, mShouldShowSystemDecors=null, mIsHomeSupported=null, mShouldShowIme=null, mFixedToUserRotation=null, mIgnoreOrientationRequest=null, mIgnoreDisplayCutout=null, mDontMoveToTop=null, mForceAppsUniversalResizable=null}
+24:     Enabled services:{{com.wispr.flowapp/com.wispr.flowapp.service.FlowAccessibilityService}}

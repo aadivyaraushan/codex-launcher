@@ -1,0 +1,209 @@
+--------- beginning of main
+08-06 08:50:43.534  4276  5333 I AiAiEcho: (REDACTED) Settings changed for uri: %s
+08-06 08:50:43.534  2423  3155 V SettingsInjector: Component {com.google.android.flipendo/com.google.android.flipendo.settings.AllowedAppListSelectionActivity}: is explicitly enabled = false, has default state = true
+08-06 08:50:43.534  2423  3155 V BatterySaverManager: Power save mode enabled = false
+08-06 08:50:43.534  2423  3155 V BatterySaverManager: Settings mode = MILD
+08-06 08:50:43.534  2423  3155 V BatterySaverManager: Disable called from PowerSaveModeChangedBR
+08-06 08:50:43.534  2423  3155 D BatterySaverPolicyManager: restoreBatterySaverPolicy
+08-06 08:50:43.535  4276  5249 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+08-06 08:50:43.536  4276  5249 I AiAiEcho: (REDACTED) EchoTargets: %s
+08-06 08:50:43.536  4276  5249 I AiAiEcho: Filtered by AiAi flag check: %s
+08-06 08:50:43.536  2423  3155 D BatterySaverPolicyManager: setWallpaperDimEnabled: false
+08-06 08:50:43.537  2423  3155 V BatterySaverPolicyManager: sound trigger mode is already reset by others!
+08-06 08:50:43.537  2423  3155 V BatterySaverManager: Flipendo is disabled no action needed
+08-06 08:50:43.537  2423  3155 D ReceiverDelegate: Future succeeded in receiver
+08-06 08:50:43.537  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:43.538  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:43.538  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:43.539  4276  5249 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+08-06 08:50:43.540  4959 23413 I Finsky  : [258] Completed 1 account content syncs with 0 successful.
+08-06 08:50:43.541  4959  4959 I Finsky  : [2] [ContentSync] Installation state replication failed, parameters=Id: 12-1, CT: 1785991806518, Constraints: [{ L: 15000, D: 86400000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }].
+08-06 08:50:43.541  4959  4959 I Finsky  : [2] [ContentSync] Scheduling replication attempt 0.
+08-06 08:50:43.543  4959  4959 I Finsky  : [2] SCH: jobFinished: 12-1. TimeElapsed: 2312ms.
+08-06 08:50:43.544  4959  4959 I Finsky  : [2] WM::SCH: Logging work end for 12-1
+08-06 08:50:43.553  4276  5249 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+08-06 08:50:43.554  4959 23411 I Finsky  : [256] SCH: Attempting to reschedule job: Id: 12-1, Constraints: [{ L: 20000, D: 86400000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+08-06 08:50:43.554  4276  5249 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+08-06 08:50:43.555  2331  2396 I AmbientCueRepository: Receiving SmartSpace targets # 0
+08-06 08:50:43.555  2331  2331 I WeatherSmartspaceView: setFormattedContentDescription: text=38°C, iconDescription=Mostly clear day, contentDescription=Mostly clear day, 38°C
+08-06 08:50:43.555  4276  5249 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+08-06 08:50:43.556  2331  2331 I WeatherSmartspaceView: setFormattedContentDescription: text=38°C, iconDescription=Mostly clear day, contentDescription=Mostly clear day, 38°C
+08-06 08:50:43.556  2331  2331 I WeatherData: Weather data parsed MOSTLY_SUNNY ("Mostly clear day") 38°C from Bundle[{description=Mostly clear day, feedback_intent=null, explanation_intent=Supplier{VAL_PARCELABLE@160+1920}, is_gaia_linked_data=true, use_celsius=true, state=3, temperature=38}]
+08-06 08:50:43.557  4276  5249 I AiAiEcho: (REDACTED) EchoTargets: %s
+08-06 08:50:43.557  4276  5249 I AiAiEcho: Filtered by AiAi flag check: %s
+08-06 08:50:43.558  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:43.559  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:43.559  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:43.559  4276  5249 I AiAiEcho: #tapActionTwiddler: add a same primaryItem TapAction to subtitle.
+08-06 08:50:43.559  4276  5249 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+08-06 08:50:43.560  4276  5249 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+08-06 08:50:43.561  4276  5249 I AiAiEcho: (REDACTED) EchoTargets: %s
+08-06 08:50:43.561  4276  5249 I AiAiEcho: Filtered by AiAi flag check: %s
+08-06 08:50:43.561  4276  5249 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+08-06 08:50:43.562  4959  5406 I Finsky  : [55] SCH: Scheduling phonesky job Id: 1-1337, CT: 1785955190449, Constraints: [{ L: 43192786, D: 86392786, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+08-06 08:50:43.562  4959  5406 I Finsky  : [55] SCH: Scheduling phonesky job Id: 28--559038737, CT: 1785978214910, Constraints: [{ L: 18000000, D: 82800000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+08-06 08:50:43.562  4959  5406 I Finsky  : [55] SCH: Scheduling phonesky job Id: 34-3474, CT: 1785955196616, Constraints: [{ L: 604800000, D: 2443170736, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+08-06 08:50:43.562  4959  5406 I Finsky  : [55] SCH: Scheduling phonesky job Id: 34-3478, CT: 1785955196616, Constraints: [{ L: 604800000, D: 2522394505, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+08-06 08:50:43.562  4959  5406 I Finsky  : [55] SCH: Scheduling phonesky job Id: 34-3489, CT: 1785964973140, Constraints: [{ L: 79199676, D: 1375199676, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+08-06 08:50:43.562  4276  5249 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+08-06 08:50:43.562  4959  5406 I Finsky  : [55] SCH: Scheduling phonesky job Id: 34-3490, CT: 1785964973868, Constraints: [{ L: 604800000, D: 2591999584, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+08-06 08:50:43.564  4276  5249 I AiAiEcho: (REDACTED) EchoTargets: %s
+08-06 08:50:43.564  4276  5249 I AiAiEcho: Filtered by AiAi flag check: %s
+08-06 08:50:43.564  4959  5388 I Finsky  : [53] SCH: Scheduling 1 system job(s)
+08-06 08:50:43.564  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:43.564  4959  5388 I Finsky  : [53] SCH: Scheduling system job Id: 9675, L: 4371346, D: 49739671, C: false, I: false, N: 1
+08-06 08:50:43.565  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:43.565  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:43.565  4276  5249 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+08-06 08:50:43.568  4959 23410 I Finsky  : [255] SCH: job service finished with id 9667.
+08-06 08:50:43.572  4276  5249 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+08-06 08:50:43.576  2331  2331 D SsBaseTemplateCard: No date view can be set up
+08-06 08:50:43.576  2331  2331 I SsBaseTemplateCard: setFormattedContentDescription: text=at 9:00 AM, iconDescription=, contentDescription=at 9:00 AM
+08-06 08:50:43.576  2331  2331 D SsBaseTemplateCard: Passed-in item info is null
+08-06 08:50:43.576  2331  2331 D SsBaseTemplateCard: Passed-in item info is null
+08-06 08:50:43.580  4276  5249 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+08-06 08:50:43.581  4276  5249 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+08-06 08:50:43.581  2331  2396 I AmbientCueRepository: Receiving SmartSpace targets # 0
+08-06 08:50:43.582  2331  2331 I WeatherSmartspaceView: setFormattedContentDescription: text=38°C, iconDescription=Mostly clear day, contentDescription=Mostly clear day, 38°C
+08-06 08:50:43.582  2331  2331 I WeatherSmartspaceView: setFormattedContentDescription: text=38°C, iconDescription=Mostly clear day, contentDescription=Mostly clear day, 38°C
+08-06 08:50:43.582  2331  2331 I WeatherData: Weather data parsed MOSTLY_SUNNY ("Mostly clear day") 38°C from Bundle[{description=Mostly clear day, feedback_intent=null, explanation_intent=Supplier{VAL_PARCELABLE@160+1920}, is_gaia_linked_data=true, use_celsius=true, state=3, temperature=38}]
+08-06 08:50:43.585  4276  5249 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+08-06 08:50:43.586  4959  5297 I Finsky  : [46] WM::SCH: Logging work initialize for 12-1
+08-06 08:50:43.589  4959  5404 I Finsky  : [54] SCH: Scheduling phonesky job Id: 12-1, CT: 1785991843554, Constraints: [{ L: 20000, D: 86400000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+08-06 08:50:43.591  4959  5388 I Finsky  : [53] SCH: Scheduling 1 system job(s)
+08-06 08:50:43.593  4959  5388 I Finsky  : [53] SCH: Scheduling system job Id: 9675, L: 19963, D: 49739644, C: false, I: false, N: 1
+08-06 08:50:43.611  2331  2331 D SsBaseTemplateCard: No date view can be set up
+08-06 08:50:43.612  2331  2331 I SsBaseTemplateCard: setFormattedContentDescription: text=at 9:00 AM, iconDescription=, contentDescription=at 9:00 AM
+08-06 08:50:43.612  2331  2331 D SsBaseTemplateCard: Passed-in item info is null
+08-06 08:50:43.612  2331  2331 D SsBaseTemplateCard: Passed-in item info is null
+--------- beginning of system
+08-06 08:50:43.659  2331  2357 V WindowManagerShell: Transition animation finished (aborted=false), notifying core (#42) android.os.BinderProxy@9742544@0
+08-06 08:50:43.668  1530  1849 V WindowManager: Finish Transition (#42): created at 08-06 08:50:43.145 collect-started=0.114ms request-sent=6.691ms started=7.783ms ready=10.596ms sent=37.694ms commit=9.924ms finished=521.829ms
+08-06 08:50:43.669 23249 23249 D VRI[OutlookAuthorizeActivity]: visibilityChanged oldVisibility=true newVisibility=false
+08-06 08:50:43.670  2331  2357 V WindowManagerShell: Track 0 became idle
+08-06 08:50:43.670  2331  2357 V WindowManagerShell: All active transition animations finished
+08-06 08:50:43.680  1530  2302 W ImageReader_JNI: Unable to acquire a buffer item, very likely client tried to acquire more than maxImages buffers
+08-06 08:50:43.693  1530  2280 D BackgroundInstallControlService: Package event received: 0
+08-06 08:50:44.031  4276  4276 I AiAiCaptions: (REDACTED) onReceive(): Battery saver mode turned %s.
+08-06 08:50:44.031  4276  4276 I AiAiAdaptiveAudio: (REDACTED) updateAdaptiveAudioRunningState: shouldRun=%b
+08-06 08:50:44.035  2846 23320 I SelfLocationFetcher: Starting self-location fetching permanent unified strategy. [CONTEXT service_id=284 ]
+08-06 08:50:44.036  2846  2846 I PersonalSafety: (REDACTED) [Settings] power saver mode changed to %s
+08-06 08:50:44.529 23444 23444 W uiautomator: type=1400 audit(0.0:4487): avc:  denied  { read } for  name="u:object_r:qemu_sf_lcd_density_prop:s0" dev="tmpfs" ino=344 scontext=u:r:shell:s0 tcontext=u:object_r:qemu_sf_lcd_density_prop:s0 tclass=file permissive=0
+08-06 08:50:44.534 23444 23444 W libc    : Access denied finding property "qemu.sf.lcd_density"
+08-06 08:50:44.529 23444 23444 W uiautomator: type=1400 audit(0.0:4488): avc:  denied  { read } for  name="u:object_r:qemu_sf_lcd_density_prop:s0" dev="tmpfs" ino=344 scontext=u:r:shell:s0 tcontext=u:object_r:qemu_sf_lcd_density_prop:s0 tclass=file permissive=0
+08-06 08:50:44.534 23444 23444 W libc    : Access denied finding property "qemu.sf.lcd_density"
+08-06 08:50:44.545 23444 23444 W AccessibilityNodeInfoDumper: Fetch time: 3ms
+08-06 08:50:44.549  1530  5286 V AccessibilityManagerService: onUserStateChangedLocked for userId: 0, forceUpdate: false
+08-06 08:50:44.551  1530  5286 V AccessibilityUserState: updateShortcutTargets: type:accessibility_shortcut_target_service, current:{}, new:{}
+08-06 08:50:44.551  1530  5286 V AccessibilityUserState: updateShortcutTargets: type:accessibility_button_targets, current:{}, new:{}
+08-06 08:50:44.551  1530  5286 V AccessibilityUserState: updateShortcutTargets: type:accessibility_gesture_targets, current:{}, new:{}
+08-06 08:50:44.551  1530  5286 V AccessibilityUserState: updateShortcutTargets: type:accessibility_qs_targets, current:{}, new:{}
+08-06 08:50:44.551  1530  5286 V AccessibilityUserState: updateShortcutTargets: type:accessibility_key_gesture_targets, current:{}, new:{}
+08-06 08:50:44.551  1530  5286 W MagnificationConnectionManager: requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+08-06 08:50:44.552  1530  5286 D AccessibilityManagerService: restoreCurrentUserForTestAutomationIfNeededLocked(): ignoring because device doesn't support visible background users
+08-06 08:50:44.554 23444 23452 W libbinder.IPCThreadState: call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+08-06 08:50:44.555 23444 23444 D AndroidRuntime: Shutting down VM
+08-06 08:50:44.555 23444 23454 W libbinder.IPCThreadState: call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+08-06 08:50:44.556  4276  5976 I AiAiEcho: (REDACTED) Settings changed for uri: %s
+08-06 08:50:44.558  4276  5249 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+08-06 08:50:44.559  4276  5249 I AiAiEcho: (REDACTED) EchoTargets: %s
+08-06 08:50:44.559  4276  5249 I AiAiEcho: Filtered by AiAi flag check: %s
+08-06 08:50:44.559  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:44.559  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:44.559  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:44.560  4276  5249 I AiAiEcho: #tapActionTwiddler: add a same primaryItem TapAction to subtitle.
+08-06 08:50:44.560  4276  5249 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+08-06 08:50:44.560  4276  5249 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+08-06 08:50:44.560  4276  5249 I AiAiEcho: (REDACTED) EchoTargets: %s
+08-06 08:50:44.560  4276  5249 I AiAiEcho: Filtered by AiAi flag check: %s
+08-06 08:50:44.561  4276  5249 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+08-06 08:50:44.561  4276  5249 I AiAiEcho: (REDACTED) Predicting[%d]: %s
+08-06 08:50:44.561  4276  5249 I AiAiEcho: (REDACTED) EchoTargets: %s
+08-06 08:50:44.561  4276  5249 I AiAiEcho: Filtered by AiAi flag check: %s
+08-06 08:50:44.562  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:44.562  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:44.562  4276  5249 I AiAiEcho: (REDACTED) #tapActionTwiddler: keeps UiSurface.ALL TapAction for: %s in the surface: %s for the cardId: %s
+08-06 08:50:44.562  4276  5249 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+08-06 08:50:44.568  1530  1530 D BatterySaverPolicy: accessibility changed to false, updating policy.
+08-06 08:50:44.571  4276  5249 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+08-06 08:50:44.572  4276  5249 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+08-06 08:50:44.574  2331  2396 I AmbientCueRepository: Receiving SmartSpace targets # 0
+08-06 08:50:44.574  2331  2331 I WeatherSmartspaceView: setFormattedContentDescription: text=38°C, iconDescription=Mostly clear day, contentDescription=Mostly clear day, 38°C
+08-06 08:50:44.576  2331  2331 I WeatherSmartspaceView: setFormattedContentDescription: text=38°C, iconDescription=Mostly clear day, contentDescription=Mostly clear day, 38°C
+08-06 08:50:44.576  2331  2331 I WeatherData: Weather data parsed MOSTLY_SUNNY ("Mostly clear day") 38°C from Bundle[{description=Mostly clear day, feedback_intent=null, explanation_intent=Supplier{VAL_PARCELABLE@160+1920}, is_gaia_linked_data=true, use_celsius=true, state=3, temperature=38}]
+08-06 08:50:44.577  4276  5249 I AiAiEcho: (REDACTED) #postPredictionTargets: Sending updates to UISurface %s with targets# %s (types=[%s])
+08-06 08:50:44.585  2423  2423 V PowerSaveModeChangedBR: Received: Intent { act=android.os.action.POWER_SAVE_MODE_CHANGED flg=0x11000010 xflg=0x4 pkg=com.google.android.flipendo cmp=com.google.android.flipendo/.receiver.PowerSaveModeChangedBroadcastReceiver }
+08-06 08:50:44.585  2423  2423 V SettingsInjector: Feature flag is set to true
+08-06 08:50:44.591  2423  2423 V SettingsInjector: Component {com.google.android.flipendo/com.google.android.flipendo.settings.AllowedAppListSelectionActivity}: is explicitly enabled = false, has default state = true
+08-06 08:50:44.592  2423  2423 V SettingsInjector: Settings injection is up to date
+08-06 08:50:44.592  2423  2423 V PowerSaveModeChangedBR: Device is in direct boot mode: false
+08-06 08:50:44.592  2423  2423 V BatterySaverManager: updateState() from PowerSaveModeChangedBR forceEnableFlipendo:false forceUpdate:false
+08-06 08:50:44.592  2423  2423 I WorkProfileManager: isWorkProfile: false
+08-06 08:50:44.592 22439 22439 I ForwardBroadcastListene: Receive forward intent: android.os.action.POWER_SAVE_MODE_CHANGED
+08-06 08:50:44.593  2423  3155 V SettingsInjector: Component {com.google.android.flipendo/com.google.android.flipendo.settings.AllowedAppListSelectionActivity}: is explicitly enabled = false, has default state = true
+08-06 08:50:44.594  2423  3155 V BatterySaverManager: Power save mode enabled = false
+08-06 08:50:44.594  2423  3155 V BatterySaverManager: Settings mode = MILD
+08-06 08:50:44.594  2423  3155 V BatterySaverManager: Disable called from PowerSaveModeChangedBR
+08-06 08:50:44.594  2423  3155 D BatterySaverPolicyManager: restoreBatterySaverPolicy
+08-06 08:50:44.595 22439 22462 I PowerSavingModeHandler: shouldSwitchCodecToLowPower, isPowerSaveMode=false
+08-06 08:50:44.595 22439 22462 I PowerSavingModeHandler: maybeSwitchCodecForLeavingLowPower, no configured device
+08-06 08:50:44.595 22439 22462 I PowerSavingModeHandler: maybeSwitchCodec completed
+08-06 08:50:44.599  2423  3155 D BatterySaverPolicyManager: setWallpaperDimEnabled: false
+08-06 08:50:44.599  2331  2331 D PowerNotificationWarningsGoogleImpl: onReceive: android.os.action.POWER_SAVE_MODE_CHANGED
+08-06 08:50:44.599  2331  2331 D PulsarController: dispatchIntent: android.os.action.POWER_SAVE_MODE_CHANGED
+08-06 08:50:44.599  2331  2331 D IncompatibleChargerNotification: dispatchIntent: android.os.action.POWER_SAVE_MODE_CHANGED
+08-06 08:50:44.600  2423  3155 V BatterySaverPolicyManager: sound trigger mode is already reset by others!
+08-06 08:50:44.600  2423  3155 V BatterySaverManager: Flipendo is disabled no action needed
+08-06 08:50:44.600  2423  3155 D ReceiverDelegate: Future succeeded in receiver
+08-06 08:50:44.610  2331  2331 D SsBaseTemplateCard: No date view can be set up
+08-06 08:50:44.611  2331  2331 I SsBaseTemplateCard: setFormattedContentDescription: text=at 9:00 AM, iconDescription=, contentDescription=at 9:00 AM
+08-06 08:50:44.611  2331  2331 D SsBaseTemplateCard: Passed-in item info is null
+08-06 08:50:44.611  2331  2331 D SsBaseTemplateCard: Passed-in item info is null
+08-06 08:50:44.674  2459  2788 D IpClient/wlan0: interfaceLinkStateChanged: ifindex 47 up
+08-06 08:50:44.807 21322 21327 I pixel-thermal: Power data LPM_ACTIVE_RAILS_STEADY is under collecting
+08-06 08:50:44.807 21322 21327 I pixel-thermal: ShutdownModePowerSteady data is under collecting
+08-06 08:50:44.807 21322 21327 I pixel-thermal: Thermal sensor ShutdownModePowerSteady is under collecting
+08-06 08:50:44.807 21322 21327 I pixel-thermal: thermalWatcherCallbackFunc: data under collecting for sensor: ShutdownModePowerSteady
+08-06 08:50:44.813 21322 21327 I pixel-thermal: VIRTUAL-SKIN-MODEL: model_input: [31594.00 33642.00 31728.00 32663.00 32440.00 32974.00 34377.00 31616.00 ]
+08-06 08:50:44.813 21322 21327 I native  : I0000 00:00:1785991844.813115   21327 thermal_tflite_wrapper.cc:261] ThermalTfliteInvoke
+08-06 08:50:44.813 21322 21327 I pixel-thermal: VIRTUAL-SKIN-MODEL: model_output: [32117.1 ]
+08-06 08:50:44.813 21322 21327 I pixel-thermal: VIRTUAL-SKIN-MODEL: predicted_value: [32117.1 ]
+08-06 08:50:44.814 21322 21327 I pixel-thermal: VIRTUAL-SKIN-CPU-MID:32.077 raw data: VIRTUAL-SKIN:32077 VIRTUAL-SKIN-CPU-MID:32077 VIRTUAL-SKIN-LEGACY:31990.6 VIRTUAL-SKIN-LEGACY-MODEL-DIFF:-126.496 VIRTUAL-SKIN-LEGACY-SHUTDOWN:0 VIRTUAL-SKIN-MODEL:32117.1 VIRTUAL-SKIN-MODEL-CLAMPED:32117.1 VIRTUAL-SKIN-MODEL-LEGACY-DIFF:126.496 VIRTUAL-SKIN-MODEL-UPDATED:32077 VIRTUAL-SKIN-MODEL-UPPER-CLAMPED:32117.1 VIRTUAL-SKIN-SUB-0:31990.6 VIRTUAL-SKIN-SUB-1:31360.5 VIRTUAL-SKIN-SUB-2:30144.2 VIRTUAL-SKIN-SUB-3:31895.1 VIRTUAL-SKIN-SUB-4:31943.1 VIRTUAL-SKIN-SUB-5:30789.5 VIRTUAL-SKIN-SUB-6:31905.3 VT_LEGACY_WEIGHT:0 VT_MODEL_WEIGHT:1 btmspkr_therm:31594 charging_therm:33642 disp_therm:31728 north_therm:32663 quiet_therm:32440 rfpa_therm:32974 soc_therm:34377 usb_pwr_therm:31616 
+08-06 08:50:44.814 21322 21327 I pixel-thermal: north_therm:32.663 raw data: north_therm:32663 
+08-06 08:50:44.814 21322 21327 I pixel-thermal: Power data LPM_ACTIVE_RAILS_TRANS is under collecting
+08-06 08:50:44.814 21322 21327 I pixel-thermal: ShutdownModePowerTrans data is under collecting
+08-06 08:50:44.814 21322 21327 I pixel-thermal: Thermal sensor ShutdownModePowerTrans is under collecting
+08-06 08:50:44.814 21322 21327 I pixel-thermal: thermalWatcherCallbackFunc: data under collecting for sensor: ShutdownModePowerTrans
+08-06 08:50:44.814 21322 21327 I pixel-thermal: Power data LPM_ACTIVE_RAILS_TRANS is under collecting
+08-06 08:50:44.814 21322 21327 I pixel-thermal: ShutdownModePowerTrans data is under collecting
+08-06 08:50:44.814 21322 21327 I pixel-thermal: Thermal sensor ShutdownModePowerTrans is under collecting
+08-06 08:50:44.814 21322 21327 I pixel-thermal: Power data LPM_ACTIVE_RAILS_STEADY is under collecting
+08-06 08:50:44.814 21322 21327 I pixel-thermal: ShutdownModePowerSteady data is under collecting
+08-06 08:50:44.814 21322 21327 I pixel-thermal: Thermal sensor ShutdownModePowerSteady is under collecting
+08-06 08:50:44.814 21322 21327 I pixel-thermal: VIRTUAL-SKIN:32.077 raw data: VIRTUAL-SKIN:32077 
+08-06 08:50:44.814 21322 21327 I pixel-thermal: VIRTUAL-SKIN-SOC:32.077 raw data: VIRTUAL-SKIN:32077 VIRTUAL-SKIN-SOC:32077 
+08-06 08:50:44.814 21322 21327 I pixel-thermal: STATS-UPDATOR:0 raw data: STATS-UPDATOR:0 VIRTUAL-SKIN-LEGACY:31990.6 VIRTUAL-SKIN-MODEL:32117.1 VIRTUAL-SKIN-MODEL-LEGACY-DIFF:126.496 
+08-06 08:50:44.815 21322 21327 I pixel-thermal: VIRTUAL-SKIN-CHARGE-WIRED:31.8436 raw data: NO_WLC:1 VIRTUAL-SKIN-CHARGE:31843.6 VIRTUAL-SKIN-CHARGE-SUB-0:31418.5 VIRTUAL-SKIN-CHARGE-SUB-1:31843.6 VIRTUAL-SKIN-CHARGE-SUB-2:31578.8 VIRTUAL-SKIN-CHARGE-SUB-3:30789.5 VIRTUAL-SKIN-CHARGE-WIRED:31843.6 WLC_CHECK:1 btmspkr_therm:31594 charging_therm:33642 disp_therm:31728 north_therm:32663 quiet_therm:32440 rfpa_therm:32974 soc_therm:34377 thb_hda:0 usb_pwr_therm:31616 
+08-06 08:50:44.816 21322 21327 I pixel-thermal: VIRTUAL-SKIN-CPU-ODPM:32.077 raw data: VIRTUAL-SKIN:32077 VIRTUAL-SKIN-CPU-ODPM:32077 
+08-06 08:50:44.816 21322 21327 I pixel-thermal: VIRTUAL-SKIN-SPEAKER:31.9044 raw data: VIRTUAL-SKIN-SPEAKER:31904.4 VIRTUAL-SKIN-SPEAKER-SUB-0:31904.4 btmspkr_therm:31594 charging_therm:33642 disp_therm:31728 north_therm:32663 quiet_therm:32440 rfpa_therm:32974 soc_therm:34377 usb_pwr_therm:31616 
+08-06 08:50:44.816 21322 21327 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM:32.077 raw data: VIRTUAL-SKIN:32077 VIRTUAL-SKIN-CPU-LIGHT-ODPM:32077 
+08-06 08:50:44.816 21322 21327 I pixel-thermal: VIRTUAL-SKIN-CPU-HIGH:32.077 raw data: VIRTUAL-SKIN:32077 VIRTUAL-SKIN-CPU-HIGH:32077 
+08-06 08:50:44.816 21322 21327 I pixel-thermal: VIRTUAL-SKIN-HINT:32.077 raw data: VIRTUAL-SKIN:32077 VIRTUAL-SKIN-HINT:32077 
+08-06 08:50:44.816 21322 21327 I pixel-thermal: VIRTUAL-SKIN-GPU:32.077 raw data: VIRTUAL-SKIN:32077 VIRTUAL-SKIN-GPU:32077 
+08-06 08:50:44.817 21322 21327 I pixel-thermal: CHARGING-STATS-UPDATOR:0 raw data: CHARGING-STATS-UPDATOR:0 IS_WIRED_15W:0 IS_WIRED_15W_CHECK:1 IS_WIRED_18W:0 IS_WIRED_18W_CHECK:1 IS_WIRED_5W:0 IS_WIRED_5W_CHECK:1 IS_WIRED_7_5W:0 IS_WIRED_7_5W_CHECK:1 IS_WIRED_GT18W:0 IS_WIRED_GT18W_CHECK:1 IS_WIRED_SUB5W:0 IS_WIRED_SUB5W_CHECK:1 IS_WLC:0 NO_WIRED_15W:1 NO_WIRED_18W:1 NO_WIRED_5W:1 NO_WIRED_7_5W:1 NO_WIRED_GT18W:1 NO_WIRED_SUB5W:1 NO_WLC:1 VIRTUAL-SKIN-CHARGE:31843.6 VIRTUAL-SKIN-CHARGE-DURING-WIRED-15W-STATS:-1e+06 VIRTUAL-SKIN-CHARGE-DURING-WIRED-18W-STATS:-1e+06 VIRTUAL-SKIN-CHARGE-DURING-WIRED-5W-STATS:-1e+06 VIRTUAL-SKIN-CHARGE-DURING-WIRED-7-5W-STATS:-1e+06 VIRTUAL-SKIN-CHARGE-DURING-WIRED-GT18W-STATS:-1e+06 VIRTUAL-SKIN-CHARGE-DURING-WIRED-SUB5W-STATS:-1e+06 VIRTUAL-SKIN-CHARGE-DURING-WLC-STATS:-1e+06 WLC_CHECK:1 thb_hda:0 
+08-06 08:50:44.817 21322 21327 I pixel-thermal: VIRTUAL-SKIN-CHARGE-PERSIST:31.8436 raw data: VIRTUAL-SKIN-CHARGE:31843.6 VIRTUAL-SKIN-CHARGE-PERSIST:31843.6 
+08-06 08:50:44.817 21322 21327 I pixel-thermal: cellular-emergency:32.077 raw data: VIRTUAL-SKIN:32077 cellular-emergency:32077 
+08-06 08:50:45.080  4276  4276 I AiAiCaptions: (REDACTED) onReceive(): Battery saver mode turned %s.
+08-06 08:50:45.080  4276  4276 I AiAiAdaptiveAudio: (REDACTED) updateAdaptiveAudioRunningState: shouldRun=%b
+08-06 08:50:45.086  2846  2846 I PersonalSafety: (REDACTED) [Settings] power saver mode changed to %s
+08-06 08:50:45.086  2846 23317 I SelfLocationFetcher: Starting self-location fetching permanent unified strategy. [CONTEXT service_id=284 ]
+08-06 08:50:45.258   971  2320 I WifiHAL : Creating message to get link statistics; iface = 47
+08-06 08:50:45.369   971  2320 E libbinder.IPCThreadState: binder thread pool (1 threads) starved for 111 ms
+08-06 08:50:45.370   971   971 I WifiHAL : Getting cached scan results, iface handle = 0xb40000710c4e0810
+08-06 08:50:45.370   971   971 E WifiHAL : Creating message to get cached scan results
+08-06 08:50:45.384   971   971 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+08-06 08:50:45.445   971   971 D WifiHAL : Start debug command: mType GET_FEATURE
+08-06 08:50:45.445   971   971 I WifiHAL : CreateRequest mType = GET_FEATURE
+08-06 08:50:45.446   971   971 D WifiHAL : In DebugCommand::handleResponse, mType:GET_FEATURE
+08-06 08:50:45.446   971   971 D WifiHAL : len = 4, expected len = 4
+08-06 08:50:45.534  1233  1233 I adbd    : adbd service requested 'shell,v2,TERM=dumb:export ANDROID_LOG_TAGS=''; exec logcat '-d' '-t' '200''

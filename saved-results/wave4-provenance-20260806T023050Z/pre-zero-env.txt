@@ -1,0 +1,4 @@
+home=com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+focus=  mCurrentFocus=Window{c607c48 u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+font=1.0
+anim=0

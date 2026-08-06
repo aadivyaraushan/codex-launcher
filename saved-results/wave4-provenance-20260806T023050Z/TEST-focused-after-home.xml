@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="5" failures="0" errors="0" skipped="0" time="16.547" timestamp="2026-08-06T02:48:38" hostname="localhost">
+  <testsuite name="app.codexlauncher.launcher.home.HomeScreenTest" tests="1" failures="0" errors="0" skipped="0" time="1.419" timestamp="2026-08-06T02:48:38" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="selectedProjectEnablesTheComposerAction" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="1.419" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.launcher.apps.AppDrawerScreenTest" tests="1" failures="0" errors="0" skipped="0" time="0.731" timestamp="2026-08-06T02:48:38" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="searchNarrowsTheVisibleLaunchableApps" classname="app.codexlauncher.launcher.apps.AppDrawerScreenTest" time="0.731" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" tests="1" failures="0" errors="0" skipped="0" time="11.784" timestamp="2026-08-06T02:48:38" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="everyFixedScenarioRendersItsExpectedRoot" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="11.784" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.LauncherActivityTest" tests="1" failures="0" errors="0" skipped="0" time="0.403" timestamp="2026-08-06T02:48:38" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="freshUnpairedLaunchShowsSetupWithoutComputerContent" classname="app.codexlauncher.LauncherActivityTest" time="0.403" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.task.transcript.TaskScreenTest" tests="1" failures="0" errors="0" skipped="0" time="0.71" timestamp="2026-08-06T02:48:38" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="transcriptRendersChatAndKeepsLargeDetailsBehindExplicitActions" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.71" />
+  </testsuite>
+</testsuites>

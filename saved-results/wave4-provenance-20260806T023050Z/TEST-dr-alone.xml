@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="1" failures="0" errors="0" skipped="0" time="8.637" timestamp="2026-08-06T02:53:20" hostname="localhost">
+  <testsuite name="app.codexlauncher.capability.reply.live.LiveDirectReplyProofTest" tests="1" failures="0" errors="0" skipped="0" time="7.665" timestamp="2026-08-06T02:53:20" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="firesRemoteInputIntoLiveMessagesNotification" classname="app.codexlauncher.capability.reply.live.LiveDirectReplyProofTest" time="7.665" />
+  </testsuite>
+</testsuites>

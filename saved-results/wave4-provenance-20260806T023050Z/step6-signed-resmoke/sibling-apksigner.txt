@@ -1,0 +1,4 @@
+Signer #1 certificate DN: CN=Operator Internal Release, OU=Operator, O=Operator, L=Unknown, ST=Unknown, C=US
+Signer #1 certificate SHA-256 digest: 35639edad0224145765b0d0f2b21cd9c8cd96be6592bdfbb4b8f39d4a9f3f3e3
+Signer #1 certificate SHA-1 digest: d32adc34abffa792871b2efc3318a0fe3d59b499
+Signer #1 certificate MD5 digest: db7788c5ce6a528b37849ec7398a6d8e

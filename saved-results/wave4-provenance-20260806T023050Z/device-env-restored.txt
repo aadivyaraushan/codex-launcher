@@ -1,0 +1,4 @@
+restored_font=1.3
+restored_anim=1
+home=com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+wispr=enabled_or_absent

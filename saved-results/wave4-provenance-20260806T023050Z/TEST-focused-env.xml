@@ -1,0 +1,76 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="5" failures="5" errors="0" skipped="0" time="12.665" timestamp="2026-08-06T02:47:00" hostname="localhost">
+  <testsuite name="app.codexlauncher.launcher.home.HomeScreenTest" tests="1" failures="1" errors="0" skipped="0" time="1.864" timestamp="2026-08-06T02:47:00" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="selectedProjectEnablesTheComposerAction" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="1.864">
+      <failure>org.junit.ComparisonFailure: expected:&lt;[Run all tests]&gt; but was:&lt;[]&gt;
+at org.junit.Assert.assertEquals(Assert.java:117)
+at org.junit.Assert.assertEquals(Assert.java:146)
+at app.codexlauncher.launcher.home.HomeScreenTest.selectedProjectEnablesTheComposerAction(HomeScreenTest.kt:204)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.launcher.apps.AppDrawerScreenTest" tests="1" failures="1" errors="0" skipped="0" time="0.979" timestamp="2026-08-06T02:47:00" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="searchNarrowsTheVisibleLaunchableApps" classname="app.codexlauncher.launcher.apps.AppDrawerScreenTest" time="0.979">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Camera' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.launcher.apps.AppDrawerScreenTest.searchNarrowsTheVisibleLaunchableApps(AppDrawerScreenTest.kt:34)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" tests="1" failures="1" errors="0" skipped="0" time="7.701" timestamp="2026-08-06T02:47:00" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="everyFixedScenarioRendersItsExpectedRoot" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="7.701">
+      <failure>java.lang.AssertionError: scenario home_choose_project never showed "Choose project"
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.everyFixedScenarioRendersItsExpectedRoot(UiScenarioActivityTest.kt:53)
+... 63 trimmed
+Caused by: androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 5000 ms
+at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:887)
+at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:482)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.awaitUi(UiScenarioActivityTest.kt:573)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.waitForText(UiScenarioActivityTest.kt:526)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.everyFixedScenarioRendersItsExpectedRoot(UiScenarioActivityTest.kt:51)
+... 64 more
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.LauncherActivityTest" tests="1" failures="1" errors="0" skipped="0" time="0.495" timestamp="2026-08-06T02:47:00" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="freshUnpairedLaunchShowsSetupWithoutComputerContent" classname="app.codexlauncher.LauncherActivityTest" time="0.495">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Your ChatGPT sign-in stays on your computer. The phone stores only its pairing key and non-secret connection details.' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.LauncherActivityTest.freshUnpairedLaunchShowsSetupWithoutComputerContent(LauncherActivityTest.kt:99)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.task.transcript.TaskScreenTest" tests="1" failures="1" errors="0" skipped="0" time="0.495" timestamp="2026-08-06T02:47:00" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="transcriptRendersChatAndKeepsLargeDetailsBehindExplicitActions" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.495">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'All tests pass.' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.task.transcript.TaskScreenTest.transcriptRendersChatAndKeepsLargeDetailsBehindExplicitActions(TaskScreenTest.kt:187)
+</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

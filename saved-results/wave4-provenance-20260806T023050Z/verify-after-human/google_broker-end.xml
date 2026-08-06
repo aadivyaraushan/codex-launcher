@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <int name="access_token_len" value="0" />
+    <int name="granted_scope_count" value="0" />
+    <long name="updated_at_unix" value="1785986998" />
+    <string name="detail">api_16</string>
+    <string name="scopes">https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file</string>
+    <string name="status">error</string>
+</map>

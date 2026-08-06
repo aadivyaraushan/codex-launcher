@@ -1,0 +1,4 @@
+go=go version go1.26.5 darwin/arm64
+java=openjdk version "26" 2026-03-17
+node=v21.7.3
+python=Python 3.12.3

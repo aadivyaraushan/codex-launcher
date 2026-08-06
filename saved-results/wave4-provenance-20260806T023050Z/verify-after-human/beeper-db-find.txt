@@ -1,0 +1,2 @@
+Warning: Permanently added '[localhost]:18022' (ED25519) to the list of known hosts.
+/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/rootfs/var/lib/beeper/.beeper/data-dirs/local-servers/default/account.db

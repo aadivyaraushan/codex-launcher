@@ -1,0 +1,7 @@
+Starting: Intent { cmp=app.codexlauncher/.runtime.broker.outlook.OutlookAuthorizeActivity }
+Status: ok
+LaunchState: WARM
+Activity: app.codexlauncher/.runtime.broker.outlook.OutlookAuthorizeActivity
+TotalTime: 46
+WaitTime: 55
+Complete

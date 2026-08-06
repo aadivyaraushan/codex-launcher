@@ -1,0 +1,47 @@
+Retrieving project…
+Deploying aadivyaraushans-projects/operator
+Inspect: https://vercel.com/aadivyaraushans-projects/operator/3XWaiyL9W7JVYcABDj4SHQWKhvHo [1s]
+Production: https://operator-fdl4ej8om-aadivyaraushans-projects.vercel.app [1s]
+Building...
+Building...
+Building: Running build in Washington, D.C., USA (East) – iad1
+Building: Build machine configuration: 2 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Previous build caches not available.
+Building: Downloading 2 deployment files...
+Building: Running "vercel build"
+Building: Vercel CLI 58.1.0
+Building: Build Completed in /vercel/output [18ms]
+Building: Deploying outputs...
+[2K[1A[2K[GProduction: https://operator-fdl4ej8om-aadivyaraushans-projects.vercel.app [7s]
+Completing...
+Aliased: https://tryoperator.net [8s]
+{
+  "status": "ok",
+  "deployment": {
+    "id": "dpl_3XWaiyL9W7JVYcABDj4SHQWKhvHo",
+    "url": "https://operator-fdl4ej8om-aadivyaraushans-projects.vercel.app",
+    "inspectorUrl": "https://vercel.com/aadivyaraushans-projects/operator/3XWaiyL9W7JVYcABDj4SHQWKhvHo",
+    "readyState": "READY",
+    "target": "production",
+    "deploymentApiUrl": "https://api.vercel.com/v13/deployments/dpl_3XWaiyL9W7JVYcABDj4SHQWKhvHo"
+  },
+  "message": "Deployment operator-fdl4ej8om-aadivyaraushans-projects.vercel.app ready.",
+  "next": [
+    {
+      "command": "vercel inspect operator-fdl4ej8om-aadivyaraushans-projects.vercel.app --scope aadivyaraushans-projects",
+      "when": "Inspect deployment"
+    },
+    {
+      "command": "vercel deploy --prod --scope aadivyaraushans-projects",
+      "when": "Promote to production"
+    }
+  ]
+}
+╭──────────────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│                     Update available! v52.0.0 ≫ v58.7.1                      │
+│   Changelog: https://github.com/vercel/vercel/releases/tag/vercel%4058.7.1   │
+│                   Run `brew upgrade vercel-cli` to update.                   │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯

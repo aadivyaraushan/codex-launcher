@@ -1,0 +1,14 @@
+go_test_exit=0
+protocol_exit=0
+arm64_build_exit=0
+android_unit_lint_exit=0
+assemble_debug_exit=0
+assemble_release_exit=0
+assemble_androidTest_exit=0
+debug_apk_isolation_exit=0
+release_checks_exit=0
+debug_surface_exit=0
+instrumentation_exit=1
+signed_internal_release=BLOCKED
+step6=NOT_RUN
+sibling_tracked_clean=1

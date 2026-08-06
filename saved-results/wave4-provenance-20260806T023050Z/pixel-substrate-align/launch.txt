@@ -1,0 +1,1 @@
+LAUNCH=    topResumedActivity=ActivityRecord{2514617 u0 app.codexlauncher/.LauncherActivity t14989}

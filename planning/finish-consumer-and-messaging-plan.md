@@ -6,6 +6,29 @@
 **Evidence baseline:** `saved-results/production-phone-service-usability-audit-2026-08-05.md` and `saved-results/android-vm-terminal-feasibility-2026-08-05.md`
 **Scope authority:** this file overrides conflicting completion language in `consumer-app-implementation-plan.md` and `operator-complete-messaging-plan.md`
 
+## Plan delta (binding) — 2026-08-06: Pixel live path accepted for exit
+
+**Owner decision (binding):** For this finish-consumer / Wave 0–4 exit and for
+independent judges grading that exit, the accepted live substrate is the owner's
+physical Pixel 9 serial `4B230DLAQ001Z5`, not a full Play AVD reprovision.
+
+**Rationale:** Overnight physical-phone directive and authenticated live state
+already on that Pixel (Termux/Debian/Beeper, provider consents, brokers). Requiring
+a fresh Play AVD for plan exit would discard that state without improving the
+proof for this run.
+
+**What this changes for judges / exit:**
+- Wave 0 substrate proofs and final live proofs may use Pixel `4B230DLAQ001Z5`.
+- Play AVD `operator_android16_arm64` remains an optional future path; it is
+  **not** required to exit this plan.
+- Frozen internal-release cert SHA-256 remains
+  `35:63:9E:DA:D0:22:41:45:76:5B:0D:0F:2B:21:CD:9C:8C:D9:6B:E6:59:2B:DF:BB:4B:8F:39:D4:A9:F3:F3:E3`.
+- This is an explicit plan amendment, not a silent waiver of other exits (signed
+  APK, assetlinks from that cert, honest carry-over labeling, etc.).
+
+Any earlier sentence in this file that says tests must run on an AVD / not on
+the Pixel is superseded by this delta for this exit run only.
+
 ## One-minute handoff
 
 ```text
@@ -78,10 +101,10 @@ file used for Android domain verification; it performs no request processing.
 - Beeper is the primary direct-send route for Instagram, Discord, and Google
   Messages. It runs on the Android device, not on macOS.
 - Termux + `proot-distro` Debian is the selected production Linux runtime for
-  this plan. The approved Play AVD can exercise it, and the inspected Play
-  Termux build exposes the boot and persisted-job mechanisms required for the
-  restart test. Do not delay production on an untestable built-in Terminal
-  preference.
+  this plan. The accepted Pixel live path (see plan delta above) or an optional
+  future Play AVD can exercise it; the inspected Play Termux build exposes the
+  boot and persisted-job mechanisms required for the restart test. Do not delay
+  production on an untestable built-in Terminal preference.
 - Built-in Android Terminal/AVF may replace Termux only in a later plan after a
   production-capable target passes the same local-trust, real-Beeper, cold-boot,
   process-reclaim, and credential-preservation tests. Cuttlefish may supply
@@ -92,11 +115,11 @@ file used for Android domain verification; it performs no request processing.
 - Failure UI names the real state and next action. It does not collapse
   “starting,” “signed out,” “offline,” “stopped,” and “delivery unknown” into
   “app unavailable.”
-- Tests run on an Android virtual device, not on the owner's Pixel. The primary
-  test route is an ARM64 Android Virtual Device with Termux + `proot-distro`
-  Debian. A custom Cuttlefish image may collect diagnostic AVF evidence if a
-  measured Termux/proot incompatibility prevents the real server from running,
-  but it cannot pass the selected Termux production route.
+- **Amended 2026-08-06:** For this exit run, live tests and Wave 0 substrate
+  proofs use physical Pixel `4B230DLAQ001Z5` (see binding plan delta). An ARM64
+  Play AVD with Termux + `proot-distro` Debian remains an optional future route,
+  not an exit requirement. A custom Cuttlefish image may still collect diagnostic
+  AVF evidence if needed, but it cannot pass the selected Termux production route.
 - The test VM uses the approved real accounts and low-stakes real actions.
 - Authenticated state is preserved for the whole run. Do not reinstall apps,
   clear data, revoke tokens, unlink networks, or repeat OAuth as a debugging
@@ -834,8 +857,9 @@ broader user data.
 
 ## Reproducible test fixtures
 
-### Primary Play AVD
+### Primary Play AVD (optional future path)
 
+**Not required for this exit** — see binding Pixel plan delta (2026-08-06).
 Create one persistent AVD named `operator_android16_arm64` with:
 
 ```text

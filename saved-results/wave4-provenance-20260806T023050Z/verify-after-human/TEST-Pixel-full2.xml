@@ -1,0 +1,371 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="134" failures="0" errors="0" skipped="5" time="94.448" timestamp="2026-08-06T03:44:46" hostname="localhost">
+  <testsuite name="app.codexlauncher.BootstrapInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="0.01" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="installedPackageIsTheLauncherApplication" classname="app.codexlauncher.BootstrapInstrumentedTest" time="0.01" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.LauncherActivityTest" tests="7" failures="0" errors="0" skipped="0" time="5.571" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="freshUnpairedLaunchShowsSetupWithoutComputerContent" classname="app.codexlauncher.LauncherActivityTest" time="0.718" />
+    <testcase name="homeOpensAllAppsAndPersistsAnAppearanceChoiceAcrossRecreation" classname="app.codexlauncher.LauncherActivityTest" time="1.494" />
+    <testcase name="androidSettingsEscapeRouteUsesThePlatformSettingsIntent" classname="app.codexlauncher.LauncherActivityTest" time="0.365" />
+    <testcase name="AndroidBackReturnsAppearanceToAllAppsAndThenHome" classname="app.codexlauncher.LauncherActivityTest" time="0.94" />
+    <testcase name="pairingInputSurvivesActivityRecreation" classname="app.codexlauncher.LauncherActivityTest" time="0.882" />
+    <testcase name="allAppsBackArrowReturnsAnUnpairedUserToSetup" classname="app.codexlauncher.LauncherActivityTest" time="0.564" />
+    <testcase name="AndroidDeliversALaterHomeIntentAndTheLauncherReturnsHome" classname="app.codexlauncher.LauncherActivityTest" time="0.608" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.LauncherRoleTest" tests="5" failures="0" errors="0" skipped="0" time="0.009" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="homeIntentResolvesToLauncherActivity" classname="app.codexlauncher.LauncherRoleTest" time="0.003" />
+    <testcase name="applicationProvidesAnIconForAndroidsHomePickerAndAppLists" classname="app.codexlauncher.LauncherRoleTest" time="0.003" />
+    <testcase name="androidSystemProvidesASettingsActivity" classname="app.codexlauncher.LauncherRoleTest" time="0.001" />
+    <testcase name="launcherActivityReusesOneTaskSoHomeIntentsCanResetItsScreen" classname="app.codexlauncher.LauncherRoleTest" time="0.001" />
+    <testcase name="ordinaryLauncherIntentStillResolvesToLauncherActivity" classname="app.codexlauncher.LauncherRoleTest" time="0.001" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.accessibility.LauncherAccessibilityTest" tests="2" failures="0" errors="0" skipped="0" time="1.33" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="offlineHomePassesTheComposeAccessibilityScanner" classname="app.codexlauncher.accessibility.LauncherAccessibilityTest" time="0.459" />
+    <testcase name="appearancePassesTheComposeAccessibilityScanner" classname="app.codexlauncher.accessibility.LauncherAccessibilityTest" time="0.871" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.appearance.settings.AppearanceScreenTest" tests="3" failures="0" errors="0" skipped="0" time="1.466" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="largeAndroidTextKeepsEveryAppearanceChoiceVisible" classname="app.codexlauncher.appearance.settings.AppearanceScreenTest" time="0.747" />
+    <testcase name="showsOnlyTheApprovedAppearanceControlsAndAndroidNote" classname="app.codexlauncher.appearance.settings.AppearanceScreenTest" time="0.431" />
+    <testcase name="quietThemeUsesTheTwoBundledFontFamilies" classname="app.codexlauncher.appearance.settings.AppearanceScreenTest" time="0.288" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.capability.interaction.CapabilitySheetTest" tests="3" failures="0" errors="0" skipped="0" time="1.234" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="handsOffResultOffersCopyAndOpen" classname="app.codexlauncher.capability.interaction.CapabilitySheetTest" time="0.515" />
+    <testcase name="failedConfirmationSaysItWasNotSentToCodex" classname="app.codexlauncher.capability.interaction.CapabilitySheetTest" time="0.293" />
+    <testcase name="previewShowsTheExactActionAndRequiresAnExplicitChoice" classname="app.codexlauncher.capability.interaction.CapabilitySheetTest" time="0.426" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.capability.reply.live.LiveDirectReplyProofTest" tests="1" failures="0" errors="0" skipped="0" time="0.058" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="firesRemoteInputIntoLiveMessagesNotification" classname="app.codexlauncher.capability.reply.live.LiveDirectReplyProofTest" time="0.058" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.connection.pairing.LiveAutoSendInjectTest" tests="1" failures="0" errors="0" skipped="1" time="0.229" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="injectPromptAndSendUsingAuto" classname="app.codexlauncher.connection.pairing.LiveAutoSendInjectTest" time="0.229">
+      <skipped />
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.connection.pairing.LiveFlyPairingInjectTest" tests="1" failures="0" errors="0" skipped="1" time="0.256" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="injectManualPairingLinkAndSubmit" classname="app.codexlauncher.connection.pairing.LiveFlyPairingInjectTest" time="0.256">
+      <skipped />
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.connection.pairing.PairingScreenTest" tests="4" failures="0" errors="0" skipped="0" time="2.036" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="manualModeSubmitsExactlyWhatTheUserEnteredAndShowsSafeErrors" classname="app.codexlauncher.connection.pairing.PairingScreenTest" time="0.772" />
+    <testcase name="pairingProgressDisablesASecondSubmission" classname="app.codexlauncher.connection.pairing.PairingScreenTest" time="0.324" />
+    <testcase name="acceptedPairingWithAStorageFailureOffersSaveOnlyRetry" classname="app.codexlauncher.connection.pairing.PairingScreenTest" time="0.35" />
+    <testcase name="scanModeExplainsCameraPermissionAndKeepsLauncherEscapeRoutes" classname="app.codexlauncher.connection.pairing.PairingScreenTest" time="0.59" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.connection.stream.ApplicationSessionOwnershipTest" tests="1" failures="0" errors="0" skipped="0" time="0.002" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="applicationReturnsTheSameSessionDraftAndStreamOwnersForItsWholeProcess" classname="app.codexlauncher.connection.stream.ApplicationSessionOwnershipTest" time="0.002" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.connection.stream.CodexConnectionServiceTest" tests="7" failures="0" errors="0" skipped="2" time="1.045" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="serviceSurvivesScreenOffAndDozeWhileObservingTheDefaultNetwork" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.003">
+      <skipped />
+    </testcase>
+    <testcase name="deletedChannelsAreRecreatedOnTheNextVisibleStart" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.118" />
+    <testcase name="externallyDrivenFullNetworkLossAndReturnTriggersReconnect" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.001">
+      <skipped />
+    </testcase>
+    <testcase name="deniedNotificationPermissionSuppressesTaskUpdateWithoutStoppingConnection" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.137" />
+    <testcase name="visibleStartReportsSecurityRejectionInsteadOfCrashing" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.002" />
+    <testcase name="replyApprovalQuestionFailureAndOfflineNotificationsStayGeneric" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.639" />
+    <testcase name="servicePromotesWithConnectedDeviceTypeAndStopsExplicitly" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.145" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" tests="25" failures="0" errors="0" skipped="0" time="36.631" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="decisionSafetyStatesExerciseEveryPhoneAction" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="2.604" />
+    <testcase name="projectEmptyAndSaveRetryStatesUseTheRealRecoveryControls" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.406" />
+    <testcase name="taskTranscriptOpensBothRealDetailSurfaces" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.417" />
+    <testcase name="manualPairingIsTheRealEditableProductionSurface" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.592" />
+    <testcase name="homeFailureStatesKeepTheComposerSafeAndEditable" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="2.614" />
+    <testcase name="pairingRecoveryStatesRunTheirRealActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.264" />
+    <testcase name="appDrawerRunsEmptySearchAndNavigationActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.207" />
+    <testcase name="offlineHomeUsesTheRealHelpInteraction" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.233" />
+    <testcase name="unknownTaskOutcomesUseTheRealReviewGates" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.577" />
+    <testcase name="onlineHomeKeepsComposerActionsNextToTheRealKeyboard" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.81" />
+    <testcase name="everyFixedScenarioRendersItsExpectedRoot" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="10.767" />
+    <testcase name="approvalAndQuestionScenariosUseTheRealDecisionSheets" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.62" />
+    <testcase name="workingAndIdleTaskControlsRunTheirRealInteractions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="2.125" />
+    <testcase name="idleTaskRunsDictationAndAttachmentActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.63" />
+    <testcase name="recoveryAndLauncherDialogsUseTheirRealProductionActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.643" />
+    <testcase name="idleTaskRunsRenameArchiveAndForkActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.734" />
+    <testcase name="onlineHomeExercisesOptionsAttachmentsDictationAndReview" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.884" />
+    <testcase name="replyConsentSurfacesRunTheirRealProductionActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.811" />
+    <testcase name="taskKeepsFollowUpActionsNextToTheRealKeyboard" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.581" />
+    <testcase name="everyLaterPhaseOfTheCapabilitySheetRunsItsRealProductionActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.326" />
+    <testcase name="projectChoicesUseTheRealSelectableProductionRows" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.262" />
+    <testcase name="appDrawerSearchesAndShowsTheControlledLaunchFailure" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.868" />
+    <testcase name="debugActivityIsExportedOnlyThroughTheShellPermission" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.004" />
+    <testcase name="onlineHomeEditsPromptAndShowsEveryTaskState" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.178" />
+    <testcase name="appearanceScenarioChangesAllThreeRealThemeChoices" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.474" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.decision.DecisionSheetsTest" tests="4" failures="0" errors="0" skipped="0" time="1.692" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="unclearRedactedCommandCannotBeAllowedButCanBeDenied" classname="app.codexlauncher.decision.DecisionSheetsTest" time="0.424" />
+    <testcase name="nonSecretChoiceIsSentWithItsExactQuestionId" classname="app.codexlauncher.decision.DecisionSheetsTest" time="0.506" />
+    <testcase name="approvalShowsOnlyTheScopesCodexOffered" classname="app.codexlauncher.decision.DecisionSheetsTest" time="0.365" />
+    <testcase name="secretQuestionShowsComputerFallbackAndNeverShowsAnAnswerField" classname="app.codexlauncher.decision.DecisionSheetsTest" time="0.397" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.launcher.apps.AppDrawerScreenTest" tests="4" failures="0" errors="0" skipped="0" time="2.38" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="appAndEscapeRoutesCallTheirOwners" classname="app.codexlauncher.launcher.apps.AppDrawerScreenTest" time="0.582" />
+    <testcase name="searchNarrowsTheVisibleLaunchableApps" classname="app.codexlauncher.launcher.apps.AppDrawerScreenTest" time="0.707" />
+    <testcase name="restoredAllAppsStartsWithTheCompleteUnfilteredList" classname="app.codexlauncher.launcher.apps.AppDrawerScreenTest" time="0.721" />
+    <testcase name="launchFailureIsShownBesideTheAppList" classname="app.codexlauncher.launcher.apps.AppDrawerScreenTest" time="0.37" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.launcher.apps.InstalledAppsRepositoryInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="1.289" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="realLauncherAppsSourceEnumeratesAndLaunchesAndroidSettings" classname="app.codexlauncher.launcher.apps.InstalledAppsRepositoryInstrumentedTest" time="1.151" />
+    <testcase name="realLauncherAppsSourceEnumeratesEveryLaunchableActivityVisibleToAndroid" classname="app.codexlauncher.launcher.apps.InstalledAppsRepositoryInstrumentedTest" time="0.138" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.launcher.home.HomeScreenTest" tests="20" failures="0" errors="0" skipped="0" time="9.832" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="aNewAuthenticatedSessionResetsAFullAccessChoiceToTheHostDefault" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.644" />
+    <testcase name="hostOptionsCanBeChangedAndAreIncludedWithThePrompt" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="1.374" />
+    <testcase name="liveTaskSummaryIsVisibleInTheRenderedHomeRow" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.312" />
+    <testcase name="encryptedDraftStateRestoresTextAndReportsStorageFailuresWithoutDiscardingIt" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.313" />
+    <testcase name="unknownNewTaskShowsAReviewGateAndBlocksAnotherSend" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.392" />
+    <testcase name="tappingTheFixedComputerOpensItsManagementAction" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.313" />
+    <testcase name="selectedAttachmentIsVisibleAndCanBeRemovedBeforeSend" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.418" />
+    <testcase name="scrollingHomeContentDoesNotOpenAllAppsAndExpandedHelpStaysOfflineSafe" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.309" />
+    <testcase name="appActionInProgressLocksTheDestinationAndSendControl" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.406" />
+    <testcase name="selectedProjectEnablesTheComposerAction" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.753" />
+    <testcase name="tappingATaskRowOpensThatTask" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.369" />
+    <testcase name="sendStaysDisabledUntilNewTaskOptionsArrive" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.313" />
+    <testcase name="sendStaysDisabledWhenDraftVersionIsMissing" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.342" />
+    <testcase name="homeComposerShowsWhereThePromptWillRunAndLetsTheUserChooseComputer" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.427" />
+    <testcase name="offlineSurfaceHidesTasksAndKeepsEveryEscapeRouteUsable" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.646" />
+    <testcase name="onlineSurfaceBlocksSendUntilAProjectIsSelected" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.402" />
+    <testcase name="dictationIsAvailableOnlyWhileTheHomeDraftCanAcceptEdits" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.48" />
+    <testcase name="keyboardDoesNotCoverTheOnlineComposerActions" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.937" />
+    <testcase name="largeAndroidTextKeepsOfflineRecoveryAndEscapeControlsVisible" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.346" />
+    <testcase name="failedNewTaskShowsWhyTheDraftWasKept" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.336" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.project.selection.ProjectSelectorTest" tests="3" failures="0" errors="0" skipped="0" time="1.111" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="emptyStateExplainsThatFoldersAreApprovedOnTheComputerAndKeepsEscapes" classname="app.codexlauncher.project.selection.ProjectSelectorTest" time="0.428" />
+    <testcase name="showsTheFixedComputerAndOnlyApprovedProjectChoices" classname="app.codexlauncher.project.selection.ProjectSelectorTest" time="0.374" />
+    <testcase name="longProjectLabelsCanGrowAtLargeAndroidTextSize" classname="app.codexlauncher.project.selection.ProjectSelectorTest" time="0.309" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest" tests="1" failures="0" errors="0" skipped="0" time="1.637" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="silentAuthorizeThenCalendarAndDrive" classname="app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest" time="1.637" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.runtime.broker.maps.live.LiveMapsBrokerProofTest" tests="1" failures="0" errors="0" skipped="0" time="0.111" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="importEnvelopeThenPlacesAndRoutes" classname="app.codexlauncher.runtime.broker.maps.live.LiveMapsBrokerProofTest" time="0.111" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest" tests="1" failures="0" errors="0" skipped="0" time="4.781" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="silentTokenThenGraphReadAndDraft" classname="app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest" time="4.781" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.actions.ActionRecordStoreInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="2.228" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="realDataStoreSerializesSimultaneousPreparedWrites" classname="app.codexlauncher.storage.actions.ActionRecordStoreInstrumentedTest" time="2.06" />
+    <testcase name="realDataStoreContainsOnlyMetadataAndCanBeWiped" classname="app.codexlauncher.storage.actions.ActionRecordStoreInstrumentedTest" time="0.168" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.connection.lastseen.LastConnectionStoreInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="0.09" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="recordIsScopedToTheCurrentPairingAndSurvivesStoreRecreation" classname="app.codexlauncher.storage.connection.lastseen.LastConnectionStoreInstrumentedTest" time="0.059" />
+    <testcase name="wipeClearRemovesTheTimestamp" classname="app.codexlauncher.storage.connection.lastseen.LastConnectionStoreInstrumentedTest" time="0.031" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.connection.resume.ResumeCursorStoreTest" tests="1" failures="0" errors="0" skipped="0" time="0.0" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="cursorSurvivesStoreRecreationAndIsBoundToOnePairing" classname="app.codexlauncher.storage.connection.resume.ResumeCursorStoreTest" time="0.0" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" tests="8" failures="0" errors="0" skipped="0" time="0.91" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="emptyDraftDeletesCiphertextAndExpiredDraftIsEvicted" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.115" />
+    <testcase name="savesOnlyCiphertextAndRestoresAfterStoreRecreation" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.207" />
+    <testcase name="oversizedCorruptAndFutureRecordsFailClosedWithoutReturningContent" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.145" />
+    <testcase name="separateStoreInstancesSerializeOperationsForTheSameFile" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.174" />
+    <testcase name="failedAtomicReplacementKeepsTheLastCommittedDraft" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.085" />
+    <testcase name="tamperedCiphertextIsClearedSoComposerCanRecover" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.061" />
+    <testcase name="composerEditsRoundTripThroughRealAndroidEncryption" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.089" />
+    <testcase name="oversizedStoredRecordIsRejectedBeforeItsBodyIsRead" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.034" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.drafts.LiveDraftInjectTest" tests="1" failures="0" errors="0" skipped="1" time="0.203" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="injectExactHomeDraft" classname="app.codexlauncher.storage.drafts.LiveDraftInjectTest" time="0.203">
+      <skipped />
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.secrets.PairingKeyStoreTest" tests="2" failures="0" errors="0" skipped="0" time="0.055" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="generatesAStableNonExportableP256SigningKeyAndReportsItsProtection" classname="app.codexlauncher.storage.secrets.PairingKeyStoreTest" time="0.054" />
+    <testcase name="deletingTheKeyMakesThePairingIdentityUnavailable" classname="app.codexlauncher.storage.secrets.PairingKeyStoreTest" time="0.001" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.wipe.LocalStateWiperInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="0.227" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="realStoresKeysAndCiphertextAreRemovedAsOneRecoverableWipe" classname="app.codexlauncher.storage.wipe.LocalStateWiperInstrumentedTest" time="0.227" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.wipe.UnpairActivityTest" tests="2" failures="0" errors="0" skipped="0" time="1.875" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="userConfirmationWipesThePairingAndReturnsToFreshSetup" classname="app.codexlauncher.storage.wipe.UnpairActivityTest" time="0.756" />
+    <testcase name="pairedActivityRecreationDoesNotRestartTheProcessConnectionService" classname="app.codexlauncher.storage.wipe.UnpairActivityTest" time="1.119" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.task.control.PromptDictationContractTest" tests="2" failures="0" errors="0" skipped="0" time="0.002" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="contractRequestsFreeFormSpeechAndReturnsTheFirstUsefulResult" classname="app.codexlauncher.task.control.PromptDictationContractTest" time="0.001" />
+    <testcase name="contractKeepsCancelAndEmptyRecognitionDistinct" classname="app.codexlauncher.task.control.PromptDictationContractTest" time="0.001" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.task.control.TaskControlRestorationTest" tests="1" failures="0" errors="0" skipped="0" time="1.045" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="followUpTextIsNotWrittenToAndroidSavedState" classname="app.codexlauncher.task.control.TaskControlRestorationTest" time="1.045" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.task.transcript.TaskScreenTest" tests="15" failures="0" errors="0" skipped="0" time="11.064" timestamp="2026-08-06T03:44:46" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="busyTaskMakesQueueRedirectAndConfirmedStopDistinctBeforeAnyAction" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="2.235" />
+    <testcase name="unknownFollowUpShowsExplicitComputerReviewAction" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.307" />
+    <testcase name="keyboardLeavesFollowUpControlsAtTheBottomOfTheVisibleApp" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.827" />
+    <testcase name="unresolvedForkWarningSurvivesScreenCreationAndRequiresExplicitReview" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.394" />
+    <testcase name="taskActionThatNeverLeftThePhoneSaysNothingChangedNotUnconfirmed" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.697" />
+    <testcase name="commandAndFileDetailsRenderOnlyAfterExplicitNavigation" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.45" />
+    <testcase name="longTaskTitleStartsCollapsedAndExpandsOnlyAfterTap" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.497" />
+    <testcase name="taskOverflowRenamesArchivesAndForksThroughExplicitControls" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="1.614" />
+    <testcase name="transcriptWithoutControlsStaysAboveTheBottomNavigationInset" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.317" />
+    <testcase name="transcriptRendersChatAndKeepsLargeDetailsBehindExplicitActions" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.701" />
+    <testcase name="emptyLoadingAndErrorStatesStayTruthful" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.318" />
+    <testcase name="unconfirmedTaskActionClosesItsEditorAndWarnsAgainstBlindRetry" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.732" />
+    <testcase name="dictationAppendsEditableTextAndReportsCancelWithoutErasingIt" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="1.307" />
+    <testcase name="disconnectSynchronouslyRemovesVisiblePrivateDetail" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.319" />
+    <testcase name="darkTaskScreenUsesReadablePrimaryText" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.349" />
+  </testsuite>
+</testsuites>

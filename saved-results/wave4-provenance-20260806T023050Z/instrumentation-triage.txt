@@ -1,0 +1,157 @@
+total_failures=38
+bucket not_displayed=20
+bucket node_missing=7
+bucket other=7
+bucket timeout=4
+
+--- LauncherActivityTest.freshUnpairedLaunchShowsSetupWithoutComputerContent [not_displayed]
+expected=Your ChatGPT sign-in stays on your computer. The phone stores only its pairing k
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Your ChatGPT sign-in stays on your computer. The phone stores only its pairing key and non-secret connection details.' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.LauncherActivityTest.freshUnpairedLaunchSh
+
+--- AppearanceScreenTest.largeAndroidTextKeepsEveryAppearanceChoiceVisible [not_displayed]
+expected=Text size, contrast, and motion follow Android settings.
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Text size, contrast, and motion follow Android settings.' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.appearance.settings.AppearanceScreenTest.largeAndroidTextKeepsEveryAppearanceChoiceVisible(AppearanceSc
+
+--- PairingScreenTest.manualModeSubmitsExactlyWhatTheUserEnteredAndShowsSafeErrors [not_displayed]
+expected=That pairing link isn
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'That pairing link isn't valid.' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.connection.pairing.PairingScreenTest.manualModeSubmitsExactlyWhatTheUserEnteredAndShowsSafeErrors(PairingScreenTest.kt:73) | 
+
+--- UiScenarioActivityTest.projectEmptyAndSaveRetryStatesUseTheRealRecoveryControls [not_displayed]
+expected=Saving…
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Saving…' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.projectEmptyAndSaveRetryStatesUseTheRealRecoveryControls(UiScenarioActivityTest.kt:199) | 
+
+--- UiScenarioActivityTest.taskTranscriptOpensBothRealDetailSurfaces [not_displayed]
+expected=Command output
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Command output' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.taskTranscriptOpensBothRealDetailSurfaces(UiScenarioActivityTest.kt:248) | 
+
+--- UiScenarioActivityTest.manualPairingIsTheRealEditableProductionSurface [not_displayed]
+expected=Pair computer
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Pair computer' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.manualPairingIsTheRealEditableProductionSurface(UiScenarioActivityTest.kt:64) | 
+
+--- UiScenarioActivityTest.homeFailureStatesKeepTheComposerSafeAndEditable [node_missing]
+expected=
+ | java.lang.AssertionError: Failed to perform text input. | Reason: Expected exactly '1' node but could not find any node that satisfies: (ContentDescription = 'Prompt' (ignoreCase: false)) |  | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178) | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150) | 
+
+--- UiScenarioActivityTest.pairingRecoveryStatesRunTheirRealActions [not_displayed]
+expected=Pairing…
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Pairing…' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.pairingRecoveryStatesRunTheirRealActions(UiScenarioActivityTest.kt:77) | 
+
+--- UiScenarioActivityTest.appDrawerRunsEmptySearchAndNavigationActions [not_displayed]
+expected=Android Settings requested
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Android Settings requested' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.appDrawerRunsEmptySearchAndNavigationActions(UiScenarioActivityTest.kt:221) | 
+
+--- UiScenarioActivityTest.onlineHomeKeepsComposerActionsNextToTheRealKeyboard [node_missing]
+expected=
+ | java.lang.AssertionError: Failed to inject touch input. | Reason: Expected exactly '1' node but could not find any node that satisfies: (ContentDescription = 'Prompt' (ignoreCase: false)) |  | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178) | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150) | 
+
+--- UiScenarioActivityTest.everyFixedScenarioRendersItsExpectedRoot [timeout]
+expected=
+ | java.lang.AssertionError: scenario home_choose_project never showed "Choose project" | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.everyFixedScenarioRendersItsExpectedRoot(UiScenarioActivityTest.kt:53) | ... 63 trimmed | Caused by: androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 5000 ms | at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$And
+
+--- UiScenarioActivityTest.workingAndIdleTaskControlsRunTheirRealInteractions [not_displayed]
+expected=Current turn redirected
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Current turn redirected' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.workingAndIdleTaskControlsRunTheirRealInteractions(UiScenarioActivityTest.kt:260) | 
+
+--- UiScenarioActivityTest.onlineHomeExercisesOptionsAttachmentsDictationAndReview [node_missing]
+expected=
+ | java.lang.AssertionError: Failed to inject touch input. | Reason: Expected exactly '1' node but could not find any node that satisfies: (ContentDescription = 'Choose model' (ignoreCase: false)) |  | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178) | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt
+
+--- UiScenarioActivityTest.replyConsentSurfacesRunTheirRealProductionActions [timeout]
+expected=
+ | androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 5000 ms | at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:887) | at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:482) | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.awaitUi(UiSce
+
+--- UiScenarioActivityTest.taskKeepsFollowUpActionsNextToTheRealKeyboard [other]
+expected=
+ | java.lang.AssertionError: follow-up actions are not directly above the keyboard: keyboard=344.0 actions=0.0 | at org.junit.Assert.fail(Assert.java:89) | at org.junit.Assert.assertTrue(Assert.java:42) | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.taskKeepsFollowUpActionsNextToTheRealKeyboard(UiScenarioActivityTest.kt:134) | 
+
+--- UiScenarioActivityTest.projectChoicesUseTheRealSelectableProductionRows [not_displayed]
+expected=Selected Sample research
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Selected Sample research' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.projectChoicesUseTheRealSelectableProductionRows(UiScenarioActivityTest.kt:188) | 
+
+--- UiScenarioActivityTest.appDrawerSearchesAndShowsTheControlledLaunchFailure [node_missing]
+expected=Sample Browser
+ | java.lang.AssertionError: Failed to inject touch input. | Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Sample Browser' (ignoreCase: false)) |  | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178) | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(Seman
+
+--- UiScenarioActivityTest.onlineHomeEditsPromptAndShowsEveryTaskState [timeout]
+expected=
+ | androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 5000 ms | at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:887) | at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:482) | at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.awaitUi(UiSce
+
+--- DecisionSheetsTest.unclearRedactedCommandCannotBeAllowedButCanBeDenied [not_displayed]
+expected=sh -c <redacted:secret>
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'sh -c <redacted:secret>' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.decision.DecisionSheetsTest.unclearRedactedCommandCannotBeAllowedButCanBeDenied(DecisionSheetsTest.kt:32) | 
+
+--- AppDrawerScreenTest.searchNarrowsTheVisibleLaunchableApps [not_displayed]
+expected=Camera
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Camera' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.launcher.apps.AppDrawerScreenTest.searchNarrowsTheVisibleLaunchableApps(AppDrawerScreenTest.kt:34) | 
+
+--- AppDrawerScreenTest.restoredAllAppsStartsWithTheCompleteUnfilteredList [not_displayed]
+expected=Camera
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Camera' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.launcher.apps.AppDrawerScreenTest.restoredAllAppsStartsWithTheCompleteUnfilteredList(AppDrawerScreenTest.kt:54) | 
+
+--- HomeScreenTest.aNewAuthenticatedSessionResetsAFullAccessChoiceToTheHostDefault [node_missing]
+expected=Full access
+ | java.lang.AssertionError: Failed to inject touch input. | Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Full access' (ignoreCase: false)) |  | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178) | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(Semantic
+
+--- HomeScreenTest.hostOptionsCanBeChangedAndAreIncludedWithThePrompt [node_missing]
+expected=Model B
+ | java.lang.AssertionError: Failed to inject touch input. | Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Model B' (ignoreCase: false)) |  | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178) | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNod
+
+--- HomeScreenTest.encryptedDraftStateRestoresTextAndReportsStorageFailuresWithoutDiscardingIt [not_displayed]
+expected=Draft could not be saved. Your text is still here.
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Draft could not be saved. Your text is still here.' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.launcher.home.HomeScreenTest.encryptedDraftStateRestoresTextAndReportsStorageFailuresWithoutDiscardingIt(Home
+
+--- HomeScreenTest.unknownNewTaskShowsAReviewGateAndBlocksAnotherSend [not_displayed]
+expected=Outcome unknown. Check Codex on your computer before sending again.
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Outcome unknown. Check Codex on your computer before sending again.' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.launcher.home.HomeScreenTest.unknownNewTaskShowsAReviewGateAndBlocksAnotherSend(HomeScreenTe
+
+--- HomeScreenTest.selectedAttachmentIsVisibleAndCanBeRemovedBeforeSend [not_displayed]
+expected=notes.txt
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'notes.txt' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.launcher.home.HomeScreenTest.selectedAttachmentIsVisibleAndCanBeRemovedBeforeSend(HomeScreenTest.kt:99) | 
+
+--- HomeScreenTest.appActionInProgressLocksTheDestinationAndSendControl [not_displayed]
+expected=Checking app actions…
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Checking app actions…' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.launcher.home.HomeScreenTest.appActionInProgressLocksTheDestinationAndSendControl(HomeScreenTest.kt:83) | 
+
+--- HomeScreenTest.selectedProjectEnablesTheComposerAction [other]
+expected=
+ | org.junit.ComparisonFailure: expected:<[Run all tests]> but was:<[]> | at org.junit.Assert.assertEquals(Assert.java:117) | at org.junit.Assert.assertEquals(Assert.java:146) | at app.codexlauncher.launcher.home.HomeScreenTest.selectedProjectEnablesTheComposerAction(HomeScreenTest.kt:204) | 
+
+--- HomeScreenTest.dictationIsAvailableOnlyWhileTheHomeDraftCanAcceptEdits [other]
+expected=
+ | java.lang.AssertionError: expected:<1> but was:<0> | at org.junit.Assert.fail(Assert.java:89) | at org.junit.Assert.failNotEquals(Assert.java:835) | at org.junit.Assert.assertEquals(Assert.java:120) | at org.junit.Assert.assertEquals(Assert.java:146) | at app.codexlauncher.launcher.home.HomeScreenTest.dictationIsAvailableOnlyWhileTheHomeDraftCanAcceptEdits(HomeScreenTest.kt:267) | 
+
+--- HomeScreenTest.keyboardDoesNotCoverTheOnlineComposerActions [node_missing]
+expected=
+ | java.lang.AssertionError: Failed to inject touch input. | Reason: Expected exactly '1' node but could not find any node that satisfies: (ContentDescription = 'Prompt' (ignoreCase: false)) |  | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178) | at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150) | 
+
+--- HomeScreenTest.largeAndroidTextKeepsOfflineRecoveryAndEscapeControlsVisible [not_displayed]
+expected=Connection help
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Connection help' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.launcher.home.HomeScreenTest.largeAndroidTextKeepsOfflineRecoveryAndEscapeControlsVisible(HomeScreenTest.kt:419) | 
+
+--- HomeScreenTest.failedNewTaskShowsWhyTheDraftWasKept [not_displayed]
+expected=The computer could not start this task. Your draft is still here. Try again.
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'The computer could not start this task. Your draft is still here. Try again.' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.launcher.home.HomeScreenTest.failedNewTaskShowsWhyTheDraftWasKept(HomeScreenTest.kt
+
+--- LiveGoogleAuthProofTest.silentAuthorizeThenCalendarAndDrive [other]
+expected=
+ | org.junit.ComparisonFailure: google_broker must already be granted expected:<[granted]> but was:<[missing]> | at org.junit.Assert.assertEquals(Assert.java:117) | at app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest.silentAuthorizeThenCalendarAndDrive(LiveGoogleAuthProofTest.kt:32) | 
+
+--- LiveOutlookGraphProofTest.silentTokenThenGraphReadAndDraft [other]
+expected=
+ | org.junit.ComparisonFailure: outlook_broker must already be granted expected:<[granted]> but was:<[missing]> | at org.junit.Assert.assertEquals(Assert.java:117) | at app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest.silentTokenThenGraphReadAndDraft(LiveOutlookGraphProofTest.kt:37) | 
+
+--- TaskScreenTest.busyTaskMakesQueueRedirectAndConfirmedStopDistinctBeforeAnyAction [timeout]
+expected=
+ | androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 1000 ms | at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:887) | at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:482) | at androidx.compose.ui.test.junit4.ComposeTestRule.waitUntil$default(Comp
+
+--- TaskScreenTest.keyboardLeavesFollowUpControlsAtTheBottomOfTheVisibleApp [other]
+expected=
+ | java.lang.AssertionError: follow-up actions leave excessive space above the keyboard: visible=344.0 actions=0.0 | at org.junit.Assert.fail(Assert.java:89) | at org.junit.Assert.assertTrue(Assert.java:42) | at app.codexlauncher.task.transcript.TaskScreenTest.keyboardLeavesFollowUpControlsAtTheBottomOfTheVisibleApp(TaskScreenTest.kt:123) | 
+
+--- TaskScreenTest.transcriptRendersChatAndKeepsLargeDetailsBehindExplicitActions [not_displayed]
+expected=All tests pass.
+ | java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'All tests pass.' (ignoreCase: false) is not displayed! | at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34) | at app.codexlauncher.task.transcript.TaskScreenTest.transcriptRendersChatAndKeepsLargeDetailsBehindExplicitActions(TaskScreenTest.kt:187) | 
+
+--- TaskScreenTest.dictationAppendsEditableTextAndReportsCancelWithoutErasingIt [other]
+expected=Typed words spoken words
+ | java.lang.AssertionError: Failed to assert the following: (Text + InputText + EditableText contains 'Typed words spoken words' (ignoreCase: false)) | Semantics of the node: | Node #7014 at (l=215.0, t=-245.0, r=2382.0, b=-182.0)px | ContentDataType = 'AndroidContentDataType(androidAutofillType=1)' | ContentDescription = '[Follow-up message]' | EditableText = 'Typed words' | FillableData = 'androidx.compose.u

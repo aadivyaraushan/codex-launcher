@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="2" failures="2" errors="0" skipped="0" time="4.251" timestamp="2026-08-06T02:56:39" hostname="localhost">
+  <testsuite name="app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest" tests="1" failures="1" errors="0" skipped="0" time="0.075" timestamp="2026-08-06T02:56:39" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="silentAuthorizeThenCalendarAndDrive" classname="app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest" time="0.075">
+      <failure>java.lang.AssertionError: silent authorize must not need UI
+at org.junit.Assert.fail(Assert.java:89)
+at org.junit.Assert.assertTrue(Assert.java:42)
+at org.junit.Assert.assertFalse(Assert.java:65)
+at app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest.silentAuthorizeThenCalendarAndDrive(LiveGoogleAuthProofTest.kt:48)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest" tests="1" failures="1" errors="0" skipped="0" time="2.85" timestamp="2026-08-06T02:56:39" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="silentTokenThenGraphReadAndDraft" classname="app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest" time="2.85">
+      <failure>java.lang.AssertionError: no MSAL account for silent acquire: null
+at org.junit.Assert.fail(Assert.java:89)
+at org.junit.Assert.assertTrue(Assert.java:42)
+at app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest.acquireSilentAccessToken(LiveOutlookGraphProofTest.kt:127)
+at app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest.silentTokenThenGraphReadAndDraft(LiveOutlookGraphProofTest.kt:40)
+</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

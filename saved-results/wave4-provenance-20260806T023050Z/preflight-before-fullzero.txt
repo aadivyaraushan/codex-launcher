@@ -1,0 +1,4 @@
+home=com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+shared_prefs/outlook_broker.xml:    <int name="access_token_len" value="1484" />
+shared_prefs/outlook_broker.xml:    <string name="status">granted</string>
+listeners=app.codexlauncher/app.codexlauncher.capability.notifications.NotificationProbeService

@@ -1,0 +1,42 @@
+Retrieving project…
+Deploying aadivyaraushans-projects/operator
+Inspect: https://vercel.com/aadivyaraushans-projects/operator/38TfEY4Sau9sStY36bfL1aVKdJtt [1s]
+Production: https://operator-6bl004a3i-aadivyaraushans-projects.vercel.app [1s]
+Building...
+Building...
+Building: Running build in Washington, D.C., USA (East) – iad1
+Building: Build machine configuration: 2 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Previous build caches not available.
+Building: Downloading 5 deployment files...
+Building: Running "vercel build"
+Building: Vercel CLI 58.1.0
+Building: Build Completed in /vercel/output [99ms]
+Building: Deploying outputs...
+Building: Deployment completed
+Building: Creating build cache...
+[2K[1A[2K[GProduction: https://operator-6bl004a3i-aadivyaraushans-projects.vercel.app [11s]
+Completing...
+Aliased: https://tryoperator.net [11s]
+{
+  "status": "ok",
+  "deployment": {
+    "id": "dpl_38TfEY4Sau9sStY36bfL1aVKdJtt",
+    "url": "https://operator-6bl004a3i-aadivyaraushans-projects.vercel.app",
+    "inspectorUrl": "https://vercel.com/aadivyaraushans-projects/operator/38TfEY4Sau9sStY36bfL1aVKdJtt",
+    "readyState": "READY",
+    "target": "production",
+    "deploymentApiUrl": "https://api.vercel.com/v13/deployments/dpl_38TfEY4Sau9sStY36bfL1aVKdJtt"
+  },
+  "message": "Deployment operator-6bl004a3i-aadivyaraushans-projects.vercel.app ready.",
+  "next": [
+    {
+      "command": "vercel inspect operator-6bl004a3i-aadivyaraushans-projects.vercel.app --scope aadivyaraushans-projects",
+      "when": "Inspect deployment"
+    },
+    {
+      "command": "vercel deploy --prod --scope aadivyaraushans-projects",
+      "when": "Promote to production"
+    }
+  ]
+}

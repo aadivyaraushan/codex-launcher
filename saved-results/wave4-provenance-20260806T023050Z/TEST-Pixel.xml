@@ -1,0 +1,662 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="134" failures="39" errors="0" skipped="5" time="154.714" timestamp="2026-08-06T02:41:08" hostname="localhost">
+  <testsuite name="app.codexlauncher.BootstrapInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="0.009" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="installedPackageIsTheLauncherApplication" classname="app.codexlauncher.BootstrapInstrumentedTest" time="0.009" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.LauncherActivityTest" tests="7" failures="0" errors="0" skipped="0" time="11.454" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="freshUnpairedLaunchShowsSetupWithoutComputerContent" classname="app.codexlauncher.LauncherActivityTest" time="1.611" />
+    <testcase name="homeOpensAllAppsAndPersistsAnAppearanceChoiceAcrossRecreation" classname="app.codexlauncher.LauncherActivityTest" time="2.024" />
+    <testcase name="androidSettingsEscapeRouteUsesThePlatformSettingsIntent" classname="app.codexlauncher.LauncherActivityTest" time="1.013" />
+    <testcase name="AndroidBackReturnsAppearanceToAllAppsAndThenHome" classname="app.codexlauncher.LauncherActivityTest" time="1.684" />
+    <testcase name="pairingInputSurvivesActivityRecreation" classname="app.codexlauncher.LauncherActivityTest" time="1.891" />
+    <testcase name="allAppsBackArrowReturnsAnUnpairedUserToSetup" classname="app.codexlauncher.LauncherActivityTest" time="1.543" />
+    <testcase name="AndroidDeliversALaterHomeIntentAndTheLauncherReturnsHome" classname="app.codexlauncher.LauncherActivityTest" time="1.688" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.LauncherRoleTest" tests="5" failures="0" errors="0" skipped="0" time="0.003" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="homeIntentResolvesToLauncherActivity" classname="app.codexlauncher.LauncherRoleTest" time="0.001" />
+    <testcase name="applicationProvidesAnIconForAndroidsHomePickerAndAppLists" classname="app.codexlauncher.LauncherRoleTest" time="0.0" />
+    <testcase name="androidSystemProvidesASettingsActivity" classname="app.codexlauncher.LauncherRoleTest" time="0.0" />
+    <testcase name="launcherActivityReusesOneTaskSoHomeIntentsCanResetItsScreen" classname="app.codexlauncher.LauncherRoleTest" time="0.001" />
+    <testcase name="ordinaryLauncherIntentStillResolvesToLauncherActivity" classname="app.codexlauncher.LauncherRoleTest" time="0.001" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.accessibility.LauncherAccessibilityTest" tests="2" failures="0" errors="0" skipped="0" time="3.151" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="offlineHomePassesTheComposeAccessibilityScanner" classname="app.codexlauncher.accessibility.LauncherAccessibilityTest" time="1.436" />
+    <testcase name="appearancePassesTheComposeAccessibilityScanner" classname="app.codexlauncher.accessibility.LauncherAccessibilityTest" time="1.715" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.appearance.settings.AppearanceScreenTest" tests="3" failures="1" errors="0" skipped="0" time="4.124" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="largeAndroidTextKeepsEveryAppearanceChoiceVisible" classname="app.codexlauncher.appearance.settings.AppearanceScreenTest" time="1.578">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Text size, contrast, and motion follow Android settings.' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.appearance.settings.AppearanceScreenTest.largeAndroidTextKeepsEveryAppearanceChoiceVisible(AppearanceScreenTest.kt:80)
+</failure>
+    </testcase>
+    <testcase name="showsOnlyTheApprovedAppearanceControlsAndAndroidNote" classname="app.codexlauncher.appearance.settings.AppearanceScreenTest" time="1.335" />
+    <testcase name="quietThemeUsesTheTwoBundledFontFamilies" classname="app.codexlauncher.appearance.settings.AppearanceScreenTest" time="1.211" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.capability.interaction.CapabilitySheetTest" tests="3" failures="0" errors="0" skipped="0" time="4.808" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="handsOffResultOffersCopyAndOpen" classname="app.codexlauncher.capability.interaction.CapabilitySheetTest" time="1.485" />
+    <testcase name="failedConfirmationSaysItWasNotSentToCodex" classname="app.codexlauncher.capability.interaction.CapabilitySheetTest" time="1.863" />
+    <testcase name="previewShowsTheExactActionAndRequiresAnExplicitChoice" classname="app.codexlauncher.capability.interaction.CapabilitySheetTest" time="1.46" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.capability.reply.live.LiveDirectReplyProofTest" tests="1" failures="0" errors="0" skipped="0" time="0.116" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="firesRemoteInputIntoLiveMessagesNotification" classname="app.codexlauncher.capability.reply.live.LiveDirectReplyProofTest" time="0.116" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.connection.pairing.LiveAutoSendInjectTest" tests="1" failures="0" errors="0" skipped="1" time="1.162" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="injectPromptAndSendUsingAuto" classname="app.codexlauncher.connection.pairing.LiveAutoSendInjectTest" time="1.162">
+      <skipped />
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.connection.pairing.LiveFlyPairingInjectTest" tests="1" failures="0" errors="0" skipped="1" time="1.226" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="injectManualPairingLinkAndSubmit" classname="app.codexlauncher.connection.pairing.LiveFlyPairingInjectTest" time="1.226">
+      <skipped />
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.connection.pairing.PairingScreenTest" tests="4" failures="1" errors="0" skipped="0" time="6.028" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="manualModeSubmitsExactlyWhatTheUserEnteredAndShowsSafeErrors" classname="app.codexlauncher.connection.pairing.PairingScreenTest" time="2.002">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'That pairing link isn't valid.' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.connection.pairing.PairingScreenTest.manualModeSubmitsExactlyWhatTheUserEnteredAndShowsSafeErrors(PairingScreenTest.kt:73)
+</failure>
+    </testcase>
+    <testcase name="pairingProgressDisablesASecondSubmission" classname="app.codexlauncher.connection.pairing.PairingScreenTest" time="1.279" />
+    <testcase name="acceptedPairingWithAStorageFailureOffersSaveOnlyRetry" classname="app.codexlauncher.connection.pairing.PairingScreenTest" time="1.281" />
+    <testcase name="scanModeExplainsCameraPermissionAndKeepsLauncherEscapeRoutes" classname="app.codexlauncher.connection.pairing.PairingScreenTest" time="1.466" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.connection.stream.ApplicationSessionOwnershipTest" tests="1" failures="0" errors="0" skipped="0" time="0.002" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="applicationReturnsTheSameSessionDraftAndStreamOwnersForItsWholeProcess" classname="app.codexlauncher.connection.stream.ApplicationSessionOwnershipTest" time="0.002" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.connection.stream.CodexConnectionServiceTest" tests="7" failures="0" errors="0" skipped="2" time="1.037" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="serviceSurvivesScreenOffAndDozeWhileObservingTheDefaultNetwork" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.001">
+      <skipped />
+    </testcase>
+    <testcase name="deletedChannelsAreRecreatedOnTheNextVisibleStart" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.116" />
+    <testcase name="externallyDrivenFullNetworkLossAndReturnTriggersReconnect" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.001">
+      <skipped />
+    </testcase>
+    <testcase name="deniedNotificationPermissionSuppressesTaskUpdateWithoutStoppingConnection" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.173" />
+    <testcase name="visibleStartReportsSecurityRejectionInsteadOfCrashing" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.033" />
+    <testcase name="replyApprovalQuestionFailureAndOfflineNotificationsStayGeneric" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.599" />
+    <testcase name="servicePromotesWithConnectedDeviceTypeAndStopsExplicitly" classname="app.codexlauncher.connection.stream.CodexConnectionServiceTest" time="0.114" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" tests="25" failures="16" errors="0" skipped="0" time="37.014" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="decisionSafetyStatesExerciseEveryPhoneAction" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="2.989" />
+    <testcase name="projectEmptyAndSaveRetryStatesUseTheRealRecoveryControls" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.315">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Saving…' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.projectEmptyAndSaveRetryStatesUseTheRealRecoveryControls(UiScenarioActivityTest.kt:199)
+</failure>
+    </testcase>
+    <testcase name="taskTranscriptOpensBothRealDetailSurfaces" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.205">
+      <failure>java.lang.AssertionError: Failed to inject touch input.
+Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'View output' (ignoreCase: false))
+
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:401)
+at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:59)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.taskTranscriptOpensBothRealDetailSurfaces(UiScenarioActivityTest.kt:247)
+</failure>
+    </testcase>
+    <testcase name="manualPairingIsTheRealEditableProductionSurface" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.587">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Pair computer' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.manualPairingIsTheRealEditableProductionSurface(UiScenarioActivityTest.kt:64)
+</failure>
+    </testcase>
+    <testcase name="homeFailureStatesKeepTheComposerSafeAndEditable" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.231">
+      <failure>java.lang.AssertionError: Failed to perform text input.
+Reason: Expected exactly '1' node but could not find any node that satisfies: (ContentDescription = 'Prompt' (ignoreCase: false))
+
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+at androidx.compose.ui.test.TextActionsKt.getNodeAndFocus(TextActions.kt:124)
+at androidx.compose.ui.test.TextActionsKt.getNodeAndFocus$default(TextActions.kt:119)
+at androidx.compose.ui.test.TextActionsKt.performTextInput(TextActions.kt:39)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.homeFailureStatesKeepTheComposerSafeAndEditable(UiScenarioActivityTest.kt:169)
+</failure>
+    </testcase>
+    <testcase name="pairingRecoveryStatesRunTheirRealActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.242">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Pairing…' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.pairingRecoveryStatesRunTheirRealActions(UiScenarioActivityTest.kt:77)
+</failure>
+    </testcase>
+    <testcase name="appDrawerRunsEmptySearchAndNavigationActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.961">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Android Settings requested' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.appDrawerRunsEmptySearchAndNavigationActions(UiScenarioActivityTest.kt:221)
+</failure>
+    </testcase>
+    <testcase name="offlineHomeUsesTheRealHelpInteraction" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.232">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Check that the relay box and computer companion are online.' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.offlineHomeUsesTheRealHelpInteraction(UiScenarioActivityTest.kt:89)
+</failure>
+    </testcase>
+    <testcase name="unknownTaskOutcomesUseTheRealReviewGates" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.54" />
+    <testcase name="onlineHomeKeepsComposerActionsNextToTheRealKeyboard" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.234">
+      <failure>java.lang.AssertionError: Failed to inject touch input.
+Reason: Expected exactly '1' node but could not find any node that satisfies: (ContentDescription = 'Prompt' (ignoreCase: false))
+
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:401)
+at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:59)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.onlineHomeKeepsComposerActionsNextToTheRealKeyboard(UiScenarioActivityTest.kt:107)
+</failure>
+    </testcase>
+    <testcase name="everyFixedScenarioRendersItsExpectedRoot" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="7.395">
+      <failure>java.lang.AssertionError: scenario home_choose_project never showed "Choose project"
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.everyFixedScenarioRendersItsExpectedRoot(UiScenarioActivityTest.kt:53)
+... 63 trimmed
+Caused by: androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 5000 ms
+at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:887)
+at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:482)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.awaitUi(UiScenarioActivityTest.kt:573)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.waitForText(UiScenarioActivityTest.kt:526)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.everyFixedScenarioRendersItsExpectedRoot(UiScenarioActivityTest.kt:51)
+... 64 more
+</failure>
+    </testcase>
+    <testcase name="approvalAndQuestionScenariosUseTheRealDecisionSheets" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.63" />
+    <testcase name="workingAndIdleTaskControlsRunTheirRealInteractions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.982">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Current turn redirected' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.workingAndIdleTaskControlsRunTheirRealInteractions(UiScenarioActivityTest.kt:260)
+</failure>
+    </testcase>
+    <testcase name="idleTaskRunsDictationAndAttachmentActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.616" />
+    <testcase name="recoveryAndLauncherDialogsUseTheirRealProductionActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.644" />
+    <testcase name="idleTaskRunsRenameArchiveAndForkActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="2.663" />
+    <testcase name="onlineHomeExercisesOptionsAttachmentsDictationAndReview" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.205">
+      <failure>java.lang.AssertionError: Failed to inject touch input.
+Reason: Expected exactly '1' node but could not find any node that satisfies: (ContentDescription = 'Choose model' (ignoreCase: false))
+
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:401)
+at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:59)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.onlineHomeExercisesOptionsAttachmentsDictationAndReview(UiScenarioActivityTest.kt:143)
+</failure>
+    </testcase>
+    <testcase name="replyConsentSurfacesRunTheirRealProductionActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="6.045">
+      <failure>androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 5000 ms
+at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:887)
+at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:482)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.awaitUi(UiScenarioActivityTest.kt:573)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.waitForText(UiScenarioActivityTest.kt:526)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.replyConsentSurfacesRunTheirRealProductionActions(UiScenarioActivityTest.kt:444)
+</failure>
+    </testcase>
+    <testcase name="taskKeepsFollowUpActionsNextToTheRealKeyboard" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.938">
+      <failure>java.lang.AssertionError: follow-up actions are not directly above the keyboard: keyboard=344.0 actions=0.0
+at org.junit.Assert.fail(Assert.java:89)
+at org.junit.Assert.assertTrue(Assert.java:42)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.taskKeepsFollowUpActionsNextToTheRealKeyboard(UiScenarioActivityTest.kt:134)
+</failure>
+    </testcase>
+    <testcase name="everyLaterPhaseOfTheCapabilitySheetRunsItsRealProductionActions" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="1.243" />
+    <testcase name="projectChoicesUseTheRealSelectableProductionRows" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.286">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Selected Sample research' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.projectChoicesUseTheRealSelectableProductionRows(UiScenarioActivityTest.kt:188)
+</failure>
+    </testcase>
+    <testcase name="appDrawerSearchesAndShowsTheControlledLaunchFailure" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.955">
+      <failure>java.lang.AssertionError: Failed to inject touch input.
+Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Sample Browser' (ignoreCase: false))
+
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:401)
+at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:59)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.appDrawerSearchesAndShowsTheControlledLaunchFailure(UiScenarioActivityTest.kt:210)
+</failure>
+    </testcase>
+    <testcase name="debugActivityIsExportedOnlyThroughTheShellPermission" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.033" />
+    <testcase name="onlineHomeEditsPromptAndShowsEveryTaskState" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="5.373">
+      <failure>androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 5000 ms
+at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:887)
+at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:482)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.awaitUi(UiScenarioActivityTest.kt:573)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.waitForText(UiScenarioActivityTest.kt:526)
+at app.codexlauncher.debug.scenarios.UiScenarioActivityTest.onlineHomeEditsPromptAndShowsEveryTaskState(UiScenarioActivityTest.kt:96)
+</failure>
+    </testcase>
+    <testcase name="appearanceScenarioChangesAllThreeRealThemeChoices" classname="app.codexlauncher.debug.scenarios.UiScenarioActivityTest" time="0.47" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.decision.DecisionSheetsTest" tests="4" failures="1" errors="0" skipped="0" time="5.384" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="unclearRedactedCommandCannotBeAllowedButCanBeDenied" classname="app.codexlauncher.decision.DecisionSheetsTest" time="1.354">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'sh -c &lt;redacted:secret&gt;' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.decision.DecisionSheetsTest.unclearRedactedCommandCannotBeAllowedButCanBeDenied(DecisionSheetsTest.kt:32)
+</failure>
+    </testcase>
+    <testcase name="nonSecretChoiceIsSentWithItsExactQuestionId" classname="app.codexlauncher.decision.DecisionSheetsTest" time="1.408" />
+    <testcase name="approvalShowsOnlyTheScopesCodexOffered" classname="app.codexlauncher.decision.DecisionSheetsTest" time="1.316" />
+    <testcase name="secretQuestionShowsComputerFallbackAndNeverShowsAnAnswerField" classname="app.codexlauncher.decision.DecisionSheetsTest" time="1.306" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.launcher.apps.AppDrawerScreenTest" tests="4" failures="2" errors="0" skipped="0" time="6.938" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="appAndEscapeRoutesCallTheirOwners" classname="app.codexlauncher.launcher.apps.AppDrawerScreenTest" time="1.421" />
+    <testcase name="searchNarrowsTheVisibleLaunchableApps" classname="app.codexlauncher.launcher.apps.AppDrawerScreenTest" time="1.91">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Camera' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.launcher.apps.AppDrawerScreenTest.searchNarrowsTheVisibleLaunchableApps(AppDrawerScreenTest.kt:34)
+</failure>
+    </testcase>
+    <testcase name="restoredAllAppsStartsWithTheCompleteUnfilteredList" classname="app.codexlauncher.launcher.apps.AppDrawerScreenTest" time="2.346">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Camera' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.launcher.apps.AppDrawerScreenTest.restoredAllAppsStartsWithTheCompleteUnfilteredList(AppDrawerScreenTest.kt:54)
+</failure>
+    </testcase>
+    <testcase name="launchFailureIsShownBesideTheAppList" classname="app.codexlauncher.launcher.apps.AppDrawerScreenTest" time="1.261" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.launcher.apps.InstalledAppsRepositoryInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="4.868" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="realLauncherAppsSourceEnumeratesAndLaunchesAndroidSettings" classname="app.codexlauncher.launcher.apps.InstalledAppsRepositoryInstrumentedTest" time="3.909" />
+    <testcase name="realLauncherAppsSourceEnumeratesEveryLaunchableActivityVisibleToAndroid" classname="app.codexlauncher.launcher.apps.InstalledAppsRepositoryInstrumentedTest" time="0.959" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.launcher.home.HomeScreenTest" tests="20" failures="12" errors="0" skipped="0" time="20.245" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="aNewAuthenticatedSessionResetsAFullAccessChoiceToTheHostDefault" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.978">
+      <failure>java.lang.AssertionError: Failed to inject touch input.
+Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Full access' (ignoreCase: false))
+
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:401)
+at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:59)
+at app.codexlauncher.launcher.home.HomeScreenTest.aNewAuthenticatedSessionResetsAFullAccessChoiceToTheHostDefault(HomeScreenTest.kt:327)
+</failure>
+    </testcase>
+    <testcase name="hostOptionsCanBeChangedAndAreIncludedWithThePrompt" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="1.462">
+      <failure>java.lang.AssertionError: Failed to inject touch input.
+Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Model B' (ignoreCase: false))
+
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:401)
+at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:59)
+at app.codexlauncher.launcher.home.HomeScreenTest.hostOptionsCanBeChangedAndAreIncludedWithThePrompt(HomeScreenTest.kt:224)
+</failure>
+    </testcase>
+    <testcase name="liveTaskSummaryIsVisibleInTheRenderedHomeRow" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.918" />
+    <testcase name="encryptedDraftStateRestoresTextAndReportsStorageFailuresWithoutDiscardingIt" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.932">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Draft could not be saved. Your text is still here.' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.launcher.home.HomeScreenTest.encryptedDraftStateRestoresTextAndReportsStorageFailuresWithoutDiscardingIt(HomeScreenTest.kt:249)
+</failure>
+    </testcase>
+    <testcase name="unknownNewTaskShowsAReviewGateAndBlocksAnotherSend" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="1.448">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Outcome unknown. Check Codex on your computer before sending again.' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.launcher.home.HomeScreenTest.unknownNewTaskShowsAReviewGateAndBlocksAnotherSend(HomeScreenTest.kt:290)
+</failure>
+    </testcase>
+    <testcase name="tappingTheFixedComputerOpensItsManagementAction" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.834" />
+    <testcase name="selectedAttachmentIsVisibleAndCanBeRemovedBeforeSend" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.965">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'notes.txt' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.launcher.home.HomeScreenTest.selectedAttachmentIsVisibleAndCanBeRemovedBeforeSend(HomeScreenTest.kt:99)
+</failure>
+    </testcase>
+    <testcase name="scrollingHomeContentDoesNotOpenAllAppsAndExpandedHelpStaysOfflineSafe" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.896">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Check that the relay box and computer companion are online.' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.launcher.home.HomeScreenTest.scrollingHomeContentDoesNotOpenAllAppsAndExpandedHelpStaysOfflineSafe(HomeScreenTest.kt:398)
+</failure>
+    </testcase>
+    <testcase name="appActionInProgressLocksTheDestinationAndSendControl" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.975">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Checking app actions…' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.launcher.home.HomeScreenTest.appActionInProgressLocksTheDestinationAndSendControl(HomeScreenTest.kt:83)
+</failure>
+    </testcase>
+    <testcase name="selectedProjectEnablesTheComposerAction" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="1.264">
+      <failure>org.junit.ComparisonFailure: expected:&lt;[Run all tests]&gt; but was:&lt;[]&gt;
+at org.junit.Assert.assertEquals(Assert.java:117)
+at org.junit.Assert.assertEquals(Assert.java:146)
+at app.codexlauncher.launcher.home.HomeScreenTest.selectedProjectEnablesTheComposerAction(HomeScreenTest.kt:204)
+</failure>
+    </testcase>
+    <testcase name="tappingATaskRowOpensThatTask" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.927" />
+    <testcase name="sendStaysDisabledUntilNewTaskOptionsArrive" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.964" />
+    <testcase name="sendStaysDisabledWhenDraftVersionIsMissing" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.932" />
+    <testcase name="homeComposerShowsWhereThePromptWillRunAndLetsTheUserChooseComputer" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="1.026" />
+    <testcase name="offlineSurfaceHidesTasksAndKeepsEveryEscapeRouteUsable" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="1.082" />
+    <testcase name="onlineSurfaceBlocksSendUntilAProjectIsSelected" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.947" />
+    <testcase name="dictationIsAvailableOnlyWhileTheHomeDraftCanAcceptEdits" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.873">
+      <failure>java.lang.AssertionError: expected:&lt;1&gt; but was:&lt;0&gt;
+at org.junit.Assert.fail(Assert.java:89)
+at org.junit.Assert.failNotEquals(Assert.java:835)
+at org.junit.Assert.assertEquals(Assert.java:120)
+at org.junit.Assert.assertEquals(Assert.java:146)
+at app.codexlauncher.launcher.home.HomeScreenTest.dictationIsAvailableOnlyWhileTheHomeDraftCanAcceptEdits(HomeScreenTest.kt:267)
+</failure>
+    </testcase>
+    <testcase name="keyboardDoesNotCoverTheOnlineComposerActions" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.916">
+      <failure>java.lang.AssertionError: Failed to inject touch input.
+Reason: Expected exactly '1' node but could not find any node that satisfies: (ContentDescription = 'Prompt' (ignoreCase: false))
+
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:401)
+at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:59)
+at app.codexlauncher.launcher.home.HomeScreenTest.keyboardDoesNotCoverTheOnlineComposerActions(HomeScreenTest.kt:448)
+</failure>
+    </testcase>
+    <testcase name="largeAndroidTextKeepsOfflineRecoveryAndEscapeControlsVisible" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.971">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'Connection help' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.launcher.home.HomeScreenTest.largeAndroidTextKeepsOfflineRecoveryAndEscapeControlsVisible(HomeScreenTest.kt:419)
+</failure>
+    </testcase>
+    <testcase name="failedNewTaskShowsWhyTheDraftWasKept" classname="app.codexlauncher.launcher.home.HomeScreenTest" time="0.935">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'The computer could not start this task. Your draft is still here. Try again.' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.launcher.home.HomeScreenTest.failedNewTaskShowsWhyTheDraftWasKept(HomeScreenTest.kt:309)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.project.selection.ProjectSelectorTest" tests="3" failures="0" errors="0" skipped="0" time="2.783" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="emptyStateExplainsThatFoldersAreApprovedOnTheComputerAndKeepsEscapes" classname="app.codexlauncher.project.selection.ProjectSelectorTest" time="0.942" />
+    <testcase name="showsTheFixedComputerAndOnlyApprovedProjectChoices" classname="app.codexlauncher.project.selection.ProjectSelectorTest" time="0.938" />
+    <testcase name="longProjectLabelsCanGrowAtLargeAndroidTextSize" classname="app.codexlauncher.project.selection.ProjectSelectorTest" time="0.903" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest" tests="1" failures="1" errors="0" skipped="0" time="0.032" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="silentAuthorizeThenCalendarAndDrive" classname="app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest" time="0.032">
+      <failure>org.junit.ComparisonFailure: google_broker must already be granted expected:&lt;[granted]&gt; but was:&lt;[missing]&gt;
+at org.junit.Assert.assertEquals(Assert.java:117)
+at app.codexlauncher.runtime.broker.google.live.LiveGoogleAuthProofTest.silentAuthorizeThenCalendarAndDrive(LiveGoogleAuthProofTest.kt:32)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.runtime.broker.maps.live.LiveMapsBrokerProofTest" tests="1" failures="0" errors="0" skipped="0" time="0.137" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="importEnvelopeThenPlacesAndRoutes" classname="app.codexlauncher.runtime.broker.maps.live.LiveMapsBrokerProofTest" time="0.137" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest" tests="1" failures="1" errors="0" skipped="0" time="0.03" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="silentTokenThenGraphReadAndDraft" classname="app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest" time="0.03">
+      <failure>org.junit.ComparisonFailure: outlook_broker must already be granted expected:&lt;[granted]&gt; but was:&lt;[missing]&gt;
+at org.junit.Assert.assertEquals(Assert.java:117)
+at app.codexlauncher.runtime.broker.outlook.live.LiveOutlookGraphProofTest.silentTokenThenGraphReadAndDraft(LiveOutlookGraphProofTest.kt:37)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.actions.ActionRecordStoreInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="0.86" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="realDataStoreSerializesSimultaneousPreparedWrites" classname="app.codexlauncher.storage.actions.ActionRecordStoreInstrumentedTest" time="0.724" />
+    <testcase name="realDataStoreContainsOnlyMetadataAndCanBeWiped" classname="app.codexlauncher.storage.actions.ActionRecordStoreInstrumentedTest" time="0.136" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.connection.lastseen.LastConnectionStoreInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="0.059" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="recordIsScopedToTheCurrentPairingAndSurvivesStoreRecreation" classname="app.codexlauncher.storage.connection.lastseen.LastConnectionStoreInstrumentedTest" time="0.031" />
+    <testcase name="wipeClearRemovesTheTimestamp" classname="app.codexlauncher.storage.connection.lastseen.LastConnectionStoreInstrumentedTest" time="0.028" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.connection.resume.ResumeCursorStoreTest" tests="1" failures="0" errors="0" skipped="0" time="0.001" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="cursorSurvivesStoreRecreationAndIsBoundToOnePairing" classname="app.codexlauncher.storage.connection.resume.ResumeCursorStoreTest" time="0.001" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" tests="8" failures="0" errors="0" skipped="0" time="0.522" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="emptyDraftDeletesCiphertextAndExpiredDraftIsEvicted" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.116" />
+    <testcase name="savesOnlyCiphertextAndRestoresAfterStoreRecreation" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.028" />
+    <testcase name="oversizedCorruptAndFutureRecordsFailClosedWithoutReturningContent" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.058" />
+    <testcase name="separateStoreInstancesSerializeOperationsForTheSameFile" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.143" />
+    <testcase name="failedAtomicReplacementKeepsTheLastCommittedDraft" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.06" />
+    <testcase name="tamperedCiphertextIsClearedSoComposerCanRecover" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.055" />
+    <testcase name="composerEditsRoundTripThroughRealAndroidEncryption" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.032" />
+    <testcase name="oversizedStoredRecordIsRejectedBeforeItsBodyIsRead" classname="app.codexlauncher.storage.drafts.EncryptedDraftStoreTest" time="0.03" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.drafts.LiveDraftInjectTest" tests="1" failures="0" errors="0" skipped="1" time="0.76" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="injectExactHomeDraft" classname="app.codexlauncher.storage.drafts.LiveDraftInjectTest" time="0.76">
+      <skipped />
+    </testcase>
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.secrets.PairingKeyStoreTest" tests="2" failures="0" errors="0" skipped="0" time="0.059" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="generatesAStableNonExportableP256SigningKeyAndReportsItsProtection" classname="app.codexlauncher.storage.secrets.PairingKeyStoreTest" time="0.058" />
+    <testcase name="deletingTheKeyMakesThePairingIdentityUnavailable" classname="app.codexlauncher.storage.secrets.PairingKeyStoreTest" time="0.001" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.wipe.LocalStateWiperInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="0.257" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="realStoresKeysAndCiphertextAreRemovedAsOneRecoverableWipe" classname="app.codexlauncher.storage.wipe.LocalStateWiperInstrumentedTest" time="0.257" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.storage.wipe.UnpairActivityTest" tests="2" failures="0" errors="0" skipped="0" time="3.0" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="userConfirmationWipesThePairingAndReturnsToFreshSetup" classname="app.codexlauncher.storage.wipe.UnpairActivityTest" time="1.374" />
+    <testcase name="pairedActivityRecreationDoesNotRestartTheProcessConnectionService" classname="app.codexlauncher.storage.wipe.UnpairActivityTest" time="1.626" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.task.control.PromptDictationContractTest" tests="2" failures="0" errors="0" skipped="0" time="0.002" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="contractRequestsFreeFormSpeechAndReturnsTheFirstUsefulResult" classname="app.codexlauncher.task.control.PromptDictationContractTest" time="0.001" />
+    <testcase name="contractKeepsCancelAndEmptyRecognitionDistinct" classname="app.codexlauncher.task.control.PromptDictationContractTest" time="0.001" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.task.control.TaskControlRestorationTest" tests="1" failures="0" errors="0" skipped="0" time="1.759" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="followUpTextIsNotWrittenToAndroidSavedState" classname="app.codexlauncher.task.control.TaskControlRestorationTest" time="1.759" />
+  </testsuite>
+  <testsuite name="app.codexlauncher.task.transcript.TaskScreenTest" tests="15" failures="4" errors="0" skipped="0" time="19.761" timestamp="2026-08-06T02:41:08" hostname="localhost">
+    <properties>
+      <property name="device" value="Pixel 9 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="busyTaskMakesQueueRedirectAndConfirmedStopDistinctBeforeAnyAction" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="2.591">
+      <failure>androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 1000 ms
+at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:887)
+at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:482)
+at androidx.compose.ui.test.junit4.ComposeTestRule.waitUntil$default(ComposeTestRule.jvmAndAndroid.kt:138)
+at app.codexlauncher.task.transcript.TaskScreenTest.busyTaskMakesQueueRedirectAndConfirmedStopDistinctBeforeAnyAction(TaskScreenTest.kt:389)
+</failure>
+    </testcase>
+    <testcase name="unknownFollowUpShowsExplicitComputerReviewAction" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.941" />
+    <testcase name="keyboardLeavesFollowUpControlsAtTheBottomOfTheVisibleApp" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="1.582">
+      <failure>java.lang.AssertionError: follow-up actions leave excessive space above the keyboard: visible=344.0 actions=0.0
+at org.junit.Assert.fail(Assert.java:89)
+at org.junit.Assert.assertTrue(Assert.java:42)
+at app.codexlauncher.task.transcript.TaskScreenTest.keyboardLeavesFollowUpControlsAtTheBottomOfTheVisibleApp(TaskScreenTest.kt:123)
+</failure>
+    </testcase>
+    <testcase name="unresolvedForkWarningSurvivesScreenCreationAndRequiresExplicitReview" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.931" />
+    <testcase name="taskActionThatNeverLeftThePhoneSaysNothingChangedNotUnconfirmed" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="1.272" />
+    <testcase name="commandAndFileDetailsRenderOnlyAfterExplicitNavigation" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.973" />
+    <testcase name="longTaskTitleStartsCollapsedAndExpandsOnlyAfterTap" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="1.111" />
+    <testcase name="taskOverflowRenamesArchivesAndForksThroughExplicitControls" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="2.427" />
+    <testcase name="transcriptWithoutControlsStaysAboveTheBottomNavigationInset" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.894" />
+    <testcase name="transcriptRendersChatAndKeepsLargeDetailsBehindExplicitActions" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="1.433">
+      <failure>java.lang.AssertionError: Assert failed: The component with Text + InputText + EditableText contains 'All tests pass.' (ignoreCase: false) is not displayed!
+at androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)
+at app.codexlauncher.task.transcript.TaskScreenTest.transcriptRendersChatAndKeepsLargeDetailsBehindExplicitActions(TaskScreenTest.kt:187)
+</failure>
+    </testcase>
+    <testcase name="emptyLoadingAndErrorStatesStayTruthful" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.847" />
+    <testcase name="unconfirmedTaskActionClosesItsEditorAndWarnsAgainstBlindRetry" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="1.325" />
+    <testcase name="dictationAppendsEditableTextAndReportsCancelWithoutErasingIt" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="1.646">
+      <failure>java.lang.AssertionError: Failed to assert the following: (Text + InputText + EditableText contains 'Typed words spoken words' (ignoreCase: false))
+Semantics of the node:
+Node #7006 at (l=215.0, t=-245.0, r=2382.0, b=-182.0)px
+ContentDataType = 'AndroidContentDataType(androidAutofillType=1)'
+ContentDescription = '[Follow-up message]'
+EditableText = 'Typed words'
+FillableData = 'androidx.compose.ui.autofill.AndroidFillableData&#64;d1fea55'
+Focused = 'true'
+ImeAction = 'Default'
+InputText = 'Typed words'
+IsEditable = 'true'
+TextSelectionRange = 'TextRange(11, 11)'
+Actions = [GetTextLayoutResult, InsertTextAtCursor, MagnifierPositionInRoot, OnClick, OnFillData, OnLongClick, PasteText, PerformImeAction, RequestFocus, ScrollBy, ScrollByOffset, SetSelection, SetText]
+MergeDescendants = 'true'
+Has 8 siblings
+Selector used: (ContentDescription = 'Follow-up message' (ignoreCase: false))
+
+at androidx.compose.ui.test.AssertionsKt.assert(Assertions.kt:264)
+at androidx.compose.ui.test.AssertionsKt.assert$default(Assertions.kt:254)
+at androidx.compose.ui.test.AssertionsKt.assertTextContains(Assertions.kt:208)
+at androidx.compose.ui.test.AssertionsKt.assertTextContains$default(Assertions.kt:204)
+at app.codexlauncher.task.transcript.TaskScreenTest.dictationAppendsEditableTextAndReportsCancelWithoutErasingIt(TaskScreenTest.kt:147)
+</failure>
+    </testcase>
+    <testcase name="disconnectSynchronouslyRemovesVisiblePrivateDetail" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.873" />
+    <testcase name="darkTaskScreenUsesReadablePrimaryText" classname="app.codexlauncher.task.transcript.TaskScreenTest" time="0.915" />
+  </testsuite>
+</testsuites>

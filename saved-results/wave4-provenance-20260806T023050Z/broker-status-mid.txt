@@ -1,0 +1,6 @@
+shared_prefs/outlook_broker.xml:    <int name="access_token_len" value="1484" />
+shared_prefs/outlook_broker.xml:    <string name="detail">interactive</string>
+shared_prefs/outlook_broker.xml:    <string name="status">granted</string>
+shared_prefs/google_broker.xml:    <int name="access_token_len" value="0" />
+shared_prefs/google_broker.xml:    <string name="detail">api_16</string>
+shared_prefs/google_broker.xml:    <string name="status">error</string>

@@ -1,0 +1,10 @@
+3545:            tickerText=37691: Robinhood 2FA. Replying STOP will block us from sending 2FA codes which may affect login. Call
+3558:                android.title=String (37691)
+3565:                android.text=String (Robinhood 2FA. Replying STOP will block us from sending 2FA codes which may affect login. Call
+3574:                  [0] Bundle[{extras=Bundle[{}], sender_person=android.app.Person@adeeb070, sender=37691, text=Robinhood 2FA. Replying STOP will block us from sending 2FA codes which may affect login. Call
+3576:                  [1] Bundle[{extras=Bundle[{}], text=OP-DR-TRIGGER-20260806T030223Z, time=1785985351469}]
+3577:                  [2] Bundle[{extras=Bundle[{}], sender_person=android.app.Person@7e7d1e35, sender=37691, text=Robinhood 2FA. Replying STOP will block us from sending 2FA codes which may affect login. Call
+3579:                  [3] Bundle[{extras=Bundle[{}], text=OP-DR-TRIGGER-20260806T030453Z, time=1785985501985}]
+3580:                  [4] Bundle[{extras=Bundle[{}], sender_person=android.app.Person@2bf1e116, sender=37691, text=Robinhood 2FA. Replying STOP will block us from sending 2FA codes which may affect login. Call
+3583:                  [6] Bundle[{extras=Bundle[{}], sender_person=android.app.Person@f50f68e3, sender=37691, text=Robinhood 2FA. Replying STOP will block us from sending 2FA codes which may affect login. Call
+3593:                extra_im_notification_participant_normalized_destination=String (37691)

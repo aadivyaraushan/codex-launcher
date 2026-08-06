@@ -1,0 +1,15 @@
+  bash arg: -p
+  bash arg: app.codexlauncher
+  bash arg: -c
+  bash arg: android.intent.category.LAUNCHER
+  bash arg: 1
+args: [-p, app.codexlauncher, -c, android.intent.category.LAUNCHER, 1]
+ arg: "-p"
+ arg: "app.codexlauncher"
+ arg: "-c"
+ arg: "android.intent.category.LAUNCHER"
+ arg: "1"
+data="app.codexlauncher"
+data="android.intent.category.LAUNCHER"
+Events injected: 1
+## Network stats: elapsed time=20ms (0ms mobile, 0ms wifi, 20ms not connected)

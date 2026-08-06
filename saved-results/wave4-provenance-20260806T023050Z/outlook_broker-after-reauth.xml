@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <int name="access_token_len" value="1484" />
+    <string name="account_hint">ssdear@gmail.com</string>
+    <long name="updated_at_unix" value="1785985205" />
+    <string name="detail">interactive</string>
+    <string name="scopes">User.Read Mail.ReadWrite Mail.Send</string>
+    <string name="status">granted</string>
+</map>

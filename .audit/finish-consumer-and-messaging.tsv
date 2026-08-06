@@ -84,3 +84,17 @@ ts	phase	decision	why	evidence	result
 20260805T082339Z	judge_fail	wave34_exit_predicate; agent=6de7f736-9c5f-4fff-83a0-145b2bdb4f48; PR=no
 20260805T082740Z	todoist_pkce_seeded	pending_oauth seeded; authorize on Chrome full URL; awaiting Allow
 20260805T082740Z	maps_broker_gap	no Android Places/Routes caller or envelope import; Linux env forbidden; OPEN
+2026-08-06T03:31Z	verify-after-human	google_cloud_ok_broker_pending_store_missing	verify-after-human/
+2026-08-06T03:45Z	instrument-0-134	PASS	verify-after-human/TEST-Pixel-full2.xml
+2026-08-06T03:45Z	store-env	BLOCKED	all four CODEX_LAUNCHER_STORE_* missing
+2026-08-06T04:27Z	frozen-keystore	CREATED	~/.config/codex-launcher/operator-internal-release.jks
+2026-08-06T04:27Z	assembleRelease	PASS	a4327a70865a803cb377bc8686a80428db464a9c4880e93786f0b36c746534ad
+2026-08-06T04:27Z	step6-signed-smoke	PASS	step6-signed-release/
+2026-08-06T04:27Z	anim-restore	DONE	0->1.0 window/transition/animator
+2026-08-06T04:31Z	signed-resmoke	PARTIAL	step6-signed-resmoke/RESULT.md
+2026-08-06T04:31Z	signed-google	FAIL	api_8 need release SHA-1 on GCP Android client
+2026-08-06T04:31Z	sibling-assembleRelease	PASS	636d9cb8d154081f15a53ec343a57d0386706846509a166f455cde6e950e1fb9
+2026-08-06T04:34Z	independent-judge	FAIL	e45c8e10-b793-4ff1-a3bd-d80c5c75976d
+2026-08-06T04:36Z	release-sha1-firebase	ADDED	d32adc34… + debug kept
+2026-08-06T04:36Z	signed-google-resmoke	PASS	google-sha1-fix/
+2026-08-06T04:40Z	re-judge	FAIL	0bdc805d-275a-47b6-a645-95ad1637dc33

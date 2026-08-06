@@ -1,10 +1,13 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "app.codexlauncher",
       "sha256_cert_fingerprints": [
+        "35:63:9E:DA:D0:22:41:45:76:5B:0D:0F:2B:21:CD:9C:8C:D9:6B:E6:59:2B:DF:BB:4B:8F:39:D4:A9:F3:F3:E3",
         "C6:13:E6:60:7C:40:40:42:E6:91:35:17:27:86:38:94:6B:29:C1:8D:C1:CD:81:E9:2C:9D:36:99:A5:80:C2:5D"
       ]
     }

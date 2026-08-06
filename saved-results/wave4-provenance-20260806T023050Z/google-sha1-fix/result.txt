@@ -1,0 +1,3 @@
+ok=True
+err=None
+last=['Google Calendar + Drive access granted for Operator.&#10;You can return to chat.']

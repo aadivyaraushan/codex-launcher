@@ -1,0 +1,7 @@
+Starting: Intent { cmp=app.codexlauncher/.runtime.broker.google.GoogleAuthorizeActivity }
+Status: ok
+LaunchState: COLD
+Activity: app.codexlauncher/.runtime.broker.google.GoogleAuthorizeActivity
+TotalTime: 547
+WaitTime: 551
+Complete
