@@ -2204,7 +2204,7 @@ class LauncherSessionViewModelTest {
 
 	private fun welcomeWithCapabilityOptions(): ProtocolMessage =
 		decode(
-			"""{"version":{"major":1,"minor":0},"messageId":"welcome-capability-options","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":["set_project","new_task_options","capability_actions"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Balanced."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Project changes.","isDefault":true}]}}}""",
+			"""{"version":{"major":1,"minor":0},"messageId":"welcome-capability-options","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":["set_project","desktop_tasks","new_task_options","capability_actions"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Balanced."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Project changes.","isDefault":true}]}}}""",
 		)
 
 	private fun onlineSnapshot(sequence: Long = 1): ProtocolMessage =
