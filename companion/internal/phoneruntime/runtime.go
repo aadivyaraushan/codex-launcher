@@ -209,8 +209,9 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		certificate: certificate,
 		handler:     handler,
 		operatorPin: localtrust.ExpectedOperator{
-			PackageName:       "app.codexlauncher",
-			SigningCertSHA256: "c613e6607c404042e6913517278638946b29c18dc1cd81e92c9d3699a580c25d",
+			PackageName: "app.codexlauncher",
+			// Release (frozen owner) APK signer. Debug builds use c613e660… — accept both below.
+			SigningCertSHA256: "35639edad0224145765b0d0f2b21cd9c8cd96be6592bdfbb4b8f39d4a9f3f3e3",
 		},
 	}
 	if _, err := os.Stat(filepath.Join(config.Root, "android-auth.json")); err == nil {
@@ -375,12 +376,20 @@ func (runtime *Runtime) ReleasePendingViaAttestation(req localPairAttestRequest)
 		}
 	}
 	signer := ""
-	wantSigner := strings.ToLower(strings.ReplaceAll(runtime.operatorPin.SigningCertSHA256, ":", ""))
+	allowedSigners := map[string]struct{}{
+		strings.ToLower(strings.ReplaceAll(runtime.operatorPin.SigningCertSHA256, ":", "")): {},
+		// debug keystore (local instrumentation / older overnight installs)
+		"c613e6607c404042e6913517278638946b29c18dc1cd81e92c9d3699a580c25d": {},
+	}
 	for _, d := range parsed.SignatureDigests {
-		if d == wantSigner {
+		if _, ok := allowedSigners[d]; ok {
 			signer = d
 			break
 		}
+	}
+	wantSigner := signer
+	if wantSigner == "" {
+		wantSigner = strings.ToLower(strings.ReplaceAll(runtime.operatorPin.SigningCertSHA256, ":", ""))
 	}
 	obs := localtrust.AttestObserved{
 		PackageName:       pkg,
