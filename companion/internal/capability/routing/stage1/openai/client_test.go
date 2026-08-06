@@ -1818,6 +1818,126 @@ func TestRouteFormatLetsTheModelReturnNamedSlots(t *testing.T) {
 	}
 }
 
+// B3: the model must be able to name a Beeper manage op in fields.operation.
+func TestRouteFormatIncludesOperationNamedSlot(t *testing.T) {
+	format := routeFormat()
+	schema, _ := format["schema"].(map[string]any)
+	properties, _ := schema["properties"].(map[string]any)
+	fields, _ := properties["fields"].(map[string]any)
+	slots, ok := fields["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("fields has no properties: %+v", fields)
+	}
+	if _, ok := slots["operation"]; !ok {
+		t.Fatalf("namedSlots missing operation; Beeper modify/cancel routes cannot name the op: slots=%v", slotsKeys(slots))
+	}
+	if !contains(fields["required"], "operation") {
+		t.Fatalf("operation must be required under strict mode: required=%v", fields["required"])
+	}
+}
+
+// B3: coach reads + manage ops onto beeper_messaging with the closed operation list.
+func TestStage1InstructionsCoachBeeperReadsAndManageOperations(t *testing.T) {
+	var request map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		_, _ = io.WriteString(w, `{"id":"resp_1","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"verb\":\"read\",\"app_class\":\"beeper_messaging\",\"app_named\":\"instagram\",\"subject\":\"\",\"body\":\"\",\"fields\":{\"origin\":null,\"destination\":null,\"navigate\":null,\"list\":null,\"folder\":null,\"operation\":null},\"confidence\":0.9}"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`)
+	}))
+	defer server.Close()
+	client, err := New(Config{APIKey: "paid-secret", BaseURL: server.URL, HTTPClient: server.Client(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := client.Model(t.Context(), "what's my unread Instagram message"); err != nil {
+		t.Fatalf("Model: %v", err)
+	}
+	instructions, _ := request["instructions"].(string)
+	lower := strings.ToLower(instructions)
+	for _, want := range []string{
+		"beeper_messaging", "verb read", "app_named instagram",
+		"operation", "reply", "edit", "delete", "react", "unreact",
+		"mark_read", "mark_unread", "archive", "unarchive", "pin", "mute",
+		"set_reminder", "clear_reminder",
+		"verb modify", "verb cancel",
+	} {
+		if !strings.Contains(lower, want) {
+			t.Fatalf("Beeper read/manage coaching missing %q: %s", want, instructions)
+		}
+	}
+}
+
+// B3 routing fixtures: documented expected routes for the motivating Beeper asks.
+// The mock returns the coached shape; we assert ParseRoute keeps verb/class/named/operation.
+func TestBeeperRoutingFixturesPreserveVerbClassNamedAndOperation(t *testing.T) {
+	fixtures := []struct {
+		name, utterance, responseText string
+		wantVerb                      manifest.Verb
+		wantClass, wantNamed, wantOp  string
+	}{
+		{
+			name: "unread Instagram", utterance: "what's my most recent unread Instagram message",
+			responseText: `{"verb":"read","app_class":"beeper_messaging","app_named":"instagram","subject":"","body":"","fields":{"origin":null,"destination":null,"navigate":null,"list":null,"folder":null,"operation":null},"confidence":0.95}`,
+			wantVerb: manifest.Read, wantClass: "beeper_messaging", wantNamed: "instagram", wantOp: "",
+		},
+		{
+			name: "reply Discord", utterance: "reply to Maya on Discord that I'll be late",
+			responseText: `{"verb":"send","app_class":"beeper_messaging","app_named":"discord","subject":"Maya","body":"I'll be late","fields":{"origin":null,"destination":null,"navigate":null,"list":null,"folder":null,"operation":"reply"},"confidence":0.95}`,
+			wantVerb: manifest.Send, wantClass: "beeper_messaging", wantNamed: "discord", wantOp: "reply",
+		},
+		{
+			name: "delete last message", utterance: "delete my last message on Discord",
+			responseText: `{"verb":"cancel","app_class":"beeper_messaging","app_named":"discord","subject":"","body":"","fields":{"origin":null,"destination":null,"navigate":null,"list":null,"folder":null,"operation":"delete"},"confidence":0.95}`,
+			wantVerb: manifest.Cancel, wantClass: "beeper_messaging", wantNamed: "discord", wantOp: "delete",
+		},
+		{
+			name: "archive group chat", utterance: "archive that group chat on Discord",
+			responseText: `{"verb":"modify","app_class":"beeper_messaging","app_named":"discord","subject":"group chat","body":"","fields":{"origin":null,"destination":null,"navigate":null,"list":null,"folder":null,"operation":"archive"},"confidence":0.95}`,
+			wantVerb: manifest.Modify, wantClass: "beeper_messaging", wantNamed: "discord", wantOp: "archive",
+		},
+	}
+	for _, tc := range fixtures {
+		t.Run(tc.name, func(t *testing.T) {
+			payload, _ := json.Marshal(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{{
+					"type": "message", "role": "assistant",
+					"content": []map[string]any{{"type": "output_text", "text": tc.responseText}},
+				}},
+				"usage": map[string]int{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+			})
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write(payload)
+			}))
+			defer server.Close()
+			client, err := New(Config{APIKey: "k", BaseURL: server.URL, HTTPClient: server.Client(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			route, err := stage1.New(client.Model).Route(t.Context(), tc.utterance)
+			if err != nil {
+				t.Fatalf("Route: %v", err)
+			}
+			if route.Verb != tc.wantVerb || route.AppClass != tc.wantClass || route.AppNamed != tc.wantNamed {
+				t.Fatalf("route=%+v, want verb=%s class=%s named=%s", route, tc.wantVerb, tc.wantClass, tc.wantNamed)
+			}
+			gotOp := route.Fields["operation"]
+			if gotOp != tc.wantOp {
+				t.Fatalf("operation=%q, want %q (fields=%v)", gotOp, tc.wantOp, route.Fields)
+			}
+		})
+	}
+}
+
+func slotsKeys(slots map[string]any) []string {
+	keys := make([]string, 0, len(slots))
+	for k := range slots {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // contains reports whether a schema list value holds want, accepting either
 // []string or []any so the assertion does not depend on how the map was built.
 func contains(list any, want string) bool {

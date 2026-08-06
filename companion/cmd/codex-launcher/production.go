@@ -90,14 +90,22 @@ func startProductionCapabilityFlow(ctx context.Context, output io.Writer) (mobil
 			logger.Warn("[production-serve] Notion connection unavailable", "error", buildErr)
 		}
 	}
+	// Fact-force (edit): importers=startProductionCapabilityFlow;
+	// callers=NewProduction BeeperAPI/BeeperReadOnly; schemas=none;
+	// user: "Continue OpenAI+Beeper — **SLICE 4: B4 + B5**."
 	var beeperAPI *beeper.Client
 	beeperToken := strings.TrimSpace(os.Getenv("BEEPER_ACCESS_TOKEN"))
 	beeperReadOnly := envEnabled(os.Getenv("BEEPER_READONLY"))
-	if beeperToken != "" && !beeperReadOnly {
+	if beeperToken != "" {
 		beeperAPI = beeper.NewClient(os.Getenv("BEEPER_DESKTOP_BASE_URL"), beeper.StaticToken(beeperToken), nil, logger)
-		logger.Info("[production-serve] Beeper messaging enabled", "write_enabled", true, "token_present", true)
+		if beeperReadOnly {
+			beeperAPI = beeperAPI.ReadOnly()
+			logger.Info("[production-serve] Beeper messaging enabled", "write_enabled", false, "token_present", true)
+		} else {
+			logger.Info("[production-serve] Beeper messaging enabled", "write_enabled", true, "token_present", true)
+		}
 	} else {
-		logger.Info("[production-serve] Beeper messaging unavailable", "token_present", beeperToken != "", "read_only", beeperReadOnly)
+		logger.Info("[production-serve] Beeper messaging unavailable", "token_present", false, "read_only", beeperReadOnly)
 	}
 	service, inventory, err := capabilityruntime.NewProduction(capabilityruntime.ProductionConfig{
 		Model:             routingModel,
@@ -106,6 +114,7 @@ func startProductionCapabilityFlow(ctx context.Context, output io.Writer) (mobil
 		YouTubeAPIKey:     productionSecret(ctx, os.Getenv("YOUTUBE_API_KEY"), "youtube_api_key", secrets, logger),
 		PodcastsFeedURL:   os.Getenv("PODCASTS_FEED_URL"),
 		BeeperAPI:         beeperAPI,
+		BeeperReadOnly:    beeperReadOnly && beeperAPI != nil,
 		GoogleCalendarAPI: oauthConnections.GoogleCalendar,
 		GoogleDriveAPI:    oauthConnections.GoogleDrive,
 		SlackAPI:          oauthConnections.Slack,
@@ -137,13 +146,40 @@ func productionRoutingModel(logger *slog.Logger) (stage1.ModelFunc, string, erro
 		}
 		return client.Model, "openai", nil
 	}
+	// Match Beeper registration in startProductionCapabilityFlow: token
+	// present registers beeper_messaging (including BEEPER_READONLY=1 with
+	// Verbs:[read] only). When those adapters own Wave1-overlapping ids
+	// under beeper_messaging, do not also advertise them under Wave1 messaging.
+	beeperRegistered := beeperMessagingRegisteredFromEnv()
 	specs := deeplinkadapter.Wave1Specs()
 	rules := make([]stage1explicit.Rule, 0, len(specs))
 	for _, spec := range specs {
+		if beeperRegistered && wave1IDOwnedByBeeperMessaging(spec.ID) {
+			continue
+		}
 		rules = append(rules, stage1explicit.Rule{ID: spec.ID, Name: spec.AppName, AppClass: spec.AppClass, Verbs: spec.Verbs})
 	}
 	model := stage1explicit.New(rules, logger)
 	return model.Route, "explicit_app", nil
+}
+
+// beeperMessagingRegisteredFromEnv matches whether startProductionCapabilityFlow
+// will pass a non-nil BeeperAPI into NewProduction (token present). Shared so
+// the keyword omit gate cannot drift from adapter registration (slice3 nit).
+func beeperMessagingRegisteredFromEnv() bool {
+	return strings.TrimSpace(os.Getenv("BEEPER_ACCESS_TOKEN")) != ""
+}
+
+// wave1IDOwnedByBeeperMessaging reports Wave1 deeplink ids that ProductionSpecs
+// also registers under class beeper_messaging when Beeper is connected.
+// Derived from ProductionSpecs so the overlap list cannot drift from adapters.
+func wave1IDOwnedByBeeperMessaging(id string) bool {
+	for _, spec := range beepermessage.ProductionSpecs() {
+		if spec.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 type secretReader interface {

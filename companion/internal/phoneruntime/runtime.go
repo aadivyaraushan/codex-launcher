@@ -20,8 +20,7 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
-	deeplinkadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/deeplink"
-	stage1explicit "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/explicit"
+	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
 	capabilityruntime "github.com/codex-launcher/codex-launcher/companion/internal/capability/runtime"
 	"github.com/codex-launcher/codex-launcher/companion/internal/durablestore"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
@@ -78,6 +77,8 @@ type Runtime struct {
 	flow         mobilesession.CapabilityFlow
 	inventory    capabilityruntime.Inventory
 	router       string
+	// routerStatus probes Android OpenAI broker GET /v1/broker/openai/status per Health call.
+	routerStatus func(context.Context) (keyed bool, err error)
 	mu           sync.Mutex
 	process      string
 	boundAddr    string
@@ -152,27 +153,31 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 
 	flow := dependencies.Flow
 	inventory := capabilityruntime.Inventory{}
-	routerSource := "explicit_app"
+	routerSource := "openai_broker"
+	var routerStatus func(context.Context) (bool, error)
 	beeperAccounts := dependencies.BeeperAccounts
 	if beeperAccounts == nil {
 		beeperAccounts = openBeeperAccounts(logger)
 	}
 	if flow == nil {
-		specs := deeplinkadapter.Wave1Specs()
-		rules := make([]stage1explicit.Rule, 0, len(specs))
-		for _, spec := range specs {
-			rules = append(rules, stage1explicit.Rule{ID: spec.ID, Name: spec.AppName, AppClass: spec.AppClass, Verbs: spec.Verbs})
+		// Fact-force (edit): callers=Open/Serve phone-runtime; replace stage1explicit with
+		// Android OpenAI broker (plan A2). User: Slice 1 openai-beeper-phone-runtime.
+		brokered, brokerErr := stage1openai.NewBrokered(phoneOpenAIBrokerBaseURL(), logger)
+		if brokerErr != nil {
+			_ = store.Close()
+			return nil, brokerErr
 		}
-		model := stage1explicit.New(rules, logger)
-		// Fact-force: callers=New/Serve phone-runtime; API=ProductionConfig.MapsBrokerBaseURL;
-		// user: "Maps Go→Android Places/Routes RPC"
+		routerStatus = brokered.Status
 		prod := capabilityruntime.ProductionConfig{
-			Model:             model.Route,
+			Model:             brokered.Model,
 			Logger:            logger,
 			MapsBrokerBaseURL: phoneMapsBrokerBaseURL(),
 		}
-		if api := beeperAPIFromEnv(logger); api != nil {
+		// Fact-force (edit): callers=Open phone-runtime NewProduction;
+		// API=BeeperAPI+BeeperReadOnly; user: Slice 4 B4+B5.
+		if api, readOnly := beeperAPIFromEnv(logger); api != nil {
 			prod.BeeperAPI = api
+			prod.BeeperReadOnly = readOnly
 		}
 		service, inv, buildErr := capabilityruntime.NewProduction(prod)
 		if buildErr != nil {
@@ -196,18 +201,19 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	}
 
 	rt := &Runtime{
-		config:      config,
-		logger:      logger,
-		now:         now,
-		store:       store,
-		pairing:     pairingService,
-		mobile:      mobileServer,
-		flow:        flow,
-		inventory:   inventory,
-		router:      routerSource,
-		process:     "ready",
-		certificate: certificate,
-		handler:     handler,
+		config:       config,
+		logger:       logger,
+		now:          now,
+		store:        store,
+		pairing:      pairingService,
+		mobile:       mobileServer,
+		flow:         flow,
+		inventory:    inventory,
+		router:       routerSource,
+		routerStatus: routerStatus,
+		process:      "ready",
+		certificate:  certificate,
+		handler:      handler,
 		operatorPin: localtrust.ExpectedOperator{
 			PackageName: "app.codexlauncher",
 			// Release (frozen owner) APK signer. Debug builds use c613e660… — accept both below.
@@ -518,10 +524,24 @@ func (runtime *Runtime) Health() Health {
 	} else if pending {
 		localPair = "offer_pending"
 	}
+	router := runtime.router
+	if runtime.routerStatus != nil {
+		keyed, statusErr := runtime.routerStatus(context.Background())
+		switch {
+		case statusErr != nil:
+			// Per-ask failures still report openai_broker; only no_key is special.
+			router = "openai_broker"
+			runtime.logger.Info("[phone-runtime] router status probe failed", "error", statusErr)
+		case !keyed:
+			router = "openai_broker:no_key"
+		default:
+			router = "openai_broker"
+		}
+	}
 	return Health{
 		Mode:          "standalone_phone",
 		Process:       process,
-		Router:        runtime.router,
+		Router:        router,
 		Beeper:        beeper,
 		Credentials:   credentials,
 		Adapters:      adapters,

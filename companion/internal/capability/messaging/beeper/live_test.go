@@ -63,6 +63,29 @@ func TestLiveBeeperReturnsAddressableChats(t *testing.T) {
 	}
 }
 
+// Read smoke for B1: list inbox + messages against a real Desktop.
+func TestLiveBeeperListsChatsAndMessages(t *testing.T) {
+	client, ctx := requireLive(t, "whether ListChats/ListMessages match live Desktop /v1/spec shapes")
+
+	page, err := client.ListChats(ctx, ListChatsOptions{})
+	if err != nil {
+		t.Fatalf("ListChats: %v", err)
+	}
+	if len(page.Items) == 0 {
+		t.Fatal("ListChats returned no chats")
+	}
+	chat := page.Items[0]
+	if chat.ID == "" {
+		t.Fatalf("chat missing id: %+v", chat)
+	}
+	msgs, err := client.ListMessages(ctx, chat.ID, MessageListOptions{})
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	t.Logf("listed %d chats (hasMore=%v); chat %q had %d messages (hasMore=%v)",
+		len(page.Items), page.HasMore, chat.Title, len(msgs.Items), msgs.HasMore)
+}
+
 // The safety guard has to hold against the real thing, not just a fake one.
 func TestLiveReadOnlyClientStillRefusesToSend(t *testing.T) {
 	client, ctx := requireLive(t, "whether the read-only guard actually protects a live Beeper account")

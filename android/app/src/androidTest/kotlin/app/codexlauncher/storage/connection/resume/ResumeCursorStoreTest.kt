@@ -29,4 +29,15 @@ class ResumeCursorStoreTest {
         assertTrue(reopened.clearForWipe())
         assertNull(reopened.load(pairing))
     }
+
+    @Test
+    fun cursorRecordsUnderStandaloneWriteGate() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        context.getSharedPreferences("session_resume_cursor", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+        val pairing = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { (it + 3).toByte() })
+        val gate = LocalStateWriteGate().also { assertTrue(it.openAfterStartup(pairingPresent = false)) }
+
+        assertTrue(ResumeCursorStore(context, gate).record(pairing, 4L))
+        assertEquals(4L, ResumeCursorStore(context, gate).load(pairing))
+    }
 }

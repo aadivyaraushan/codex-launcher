@@ -43,7 +43,9 @@ class LauncherApplication : Application() {
                 message = "startup stop list restore finished",
                 fields = mapOf("output_shape" to outcome.name.lowercase()),
             )
-            MapsBrokerLoopback.startIfKeyed(this@LauncherApplication)
+// Fact-force (edit): Callers=AndroidManifest Application; API=MapsBrokerLoopback.startAlways
+// (was startIfKeyed); User: "Continue implementing the PASSed plan at planning/openai-beeper-phone-runtime-plan.md"
+            MapsBrokerLoopback.startAlways(this@LauncherApplication)
         }
     }
 

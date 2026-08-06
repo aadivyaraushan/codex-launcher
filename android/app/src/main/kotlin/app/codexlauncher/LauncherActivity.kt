@@ -508,6 +508,7 @@ class LauncherActivity : ComponentActivity() {
                 onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
             }
             BackHandler(enabled = destination in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE, LauncherDestination.PROJECT, LauncherDestination.TASK, LauncherDestination.TASK_DETAIL, LauncherDestination.PAIRING)) {
+                val from = destination
                 destination =
                     when (destination) {
                         LauncherDestination.APPEARANCE -> LauncherDestination.APPS
@@ -526,6 +527,9 @@ class LauncherActivity : ComponentActivity() {
                         LauncherDestination.APPS -> rootDestination
                         LauncherDestination.HOME -> destination
                     }
+                if (from == LauncherDestination.PAIRING) {
+                    scope.launch { localState.gate.abortPairing() }
+                }
             }
             QuietInstrumentTheme(mode = appearanceMode) {
                 if (pairingState == PairingRecordState.RecoveryFailed && destination !in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE)) {
@@ -609,6 +613,28 @@ class LauncherActivity : ComponentActivity() {
                                     HomeSendDecision.CapabilityOnPhone -> {
                                         homeRouteMessage = null
                                         scope.launch {
+                                            // AUTO + standalone-ready must use loopback phone-runtime
+                                            // even when a Mac pairing record exists (Mac may be offline
+                                            // and holding activeConnection). HomeSendRouter already
+                                            // chose CapabilityOnPhone; open the local sink first.
+                                            val local = LocalRuntimeEndpoint.load(applicationContext)
+                                            if (local != null) {
+                                                sessionViewModel.connect(local, force = true)
+                                                var online = false
+                                                repeat(50) {
+                                                    if (sessionViewModel.state.value.connection.phase ==
+                                                        ConnectionPhase.ONLINE
+                                                    ) {
+                                                        online = true
+                                                        return@repeat
+                                                    }
+                                                    delay(100)
+                                                }
+                                                if (!online) {
+                                                    homeRouteMessage = "Operator services unavailable."
+                                                    return@launch
+                                                }
+                                            }
                                             sessionViewModel.submitHomePrompt(
                                                 prompt = prompt,
                                                 selection = selection,

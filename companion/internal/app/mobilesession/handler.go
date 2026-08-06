@@ -20,6 +20,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/devicework"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/execution"
 	capabilityflow "github.com/codex-launcher/codex-launcher/companion/internal/capability/flow"
+	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
@@ -709,7 +710,7 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 		return ErrSessionSuperseded
 	}
 	if action.Kind == "capability_request" || action.Kind == "capability_confirm" || action.Kind == "capability_disconnect" {
-		return handler.handleCapabilityAction(ctx, sender, capabilityActionParams{
+		params := capabilityActionParams{
 			ActionID:    action.ActionID,
 			Kind:        action.Kind,
 			RequestID:   action.RequestID,
@@ -717,7 +718,34 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 			Fingerprint: action.Fingerprint,
 			Decision:    string(action.Decision),
 			AdapterID:   action.AdapterID,
-		})
+		}
+		// Prepare/Confirm can call the OpenAI broker for many seconds. Doing that
+		// on the WebSocket read goroutine starves coder/websocket Read, so the
+		// phone stops getting pong replies and drops the session (~40s). Run the
+		// long path off the read loop; disconnect stays inline (fast).
+		if action.Kind == "capability_request" || action.Kind == "capability_confirm" {
+			go func() {
+				handler.publishMu.Lock()
+				defer handler.publishMu.Unlock()
+				handler.mu.Lock()
+				current := handler.active[sender.DeviceID()]
+				handler.mu.Unlock()
+				if current == nil || current.ConnectionID() != sender.ConnectionID() {
+					return
+				}
+				if err := handler.handleCapabilityAction(handler.ctx, sender, params); err != nil {
+					handler.logger.Error(
+						"[mobile-session] async capability action failed",
+						"device_id", sender.DeviceID(),
+						"kind", params.Kind,
+						"request_id", params.ActionID,
+						"error_class", fmt.Sprintf("%T", err),
+					)
+				}
+			}()
+			return nil
+		}
+		return handler.handleCapabilityAction(ctx, sender, params)
 	}
 	result := map[string]any{"actionId": action.ActionID, "state": "confirmed"}
 	refreshTasks := false
@@ -961,6 +989,20 @@ func (handler *Handler) handleCapabilityAction(ctx context.Context, sender trans
 			if errors.As(err, &question) {
 				handler.logger.Info("[mobile-session] capability needs an answer before it can act", "device_id", sender.DeviceID(), "request_id", actionID, "question_length", len(question.Question))
 				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", question.Question)
+			}
+			// Fact-force (edit): Slice 1 A2 fail-closed — typed OpenAI broker errors become
+			// the same cancelled+question path stage2 questions use (plan fail-closed table).
+			// Callers: Prepare → stage1openai.ErrRouterNotProvisioned|ErrRouterUnreachable.
+			// User: "Implement OpenAI+Beeper phone-runtime plan — SLICE 1 only"
+			if errors.Is(err, stage1openai.ErrRouterNotProvisioned) {
+				msg := "Operator's router isn't set up on this phone yet. Ask the operator to finish setup."
+				handler.logger.Info("[mobile-session] router not provisioned", "device_id", sender.DeviceID(), "request_id", actionID)
+				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", msg)
+			}
+			if errors.Is(err, stage1openai.ErrRouterUnreachable) {
+				msg := "I couldn't reach the router just now. Try again in a moment."
+				handler.logger.Info("[mobile-session] router unreachable", "device_id", sender.DeviceID(), "request_id", actionID)
+				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", msg)
 			}
 			code := capabilityFailureCode(err)
 			handler.logger.Error("[mobile-session] capability prepare failed", "device_id", sender.DeviceID(), "request_id", actionID, "error_class", fmt.Sprintf("%T", err), "code", code)

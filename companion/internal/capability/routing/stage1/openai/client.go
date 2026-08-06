@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const (
@@ -28,11 +29,15 @@ type Config struct {
 	Logger     *slog.Logger
 }
 
+// Fact-force (edit): Callers=New + NewBrokered (brokered.go); Model uses
+// responsesPath when set. Grep: responsesPath was referenced but field missing.
+// No data files. User: "Implement OpenAI+Beeper phone-runtime plan — SLICE 1 only"
 type Client struct {
-	apiKey  string
-	baseURL string
-	http    *http.Client
-	logger  *slog.Logger
+	apiKey        string
+	baseURL       string
+	responsesPath string // empty → /v1/responses; brokered → /v1/broker/openai/responses
+	http          *http.Client
+	logger        *slog.Logger
 }
 
 func New(config Config) (*Client, error) {
@@ -79,6 +84,8 @@ func (c *Client) Model(ctx context.Context, utterance string) ([]byte, error) {
 			"For connected Outlook mail, use app_class email and app_named outlook with verb read, write, or send; put the message subject in subject and recipient/body details in body.",
 			"For Podcasts plain RSS, use app_class media and app_named podcasts with verb read (list episodes from a feed) or play (resolve one episode enclosure URL). Completes via enclosure — no partner API and no OAuth.",
 			"For a new confirmed message through a connected Beeper account on Instagram, Discord, or Google Messages, use app_class beeper_messaging with verb send. Put the person's visible conversation name in subject, the full message in body, and use app_named instagram, discord, or messages respectively. This route searches Beeper's live chat list and asks if more than one conversation matches.",
+			"For reading messages through a connected Beeper account (unread scan, recent messages in a named chat, or search), use app_class beeper_messaging with verb read and app_named instagram, discord, or messages. Leave subject empty for a network-wide unread ask; put the conversation name in subject when named; put search text in body when searching. Leave fields.operation null for reads.",
+			"For managing an existing Beeper conversation or message (reply, edit, delete, react, unreact, mark_read, mark_unread, archive, unarchive, pin, mute, set_reminder, clear_reminder), use app_class beeper_messaging with app_named instagram, discord, or messages. Put the chosen name from that closed list in fields.operation. Use verb send when operation is reply; verb cancel when operation is delete or clear_reminder; verb modify for the other manage operations.",
 			"For a draft the user only wants opened without sending, use app_class messaging and verb compose with app_named instagram, discord, or messages. That prepare-and-open route never claims the message was sent.",
 			"For personal Teams prepare-and-open, use app_class messaging and app_named teams with verb compose. Open only — never claim the message was sent (Graph chat send does not support personal accounts).",
 			// The separate path the three lines below point at. Without this
@@ -168,26 +175,55 @@ func (c *Client) Model(ctx context.Context, utterance string) ([]byte, error) {
 	if err := json.NewEncoder(&encoded).Encode(request); err != nil {
 		return nil, fmt.Errorf("openai stage1: encode request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/responses", strings.NewReader(encoded.String()))
+	path := c.responsesPath
+	if path == "" {
+		path = "/v1/responses"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(encoded.String()))
 	if err != nil {
 		return nil, fmt.Errorf("openai stage1: build request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	c.logger.Info("[stage1-openai] request", "model", Model, "utterance_bytes", len(utterance), "reasoning_effort", "none")
-	response, err := c.http.Do(req)
-	if err != nil {
-		c.logger.Error("[stage1-openai] request failed", "model", Model, "error", err)
-		return nil, fmt.Errorf("openai stage1: request failed: %w", err)
+	// Brokered clients leave apiKey empty so the Android vault adds the bearer.
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
-		c.logger.Error("[stage1-openai] response rejected", "model", Model, "status", response.StatusCode)
-		return nil, fmt.Errorf("openai stage1: Responses API returned status %d", response.StatusCode)
+	req.Header.Set("Content-Type", "application/json")
+	c.logger.Info("[stage1-openai] request", "model", Model, "path", path, "utterance_bytes", len(utterance), "reasoning_effort", "none", "brokered", c.apiKey == "")
+	var responseBody []byte
+	var statusCode int
+	if c.responsesPath != "" {
+		// Termux/proot: in-process Go HTTP to the Android loopback broker can
+		// stall ~60s mid-body while a WebSocket is open. curl in a subprocess
+		// finishes the same POST in ~1–3s (verified on-device during dogfood).
+		c.logger.Info("[stage1-openai] broker curl post", "body_len", encoded.Len())
+		var curlErr error
+		statusCode, responseBody, curlErr = curlBrokerPOST(ctx, c.baseURL, path, []byte(encoded.String()), 60*time.Second)
+		if curlErr != nil {
+			c.logger.Error("[stage1-openai] request failed", "model", Model, "path", path, "error", curlErr)
+			return nil, fmt.Errorf("%w: %v", ErrRouterUnreachable, curlErr)
+		}
+	} else {
+		response, err := c.http.Do(req)
+		if err != nil {
+			c.logger.Error("[stage1-openai] request failed", "model", Model, "path", path, "error", err)
+			return nil, fmt.Errorf("openai stage1: request failed: %w", err)
+		}
+		defer response.Body.Close()
+		statusCode = response.StatusCode
+		responseBody, _ = io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		c.logger.Error("[stage1-openai] response rejected", "model", Model, "path", path, "status", statusCode, "body_len", len(responseBody))
+		if c.responsesPath != "" {
+			if statusCode == http.StatusServiceUnavailable && strings.Contains(string(responseBody), "no_key") {
+				return nil, ErrRouterNotProvisioned
+			}
+			return nil, fmt.Errorf("%w: status %d", ErrRouterUnreachable, statusCode)
+		}
+		return nil, fmt.Errorf("openai stage1: Responses API returned status %d", statusCode)
 	}
 	var decoded responseEnvelope
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&decoded); err != nil {
+	if err := json.Unmarshal(responseBody, &decoded); err != nil {
 		return nil, fmt.Errorf("openai stage1: decode response: %w", err)
 	}
 	var outputs []string
@@ -228,10 +264,10 @@ type textConfig struct {
 // namedSlots lists the fixed set of named slots the model may fill in
 // fields. These are exactly the slots adapters read via Fields[...]: maps
 // reads origin/destination/navigate, apple reminders reads list, apple
-// notes reads folder. page_id (notion) and feed_url (podcasts) are
-// app-internal ids a cloud model has no business guessing, so they are not
-// offered here.
-var namedSlots = []string{"origin", "destination", "navigate", "list", "folder"}
+// notes reads folder, Beeper manage ops read operation. page_id (notion)
+// and feed_url (podcasts) are app-internal ids a cloud model has no
+// business guessing, so they are not offered here.
+var namedSlots = []string{"origin", "destination", "navigate", "list", "folder", "operation"}
 
 func routeFormat() map[string]any {
 	slotProperties := make(map[string]any, len(namedSlots))

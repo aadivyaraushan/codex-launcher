@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gcalendar"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gdrive"
@@ -297,6 +298,41 @@ func (*fakeProductionBeeper) StartChat(context.Context, string, string) (beeper.
 func (*fakeProductionBeeper) Send(context.Context, string, string) (beeper.Sent, error) {
 	return beeper.Sent{ChatID: "chat-1", PendingMessageID: "pending-1"}, nil
 }
+func (f *fakeProductionBeeper) SendReply(ctx context.Context, chatID, text, _ string) (beeper.Sent, error) {
+	return f.Send(ctx, chatID, text)
+}
+func (*fakeProductionBeeper) ListChats(context.Context, beeper.ListChatsOptions) (beeper.ChatPage, error) {
+	return beeper.ChatPage{}, nil
+}
+func (*fakeProductionBeeper) GetChat(context.Context, string) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1", Network: "Discord", Title: "Aadivya"}, nil
+}
+func (*fakeProductionBeeper) ListMessages(context.Context, string, beeper.MessageListOptions) (beeper.MessagePage, error) {
+	return beeper.MessagePage{}, nil
+}
+func (*fakeProductionBeeper) SearchMessages(context.Context, beeper.SearchMessagesOptions) (beeper.MessagePage, error) {
+	return beeper.MessagePage{}, nil
+}
+func (*fakeProductionBeeper) EditMessage(context.Context, string, string, string) (beeper.Message, error) {
+	return beeper.Message{}, nil
+}
+func (*fakeProductionBeeper) DeleteMessage(context.Context, string, string) error { return nil }
+func (*fakeProductionBeeper) React(context.Context, string, string, string) error { return nil }
+func (*fakeProductionBeeper) Unreact(context.Context, string, string, string) error {
+	return nil
+}
+func (*fakeProductionBeeper) MarkRead(context.Context, string, string) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1"}, nil
+}
+func (*fakeProductionBeeper) MarkUnread(context.Context, string, string) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1"}, nil
+}
+func (*fakeProductionBeeper) Archive(context.Context, string, bool) error { return nil }
+func (*fakeProductionBeeper) UpdateChat(context.Context, string, beeper.UpdateChatOptions) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1"}, nil
+}
+func (*fakeProductionBeeper) SetReminder(context.Context, string, time.Time, bool) error { return nil }
+func (*fakeProductionBeeper) ClearReminder(context.Context, string) error                 { return nil }
 
 func TestBeeperConnectionReplacesTheThreeMessagingHandoffsWithConfirmedSendAdapters(t *testing.T) {
 	_, inv, err := NewProduction(ProductionConfig{

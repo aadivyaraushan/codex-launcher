@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-# Gate: importers=MapsImportSession Android open; callers=Maps live orchestration;
-# API=ECDH P-256 + HKDF-SHA256 + AES-256-GCM seal; schemas=offer JSON -> envelope
-# JSON (ciphertext only over adb); user: "Import key from Mac .env onto Android
-# via the allowed envelope path only (not Linux plaintext)."
-"""Seal GOOGLE_MAPS_API_KEY from a local .env into an adb-safe envelope.
+# Fact-force (edit):
+# 1) Callers: dogfood OpenAI/maps key import; MapsImportSession.importSealedJson;
+#    LiveMapsBrokerProofTest orchestration.
+# 2) Was maps-only; plan adds --provider openai reading OPENAI_API_KEY.
+# 3) Schemas: offer JSON → envelope JSON (ciphertext only). INFO stays
+#    operator-maps-key-import-v1 (shared envelope crypto; provider is in AAD).
+# 4) User: "Implement OpenAI+Beeper phone-runtime plan — SLICE 1 only"
+"""Seal an API key from a local .env into an adb-safe envelope.
 
 Never prints the API key. Writes only ciphertext JSON.
 """
@@ -24,6 +27,11 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 INFO = b"operator-maps-key-import-v1"
 
+PROVIDER_ENV = {
+    "maps": "GOOGLE_MAPS_API_KEY",
+    "openai": "OPENAI_API_KEY",
+}
+
 
 def b64u_encode(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
@@ -34,14 +42,14 @@ def b64u_decode(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + pad)
 
 
-def read_env_key(env_path: Path) -> bytes:
+def read_env_key(env_path: Path, env_name: str) -> bytes:
     for line in env_path.read_text().splitlines():
-        if line.startswith("GOOGLE_MAPS_API_KEY="):
+        if line.startswith(env_name + "="):
             val = line.split("=", 1)[1].strip().strip('"').strip("'")
             if not val:
-                raise SystemExit("GOOGLE_MAPS_API_KEY empty")
+                raise SystemExit(f"{env_name} empty")
             return val.encode("utf-8")
-    raise SystemExit("GOOGLE_MAPS_API_KEY missing")
+    raise SystemExit(f"{env_name} missing")
 
 
 def aad_utf8(meta: dict) -> bytes:
@@ -59,13 +67,23 @@ def aad_utf8(meta: dict) -> bytes:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--offer", required=True, help="path to maps-import-offer.json")
-    ap.add_argument("--env", required=True, help="path to Mac .env with GOOGLE_MAPS_API_KEY")
-    ap.add_argument("--out", required=True, help="path for maps-import-envelope.json")
+    ap.add_argument("--offer", required=True, help="path to import-offer.json")
+    ap.add_argument("--env", required=True, help="path to Mac .env with the provider key")
+    ap.add_argument("--out", required=True, help="path for import-envelope.json")
+    ap.add_argument(
+        "--provider",
+        choices=sorted(PROVIDER_ENV),
+        default=None,
+        help="maps or openai (default: offer.provider or maps)",
+    )
     args = ap.parse_args()
 
     offer = json.loads(Path(args.offer).read_text())
-    api_key = read_env_key(Path(args.env))
+    provider = args.provider or offer.get("provider") or "maps"
+    if provider not in PROVIDER_ENV:
+        raise SystemExit(f"unsupported provider={provider!r}")
+    env_name = PROVIDER_ENV[provider]
+    api_key = read_env_key(Path(args.env), env_name)
     device_pub = serialization.load_der_public_key(b64u_decode(offer["devicePublicKeySpkiB64"]))
     helper = ec.generate_private_key(ec.SECP256R1())
     shared = helper.exchange(ec.ECDH(), device_pub)
@@ -77,7 +95,7 @@ def main() -> int:
     ).derive(shared)
     meta = {
         "importId": offer["importId"],
-        "provider": "maps",
+        "provider": provider,
         "expiresAtUnix": offer["expiresAtUnix"],
         "deviceSerial": offer["deviceSerial"],
         "packageName": offer["packageName"],
@@ -100,6 +118,7 @@ def main() -> int:
     del api_key, shared, aes_key
     print(
         "sealed",
+        f"provider={provider}",
         f"importId={meta['importId']}",
         f"out={args.out}",
         f"ciphertext_len={len(ct)}",

@@ -129,10 +129,17 @@ type ProductionConfig struct {
 	// feed URL itself is the only thing standing between "nothing to
 	// search" and a working adapter.
 	PodcastsFeedURL string
-	// BeeperAPI is present only when the local or remote Beeper target is
-	// authenticated and write-enabled. It replaces the Instagram, Discord,
-	// and Google Messages hand-offs with confirmed send adapters.
+	// Fact-force (edit): callers=cmd/codex-launcher/production.go,
+	// phoneruntime/runtime.go, beeper_stage2_readonly_test.go; existing file
+	// production.go (not new). User: "Continue OpenAI+Beeper — SLICE 4: B4 + B5".
+	// BeeperAPI is present when the local or remote Beeper target is
+	// authenticated. It replaces the Instagram, Discord, and Google Messages
+	// hand-offs with Beeper network adapters under beeper_messaging.
 	BeeperAPI beepermessage.API
+	// BeeperReadOnly keeps those adapters registered but with Verbs:[read]
+	// only. Callers should also pass a client.ReadOnly() API so writes are
+	// refused at the HTTP layer.
+	BeeperReadOnly bool
 	// Disconnected is the restart-safe set of adapters the user turned off.
 	// PersistDisconnect records a new disconnect before the live adapter is removed.
 	Disconnected      map[string]bool
@@ -302,7 +309,13 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 				}
 				return config.PersistDisconnect(ctx, adapterID)
 			}
-			if err := reg.Register(beepermessage.NewWithRevoke(spec, config.BeeperAPI, revoke, logger)); err != nil {
+			var beeperAdapter *beepermessage.Adapter
+			if config.BeeperReadOnly {
+				beeperAdapter = beepermessage.NewReadOnlyWithRevoke(spec, config.BeeperAPI, revoke, logger)
+			} else {
+				beeperAdapter = beepermessage.NewWithRevoke(spec, config.BeeperAPI, revoke, logger)
+			}
+			if err := reg.Register(beeperAdapter); err != nil {
 				return nil, Inventory{}, err
 			}
 			inv.Registered = append(inv.Registered, spec.ID)

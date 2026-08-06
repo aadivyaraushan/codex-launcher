@@ -1,8 +1,8 @@
 // Fact-force:
-// 1) Callers: LauncherApplication.onCreate → startIfKeyed; Go mapsbroker Client → :9451
-// 2) Companion to MapsBrokerOps.kt in maps/rpc/ (folder had Ops only)
-// 3) No data files; ServerSocket 127.0.0.1:9451 HTTP
-// 4) User: "advance non-Outlook Wave 3: Maps Go→Android Places/Routes RPC"
+// 1) Callers: LauncherApplication.onCreate → startAlways; Go maps/openai broker clients → :9451
+// 2) Search: startIfKeyed only; rewrite to always-on + BrokerLoopbackDispatch (plan A1)
+// 3) No data files; ServerSocket 127.0.0.1:9451 HTTP for maps + openai paths
+// 4) User: "Continue implementing the PASSed plan at planning/openai-beeper-phone-runtime-plan.md"
 package app.codexlauncher.runtime.broker.maps.rpc
 
 import android.content.Context
@@ -11,9 +11,11 @@ import app.codexlauncher.runtime.broker.maps.http.MapsAppIdentity
 import app.codexlauncher.runtime.broker.maps.http.MapsPlatformClient
 import app.codexlauncher.runtime.broker.maps.vault.MapsApiKeyVault
 import app.codexlauncher.runtime.broker.maps.vault.MapsImportSession
+import app.codexlauncher.runtime.broker.openai.http.OpenAiUpstreamClient
+import app.codexlauncher.runtime.broker.openai.rpc.BrokerLoopbackDispatch
+import app.codexlauncher.runtime.broker.openai.rpc.OpenAiBrokerOps
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -23,20 +25,15 @@ import kotlin.concurrent.thread
 object MapsBrokerLoopback {
     private val running = AtomicBoolean(false)
 
-    fun startIfKeyed(context: Context) {
+    /** Always start so status endpoints work before any key is provisioned. */
+    fun startAlways(context: Context) {
         val app = context.applicationContext
-        val vault = MapsApiKeyVault.android(app)
-        if (!vault.hasKey()) {
-            AppLog.info(
-                feature = "maps-broker",
-                message = "loopback skip: no vault key",
-            )
-            return
-        }
         if (!running.compareAndSet(false, true)) {
-            AppLog.info(feature = "maps-broker", message = "loopback already running")
+            AppLog.info(feature = "broker-loopback", message = "loopback already running")
             return
         }
+        val mapsVault = MapsApiKeyVault.android(app)
+        val openAiVault = MapsApiKeyVault.androidOpenAi(app)
         val identity =
             MapsAppIdentity(
                 packageName = app.packageName,
@@ -45,72 +42,120 @@ object MapsBrokerLoopback {
         val platform =
             MapsPlatformClient(
                 identity = identity,
-                apiKeyProvider = { vault.withKey { String(it, Charsets.UTF_8) } },
+                apiKeyProvider = { mapsVault.withKey { String(it, Charsets.UTF_8) } },
             )
-        val ops =
+        val mapsOps =
             MapsBrokerOps(
                 search = { platform.searchPlace(it) },
                 route = { o, d -> platform.computeRoute(o, d) },
             )
-        thread(name = "maps-broker-loopback", isDaemon = true) {
-            serve(ops)
+        val openAiOps =
+            OpenAiBrokerOps(
+                hasKey = { openAiVault.hasKey() },
+                withKey = { block -> openAiVault.withKey { block(it) } },
+                forward = { auth, body -> OpenAiUpstreamClient.forward(auth, body) },
+            )
+        val dispatch =
+            BrokerLoopbackDispatch(
+                mapsHasKey = { mapsVault.hasKey() },
+                mapsOps = mapsOps,
+                openAiOps = openAiOps,
+            )
+        thread(name = "broker-loopback", isDaemon = true) {
+            serve(dispatch)
         }
         AppLog.info(
-            feature = "maps-broker",
-            message = "loopback starting",
-            fields = mapOf("port" to MapsBrokerOps.LOOPBACK_PORT.toString()),
+            feature = "broker-loopback",
+            message = "loopback starting always-on",
+            fields =
+                mapOf(
+                    "port" to MapsBrokerOps.LOOPBACK_PORT.toString(),
+                    "maps_keyed" to mapsVault.hasKey().toString(),
+                    "openai_keyed" to openAiVault.hasKey().toString(),
+                ),
         )
     }
 
-    private fun serve(ops: MapsBrokerOps) {
+    /** Prefer [startAlways]; alias kept for any leftover callers. */
+    fun startIfKeyed(context: Context) = startAlways(context)
+
+    private fun serve(dispatch: BrokerLoopbackDispatch) {
         try {
             ServerSocket(MapsBrokerOps.LOOPBACK_PORT, 8, InetAddress.getByName("127.0.0.1")).use { server ->
                 while (true) {
                     val socket = server.accept()
-                    thread(name = "maps-broker-conn", isDaemon = true) {
-                        handleConn(socket, ops)
+                    thread(name = "broker-loopback-conn", isDaemon = true) {
+                        handleConn(socket, dispatch)
                     }
                 }
             }
         } catch (e: Exception) {
             running.set(false)
-            AppLog.error(feature = "maps-broker", message = "loopback serve failed", error = e)
+            AppLog.error(feature = "broker-loopback", message = "loopback serve failed", error = e)
         }
     }
 
-    private fun handleConn(socket: Socket, ops: MapsBrokerOps) {
-        socket.use { s ->
-            val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
-            val requestLine = reader.readLine() ?: return
-            val parts = requestLine.split(" ")
-            if (parts.size < 2) return
-            val method = parts[0]
-            val path = parts[1].substringBefore('?')
-            var contentLength = 0
-            while (true) {
-                val line = reader.readLine() ?: break
-                if (line.isEmpty()) break
-                if (line.startsWith("Content-Length:", ignoreCase = true)) {
-                    contentLength = line.substringAfter(':').trim().toIntOrNull() ?: 0
+    private fun handleConn(socket: Socket, dispatch: BrokerLoopbackDispatch) {
+        try {
+            socket.use { s ->
+                val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
+                val requestLine = reader.readLine() ?: return
+                val parts = requestLine.split(" ")
+                if (parts.size < 2) return
+                val method = parts[0]
+                val path = parts[1].substringBefore('?')
+                var contentLength = 0
+                var expectContinue = false
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isEmpty()) break
+                    if (line.startsWith("Content-Length:", ignoreCase = true)) {
+                        contentLength = line.substringAfter(':').trim().toIntOrNull() ?: 0
+                    }
+                    if (line.startsWith("Expect:", ignoreCase = true) &&
+                        line.substringAfter(':').trim().equals("100-continue", ignoreCase = true)
+                    ) {
+                        expectContinue = true
+                    }
                 }
-            }
-            val bodyChars = CharArray(contentLength.coerceAtMost(1 shl 20))
-            var read = 0
-            while (read < bodyChars.size) {
-                val n = reader.read(bodyChars, read, bodyChars.size - read)
-                if (n < 0) break
-                read += n
-            }
-            val body = String(bodyChars, 0, read)
-            val resp = ops.handle(method, path, body)
-            OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8).use { out ->
-                out.write("HTTP/1.1 ${resp.status} OK\r\n")
-                out.write("Content-Type: application/json\r\n")
-                out.write("Content-Length: ${resp.body.toByteArray(Charsets.UTF_8).size}\r\n")
-                out.write("Connection: close\r\n\r\n")
-                out.write(resp.body)
+                // Go's net/http may wait for 100 Continue before sending the body.
+                // Without this reply, both sides block until the client times out.
+                if (expectContinue) {
+                    val interim = "HTTP/1.1 100 Continue\r\n\r\n".toByteArray(Charsets.UTF_8)
+                    s.getOutputStream().write(interim)
+                    s.getOutputStream().flush()
+                    AppLog.info(
+                        feature = "broker-loopback",
+                        message = "sent 100 continue",
+                        fields = mapOf("content_length" to contentLength.toString()),
+                    )
+                }
+                val bodyChars = CharArray(contentLength.coerceAtMost(1 shl 20))
+                var read = 0
+                while (read < bodyChars.size) {
+                    val n = reader.read(bodyChars, read, bodyChars.size - read)
+                    if (n < 0) break
+                    read += n
+                }
+                val body = String(bodyChars, 0, read)
+                val resp = dispatch.handle(method, path, body)
+                val bodyBytes = resp.body.toByteArray(Charsets.UTF_8)
+                val header =
+                    "HTTP/1.1 ${resp.status} OK\r\n" +
+                        "Content-Type: application/json\r\n" +
+                        "Content-Length: ${bodyBytes.size}\r\n" +
+                        "Connection: close\r\n\r\n"
+                val out = s.getOutputStream()
+                out.write(header.toByteArray(Charsets.UTF_8))
+                out.write(bodyBytes)
                 out.flush()
             }
+        } catch (e: Exception) {
+            AppLog.error(
+                feature = "broker-loopback",
+                message = "conn closed before response fully written",
+                error = e,
+            )
         }
     }
 }

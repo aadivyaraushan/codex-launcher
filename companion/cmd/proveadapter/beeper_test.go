@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/messaging/beeper"
@@ -40,6 +41,41 @@ func (a *recordingBeeperAPI) Send(context.Context, string, string) (beeper.Sent,
 	a.sends++
 	return beeper.Sent{ChatID: "chat-1", PendingMessageID: "pending-1"}, nil
 }
+func (a *recordingBeeperAPI) SendReply(ctx context.Context, chatID, text, _ string) (beeper.Sent, error) {
+	return a.Send(ctx, chatID, text)
+}
+func (*recordingBeeperAPI) ListChats(context.Context, beeper.ListChatsOptions) (beeper.ChatPage, error) {
+	return beeper.ChatPage{}, nil
+}
+func (*recordingBeeperAPI) GetChat(context.Context, string) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1", Network: "Discord", Title: "Aadivya"}, nil
+}
+func (*recordingBeeperAPI) ListMessages(context.Context, string, beeper.MessageListOptions) (beeper.MessagePage, error) {
+	return beeper.MessagePage{}, nil
+}
+func (*recordingBeeperAPI) SearchMessages(context.Context, beeper.SearchMessagesOptions) (beeper.MessagePage, error) {
+	return beeper.MessagePage{}, nil
+}
+func (*recordingBeeperAPI) EditMessage(context.Context, string, string, string) (beeper.Message, error) {
+	return beeper.Message{}, nil
+}
+func (*recordingBeeperAPI) DeleteMessage(context.Context, string, string) error { return nil }
+func (*recordingBeeperAPI) React(context.Context, string, string, string) error { return nil }
+func (*recordingBeeperAPI) Unreact(context.Context, string, string, string) error {
+	return nil
+}
+func (*recordingBeeperAPI) MarkRead(context.Context, string, string) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1"}, nil
+}
+func (*recordingBeeperAPI) MarkUnread(context.Context, string, string) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1"}, nil
+}
+func (*recordingBeeperAPI) Archive(context.Context, string, bool) error { return nil }
+func (*recordingBeeperAPI) UpdateChat(context.Context, string, beeper.UpdateChatOptions) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1"}, nil
+}
+func (*recordingBeeperAPI) SetReminder(context.Context, string, time.Time, bool) error { return nil }
+func (*recordingBeeperAPI) ClearReminder(context.Context, string) error                 { return nil }
 
 func TestBeeperProofRefusesToSendWithoutExplicitApproval(t *testing.T) {
 	api := &recordingBeeperAPI{}
