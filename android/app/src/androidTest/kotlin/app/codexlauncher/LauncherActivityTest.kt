@@ -112,9 +112,9 @@ class LauncherActivityTest {
     fun homeOpensAllAppsAndPersistsAnAppearanceChoiceAcrossRecreation() {
         awaitUi { compose.onNodeWithText("All apps").assertIsDisplayed() }
         compose.onNodeWithText("All apps").performClick()
-        compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
+        awaitUi { compose.onNodeWithContentDescription("Search apps").assertIsDisplayed() }
         compose.onNodeWithText("Launcher settings").performClick()
-        compose.onNodeWithText("Appearance").assertIsDisplayed()
+        awaitUi { compose.onNodeWithText("Appearance").assertIsDisplayed() }
 
         compose.onNodeWithText("Dark").performClick()
         awaitUi { compose.onNodeWithText("Dark").assertIsSelected() }
@@ -124,17 +124,18 @@ class LauncherActivityTest {
         compose.onNodeWithText("Dark").assertIsSelected()
         compose.onNodeWithContentDescription("Back").performClick()
 
-        compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
+        awaitUi { compose.onNodeWithContentDescription("Search apps").assertIsDisplayed() }
     }
 
     @Test
     fun allAppsBackArrowReturnsAnUnpairedUserToSetup() {
+        awaitUi { compose.onNodeWithText("All apps").assertIsDisplayed() }
         compose.onNodeWithText("All apps").performClick()
-        compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
+        awaitUi { compose.onNodeWithContentDescription("Search apps").assertIsDisplayed() }
 
         compose.onNodeWithContentDescription("Back").performClick()
 
-        compose.onNodeWithText("Pair with your computer").assertIsDisplayed()
+        awaitUi { compose.onNodeWithText("Pair with your computer").assertIsDisplayed() }
     }
 
     @Test
@@ -149,22 +150,24 @@ class LauncherActivityTest {
 
     @Test
     fun AndroidBackReturnsAppearanceToAllAppsAndThenHome() {
+        awaitUi { compose.onNodeWithText("All apps").assertIsDisplayed() }
         compose.onNodeWithText("All apps").performClick()
+        awaitUi { compose.onNodeWithText("Launcher settings").assertIsDisplayed() }
         compose.onNodeWithText("Launcher settings").performClick()
-        compose.onNodeWithText("Appearance").assertIsDisplayed()
+        awaitUi { compose.onNodeWithText("Appearance").assertIsDisplayed() }
 
         runShellCommand("input keyevent KEYCODE_BACK")
-        compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
+        awaitUi { compose.onNodeWithContentDescription("Search apps").assertIsDisplayed() }
 
         runShellCommand("input keyevent KEYCODE_BACK")
-        compose.onNodeWithText("Pair with your computer").assertIsDisplayed()
+        awaitUi { compose.onNodeWithText("Pair with your computer").assertIsDisplayed() }
     }
 
     @Test
     fun AndroidDeliversALaterHomeIntentAndTheLauncherReturnsHome() {
         awaitUi { compose.onNodeWithText("All apps").assertIsDisplayed() }
         compose.onNodeWithText("All apps").performClick()
-        compose.onNodeWithContentDescription("Search apps").assertIsDisplayed()
+        awaitUi { compose.onNodeWithContentDescription("Search apps").assertIsDisplayed() }
 
         runShellCommand(
             "am start -W -a android.intent.action.MAIN " +

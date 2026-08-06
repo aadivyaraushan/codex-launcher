@@ -37,8 +37,16 @@ class LiveDirectReplyProofTest {
     @Test
     fun firesRemoteInputIntoLiveMessagesNotification() {
         val (boxes, dispatch) = waitForListener(timeoutMs = 30_000L)
-        assertNotNull("listener must be connected with reply boxes installed", boxes)
-        assertNotNull("listener must be connected with reply dispatch installed", dispatch)
+        assertNotNull(
+            "NotificationProbeService not connected (enable Operator in notification access; " +
+                "cmd notification allow_listener app.codexlauncher/" +
+                "app.codexlauncher.capability.notifications.NotificationProbeService)",
+            boxes,
+        )
+        assertNotNull(
+            "NotificationProbeService not connected (reply dispatch missing after listener wait)",
+            dispatch,
+        )
 
         val deadline = System.currentTimeMillis() + 20_000L
         var candidates = boxes!!.candidatesFor(HANDLE)
@@ -47,7 +55,8 @@ class LiveDirectReplyProofTest {
             candidates = boxes.candidatesFor(HANDLE)
         }
         assertTrue(
-            "expected live reply box for handle=$HANDLE after listener reconnect",
+            "no reply-capable shade notification for handle=$HANDLE " +
+                "(plan: wait for one approved inbound Messages notification; do not waive)",
             candidates.isNotEmpty(),
         )
 
