@@ -42,7 +42,7 @@ class LocalStateWiperTest {
             assertFalse(intent.inProgress)
             assertTrue(deleted.containsAll(WipeStep.deletions))
             assertEquals(LocalStateWriteResult.Blocked, recreatedGate.withPairedWrite { true })
-            assertEquals(LocalStateWriteResult.Completed(true), recreatedGate.withPairingWrite { true })
+            assertEquals(LocalStateWriteResult.Completed(true), recreatedGate.withStandaloneWrite { true })
         }
     }
 
@@ -72,7 +72,8 @@ class LocalStateWiperTest {
         val unpairedGate = LocalStateWriteGate()
         val unpaired = wiper(unpairedGate, FakeWipeIntent()) { _ -> true }.recover(pairingPresent = { false })
         assertEquals(StartupRecovery.Unpaired, unpaired)
-        assertEquals(LocalStateWriteResult.Completed(true), unpairedGate.withPairingWrite { true })
+        assertEquals(LocalStateWriteResult.Completed(true), unpairedGate.withStandaloneWrite { true })
+        assertEquals(LocalStateWriteResult.Blocked, unpairedGate.withPairingWrite { true })
     }
 
     @Test

@@ -80,12 +80,14 @@ fun HomeScreen(
     onDictate: () -> Unit = {},
     onConnectionHelp: () -> Unit = {},
     onManageComputer: () -> Unit = {},
+    onLinkComputer: () -> Unit = {},
+    onLinkLocalRuntime: () -> Unit = {},
     onOpenTask: (String) -> Unit = {},
     connectionHelpVisible: Boolean = false,
 ) {
     val density = LocalDensity.current
     val imeBottomPx = WindowInsets.ime.getBottom(density)
-    val compactForIme = state.contentBaseSequence != null && imeBottomPx > 0
+    val compactForIme = state.showComposer && imeBottomPx > 0
     Scaffold(
         modifier =
             modifier
@@ -102,18 +104,14 @@ fun HomeScreen(
                     .padding(horizontal = 20.dp, vertical = if (compactForIme) 0.dp else 16.dp),
         ) {
             if (!compactForIme) {
-                Header(state, onManageComputer)
+                Header(
+                    state = state,
+                    onManageComputer = onManageComputer,
+                    onLinkComputer = onLinkComputer,
+                )
                 Spacer(Modifier.height(24.dp))
             }
-            if (state.contentBaseSequence == null) {
-                OfflineContent(
-                    state = state,
-                    onRetry = onRetry,
-                    onConnectionHelp = onConnectionHelp,
-                    connectionHelpVisible = connectionHelpVisible,
-                    modifier = Modifier.weight(1f),
-                )
-            } else {
+            if (state.showComposer) {
                 OnlineContent(
                     state = state,
                     newTaskOptions = newTaskOptions,
@@ -135,7 +133,16 @@ fun HomeScreen(
                     onAttach = onAttach,
                     onDictate = onDictate,
                     onOpenTask = onOpenTask,
+                    onLinkLocalRuntime = onLinkLocalRuntime,
                     imeBottomPx = imeBottomPx,
+                    modifier = Modifier.weight(1f),
+                )
+            } else if (state.contentBaseSequence == null) {
+                OfflineContent(
+                    state = state,
+                    onRetry = onRetry,
+                    onConnectionHelp = onConnectionHelp,
+                    connectionHelpVisible = connectionHelpVisible,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -150,20 +157,34 @@ fun HomeScreen(
 private fun Header(
     state: HomeUiState,
     onManageComputer: () -> Unit,
+    onLinkComputer: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Codex", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-        TextButton(
-            onClick = onManageComputer,
-            modifier = Modifier.semantics { contentDescription = "Manage paired computer" },
-        ) {
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Computer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(state.computerName, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            if (state.showLinkComputer) "Operator" else "Codex",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        if (state.showLinkComputer) {
+            TextButton(
+                onClick = onLinkComputer,
+                modifier = Modifier.semantics { contentDescription = "Link computer" },
+            ) {
+                Text("Link computer", style = MaterialTheme.typography.bodyMedium)
+            }
+        } else {
+            TextButton(
+                onClick = onManageComputer,
+                modifier = Modifier.semantics { contentDescription = "Manage paired computer" },
+            ) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Computer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(state.computerName, style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
     }
@@ -240,6 +261,7 @@ private fun OnlineContent(
     onAttach: () -> Unit,
     onDictate: () -> Unit,
     onOpenTask: (String) -> Unit,
+    onLinkLocalRuntime: () -> Unit = {},
     imeBottomPx: Int,
     modifier: Modifier,
 ) {
@@ -307,14 +329,16 @@ private fun OnlineContent(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         }
-        item {
-            OutlinedButton(
-                onClick = onChooseProject,
-                enabled = state.canChangeProject,
-                shape = RoundedCornerShape(6.dp),
-                modifier = Modifier.fillMaxWidth().height(QuietInstrumentTokens.securityActionHeightDp.dp),
-            ) {
-                Text(state.selectedProjectName ?: "Choose project")
+        if (state.canChangeProject || state.selectedProjectName != null) {
+            item {
+                OutlinedButton(
+                    onClick = onChooseProject,
+                    enabled = state.canChangeProject,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.fillMaxWidth().height(QuietInstrumentTokens.securityActionHeightDp.dp),
+                ) {
+                    Text(state.selectedProjectName ?: "Choose project")
+                }
             }
         }
         item {
@@ -325,6 +349,20 @@ private fun OnlineContent(
                 enabled = !capabilityBusy,
                 onDestinationChange = onPromptDestinationChange,
             )
+            if (state.showLinkLocalRuntime) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onLinkLocalRuntime,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(QuietInstrumentTokens.securityActionHeightDp.dp)
+                            .semantics { contentDescription = "Link local runtime" },
+                ) {
+                    Text("Link local runtime")
+                }
+            }
             Spacer(Modifier.height(8.dp))
             if (newTaskOptions != null && selection != null) {
                 NewTaskOptionControls(
@@ -414,7 +452,7 @@ private fun OnlineContent(
                             composerState.canEdit &&
                             composerState.text.isNotBlank() &&
                             composerState.version != null &&
-                            selection != null &&
+                            (selection != null || promptDestination == PromptDestination.AUTO) &&
                             !newTaskNeedsReview &&
                             !capabilityBusy,
                     modifier =

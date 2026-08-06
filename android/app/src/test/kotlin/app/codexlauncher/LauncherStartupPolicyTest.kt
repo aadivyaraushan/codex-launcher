@@ -15,19 +15,19 @@ class LauncherStartupPolicyTest {
     }
 
     @Test
-    fun loadedWithoutARecordStartsInPairing() {
-        assertEquals(LauncherDestination.PAIRING, PairingRecordState.Loaded(null).startDestination())
+    fun loadedWithoutARecordStartsOnHomeStandalone() {
+        assertEquals(LauncherDestination.HOME, PairingRecordState.Loaded(null).startDestination())
     }
 
     @Test
-    fun aLoadedRootOverridesAStaleOppositeRootDestination() {
+    fun linkComputerCanOpenPairingFromHomeRoot() {
         assertEquals(
-            LauncherDestination.HOME,
+            LauncherDestination.PAIRING,
             visibleDestination(LauncherDestination.HOME, LauncherDestination.PAIRING),
         )
         assertEquals(
-            LauncherDestination.PAIRING,
-            visibleDestination(LauncherDestination.PAIRING, LauncherDestination.HOME),
+            LauncherDestination.HOME,
+            visibleDestination(LauncherDestination.HOME, LauncherDestination.HOME),
         )
     }
 

@@ -454,12 +454,22 @@ class LauncherSessionViewModel(
 
     suspend fun submitHomePrompt(
         prompt: String,
-        selection: NewTaskSelection,
+        selection: NewTaskSelection?,
         draftVersion: DraftVersion,
+        forceCapability: Boolean = false,
     ) {
         val routeThroughApps =
-            capabilityActionsCapable && capabilityInteraction.value.destination == PromptDestination.AUTO
+            forceCapability ||
+                (capabilityActionsCapable && capabilityInteraction.value.destination == PromptDestination.AUTO)
         if (!routeThroughApps) {
+            if (selection == null) {
+                AppLog.info(
+                    feature = "capability-interaction",
+                    message = "home computer send missing selection",
+                    fields = mapOf("prompt_length" to prompt.length),
+                )
+                return
+            }
             if (!mutableState.value.taskControlsAvailable) {
                 AppLog.info(
                     feature = "capability-interaction",
@@ -485,6 +495,18 @@ class LauncherSessionViewModel(
             return
         }
 
+        if (forceCapability) {
+            capabilityController.setComputerFallbackEnabled(false)
+            AppLog.info(
+                feature = "standalone",
+                message = "home prompt forced through phone-runtime capability",
+                fields = mapOf(
+                    "computer_fallback_enabled" to false,
+                    "prompt_length" to prompt.length,
+                ),
+            )
+        }
+
         synchronized(this) {
             if (pendingHomePrompt != null) return
             pendingHomePrompt = PendingHomePrompt(prompt, selection, draftVersion)
@@ -492,15 +514,16 @@ class LauncherSessionViewModel(
         val requestId = capabilityController.request(prompt)
         if (requestId != null) return
         val fallback = synchronized(this) { pendingHomePrompt.also { pendingHomePrompt = null } } ?: return
-        if (!mutableState.value.taskControlsAvailable) {
+        val selection = fallback.selection
+        if (forceCapability || !mutableState.value.taskControlsAvailable || selection == null) {
             AppLog.info(
                 feature = "capability-interaction",
                 message = "app action route unavailable; kept local on standalone phone",
-                fields = mapOf("prompt_length" to fallback.prompt.length),
+                fields = mapOf("prompt_length" to fallback.prompt.length, "force_capability" to forceCapability),
             )
             return
         }
-        startNewTask(fallback.prompt, fallback.selection, fallback.draftVersion)
+        startNewTask(fallback.prompt, selection, fallback.draftVersion)
     }
 
     suspend fun respondToCapability(confirm: Boolean): Boolean =
@@ -548,7 +571,7 @@ class LauncherSessionViewModel(
                         "prompt_length" to pending.prompt.length,
                     ),
                 )
-                startNewTask(pending.prompt, pending.selection, pending.draftVersion)
+                pending.selection?.let { startNewTask(pending.prompt, it, pending.draftVersion) }
             } else {
                 AppLog.info(
                     feature = "capability-interaction",
@@ -1597,7 +1620,7 @@ private data class PendingTranscriptRequest(
 
 private data class PendingHomePrompt(
     val prompt: String,
-    val selection: NewTaskSelection,
+    val selection: NewTaskSelection?,
     val draftVersion: DraftVersion,
 )
 

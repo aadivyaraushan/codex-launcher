@@ -1,9 +1,11 @@
 package app.codexlauncher.launcher.home
 
+import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.capability.outcome.StateMark
 import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
+import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary
 import app.codexlauncher.task.summary.effectiveState
@@ -88,6 +90,9 @@ data class HomeUiState(
     val showAllApps: Boolean,
     val showAndroidSettings: Boolean,
     val lastConnectedLabel: String? = null,
+    val showComposer: Boolean = false,
+    val showLinkComputer: Boolean = false,
+    val showLinkLocalRuntime: Boolean = false,
 )
 
 object HomeUiPolicy {
@@ -97,6 +102,9 @@ object HomeUiPolicy {
         projects: List<ProjectChoice>,
         tasks: List<HomeTask>,
         lastConnectedLabel: String? = null,
+        standalone: StandaloneRuntimeStatus = StandaloneRuntimeStatus.notReady(),
+        promptDestination: PromptDestination = PromptDestination.AUTO,
+        paired: Boolean = true,
     ): HomeUiState {
         val hasCurrentSnapshot =
             connection.canShowComputerContent &&
@@ -108,19 +116,37 @@ object HomeUiPolicy {
             } else {
                 null
             }
+        val macReady = hasCurrentSnapshot && selectedProject != null
+        val canSend =
+            when (promptDestination) {
+                PromptDestination.AUTO -> standalone.isReady
+                PromptDestination.COMPUTER -> macReady
+            }
+        val title = if (paired) computerName else "Operator"
+        val headline =
+            when {
+                !paired || !hasCurrentSnapshot -> standalone.headline()
+                else -> connection.headline
+            }
         return HomeUiState(
-            computerName = computerName,
-            headline = connection.headline,
+            computerName = title,
+            headline = headline,
             tasks = if (hasCurrentSnapshot) tasks else emptyList(),
             selectedProjectName = selectedProject?.displayName,
             contentBaseSequence = connection.baseSequence.takeIf { hasCurrentSnapshot },
             canChangeComputer = false,
             canChangeProject = hasCurrentSnapshot && projects.isNotEmpty(),
-            canSend = hasCurrentSnapshot && selectedProject != null,
-            mustChooseProject = hasCurrentSnapshot && selectedProject == null,
+            canSend = canSend,
+            mustChooseProject =
+                promptDestination == PromptDestination.COMPUTER &&
+                    hasCurrentSnapshot &&
+                    selectedProject == null,
             showAllApps = true,
             showAndroidSettings = true,
-            lastConnectedLabel = lastConnectedLabel,
+            lastConnectedLabel = lastConnectedLabel.takeIf { paired },
+            showComposer = true,
+            showLinkComputer = !paired,
+            showLinkLocalRuntime = !standalone.isReady,
         )
     }
 }

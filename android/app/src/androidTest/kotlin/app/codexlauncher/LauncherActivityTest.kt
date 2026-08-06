@@ -49,15 +49,6 @@ class LauncherActivityTest {
     }
 
     /**
-     * Poll until [check] stops throwing.
-     *
-     * Catches IllegalStateException alongside AssertionError. Querying Compose
-     * before its hierarchy is attached throws "No compose hierarchies found in
-     * the app" — that is not a failed assertion, it is "not yet", and it is what
-     * made three of these tests fail on their first run against real hardware. A
-     * check that never succeeds still fails the test when the poll times out.
-     */
-    /**
      * Wait until Compose has a hierarchy attached.
      *
      * Deliberately not onRoot(): a scenario showing a dialog has two Compose
@@ -94,9 +85,10 @@ class LauncherActivityTest {
     }
 
     @Test
-    fun freshUnpairedLaunchShowsSetupWithoutComputerContent() {
-        awaitUi { compose.onNodeWithText("Pair with your computer").assertIsDisplayed() }
-        compose.onNodeWithText("Your ChatGPT sign-in stays on your computer. The phone stores only its pairing key and non-secret connection details.").assertIsDisplayed()
+    fun freshUnpairedLaunchShowsHomeStandalone() {
+        awaitUi { compose.onNodeWithContentDescription("Launcher home").assertIsDisplayed() }
+        compose.onNodeWithText("Operator").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Link computer").assertIsDisplayed()
     }
 
     @Test
@@ -128,18 +120,22 @@ class LauncherActivityTest {
     }
 
     @Test
-    fun allAppsBackArrowReturnsAnUnpairedUserToSetup() {
+    fun allAppsBackArrowReturnsAnUnpairedUserToHome() {
         awaitUi { compose.onNodeWithText("All apps").assertIsDisplayed() }
         compose.onNodeWithText("All apps").performClick()
         awaitUi { compose.onNodeWithContentDescription("Search apps").assertIsDisplayed() }
 
         compose.onNodeWithContentDescription("Back").performClick()
 
-        awaitUi { compose.onNodeWithText("Pair with your computer").assertIsDisplayed() }
+        awaitUi { compose.onNodeWithContentDescription("Launcher home").assertIsDisplayed() }
+        compose.onNodeWithText("Operator").assertIsDisplayed()
     }
 
     @Test
     fun pairingInputSurvivesActivityRecreation() {
+        awaitUi { compose.onNodeWithContentDescription("Link computer").assertIsDisplayed() }
+        compose.onNodeWithContentDescription("Link computer").performClick()
+        awaitUi { compose.onNodeWithText("Pair with your computer").assertIsDisplayed() }
         compose.onNodeWithText("Enter link").performClick()
         compose.onNodeWithContentDescription("Pairing link").performTextInput("codex-launcher://pair?draft")
 
@@ -160,7 +156,7 @@ class LauncherActivityTest {
         awaitUi { compose.onNodeWithContentDescription("Search apps").assertIsDisplayed() }
 
         runShellCommand("input keyevent KEYCODE_BACK")
-        awaitUi { compose.onNodeWithText("Pair with your computer").assertIsDisplayed() }
+        awaitUi { compose.onNodeWithContentDescription("Launcher home").assertIsDisplayed() }
     }
 
     @Test
@@ -174,7 +170,8 @@ class LauncherActivityTest {
                 "-c android.intent.category.HOME -n app.codexlauncher/.LauncherActivity",
         )
 
-        awaitUi { compose.onNodeWithText("Pair with your computer").assertIsDisplayed() }
+        awaitUi { compose.onNodeWithContentDescription("Launcher home").assertIsDisplayed() }
+        compose.onNodeWithText("Operator").assertIsDisplayed()
     }
 
     private fun runShellCommand(command: String): String {

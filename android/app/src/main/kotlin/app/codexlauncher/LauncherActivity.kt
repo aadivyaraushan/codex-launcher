@@ -74,6 +74,14 @@ import app.codexlauncher.launcher.apps.InstalledApp
 import app.codexlauncher.launcher.apps.InstalledAppsLoader
 import app.codexlauncher.launcher.apps.InstalledAppsRepository
 import app.codexlauncher.launcher.home.HomeScreen
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatusReader
+import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
+import app.codexlauncher.runtime.LocalPairAwaitActivity
+import app.codexlauncher.launcher.home.HomeSendRouter
+import app.codexlauncher.launcher.home.HomeSendDecision
+import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.launcher.home.HomeUiPolicy
 import app.codexlauncher.launcher.home.lastConnectedLabel
 import app.codexlauncher.launcher.home.toHomeTask
@@ -163,7 +171,7 @@ class LauncherActivity : ComponentActivity() {
             var pairingState by remember { mutableStateOf<PairingRecordState>(PairingRecordState.Loading) }
             var localStorageUiState by remember { mutableStateOf(LocalStorageUiState.RECOVERING) }
             var recoveryAttempt by remember { mutableLongStateOf(0L) }
-            var destination by rememberSaveable { mutableStateOf(LauncherDestination.PAIRING) }
+            var destination by rememberSaveable { mutableStateOf(LauncherDestination.HOME) }
             var installedApps by remember { mutableStateOf(emptyList<InstalledApp>()) }
             var connectionHelpVisible by rememberSaveable { mutableStateOf(false) }
             var connectionServiceWarning by rememberSaveable { mutableStateOf<String?>(null) }
@@ -281,7 +289,7 @@ class LauncherActivity : ComponentActivity() {
                             pairingViewModel.resetAfterUnpair()
                             localStorageUiState = LocalStorageUiState.READY
                             pairingState = PairingRecordState.Loaded(null)
-                            destination = LauncherDestination.PAIRING
+                            destination = LauncherDestination.HOME
                         }
                         WipeResult.AlreadyInProgress,
                         is WipeResult.Incomplete,
@@ -297,8 +305,30 @@ class LauncherActivity : ComponentActivity() {
                 remember(pairedComputer?.pairingGeneration) {
                     localState.lastConnections.forPairing(pairedComputer?.pairingGeneration)
                 }.collectAsState(initial = null)
+            var standaloneStatus by remember {
+                mutableStateOf(StandaloneRuntimeStatus.notReady())
+            }
+            var homeRouteMessage by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(localStorageUiState, pairingState) {
+                if (localStorageUiState != LocalStorageUiState.READY) return@LaunchedEffect
+                while (isActive) {
+                    standaloneStatus = StandaloneRuntimeStatusReader.read(applicationContext)
+                    delay(2_000)
+                }
+            }
+            LaunchedEffect(localStorageUiState, pairedComputer?.pairingGeneration) {
+                if (localStorageUiState != LocalStorageUiState.READY) return@LaunchedEffect
+                if (pairedComputer == null) {
+                    draftComposerViewModel.load("standalone")
+                    AppLog.info(
+                        feature = "standalone",
+                        message = "loaded standalone draft owner",
+                        fields = mapOf("owner" to "standalone"),
+                    )
+                }
+            }
             val loadedRootDestination = pairingState.startDestination()
-            val rootDestination = loadedRootDestination ?: LauncherDestination.PAIRING
+            val rootDestination = loadedRootDestination ?: LauncherDestination.HOME
             val visibleDestination =
                 loadedRootDestination?.let {
                     visibleDestination(
@@ -311,7 +341,6 @@ class LauncherActivity : ComponentActivity() {
                 }
             LaunchedEffect(pairingState) {
                 when {
-                    pairingState is PairingRecordState.Loaded && pairedComputer == null -> destination = LauncherDestination.PAIRING
                     pairedComputer != null && destination == LauncherDestination.PAIRING -> destination = LauncherDestination.HOME
                 }
                 when (pairingConnectionCommand(pairingState)) {
@@ -365,7 +394,7 @@ class LauncherActivity : ComponentActivity() {
                     sessionViewModel.clearAttachments()
                     sessionViewModel.closeTask()
                     transcriptDetail = null
-                    destination = if (pairedComputer == null) LauncherDestination.PAIRING else LauncherDestination.HOME
+                    destination = LauncherDestination.HOME
                 }
                 connectionHelpVisible = false
             }
@@ -381,11 +410,12 @@ class LauncherActivity : ComponentActivity() {
                 if (decisionState.active != null) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
             }
-            BackHandler(enabled = destination in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE, LauncherDestination.PROJECT, LauncherDestination.TASK, LauncherDestination.TASK_DETAIL)) {
+            BackHandler(enabled = destination in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE, LauncherDestination.PROJECT, LauncherDestination.TASK, LauncherDestination.TASK_DETAIL, LauncherDestination.PAIRING)) {
                 destination =
                     when (destination) {
                         LauncherDestination.APPEARANCE -> LauncherDestination.APPS
                         LauncherDestination.PROJECT -> LauncherDestination.HOME
+                        LauncherDestination.PAIRING -> LauncherDestination.HOME
                         LauncherDestination.TASK -> {
                             sessionViewModel.clearAttachments()
                             sessionViewModel.closeTask()
@@ -397,7 +427,7 @@ class LauncherActivity : ComponentActivity() {
                             LauncherDestination.TASK
                         }
                         LauncherDestination.APPS -> rootDestination
-                        LauncherDestination.PAIRING, LauncherDestination.HOME -> destination
+                        LauncherDestination.HOME -> destination
                     }
             }
             QuietInstrumentTheme(mode = appearanceMode) {
@@ -434,24 +464,85 @@ class LauncherActivity : ComponentActivity() {
                                     projects = sessionUiState.snapshot?.projects ?: emptyList(),
                                     tasks = sessionUiState.snapshot?.tasks?.map { it.toHomeTask() } ?: emptyList(),
                                     lastConnectedLabel = lastConnectionEpoch?.let { lastConnectedLabel(applicationContext, it) },
+                                    standalone = standaloneStatus,
+                                    promptDestination = capabilityState.destination,
+                                    paired = pairedComputer != null,
                                 ),
                             newTaskOptions = sessionUiState.newTaskOptions,
                             newTaskOptionsKey = sessionUiState.newTaskOptionsSessionId,
                             composerState = draftComposerState,
                             onPromptChange = { text ->
                                 homeDictationMessage = null
+                                homeRouteMessage = null
                                 draftComposerViewModel.update(text)
                             },
                             onSend = { prompt, selection ->
-                                val version = draftComposerState.version
-                                if (selection != null && version != null) {
-                                    homeDictationMessage = null
-                                    scope.launch { sessionViewModel.submitHomePrompt(prompt, selection, version) }
+                                val version = draftComposerState.version ?: return@HomeScreen
+                                homeDictationMessage = null
+                                val macOnlineWithProject =
+                                    sessionUiState.connection.phase == ConnectionPhase.ONLINE &&
+                                        !sessionUiState.connection.selectedProjectId.isNullOrBlank() &&
+                                        sessionUiState.connection.baseSequence != null &&
+                                        sessionUiState.connection.baseSequence!! > 0
+                                val decision =
+                                    HomeSendRouter.decide(
+                                        destination = capabilityState.destination,
+                                        standalone = standaloneStatus,
+                                        macOnlineWithProject = macOnlineWithProject,
+                                        macPaired = pairedComputer != null,
+                                    )
+                                AppLog.info(
+                                    feature = "standalone",
+                                    message = "home send routed",
+                                    fields =
+                                        mapOf(
+                                            "decision" to decision.name.lowercase(),
+                                            "destination" to capabilityState.destination.name.lowercase(),
+                                            "standalone_ready" to standaloneStatus.isReady,
+                                            "mac_online_with_project" to macOnlineWithProject,
+                                        ),
+                                )
+                                when (decision) {
+                                    HomeSendDecision.CapabilityOnPhone -> {
+                                        homeRouteMessage = null
+                                        scope.launch {
+                                            sessionViewModel.submitHomePrompt(
+                                                prompt = prompt,
+                                                selection = selection,
+                                                draftVersion = version,
+                                                forceCapability = true,
+                                            )
+                                        }
+                                    }
+                                    HomeSendDecision.StartComputerTask -> {
+                                        if (selection == null) {
+                                            homeRouteMessage = "Choose model options before sending to the computer"
+                                            return@HomeScreen
+                                        }
+                                        homeRouteMessage = null
+                                        scope.launch {
+                                            sessionViewModel.submitHomePrompt(prompt, selection, version)
+                                        }
+                                    }
+                                    HomeSendDecision.LinkLocalRuntime -> {
+                                        homeRouteMessage = "Link local runtime to send on this phone"
+                                        startActivity(Intent(this@LauncherActivity, LocalPairAwaitActivity::class.java))
+                                    }
+                                    HomeSendDecision.OpenPairing -> {
+                                        homeRouteMessage = null
+                                        scope.launch {
+                                            localState.gate.beginPairing()
+                                            destination = LauncherDestination.PAIRING
+                                        }
+                                    }
+                                    HomeSendDecision.ComputerOffline -> {
+                                        homeRouteMessage = "Computer offline"
+                                    }
                                 }
                             },
                             promptDestination = capabilityState.destination,
                             capabilityBusy = capabilityState.busy,
-                            capabilityMessage = capabilityState.message,
+                            capabilityMessage = capabilityState.message ?: homeRouteMessage,
                             onPromptDestinationChange = sessionViewModel::setPromptDestination,
                             newTaskNeedsReview = sessionUiState.newTaskNeedsReview,
                             newTaskMessage = sessionUiState.newTaskMessage ?: homeDictationMessage,
@@ -465,6 +556,20 @@ class LauncherActivity : ComponentActivity() {
                                 attachmentMessage = null
                             },
                             onAttach = { attachmentChoiceVisible = true },
+                            onLinkComputer = {
+                                scope.launch {
+                                    localState.gate.beginPairing()
+                                    destination = LauncherDestination.PAIRING
+                                    AppLog.info(
+                                        feature = "standalone",
+                                        message = "link computer opened from home",
+                                        fields = mapOf("decision" to "open_pairing"),
+                                    )
+                                }
+                            },
+                            onLinkLocalRuntime = {
+                                startActivity(Intent(this@LauncherActivity, LocalPairAwaitActivity::class.java))
+                            },
                             onDictate = onDictate@{
                                 if (!draftComposerViewModel.beginDictation()) {
                                     homeDictationMessage = "Dictation wasn’t started because the draft isn’t editable"
@@ -762,7 +867,7 @@ internal fun PairingRecordState.startDestination(): LauncherDestination? =
     when (this) {
         PairingRecordState.Loading -> null
         PairingRecordState.RecoveryFailed -> null
-        is PairingRecordState.Loaded -> if (record == null) LauncherDestination.PAIRING else LauncherDestination.HOME
+        is PairingRecordState.Loaded -> LauncherDestination.HOME
     }
 
 internal fun visibleDestination(
@@ -773,7 +878,8 @@ internal fun visibleDestination(
     hasDetail: Boolean = true,
 ): LauncherDestination =
     when (requested) {
-        LauncherDestination.PAIRING, LauncherDestination.HOME -> root
+        LauncherDestination.HOME -> root
+        LauncherDestination.PAIRING -> LauncherDestination.PAIRING
         LauncherDestination.PROJECT -> if (root == LauncherDestination.HOME) requested else root
         LauncherDestination.TASK ->
             if (root == LauncherDestination.HOME && phase == ConnectionPhase.ONLINE && hasTranscript) requested else root

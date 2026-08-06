@@ -11,15 +11,54 @@ import org.junit.Test
 
 class LocalStateWriteGateTest {
     @Test
-    fun startupBlocksWritesUntilRecoveryChoosesPairedOrPairingMode() = runBlocking {
+    fun startupBlocksWritesUntilRecoveryChoosesPairedOrStandaloneMode() = runBlocking {
         val gate = LocalStateWriteGate()
 
         assertEquals(LocalStateWriteResult.Blocked, gate.withPairedWrite { true })
         assertEquals(LocalStateWriteResult.Blocked, gate.withPairingWrite { true })
+        assertEquals(LocalStateWriteResult.Blocked, gate.withStandaloneWrite { true })
 
         assertTrue(gate.openAfterStartup(pairingPresent = true))
         assertEquals(LocalStateWriteResult.Completed(true), gate.withPairedWrite { true })
         assertEquals(LocalStateWriteResult.Blocked, gate.withPairingWrite { true })
+        assertEquals(LocalStateWriteResult.Blocked, gate.withStandaloneWrite { true })
+    }
+
+    @Test
+    fun unpairedStartupOpensStandaloneDraftWritesNotPairing() = runBlocking {
+        val gate = LocalStateWriteGate()
+
+        assertTrue(gate.openAfterStartup(pairingPresent = false))
+        assertEquals(LocalStateWriteResult.Completed(true), gate.withStandaloneWrite { true })
+        assertEquals(LocalStateWriteResult.Blocked, gate.withPairedWrite { true })
+        assertEquals(LocalStateWriteResult.Blocked, gate.withPairingWrite { true })
+    }
+
+    @Test
+    fun beginPairingFromStandaloneAllowsPairingWritesThenCompletePairing() = runBlocking {
+        val gate = LocalStateWriteGate()
+        assertTrue(gate.openAfterStartup(pairingPresent = false))
+        assertTrue(gate.beginPairing())
+        assertEquals(LocalStateWriteResult.Completed(true), gate.withPairingWrite { true })
+        assertTrue(gate.completePairing { true })
+        assertEquals(LocalStateWriteResult.Completed(true), gate.withPairedWrite { true })
+        assertEquals(LocalStateWriteResult.Blocked, gate.withStandaloneWrite { true })
+    }
+
+    @Test
+    fun wipeCompletesIntoStandaloneNotPairing() = runBlocking {
+        val gate = LocalStateWriteGate()
+        assertTrue(gate.openAfterStartup(pairingPresent = true))
+        assertEquals(
+            LocalWipeResult.Completed(true),
+            gate.withWipe {
+                assertTrue(completeToStandalone())
+                true
+            },
+        )
+        assertEquals(LocalStateWriteResult.Completed(true), gate.withStandaloneWrite { true })
+        assertEquals(LocalStateWriteResult.Blocked, gate.withPairingWrite { true })
+        assertEquals(LocalStateWriteResult.Blocked, gate.withPairedWrite { true })
     }
 
     @Test
@@ -127,6 +166,7 @@ class LocalStateWriteGateTest {
     fun successfulPairingSavePromotesOnlyItsCurrentGeneration() = runBlocking {
         val gate = LocalStateWriteGate()
         assertTrue(gate.openAfterStartup(pairingPresent = false))
+        assertTrue(gate.beginPairing())
 
         assertTrue(gate.completePairing { true })
         assertEquals(LocalStateWriteResult.Completed(true), gate.withPairedWrite { true })

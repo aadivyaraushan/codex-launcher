@@ -1,8 +1,10 @@
 package app.codexlauncher.launcher.home
 
+import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
+import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary
 import java.time.Instant
@@ -22,6 +24,9 @@ class HomeUiStateTest {
             ProjectChoice(id = "launcher", displayName = "Codex Launcher"),
             ProjectChoice(id = "research", displayName = "Research"),
         )
+
+    private val standaloneReady =
+        StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
 
     @Test
     fun everyNonOnlineStateRemovesComputerContentButKeepsEscapeRoutes() {
@@ -60,6 +65,7 @@ class HomeUiStateTest {
                     ),
                 projects = projects,
                 tasks = tasks,
+                standalone = standaloneReady,
             )
 
         assertEquals("studio-mac", state.computerName)
@@ -72,7 +78,7 @@ class HomeUiStateTest {
     }
 
     @Test
-    fun unknownOrMissingProjectCannotEnableSend() {
+    fun unknownOrMissingProjectCannotEnableComputerSend() {
         for (projectId in listOf(null, "removed-project")) {
             val state =
                 HomeUiPolicy.render(
@@ -85,6 +91,9 @@ class HomeUiStateTest {
                         ),
                     projects = projects,
                     tasks = tasks,
+                    standalone = standaloneReady,
+                    promptDestination = PromptDestination.COMPUTER,
+                    paired = true,
                 )
 
             assertEquals(null, state.selectedProjectName)
@@ -144,5 +153,123 @@ class HomeUiStateTest {
             )
 
         assertEquals(HomeTask("task-1", "Private title", "Running integration tests"), summary.toHomeTask())
+    }
+
+    @Test
+    fun unpairedStandaloneReadyEnablesAutoSendWithOperatorTitle() {
+        val ready =
+            StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+        val state =
+            HomeUiPolicy.render(
+                computerName = "studio-mac",
+                connection =
+                    ConnectionSnapshot(
+                        phase = ConnectionPhase.DISCONNECTED,
+                        selectedProjectId = null,
+                        baseSequence = null,
+                    ),
+                projects = projects,
+                tasks = tasks,
+                standalone = ready,
+                promptDestination = PromptDestination.AUTO,
+                paired = false,
+            )
+
+        assertEquals("Operator", state.computerName)
+        assertEquals(ready.headline(), state.headline)
+        assertTrue(state.canSend)
+        assertTrue(state.showComposer)
+        assertTrue(state.showLinkComputer)
+        assertFalse(state.canChangeProject)
+        assertTrue(state.tasks.isEmpty())
+    }
+
+    @Test
+    fun unpairedStandaloneNotReadyDisablesSendAndOffersLocalRuntimeLink() {
+        val notReady = StandaloneRuntimeStatus.notReady()
+        val state =
+            HomeUiPolicy.render(
+                computerName = "studio-mac",
+                connection = ConnectionSnapshot.initial(),
+                projects = projects,
+                tasks = tasks,
+                standalone = notReady,
+                promptDestination = PromptDestination.AUTO,
+                paired = false,
+            )
+
+        assertFalse(state.canSend)
+        assertTrue(state.showComposer)
+        assertTrue(state.showLinkLocalRuntime)
+        assertEquals(notReady.headline(), state.headline)
+    }
+
+    @Test
+    fun autoSendStaysTiedToStandaloneEvenWhenMacIsOnline() {
+        val ready =
+            StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+        val notReady = StandaloneRuntimeStatus.notReady()
+        val online =
+            ConnectionSnapshot(
+                phase = ConnectionPhase.ONLINE,
+                selectedProjectId = "launcher",
+                baseSequence = 42,
+            )
+
+        assertTrue(
+            HomeUiPolicy.render(
+                computerName = "studio-mac",
+                connection = online,
+                projects = projects,
+                tasks = tasks,
+                standalone = ready,
+                promptDestination = PromptDestination.AUTO,
+                paired = true,
+            ).canSend,
+        )
+        assertFalse(
+            HomeUiPolicy.render(
+                computerName = "studio-mac",
+                connection = online,
+                projects = projects,
+                tasks = tasks,
+                standalone = notReady,
+                promptDestination = PromptDestination.AUTO,
+                paired = true,
+            ).canSend,
+        )
+    }
+
+    @Test
+    fun computerDestinationRequiresOnlineProjectEvenWhenStandaloneReady() {
+        val ready =
+            StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+        assertFalse(
+            HomeUiPolicy.render(
+                computerName = "studio-mac",
+                connection = ConnectionSnapshot.initial(),
+                projects = projects,
+                tasks = tasks,
+                standalone = ready,
+                promptDestination = PromptDestination.COMPUTER,
+                paired = true,
+            ).canSend,
+        )
+        assertTrue(
+            HomeUiPolicy.render(
+                computerName = "studio-mac",
+                connection =
+                    ConnectionSnapshot(
+                        phase = ConnectionPhase.ONLINE,
+                        selectedProjectId = "launcher",
+                        baseSequence = 42,
+                    ),
+                projects = projects,
+                tasks = tasks,
+                standalone = ready,
+                promptDestination = PromptDestination.COMPUTER,
+                paired = true,
+            ).canSend,
+        )
     }
 }

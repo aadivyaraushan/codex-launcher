@@ -122,7 +122,8 @@ class LocalStateWiperInstrumentedTest {
         assertFalse(draftKeys.exists())
         assertEquals(UnresolvedCapabilityCheck.None, capabilityUnresolvedChecks.load())
         assertEquals(LocalStateWriteResult.Blocked, gate.withPairedWrite { true })
-        assertEquals(LocalStateWriteResult.Completed(true), gate.withPairingWrite { true })
+        assertEquals(LocalStateWriteResult.Completed(true), gate.withStandaloneWrite { true })
+        assertEquals(LocalStateWriteResult.Blocked, gate.withPairingWrite { true })
     }
 
     private suspend fun reset() {

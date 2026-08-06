@@ -86,7 +86,13 @@ class EncryptedDraftStore(
     }
 
     suspend fun load(readAt: Instant = now()): DraftReadState =
-        when (val result = writeGate?.withPairedWrite { synchronized(operationLock) { loadLocked(readAt) } }) {
+        when (val result = writeGate?.let { gate ->
+            when (val paired = gate.withPairedWrite { synchronized(operationLock) { loadLocked(readAt) } }) {
+                is LocalStateWriteResult.Completed -> paired
+                LocalStateWriteResult.Blocked ->
+                    gate.withStandaloneWrite { synchronized(operationLock) { loadLocked(readAt) } }
+            }
+        }) {
             null -> synchronized(operationLock) { loadLocked(readAt) }
             is LocalStateWriteResult.Completed -> result.value
             LocalStateWriteResult.Blocked -> DraftReadState.Unavailable(DraftReadFailure.STORAGE_IO)
@@ -160,7 +166,15 @@ class EncryptedDraftStore(
     internal fun clearForWipe(): Boolean = synchronized(operationLock) { clearLocked() }
 
     private suspend fun guardedOperation(block: suspend () -> Boolean): Boolean =
-        when (val result = writeGate?.withPairedWrite(block)) {
+        when (
+            val result =
+                writeGate?.let { gate ->
+                    when (val paired = gate.withPairedWrite(block)) {
+                        is LocalStateWriteResult.Completed -> paired
+                        LocalStateWriteResult.Blocked -> gate.withStandaloneWrite(block)
+                    }
+                }
+        ) {
             null -> block()
             is LocalStateWriteResult.Completed -> result.value
             LocalStateWriteResult.Blocked -> false

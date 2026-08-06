@@ -86,7 +86,7 @@ class LocalStateWiper(
                 if (!deleted) return@withWipe incomplete(step)
             }
             if (!intent.finish()) return@withWipe incomplete(WipeStep.MARKER_FINISH)
-            check(completeToPairing())
+            check(completeToStandalone())
             AppLog.info(
                 feature = "local-state-wipe",
                 message = "local state wipe completed",

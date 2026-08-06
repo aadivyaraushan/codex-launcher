@@ -98,14 +98,15 @@ class UnpairActivityTest {
 
         compose.waitUntil(timeoutMillis = 5_000) {
             runCatching {
-                compose.onNodeWithText("Pair with your computer").assertIsDisplayed()
+                compose.onNodeWithContentDescription("Launcher home").assertIsDisplayed()
                 true
             }.getOrDefault(false)
         }
         runBlocking {
             assertNull(context.pairingDataStore.data.first().asMap().takeIf { it.isNotEmpty() })
             assertEquals(WipeIntentReadState.Ready(false), WipeIntentStore(context.wipeIntentDataStore).read())
-            assertEquals(LocalStateWriteResult.Completed(true), ownerAfter.gate.withPairingWrite { true })
+            assertEquals(LocalStateWriteResult.Completed(true), ownerAfter.gate.withStandaloneWrite { true })
+            assertEquals(LocalStateWriteResult.Blocked, ownerAfter.gate.withPairingWrite { true })
             assertEquals(LocalStateWriteResult.Blocked, ownerAfter.gate.withPairedWrite { true })
         }
         assertFalse(pairingKeys.exists())

@@ -31,10 +31,13 @@ class LocalStateWriteGate {
     suspend fun <T> withPairingWrite(block: suspend () -> T): LocalStateWriteResult<T> =
         withWrite(Mode.PAIRING, block)
 
+    suspend fun <T> withStandaloneWrite(block: suspend () -> T): LocalStateWriteResult<T> =
+        withWrite(Mode.STANDALONE, block)
+
     suspend fun openAfterStartup(pairingPresent: Boolean): Boolean =
         operationMutex.withLock {
             synchronized(stateLock) {
-                val requestedMode = if (pairingPresent) Mode.PAIRED else Mode.PAIRING
+                val requestedMode = if (pairingPresent) Mode.PAIRED else Mode.STANDALONE
                 if (mode == requestedMode) return@withLock true
                 if (mode != Mode.STARTUP_BLOCKED) return@withLock false
                 generation += 1
@@ -42,6 +45,21 @@ class LocalStateWriteGate {
                 AppLog.info(
                     feature = "local-state-gate",
                     message = "startup write gate opened",
+                    fields = mapOf("output_shape" to mode.logName, "generation" to generation),
+                )
+                true
+            }
+        }
+
+    suspend fun beginPairing(): Boolean =
+        operationMutex.withLock {
+            synchronized(stateLock) {
+                if (mode != Mode.STANDALONE) return@withLock false
+                generation += 1
+                mode = Mode.PAIRING
+                AppLog.info(
+                    feature = "local-state-gate",
+                    message = "standalone write gate entered pairing",
                     fields = mapOf("output_shape" to mode.logName, "generation" to generation),
                 )
                 true
@@ -138,6 +156,19 @@ class LocalStateWriteGate {
                 )
                 true
             }
+
+        fun completeToStandalone(): Boolean =
+            synchronized(gate.stateLock) {
+                if (gate.mode != Mode.WIPING || gate.generation != wipeGeneration) return@synchronized false
+                gate.generation += 1
+                gate.mode = Mode.STANDALONE
+                AppLog.info(
+                    feature = "local-state-gate",
+                    message = "wipe completed into standalone mode",
+                    fields = mapOf("output_shape" to gate.mode.logName, "generation" to gate.generation),
+                )
+                true
+            }
     }
 
     private data class Ticket(val generation: Long)
@@ -146,6 +177,7 @@ class LocalStateWriteGate {
         STARTUP_BLOCKED("startup_blocked"),
         PAIRING("pairing"),
         PAIRED("paired"),
+        STANDALONE("standalone"),
         WIPING("wiping"),
     }
 }
