@@ -49,4 +49,24 @@ class StandaloneRuntimeStatusReaderTest {
                 executor.shutdownNow()
             }
         }
+
+    @Test
+    fun probesReachabilityEvenWhenNotYetAcked() {
+        // Callers: LauncherActivity auto-link needs reachable=true before local_pair_acked.
+        // Confirmed prior read() gated probe behind localPairAcked (StandaloneRuntimeStatusReader.kt).
+        var probed = false
+        val status =
+            StandaloneRuntimeStatusReader.read(
+                localPairAcked = false,
+                probe = {
+                    probed = true
+                    true
+                },
+            )
+        assertTrue(probed)
+        assertTrue(status.reachable)
+        assertEquals(false, status.localPairAcked)
+        assertEquals(false, status.runtimeServing)
+        assertEquals(false, status.isReady)
+    }
 }

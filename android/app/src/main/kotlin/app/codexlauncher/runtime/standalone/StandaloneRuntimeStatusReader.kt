@@ -39,7 +39,10 @@ object StandaloneRuntimeStatusReader {
         port: Int = DEFAULT_PORT,
         probe: (Int) -> Boolean = ::probeLoopback,
     ): StandaloneRuntimeStatus {
-        val reachable = if (localPairAcked) probe(port) else false
+        // Probe even before local-pair ack so Home/auto-link can see runtime is up.
+        // Callers: LauncherActivity status poll + LocalPairLoopbackBootstrap.run(context).
+        // User: "Probe reachability even when not yet acked (so we know runtime is up)."
+        val reachable = probe(port)
         val runtimeServing = localPairAcked && reachable
         val status =
             StandaloneRuntimeStatus(

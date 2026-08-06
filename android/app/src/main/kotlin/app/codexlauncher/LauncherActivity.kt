@@ -79,7 +79,7 @@ import kotlinx.coroutines.delay
 import app.codexlauncher.runtime.standalone.LocalRuntimeEndpoint
 import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatusReader
 import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
-import app.codexlauncher.runtime.LocalPairAwaitActivity
+import app.codexlauncher.runtime.localpair.bootstrap.LocalPairLoopbackBootstrap
 import app.codexlauncher.launcher.home.HomeSendRouter
 import app.codexlauncher.launcher.home.HomeSendDecision
 import app.codexlauncher.capability.interaction.PromptDestination
@@ -310,6 +310,8 @@ class LauncherActivity : ComponentActivity() {
                 mutableStateOf(StandaloneRuntimeStatus.notReady())
             }
             var homeRouteMessage by remember { mutableStateOf<String?>(null) }
+            var localAutoLinkBusy by remember { mutableStateOf(false) }
+            var localAutoLinkAttempted by rememberSaveable { mutableStateOf(false) }
             // Callers: Home Compose status strip. Blocking socket probe → readOffMain (IO).
             // User: "Fix: Run probe on Dispatchers.IO" + unpaired loopback session connect.
             LaunchedEffect(localStorageUiState, pairingState) {
@@ -317,6 +319,81 @@ class LauncherActivity : ComponentActivity() {
                 while (isActive) {
                     standaloneStatus = StandaloneRuntimeStatusReader.readOffMain(applicationContext)
                     delay(2_000)
+                }
+            }
+            suspend fun runSilentLocalLink(from: String): LocalPairLoopbackBootstrap.Outcome {
+                localAutoLinkBusy = true
+                return try {
+                    AppLog.info(
+                        feature = "standalone",
+                        message = "silent local-pair bootstrap starting",
+                        fields = mapOf("from" to from),
+                    )
+                    val outcome =
+                        withContext(Dispatchers.IO) {
+                            LocalPairLoopbackBootstrap.run(applicationContext)
+                        }
+                    AppLog.info(
+                        feature = "standalone",
+                        message = "silent local-pair bootstrap finished",
+                        fields =
+                            mapOf(
+                                "from" to from,
+                                "outcome" to
+                                    when (outcome) {
+                                        LocalPairLoopbackBootstrap.Outcome.AlreadyReady -> "already_ready"
+                                        LocalPairLoopbackBootstrap.Outcome.NotReachable -> "not_reachable"
+                                        is LocalPairLoopbackBootstrap.Outcome.Linked -> "linked"
+                                        is LocalPairLoopbackBootstrap.Outcome.Failed -> "failed"
+                                    },
+                            ),
+                    )
+                    when (outcome) {
+                        LocalPairLoopbackBootstrap.Outcome.AlreadyReady,
+                        is LocalPairLoopbackBootstrap.Outcome.Linked,
+                        -> {
+                            standaloneStatus = StandaloneRuntimeStatusReader.readOffMain(applicationContext)
+                            // Unpaired Mac path: open the loopback session. When a Mac is
+                            // already paired, leave that session alone — LocalRuntimeEndpoint
+                            // is still saved for on-phone capability routing.
+                            if (pairedComputer == null) {
+                                LocalRuntimeEndpoint.load(applicationContext)?.let { endpoint ->
+                                    sessionViewModel.connect(endpoint)
+                                }
+                            }
+                            homeRouteMessage = null
+                        }
+                        LocalPairLoopbackBootstrap.Outcome.NotReachable -> {
+                            if (from != "auto") {
+                                homeRouteMessage = "Local runtime is unreachable"
+                            }
+                        }
+                        is LocalPairLoopbackBootstrap.Outcome.Failed -> {
+                            homeRouteMessage = "Couldn’t link local runtime (${outcome.error})"
+                        }
+                    }
+                    outcome
+                } finally {
+                    localAutoLinkBusy = false
+                }
+            }
+            // Silent auto-link when runtime reachable + Android prefs missing ack.
+            // Runs whether or not a Mac is paired — local-pair is independent.
+            // Never opens Termux / LocalPairAwaitActivity on this path.
+            LaunchedEffect(
+                localStorageUiState,
+                pairingState,
+                standaloneStatus.reachable,
+                standaloneStatus.localPairAcked,
+            ) {
+                if (localStorageUiState != LocalStorageUiState.READY) return@LaunchedEffect
+                if (standaloneStatus.localPairAcked) return@LaunchedEffect
+                if (!standaloneStatus.reachable) return@LaunchedEffect
+                if (localAutoLinkAttempted || localAutoLinkBusy) return@LaunchedEffect
+                localAutoLinkAttempted = true
+                val outcome = runSilentLocalLink("auto")
+                if (outcome is LocalPairLoopbackBootstrap.Outcome.NotReachable) {
+                    localAutoLinkAttempted = false
                 }
             }
             LaunchedEffect(localStorageUiState, pairingState, standaloneStatus.localPairAcked) {
@@ -487,7 +564,13 @@ class LauncherActivity : ComponentActivity() {
                                     standalone = standaloneStatus,
                                     promptDestination = capabilityState.destination,
                                     paired = pairedComputer != null,
-                                ),
+                                ).let { rendered ->
+                                    if (localAutoLinkBusy) {
+                                        rendered.copy(showLinkLocalRuntime = false)
+                                    } else {
+                                        rendered
+                                    }
+                                },
                             newTaskOptions = sessionUiState.newTaskOptions,
                             newTaskOptionsKey = sessionUiState.newTaskOptionsSessionId,
                             composerState = draftComposerState,
@@ -545,8 +628,11 @@ class LauncherActivity : ComponentActivity() {
                                         }
                                     }
                                     HomeSendDecision.LinkLocalRuntime -> {
-                                        homeRouteMessage = "Link local runtime to send on this phone"
-                                        startActivity(Intent(this@LauncherActivity, LocalPairAwaitActivity::class.java))
+                                        // Silent loopback bootstrap — never Termux / AwaitActivity.
+                                        scope.launch {
+                                            localAutoLinkAttempted = true
+                                            runSilentLocalLink("send")
+                                        }
                                     }
                                     HomeSendDecision.OpenPairing -> {
                                         homeRouteMessage = null
@@ -588,7 +674,10 @@ class LauncherActivity : ComponentActivity() {
                                 }
                             },
                             onLinkLocalRuntime = {
-                                startActivity(Intent(this@LauncherActivity, LocalPairAwaitActivity::class.java))
+                                scope.launch {
+                                    localAutoLinkAttempted = true
+                                    runSilentLocalLink("button")
+                                }
                             },
                             onDictate = onDictate@{
                                 if (!draftComposerViewModel.beginDictation()) {
