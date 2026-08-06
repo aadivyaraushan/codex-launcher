@@ -28,11 +28,13 @@ class TodoistPublicClientRegistrationTest {
                 state = "st123",
                 codeChallenge = "challengeABC",
             )
-        assertTrue(url.startsWith("https://todoist.com/oauth/authorize?"))
+        assertTrue(url.startsWith("https://app.todoist.com/oauth/authorize?"))
         assertTrue(url.contains("client_id=tdd_test"))
         assertTrue(url.contains("code_challenge=challengeABC"))
         assertTrue(url.contains("code_challenge_method=S256"))
         assertTrue(url.contains("state=st123"))
+        assertTrue(url.contains("redirect_uri="))
+        assertTrue(url.contains("tryoperator.net%2Foauth%2Fandroid%2Ftodoist") || url.contains("tryoperator.net/oauth/android/todoist"))
     }
 
     @Test
