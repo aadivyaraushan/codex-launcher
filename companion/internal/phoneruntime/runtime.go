@@ -83,9 +83,14 @@ type Runtime struct {
 	boundAddr    string
 	certificate  tls.Certificate
 	handler      *mobilesession.Handler
-	pendingOffer   *localtrust.Offer
-	localPairAcked bool
-	operatorPin    localtrust.ExpectedOperator
+	// Callers: CreateLocalPairOffer / ReleasePendingViaAttestation; Android LocalPairHandshake.
+	// Affected API: pendingSessionOffer for /v1/pair enrollment after attest.
+	// Attest JSON adds sessionSecret,hostPublicKey,tlsPublicKey,host,port,protocol.
+	// User: "open a real session/transport to phone-runtime on loopback" via existing pairing.
+	pendingOffer        *localtrust.Offer
+	pendingSessionOffer *pairing.PairingOffer
+	localPairAcked      bool
+	operatorPin         localtrust.ExpectedOperator
 	// brokerReady: Android CredentialBroker grant presence only (no secrets).
 	brokerReady map[string]string
 	// beeperAccounts probes local/remote Beeper for health beeper= (no tokens stored).
@@ -266,8 +271,17 @@ func (runtime *Runtime) CreateLocalPairOffer() (localtrust.PublicOffer, error) {
 	spki := sha256.Sum256(leaf.RawSubjectPublicKeyInfo)
 	offer.Public.RuntimeIdentity = base64.RawURLEncoding.EncodeToString(leaf.RawSubjectPublicKeyInfo)
 	offer.Public.TLSSPKI = base64.RawURLEncoding.EncodeToString(spki[:])
+	sessionOffer, err := runtime.pairing.BeginPairing(pairing.PairingTarget{
+		Host:     "127.0.0.1",
+		Port:     9443,
+		Protocol: pairing.ProtocolMajor,
+	}, runtime.now())
+	if err != nil {
+		return localtrust.PublicOffer{}, fmt.Errorf("phone runtime: begin local session pairing: %w", err)
+	}
 	runtime.mu.Lock()
 	runtime.pendingOffer = offer
+	runtime.pendingSessionOffer = &sessionOffer
 	runtime.mu.Unlock()
 	runtime.logger.Info("[phone-runtime] local-pair offer created", "offer_id", offer.Public.OfferID, "port", offer.Public.Port)
 	return offer.Public, nil
@@ -280,8 +294,14 @@ type localPairAttestRequest struct {
 }
 
 type localPairAttestResponse struct {
-	OfferID string `json:"offerId"`
-	Secret  string `json:"secret"`
+	OfferID        string `json:"offerId"`
+	Secret         string `json:"secret"`
+	SessionSecret  string `json:"sessionSecret"`
+	HostPublicKey  string `json:"hostPublicKey"`
+	TLSPublicKey   string `json:"tlsPublicKey"`
+	Host           string `json:"host"`
+	Port           int    `json:"port"`
+	Protocol       int    `json:"protocol"`
 }
 
 type localPairAckRequest struct {
@@ -389,10 +409,21 @@ func (runtime *Runtime) ReleasePendingViaAttestation(req localPairAttestRequest)
 		return empty, err
 	}
 	runtime.mu.Lock()
+	sessionOffer := runtime.pendingSessionOffer
 	runtime.pendingOffer = nil
+	runtime.pendingSessionOffer = nil
 	runtime.mu.Unlock()
-	runtime.logger.Info("[phone-runtime] local-pair secret released", "offer_id", offer.Public.OfferID, "android_key_present", req.AndroidAuthPublicKey != "")
-	return localPairAttestResponse{OfferID: offer.Public.OfferID, Secret: secret}, nil
+	runtime.logger.Info("[phone-runtime] local-pair secret released", "offer_id", offer.Public.OfferID, "android_key_present", req.AndroidAuthPublicKey != "", "session_enroll", sessionOffer != nil)
+	resp := localPairAttestResponse{OfferID: offer.Public.OfferID, Secret: secret}
+	if sessionOffer != nil {
+		resp.SessionSecret = sessionOffer.Secret
+		resp.HostPublicKey = sessionOffer.HostPublicKey
+		resp.TLSPublicKey = sessionOffer.TLSPublicKey
+		resp.Host = sessionOffer.Target.Host
+		resp.Port = sessionOffer.Target.Port
+		resp.Protocol = sessionOffer.Target.Protocol
+	}
+	return resp, nil
 }
 
 func bytesEqual(a, b []byte) bool {

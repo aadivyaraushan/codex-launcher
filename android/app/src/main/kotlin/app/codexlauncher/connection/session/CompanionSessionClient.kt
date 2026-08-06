@@ -203,8 +203,17 @@ class CompanionSessionClient private constructor(
     ): SessionConnection {
         val resumeThroughSequence = loadResumeCursor(paired.pairingGeneration)
         val handshake = SessionHandshake(paired, sessionId, signer, resumeThroughSequence = resumeThroughSequence)
+        // Importers: LauncherApplication session lazy; LocalRuntimeEndpoint unpaired connect.
+        // Affected API: connect() TLS factory. Loopback uses Dns.SYSTEM (SafePublicDns blocks 127.0.0.1).
+        // User: "open a real session/transport to phone-runtime on loopback (127.0.0.1:9443 ...)"
+        val tlsFactory =
+            if (paired.host == "127.0.0.1" || paired.host == "::1") {
+                PinnedTlsClientFactory(dns = Dns.SYSTEM)
+            } else {
+                tlsClients
+            }
         val client =
-            tlsClients.builder(paired.tlsIdentityPin())
+            tlsFactory.builder(paired.tlsIdentityPin())
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)

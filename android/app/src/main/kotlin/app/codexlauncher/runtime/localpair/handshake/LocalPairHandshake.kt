@@ -4,9 +4,15 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import app.codexlauncher.connection.pairing.model.PairingOffer
+import app.codexlauncher.connection.pairing.network.AndroidDevicePairingSigner
+import app.codexlauncher.connection.pairing.network.PairingClient
+import app.codexlauncher.connection.pairing.network.PinnedPairingTransport
 import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.runtime.localpair.PublicLocalPairOffer
 import app.codexlauncher.runtime.localpair.attestation.AttestationClaims
+import app.codexlauncher.runtime.standalone.LocalRuntimeEndpoint
+import app.codexlauncher.storage.secrets.PairingKeyStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -81,16 +87,20 @@ object LocalPairHandshake {
                         "chain_len" to chain.size.toString(),
                     ),
             )
-            val secret =
+            // Callers: LocalPairImportActivity.kt:100. Affected: attest→/v1/pair enroll→ack.
+            // Attest JSON may include sessionSecret,hostPublicKey,tlsPublicKey,host,port,protocol.
+            // User: "open a real session/transport to phone-runtime on loopback" via existing pairing auth.
+            val attest =
                 postAttest(
                     offer = offer,
                     nonce = nonce,
                     chainB64 = chainB64,
                     androidAuthPublicKey = pubB64,
                 )
-            if (secret.isEmpty()) {
+            if (attest.secret.isEmpty()) {
                 return Result(offer.offerId, false, "empty_secret")
             }
+            enrollLocalSession(context, attest)
             postAck(offer = offer, androidAuthPublicKey = pubB64)
             persistAck(context, offer)
             AppLog.info(
@@ -113,12 +123,22 @@ object LocalPairHandshake {
         }
     }
 
+    private data class AttestResult(
+        val secret: String,
+        val sessionSecret: String,
+        val hostPublicKey: String,
+        val tlsPublicKey: String,
+        val host: String,
+        val port: Int,
+        val protocol: Int,
+    )
+
     private fun postAttest(
         offer: PublicLocalPairOffer,
         nonce: String,
         chainB64: List<String>,
         androidAuthPublicKey: String,
-    ): String {
+    ): AttestResult {
         val body =
             JSONObject()
                 .put("nonce", nonce)
@@ -127,7 +147,59 @@ object LocalPairHandshake {
                 .toString()
         val raw = pinnedPost(offer, "/v1/local-pair/attest", body)
         val json = JSONObject(raw)
-        return json.optString("secret")
+        return AttestResult(
+            secret = json.optString("secret"),
+            sessionSecret = json.optString("sessionSecret"),
+            hostPublicKey = json.optString("hostPublicKey"),
+            tlsPublicKey = json.optString("tlsPublicKey"),
+            host = json.optString("host", "127.0.0.1"),
+            port = json.optInt("port", offer.port),
+            protocol = json.optInt("protocol", 1),
+        )
+    }
+
+    private fun enrollLocalSession(
+        context: Context,
+        attest: AttestResult,
+    ) {
+        if (
+            attest.sessionSecret.isBlank() ||
+            attest.hostPublicKey.isBlank() ||
+            attest.tlsPublicKey.isBlank()
+        ) {
+            AppLog.info(
+                feature = "local-pair",
+                message = "local pair attest missing session enrollment fields",
+                fields = mapOf("decision" to "skip_session_enroll"),
+            )
+            return
+        }
+        val offer =
+            PairingOffer.forLocalRuntime(
+                secret = attest.sessionSecret,
+                hostIdentity = attest.hostPublicKey,
+                tlsIdentity = attest.tlsPublicKey,
+                host = attest.host,
+                port = attest.port,
+                protocol = attest.protocol,
+            )
+        val client =
+            PairingClient(
+                AndroidDevicePairingSigner(PairingKeyStore()),
+                PinnedPairingTransport(localLoopback = true),
+            )
+        val paired =
+            client.pair(
+                offer = offer,
+                deviceId = "local-android",
+                deviceName = android.os.Build.MODEL.ifBlank { "Android device" },
+            )
+        LocalRuntimeEndpoint.save(context, paired)
+        AppLog.info(
+            feature = "local-pair",
+            message = "local runtime session enrollment complete",
+            fields = mapOf("device_id" to paired.deviceId, "port" to paired.port),
+        )
     }
 
     private fun postAck(

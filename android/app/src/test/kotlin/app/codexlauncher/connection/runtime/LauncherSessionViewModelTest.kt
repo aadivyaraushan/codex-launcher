@@ -42,6 +42,40 @@ import org.junit.Test
 
 class LauncherSessionViewModelTest {
 	@Test
+	fun `unpaired local-runtime connect gives capability send a non-null sink`() = runBlocking {
+		lateinit var observer: SessionObserver
+		val connection = FakeSessionConnection()
+		var connectCalls = 0
+		val viewModel = LauncherSessionViewModel(
+			connect = { paired, _, nextObserver ->
+				connectCalls += 1
+				assertEquals("127.0.0.1", paired.host)
+				observer = nextObserver
+				connection
+			},
+			loadProject = { null },
+			saveProject = { true },
+			clearProject = { true },
+			actionJournal = FakeActionJournal(),
+			workScope = CoroutineScope(Dispatchers.Unconfined),
+		)
+		// Unpaired Mac path: connect the loopback phone-runtime endpoint instead.
+		viewModel.connect(localRuntimePairedComputer())
+		observer.onReady(connection, ByteArray(32))
+		observer.onMessage(welcomeWithCapabilityOptions())
+		viewModel.submitHomePrompt(
+			"Open Maps to coffee nearby",
+			selection = null,
+			draftVersion = DraftVersion(1, 1),
+			forceCapability = true,
+		)
+		val route = ProtocolCodec.decodeText(connection.awaitActionKind("capability_request"))
+		assertEquals(1, connectCalls)
+		assertEquals("capability_request", route.body.getValue("kind").jsonPrimitive.content)
+		assertEquals(CapabilityPhase.ROUTING, viewModel.capabilityInteraction.value.phase)
+	}
+
+	@Test
 	fun `auto home prompt confirms the exact app preview and clears the draft after the result`() = runBlocking {
 		lateinit var observer: SessionObserver
 		val connection = FakeSessionConnection()
@@ -2222,6 +2256,19 @@ class LauncherSessionViewModelTest {
     private fun snapshotWithTask(sequence: Long, title: String): ProtocolMessage =
         decode(
             """{"version":{"major":1,"minor":0},"messageId":"snapshot-$sequence","sender":"companion","type":"snapshot","seq":$sequence,"body":{"baseSeq":$sequence,"computerName":"Studio Mac","projects":[],"tasks":[{"taskId":"thread-1","title":"$title","projectLabel":"uf-u","state":"working","lastActivityAt":"2026-07-13T10:02:00Z"}]}}""",
+        )
+
+    private fun localRuntimePairedComputer() =
+        PairedComputer(
+            host = "127.0.0.1",
+            port = 9443,
+            protocol = 1,
+            hostIdentity = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(44) { 1 }),
+            tlsIdentity = TestHostCertificate.tlsIdentity(),
+            deviceId = "local-android",
+            deviceName = "Pixel 9",
+            pairingGeneration = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { 2 }),
+            keyProtection = PairingKeyProtection.HARDWARE_BACKED,
         )
 
     private fun pairedComputer() =

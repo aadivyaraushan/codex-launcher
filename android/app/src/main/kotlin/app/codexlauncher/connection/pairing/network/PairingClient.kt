@@ -68,14 +68,22 @@ class PairingClient(
     private val signer: DevicePairingSigner,
     private val transport: PairingTransport,
 ) {
+    // Callers: LauncherActivity PairingViewModel (encoded); LocalPairHandshake (forLocalRuntime offer).
+    // Affected API: pair(PairingOffer) overload for loopback enrollment without public QR parse.
+    // User: "Reuse existing local-pair TLS/auth ... do not invent a second auth scheme."
     fun pair(
         encodedOffer: String,
+        deviceId: String,
+        deviceName: String,
+    ): PairedComputer = pair(PairingOffer.parse(encodedOffer), deviceId, deviceName)
+
+    fun pair(
+        offer: PairingOffer,
         deviceId: String,
         deviceName: String,
     ): PairedComputer {
         require(PairingValidation.isSafeIdentifier(deviceId)) { "Invalid device identifier" }
         require(PairingValidation.isSafeDeviceName(deviceName)) { "Invalid device name" }
-        val offer = PairingOffer.parse(encodedOffer)
         AppLog.info(
             feature = "pairing",
             message = "pairing requested",

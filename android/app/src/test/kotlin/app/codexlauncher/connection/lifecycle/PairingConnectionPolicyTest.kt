@@ -13,10 +13,13 @@ class PairingConnectionPolicyTest {
         assertEquals(PairingConnectionCommand.KEEP, pairingConnectionCommand(PairingRecordState.Loading))
     }
 
+    // Callers: LauncherActivity pairing LaunchedEffect via pairingConnectionCommand.
+    // Affected API: unpaired Loaded(null) → KEEP (was DISCONNECT) so local runtime session survives.
+    // User: "open a real session/transport to phone-runtime on loopback"
     @Test
-    fun `confirmed pairing connects and confirmed unpair disconnects`() {
+    fun `confirmed pairing connects and unpaired keeps session for local runtime`() {
         assertEquals(PairingConnectionCommand.CONNECT, pairingConnectionCommand(PairingRecordState.Loaded(pairedComputer())))
-        assertEquals(PairingConnectionCommand.DISCONNECT, pairingConnectionCommand(PairingRecordState.Loaded(null)))
+        assertEquals(PairingConnectionCommand.KEEP, pairingConnectionCommand(PairingRecordState.Loaded(null)))
     }
 
     private fun pairedComputer() =

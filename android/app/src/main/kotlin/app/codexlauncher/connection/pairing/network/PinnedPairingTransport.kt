@@ -19,12 +19,21 @@ class PinnedPairingTransport private constructor(
     private val endpoint: (PairingOffer) -> String,
     private val tlsClients: PinnedTlsClientFactory,
 ) : PairingTransport {
+    // Callers: LauncherActivity (remote); LocalPairHandshake via localLoopback=true.
+    // Affected API: Dns.SYSTEM for 127.0.0.1 /v1/pair. User: loopback phone-runtime session.
     constructor() : this(endpoint = PairingOffer::pairingEndpoint, tlsClients = PinnedTlsClientFactory())
 
     // Test-only: targets a local MockWebServer URL, not an untrusted pairing-offer
     // host, so it uses the system resolver instead of the public-address DNS filter.
     internal constructor(testEndpoint: String) :
         this(endpoint = { testEndpoint }, tlsClients = PinnedTlsClientFactory(dns = Dns.SYSTEM))
+
+    constructor(localLoopback: Boolean) : this(
+        endpoint = PairingOffer::pairingEndpoint,
+        tlsClients = PinnedTlsClientFactory(dns = Dns.SYSTEM),
+    ) {
+        require(localLoopback) { "use PinnedPairingTransport() for remote pairing" }
+    }
 
     override fun pair(offer: PairingOffer, request: PairingRequest): PairingResponse {
         val pin = offer.tlsIdentityPin()

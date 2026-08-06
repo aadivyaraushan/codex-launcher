@@ -76,6 +76,7 @@ import app.codexlauncher.launcher.apps.InstalledAppsRepository
 import app.codexlauncher.launcher.home.HomeScreen
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
+import app.codexlauncher.runtime.standalone.LocalRuntimeEndpoint
 import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatusReader
 import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
 import app.codexlauncher.runtime.LocalPairAwaitActivity
@@ -309,12 +310,31 @@ class LauncherActivity : ComponentActivity() {
                 mutableStateOf(StandaloneRuntimeStatus.notReady())
             }
             var homeRouteMessage by remember { mutableStateOf<String?>(null) }
+            // Callers: Home Compose status strip. Blocking socket probe → readOffMain (IO).
+            // User: "Fix: Run probe on Dispatchers.IO" + unpaired loopback session connect.
             LaunchedEffect(localStorageUiState, pairingState) {
                 if (localStorageUiState != LocalStorageUiState.READY) return@LaunchedEffect
                 while (isActive) {
-                    standaloneStatus = StandaloneRuntimeStatusReader.read(applicationContext)
+                    standaloneStatus = StandaloneRuntimeStatusReader.readOffMain(applicationContext)
                     delay(2_000)
                 }
+            }
+            LaunchedEffect(localStorageUiState, pairingState, standaloneStatus.localPairAcked) {
+                if (localStorageUiState != LocalStorageUiState.READY) return@LaunchedEffect
+                if (pairedComputer != null) return@LaunchedEffect
+                val localEndpoint = LocalRuntimeEndpoint.load(applicationContext) ?: return@LaunchedEffect
+                if (!standaloneStatus.localPairAcked) return@LaunchedEffect
+                AppLog.info(
+                    feature = "standalone",
+                    message = "connecting unpaired local phone-runtime session",
+                    fields =
+                        mapOf(
+                            "device_id" to localEndpoint.deviceId,
+                            "host" to localEndpoint.host,
+                            "port" to localEndpoint.port,
+                        ),
+                )
+                sessionViewModel.connect(localEndpoint)
             }
             LaunchedEffect(localStorageUiState, pairedComputer?.pairingGeneration) {
                 if (localStorageUiState != LocalStorageUiState.READY) return@LaunchedEffect

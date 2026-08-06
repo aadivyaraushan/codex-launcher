@@ -4,12 +4,19 @@ import android.content.Context
 import app.codexlauncher.diagnostics.AppLog
 import java.net.InetSocketAddress
 import java.net.Socket
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Reads local-pair ack + a cheap loopback reachability probe.
  *
  * Runtime "serving" is treated as true when the local-pair ack exists and the
  * loopback TLS port answers — broker grants are intentionally not required.
+ *
+ * Callers: LauncherActivity.kt status LaunchedEffect (must use readOffMain);
+ * StandaloneRuntimeStatusReaderTest. Blocking probeLoopback must not run on Main.
+ * User instruction: "Fix: Run probe on Dispatchers.IO (or equivalent)."
  */
 object StandaloneRuntimeStatusReader {
     private const val PREFS = "local_pair_runtime"
@@ -24,6 +31,14 @@ object StandaloneRuntimeStatusReader {
         val localPairAcked =
             !prefs.getString("runtimeIdentity", null).isNullOrBlank() &&
                 !prefs.getString("tlsSpki", null).isNullOrBlank()
+        return read(localPairAcked = localPairAcked, port = port, probe = probe)
+    }
+
+    fun read(
+        localPairAcked: Boolean,
+        port: Int = DEFAULT_PORT,
+        probe: (Int) -> Boolean = ::probeLoopback,
+    ): StandaloneRuntimeStatus {
         val reachable = if (localPairAcked) probe(port) else false
         val runtimeServing = localPairAcked && reachable
         val status =
@@ -45,6 +60,22 @@ object StandaloneRuntimeStatusReader {
         )
         return status
     }
+
+    suspend fun readOffMain(
+        context: Context,
+        port: Int = DEFAULT_PORT,
+        probe: (Int) -> Boolean = ::probeLoopback,
+        io: CoroutineDispatcher = Dispatchers.IO,
+    ): StandaloneRuntimeStatus =
+        withContext(io) { read(context = context, port = port, probe = probe) }
+
+    suspend fun readOffMain(
+        localPairAcked: Boolean,
+        port: Int = DEFAULT_PORT,
+        probe: (Int) -> Boolean = ::probeLoopback,
+        io: CoroutineDispatcher = Dispatchers.IO,
+    ): StandaloneRuntimeStatus =
+        withContext(io) { read(localPairAcked = localPairAcked, port = port, probe = probe) }
 
     private fun probeLoopback(port: Int): Boolean =
         try {

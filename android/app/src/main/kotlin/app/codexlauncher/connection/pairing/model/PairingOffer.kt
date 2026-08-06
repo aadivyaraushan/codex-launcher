@@ -48,6 +48,8 @@ class PairingOffer private constructor(
             val identity = query.getValue("identity")
             val tlsIdentity = query.getValue("tls_identity")
             val secret = query.getValue("secret")
+            // Public QR/manual parse still rejects loopback; forLocalRuntime is the
+            // phone-runtime enrollment entry (LocalPairHandshake). Keep Mac offers public-only.
             require(PairingValidation.isSafePublicEndpoint(host) && port in 1..65535 && protocol == 1) { "Invalid pairing offer" }
             HostIdentityPin.parse(identity)
             TlsIdentityPin.parse(tlsIdentity)
@@ -61,6 +63,30 @@ class PairingOffer private constructor(
                 secret = secret,
             )
         }
+
+        fun forLocalRuntime(
+            secret: String,
+            hostIdentity: String,
+            tlsIdentity: String,
+            host: String = "127.0.0.1",
+            port: Int = 9443,
+            protocol: Int = 1,
+        ): PairingOffer {
+            require(allowLoopbackHost(host) && port in 1..65535 && protocol == 1) { "Invalid local runtime pairing offer" }
+            HostIdentityPin.parse(hostIdentity)
+            TlsIdentityPin.parse(tlsIdentity)
+            require(PairingValidation.isCanonicalBase64Url(secret, decodedBytes = 16)) { "Invalid local runtime pairing offer" }
+            return PairingOffer(
+                host = host,
+                port = port,
+                protocol = protocol,
+                hostIdentity = hostIdentity,
+                tlsIdentity = tlsIdentity,
+                secret = secret,
+            )
+        }
+
+        private fun allowLoopbackHost(host: String): Boolean = host == "127.0.0.1" || host == "::1"
 
         private fun parseQuery(rawQuery: String?): Map<String, String> {
             require(!rawQuery.isNullOrEmpty()) { "Invalid pairing offer" }
