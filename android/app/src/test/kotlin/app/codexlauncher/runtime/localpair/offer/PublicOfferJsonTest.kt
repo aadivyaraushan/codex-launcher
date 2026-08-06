@@ -39,6 +39,30 @@ class PublicOfferJsonTest {
     }
 
     @Test
+    fun parsesLoopbackOfferEndpointShapeWithoutSecret() {
+        // Matches companion localtrust.PublicOffer JSON from POST /v1/local-pair/offer.
+        // Callers: LocalPairLoopbackBootstrap.fetchOfferOverLoopback → PublicOfferJson.parse.
+        val loopbackBody =
+            """
+            {
+              "protocolVersion": 1,
+              "offerId": "dGVzdC1vZmZlcg",
+              "expiresAt": 1893456000,
+              "port": 9443,
+              "runtimeIdentity": "cnVudGltZS1pZA",
+              "tlsSpki": "dGxzLXNwa2k",
+              "ephemeralPublicKey": "ZXBr",
+              "challenge": "Y2hhbA"
+            }
+            """.trimIndent()
+        val offer = PublicOfferJson.parse(loopbackBody).getOrThrow()
+        assertEquals("dGVzdC1vZmZlcg", offer.offerId)
+        assertEquals(9443, offer.port)
+        assertEquals(1_893_456_000L, offer.expiresAtUnix)
+        assertEquals("dGxzLXNwa2k", offer.tlsSpki)
+    }
+
+    @Test
     fun rejectsMissingRequiredField() {
         val result = PublicOfferJson.parse("""{"protocolVersion":1,"offerId":"x"}""")
         assertTrue(result.isFailure)
