@@ -24,6 +24,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
 	capabilityruntime "github.com/codex-launcher/codex-launcher/companion/internal/capability/runtime"
+	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/durablestore"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
@@ -220,14 +221,25 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		}
 		bridgeToken = token
 		gateStore := newDurableGateStore(ctx, store)
+
+		// approvals and router form a cycle with bridge: approvals needs the
+		// router to register decisions on, the router needs approvals to
+		// resolve them, and approvals needs the bridge to actually release a
+		// gate — but the bridge itself needs approvals (as its Notifier)
+		// before it exists. Build approvals and the router first with sink
+		// and releaser left nil, wire the router in, then backfill releaser
+		// once bridge is built below.
+		approvals := newGateApprovals(logger, now, nil, handler, nil)
+		router := decisions.NewRouter(approvals, logger)
+		approvals.sink = router
+		handler.EnableDecisions(router)
+
 		bridge = agentbridge.New(inventory, inventory.Runner(), token, logger, agentbridge.GateDeps{
-			Policy: gates.New(gateStore, newGateIDFunc(logger)),
-			Store:  gateStore,
-			// The launcher-side notifier is wired in a later step; nil is a
-			// no-op until then, so a gated call still stops correctly, it
-			// just has no one else to tell yet.
-			Notifier: nil,
+			Policy:   gates.New(gateStore, newGateIDFunc(logger)),
+			Store:    gateStore,
+			Notifier: approvals,
 		})
+		approvals.releaser = bridge
 	}
 	handler.EnableCapabilities(flow)
 

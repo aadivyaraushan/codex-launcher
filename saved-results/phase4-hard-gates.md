@@ -19,14 +19,21 @@ The four gates and what triggers them today:
 
 Typed chat text can never release a gate: release happens only through `ApproveGate` with the exact gate id, which only the launcher's approval sheet will call.
 
+Round 3 (the approval transport, `companion/internal/phoneruntime/gateapproval.go` + `runtime.go` wiring):
+
+- A raised gate becomes a pending decision on the runtime's own `decisions.Router` (thread `phone-agent`, kind permissions, allowed answers exactly Accept-once and Decline — never accept-for-session), then a `MobileEvent{Kind: "approval"}` pings the phone. Registration failure means no ping: the phone is never told about a sheet it couldn't resolve.
+- The phone's existing approval action answers it: the mobilesession handler echoes the pending request's `TurnID`/`ItemID` back (handler.go:822), so `gateApprovals` fills both with the gate id to satisfy the router's id validation — no router changes needed.
+- Accept → `Bridge.ApproveGate` (one-shot); Decline → `DenyGate` (durable); dismissing the sheet resolves nothing; any other decision is refused with an error. Sheet expires after 15 minutes.
+- The OpenClaw plugin stamps every bridge call with the session id as `turnKey` and renders `approval_required` to the model as "nothing happened, the owner was asked, don't retry" (`5b0f4c9`).
+
 ## Verified
 
-- 20 gate tests written red-first by the orchestrator (12 policy, 1 durable-store reopen, 7 bridge wiring), implemented by a subagent, re-verified green: `go test ./internal/phoneruntime/... ./internal/durablestore/...` → **82 passed in 13 packages**, `go vet` clean; full suite **1745 passed**, 3 failures pre-existing Mac-only (`TestBrokered*`, hardcoded Termux `/data` path).
+- 20 gate tests round 1–2 (12 policy, 1 durable-store reopen, 7 bridge wiring) plus 8 approval-transport tests round 3, all written red-first by the orchestrator, implemented by subagents, re-verified green: `go test ./internal/phoneruntime/... ./internal/durablestore/` → **87 passed in 12 packages**, `go vet` clean; full suite green except 3 pre-existing Mac-only failures (`TestBrokered*`, hardcoded Termux `/data` path). Plugin: 7/7 node tests.
 
 ## Open
 
-- Launcher transport: bridge's `ApprovalNotifier` is a nil no-op in `runtime.go` until the approval sheet wiring lands (next step; scout mapping `internal/decisions` + `internal/app/mobilesession` in flight).
 - On-device autonomous proof (agent replies to known contact ungated; first-contact send stops at the sheet) — blocked until the phone is reconnected.
+- The `phone-agent` thread has no chat UI yet (Phase 6); until then the approval sheet is reachable through the decisions surface the launcher already renders for that thread id.
 
 ## Reproduce
 
