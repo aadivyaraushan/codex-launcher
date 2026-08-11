@@ -29,6 +29,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agentbridge"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agentbridge/gates"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/localtrust"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
 )
@@ -218,7 +219,15 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 			return nil, tokenErr
 		}
 		bridgeToken = token
-		bridge = agentbridge.New(inventory, inventory.Runner(), token, logger)
+		gateStore := newDurableGateStore(ctx, store)
+		bridge = agentbridge.New(inventory, inventory.Runner(), token, logger, agentbridge.GateDeps{
+			Policy: gates.New(gateStore, newGateIDFunc(logger)),
+			Store:  gateStore,
+			// The launcher-side notifier is wired in a later step; nil is a
+			// no-op until then, so a gated call still stops correctly, it
+			// just has no one else to tell yet.
+			Notifier: nil,
+		})
 	}
 	handler.EnableCapabilities(flow)
 

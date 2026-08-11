@@ -13,9 +13,49 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/registry"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agentbridge"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agentbridge/gates"
 )
 
 const testToken = "agentbridge-test-token-0123456789abcdef"
+
+// ungatedStore is the fake gates.Store used by these tests: every recipient
+// they exercise is pre-marked known, so the calls under test reach the
+// adapter directly and this file's assertions about resolve/preview/execute
+// stay unchanged by the gate policy this bridge now always runs.
+type ungatedStore struct {
+	known map[string]bool
+}
+
+func newUngatedStore() *ungatedStore {
+	return &ungatedStore{known: map[string]bool{}}
+}
+
+func (s *ungatedStore) KnownRecipient(adapter, recipient string) (bool, error) {
+	return s.known[adapter+"\x00"+recipient], nil
+}
+
+func (s *ungatedStore) MarkRecipientMessaged(adapter, recipient string) error {
+	s.known[adapter+"\x00"+recipient] = true
+	return nil
+}
+
+func (s *ungatedStore) RecordDenial(string) error      { return nil }
+func (s *ungatedStore) WasDenied(string) (bool, error) { return false, nil }
+
+// testGateDeps builds a GateDeps whose store already knows every recipient
+// these bridge tests send to, so none of them observe gating.
+func testGateDeps() agentbridge.GateDeps {
+	store := newUngatedStore()
+	store.known["beeper.message\x00+15550000000"] = true
+	serial := 0
+	return agentbridge.GateDeps{
+		Policy: gates.New(store, func() string {
+			serial++
+			return "gate-" + string(rune('0'+serial))
+		}),
+		Store: store,
+	}
+}
 
 // fake is a recording adapter (same shape as execution's runner_test
 // recorder) so a test can assert what the bridge actually drove.
@@ -71,7 +111,7 @@ func bridgeWith(t *testing.T, adapters ...adapter.Adapter) (*httptest.Server, []
 			fakes = append(fakes, f)
 		}
 	}
-	b := agentbridge.New(reg, execution.New(reg), testToken, nil)
+	b := agentbridge.New(reg, execution.New(reg), testToken, nil, testGateDeps())
 	server := httptest.NewServer(b.Handler())
 	t.Cleanup(server.Close)
 	return server, fakes
@@ -149,7 +189,7 @@ func TestEmptyTokenBridgeRefusesEverything(t *testing.T) {
 	if err := reg.Register(newFake("beeper.message", manifest.Read)); err != nil {
 		t.Fatal(err)
 	}
-	b := agentbridge.New(reg, execution.New(reg), "", nil)
+	b := agentbridge.New(reg, execution.New(reg), "", nil, testGateDeps())
 	server := httptest.NewServer(b.Handler())
 	defer server.Close()
 

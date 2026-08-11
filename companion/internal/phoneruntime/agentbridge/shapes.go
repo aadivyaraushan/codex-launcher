@@ -48,6 +48,10 @@ type ToolCallRequest struct {
 	Handle  string            `json:"handle,omitempty"`
 	Body    string            `json:"body,omitempty"`
 	Fields  map[string]string `json:"fields,omitempty"`
+	// TurnKey identifies the agent turn this call belongs to, so the gate
+	// policy can tell a read-then-send within one turn (exfiltration risk)
+	// from the same sequence spread across turns.
+	TurnKey string `json:"turnKey,omitempty"`
 }
 
 // ToolCallResult is the body of every /call response, success or failure.
@@ -62,6 +66,9 @@ type ToolCallResult struct {
 	Detail      string          `json:"detail,omitempty"`
 	Preview     *PreviewSummary `json:"preview,omitempty"`
 	Error       *CallError      `json:"error,omitempty"`
+	// GateID is set only alongside error code approval_required: the id the
+	// owner's approve/deny decision must reference.
+	GateID string `json:"gateId,omitempty"`
 }
 
 // PreviewSummary is what the runner's preview showed before this layer
@@ -75,11 +82,16 @@ type PreviewSummary struct {
 
 // CallError codes, closed set:
 //
-//	unauthorized     – bearer token missing or wrong (HTTP 401)
-//	bad_request      – body not valid JSON or verb outside the closed set (HTTP 400)
-//	unknown_adapter  – no registered adapter under that id (HTTP 404)
-//	verb_not_offered – adapter's manifest does not declare the verb (HTTP 400)
-//	adapter_failed   – resolve/preview/execute returned an error (HTTP 502)
+//	unauthorized       – bearer token missing or wrong (HTTP 401)
+//	bad_request        – body not valid JSON or verb outside the closed set (HTTP 400)
+//	unknown_adapter    – no registered adapter under that id (HTTP 404)
+//	verb_not_offered   – adapter's manifest does not declare the verb (HTTP 400)
+//	adapter_failed     – resolve/preview/execute returned an error (HTTP 502)
+//	approval_required  – the hard-gate policy stopped this call for the
+//	                     owner's explicit OK (HTTP 200: this is an answer,
+//	                     not a transport failure — nothing executed, and
+//	                     GateID plus Preview are set so the caller can show
+//	                     the owner what it would have done)
 type CallError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`

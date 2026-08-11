@@ -1,16 +1,20 @@
 package agentbridge
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/execution"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/registry"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agentbridge/gates"
 )
 
 // adapterLister is the one thing the bridge needs from a registry: the ids
@@ -22,6 +26,32 @@ type adapterLister interface {
 	AdapterIDs() []string
 }
 
+// GateDeps is what the bridge needs to run every non-read call through the
+// hard-gate policy before it executes. Gating is not optional: there is no
+// nil-Policy bypass path, so a Bridge cannot be built without one.
+type GateDeps struct {
+	Policy   *gates.Policy
+	Store    gates.Store
+	Notifier ApprovalNotifier
+}
+
+// ApprovalNotifier tells the launcher a call stopped for the owner's OK. A
+// nil Notifier is a no-op — tests that don't care about the launcher side
+// of a gate can leave it unset.
+type ApprovalNotifier interface {
+	GateRaised(gate gates.Gate, preview PreviewSummary)
+}
+
+// pendingCall is one gated call's plan and preview, kept exactly long
+// enough for ApproveGate or DenyGate to resolve it.
+type pendingCall struct {
+	plan      adapter.Plan
+	preview   execution.Preview
+	adapterID string
+	recipient string
+	verb      string
+}
+
 // Bridge serves the two agent-tool endpoints for one registry and runner.
 // Every request must carry the bearer token; the caller (phoneruntime)
 // additionally restricts the routes to loopback.
@@ -30,15 +60,21 @@ type Bridge struct {
 	runner *execution.Runner
 	token  string
 	logger *slog.Logger
+	gate   GateDeps
+
+	pendingMu sync.Mutex
+	pending   map[string]pendingCall
 }
 
 // New returns a Bridge. token must be non-empty; a Bridge with an empty
-// token refuses every request rather than serving unauthenticated.
-func New(ids adapterLister, runner *execution.Runner, token string, logger *slog.Logger) *Bridge {
+// token refuses every request rather than serving unauthenticated. gate is
+// required — every non-read call is judged against gate.Policy before it
+// runs.
+func New(ids adapterLister, runner *execution.Runner, token string, logger *slog.Logger, gate GateDeps) *Bridge {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Bridge{ids: ids, runner: runner, token: token, logger: logger}
+	return &Bridge{ids: ids, runner: runner, token: token, logger: logger, gate: gate, pending: make(map[string]pendingCall)}
 }
 
 // Handler serves GET /v1/agent-tools/list and POST /v1/agent-tools/call.
@@ -187,17 +223,81 @@ func (b *Bridge) handleCall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Every call runs the preview step and self-confirms it — the agent-side
-	// gates (Phase 3) decide what may be called at all, not a second
-	// confirmation round-trip through this bridge.
-	out, err := b.runner.Execute(r.Context(), plan, preview.Confirmed())
+	// Recipient is whichever of handle/subject names who this call reaches;
+	// handle wins because it is the device-resolved identity, the one the
+	// gate store keys recipient history on.
+	recipient := req.Handle
+	if recipient == "" {
+		recipient = req.Subject
+	}
+
+	// Irreversible and Revoke are hardcoded false: the current manifest has
+	// no irreversible flag (RequiresPreview is a preview concern, not this
+	// gate) and no revoke verb is reachable through /call yet. Future
+	// adapters set these from their manifests.
+	decision, err := b.gate.Policy.Evaluate(gates.CallFacts{
+		Adapter:      req.Adapter,
+		Verb:         req.Verb,
+		Recipient:    recipient,
+		TurnKey:      req.TurnKey,
+		Irreversible: false,
+		AllowListed:  false,
+		Revoke:       false,
+	})
 	if err != nil {
 		b.respondCallError(w, req.Adapter, req.Verb, err)
 		return
 	}
 
-	b.logCall(req.Adapter, req.Verb, "ok")
-	writeJSON(w, http.StatusOK, ToolCallResult{
+	if !decision.Allow {
+		gate := *decision.Gate
+		previewSummary := PreviewSummary{Headline: preview.Headline, Lines: preview.Lines, Confirm: preview.Confirm}
+		b.pendingMu.Lock()
+		b.pending[gate.ID] = pendingCall{plan: plan, preview: preview, adapterID: req.Adapter, recipient: recipient, verb: req.Verb}
+		b.pendingMu.Unlock()
+		if b.gate.Notifier != nil {
+			b.gate.Notifier.GateRaised(gate, previewSummary)
+		}
+		b.logGateEvent(req.Adapter, req.Verb, "gated", gate.ID)
+		writeJSON(w, http.StatusOK, ToolCallResult{
+			OK:      false,
+			GateID:  gate.ID,
+			Preview: &previewSummary,
+			Error:   &CallError{Code: "approval_required", Message: gateMessage(gate.Kind)},
+		})
+		return
+	}
+
+	// Every allowed call still runs the preview step and self-confirms it —
+	// the hard-gate policy above decides what may be called at all; this is
+	// not a second confirmation round-trip through this bridge.
+	result, err := b.executeCall(r.Context(), plan, preview, req.Adapter, recipient, req.Verb, "ok")
+	if err != nil {
+		b.respondCallError(w, req.Adapter, req.Verb, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// executeCall runs plan to completion and marks its recipient known on
+// success. It is the one place that actually calls the adapter, shared by
+// the direct-allow path in handleCall and by ApproveGate, so both produce
+// the same result shape and the same known-recipient bookkeeping.
+func (b *Bridge) executeCall(ctx context.Context, plan adapter.Plan, preview execution.Preview, adapterID, recipient, verb, outcome string) (ToolCallResult, error) {
+	out, err := b.runner.Execute(ctx, plan, preview.Confirmed())
+	if err != nil {
+		return ToolCallResult{}, err
+	}
+	if verb != "read" && recipient != "" {
+		// A failure here means real work already happened and only the
+		// bookkeeping about it failed — that must never be reported back as
+		// a call failure, so it is logged and swallowed, not returned.
+		if markErr := b.gate.Store.MarkRecipientMessaged(adapterID, recipient); markErr != nil {
+			b.logger.Error("[agent-bridge] mark recipient known failed", "adapter", adapterID, "verb", verb, "error", markErr.Error())
+		}
+	}
+	b.logCall(adapterID, verb, outcome)
+	return ToolCallResult{
 		OK:          true,
 		Reached:     string(out.Reached),
 		Done:        out.Done,
@@ -208,7 +308,69 @@ func (b *Bridge) handleCall(w http.ResponseWriter, r *http.Request) {
 			Lines:    preview.Lines,
 			Confirm:  preview.Confirm,
 		},
-	})
+	}, nil
+}
+
+// gateMessage is the short, human-readable reason sent back to the agent
+// alongside code approval_required, naming the kind of gate that stopped
+// the call.
+func gateMessage(kind gates.Kind) string {
+	switch kind {
+	case gates.KindFirstContact:
+		return "first message to this recipient needs owner approval"
+	case gates.KindRevoke:
+		return "revoking access needs owner approval"
+	case gates.KindIrreversible:
+		return "this irreversible action needs owner approval"
+	case gates.KindExfiltration:
+		return "sending after reading another adapter this turn needs owner approval"
+	default:
+		return "this call needs owner approval"
+	}
+}
+
+// ApproveGate releases a pending gate and runs the call it was blocking,
+// exactly once. The pending entry is popped before Execute runs, mirroring
+// Policy.Approve's one-shot pattern, so a second approval of the same id
+// can never execute the call again.
+func (b *Bridge) ApproveGate(ctx context.Context, gateID string) (ToolCallResult, error) {
+	if _, ok := b.gate.Policy.Approve(gateID); !ok {
+		return ToolCallResult{}, fmt.Errorf("agentbridge: gate %q is not pending", gateID)
+	}
+	b.pendingMu.Lock()
+	call, exists := b.pending[gateID]
+	if exists {
+		delete(b.pending, gateID)
+	}
+	b.pendingMu.Unlock()
+	if !exists {
+		// The policy released a gate this bridge never stored a call for —
+		// a bug in this package, not a caller error.
+		return ToolCallResult{}, fmt.Errorf("agentbridge: gate %q approved but has no pending call", gateID)
+	}
+	return b.executeCall(ctx, call.plan, call.preview, call.adapterID, call.recipient, call.verb, "approved")
+}
+
+// DenyGate drops the pending call and durably records the denial so the
+// gate can never release, even across a restart.
+func (b *Bridge) DenyGate(gateID string) error {
+	b.pendingMu.Lock()
+	call, exists := b.pending[gateID]
+	delete(b.pending, gateID)
+	b.pendingMu.Unlock()
+	if err := b.gate.Policy.Deny(gateID); err != nil {
+		return err
+	}
+	if exists {
+		b.logGateEvent(call.adapterID, call.verb, "denied", gateID)
+	}
+	return nil
+}
+
+// logGateEvent records a gate lifecycle line — adapter, verb, outcome, and
+// the gate id, never the recipient or call body.
+func (b *Bridge) logGateEvent(adapterID, verb, outcome, gateID string) {
+	b.logger.Info("[agent-bridge] gate", "adapter", adapterID, "verb", verb, "outcome", outcome, "gate_id", gateID)
 }
 
 // respondCallError maps a resolve/preview/execute error onto the closed set
