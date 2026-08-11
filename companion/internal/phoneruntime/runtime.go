@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -109,6 +110,10 @@ type Runtime struct {
 	// AgentBridgeTokenPath can hand it to Phase 3 without exposing the
 	// token itself.
 	bridgeTokenPath string
+	// bridgeCertPath is where the bridge's TLS certificate (public material
+	// only, no key) is exported in PEM form, so AgentBridgeCertPath can hand
+	// it to Phase 3 for certificate pinning.
+	bridgeCertPath string
 }
 
 func (config Config) validate() error {
@@ -227,6 +232,15 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		_ = store.Close()
 		return nil, err
 	}
+	// The certificate is re-minted on every Open (pairingService.TLSCertificate
+	// above), so it is re-exported every time too — the OpenClaw plugin
+	// (Phase 3) reads this file fresh on each request and must see whatever
+	// the runtime is currently serving, not a stale cert from a prior run.
+	bridgeCertPath := filepath.Join(config.Root, "agentbridge-cert.pem")
+	if err := writeAgentBridgeCert(bridgeCertPath, certificate); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
 
 	rt := &Runtime{
 		config:          config,
@@ -245,6 +259,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		bridge:          bridge,
 		bridgeToken:     bridgeToken,
 		bridgeTokenPath: bridgeTokenPath,
+		bridgeCertPath:  bridgeCertPath,
 		operatorPin: localtrust.ExpectedOperator{
 			PackageName: "app.codexlauncher",
 			// Release (frozen owner) APK signer. Debug builds use c613e660… — accept both below.
@@ -286,6 +301,27 @@ func loadOrMintBridgeToken(path string, random io.Reader) (string, error) {
 // token itself.
 func (runtime *Runtime) AgentBridgeTokenPath() string {
 	return runtime.bridgeTokenPath
+}
+
+// writeAgentBridgeCert exports the certificate's leaf DER (certificate.
+// Certificate[0]) as a single PEM CERTIFICATE block at path. It is public
+// material only — no private key — so it is written world-readable
+// (0o644) rather than the 0o600 used for the bearer token.
+func writeAgentBridgeCert(path string, certificate tls.Certificate) error {
+	if len(certificate.Certificate) == 0 {
+		return fmt.Errorf("phone runtime: TLS certificate has no leaf to export")
+	}
+	block := &pem.Block{Type: "CERTIFICATE", Bytes: certificate.Certificate[0]}
+	if err := os.WriteFile(path, pem.EncodeToMemory(block), 0o644); err != nil {
+		return fmt.Errorf("export agent-bridge certificate: %w", err)
+	}
+	return nil
+}
+
+// AgentBridgeCertPath returns where the agent-bridge's TLS certificate is
+// exported in PEM form, so Phase 3 can pin it without a private trust store.
+func (runtime *Runtime) AgentBridgeCertPath() string {
+	return runtime.bridgeCertPath
 }
 
 func (runtime *Runtime) Close() error {

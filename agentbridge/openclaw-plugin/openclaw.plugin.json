@@ -1,0 +1,26 @@
+{
+  "id": "operator-tools",
+  "name": "Operator Tools",
+  "description": "Exposes the Operator capability adapters (Beeper messaging and friends) as agent tools, calling the on-device agent bridge over pinned loopback TLS.",
+  "activation": { "onStartup": true },
+  "contracts": { "tools": ["discord", "instagram", "messages"] },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["bridgeUrl", "tokenPath", "certPath"],
+    "properties": {
+      "bridgeUrl": {
+        "type": "string",
+        "description": "Base URL of the agent bridge, e.g. https://127.0.0.1:9443. Loopback only."
+      },
+      "tokenPath": {
+        "type": "string",
+        "description": "Path to the bearer token file the phone runtime minted (never the token value itself)."
+      },
+      "certPath": {
+        "type": "string",
+        "description": "Path to the runtime's exported TLS certificate PEM; the plugin pins this exact certificate."
+      }
+    }
+  }
+}

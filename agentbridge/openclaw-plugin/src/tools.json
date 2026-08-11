@@ -1,0 +1,37 @@
+{
+  "tools": [
+    {
+      "name": "discord",
+      "description": "Adapter discord; verbs: read, send, modify, cancel",
+      "verbs": [
+        { "name": "read", "requiresPreview": false },
+        { "name": "send", "requiresPreview": true },
+        { "name": "modify", "requiresPreview": true },
+        { "name": "cancel", "requiresPreview": true }
+      ],
+      "ceiling": "completes"
+    },
+    {
+      "name": "instagram",
+      "description": "Adapter instagram; verbs: read, send, modify, cancel",
+      "verbs": [
+        { "name": "read", "requiresPreview": false },
+        { "name": "send", "requiresPreview": true },
+        { "name": "modify", "requiresPreview": true },
+        { "name": "cancel", "requiresPreview": true }
+      ],
+      "ceiling": "completes"
+    },
+    {
+      "name": "messages",
+      "description": "Adapter messages; verbs: read, send, modify, cancel",
+      "verbs": [
+        { "name": "read", "requiresPreview": false },
+        { "name": "send", "requiresPreview": true },
+        { "name": "modify", "requiresPreview": true },
+        { "name": "cancel", "requiresPreview": true }
+      ],
+      "ceiling": "completes"
+    }
+  ]
+}
