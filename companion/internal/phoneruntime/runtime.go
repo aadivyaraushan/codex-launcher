@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +27,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agentbridge"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/localtrust"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
 )
@@ -68,15 +70,15 @@ type Health struct {
 }
 
 type Runtime struct {
-	config       Config
-	logger       *slog.Logger
-	now          func() time.Time
-	store        io.Closer
-	pairing      *pairing.Service
-	mobile       *transport.Server
-	flow         mobilesession.CapabilityFlow
-	inventory    capabilityruntime.Inventory
-	router       string
+	config    Config
+	logger    *slog.Logger
+	now       func() time.Time
+	store     io.Closer
+	pairing   *pairing.Service
+	mobile    *transport.Server
+	flow      mobilesession.CapabilityFlow
+	inventory capabilityruntime.Inventory
+	router    string
 	// routerStatus probes Android OpenAI broker GET /v1/broker/openai/status per Health call.
 	routerStatus func(context.Context) (keyed bool, err error)
 	mu           sync.Mutex
@@ -96,6 +98,17 @@ type Runtime struct {
 	brokerReady map[string]string
 	// beeperAccounts probes local/remote Beeper for health beeper= (no tokens stored).
 	beeperAccounts func(context.Context) ([]BeeperAccountStatus, error)
+	// bridge serves the on-phone OpenClaw agent's tool calls over
+	// /v1/agent-tools/*. It is nil when the production flow was injected
+	// (tests) rather than built in-house, since only the in-house build has
+	// a runner to hand it.
+	bridge *agentbridge.Bridge
+	// bridgeToken is the bearer token bridge checks on every request.
+	bridgeToken string
+	// bridgeTokenPath is where bridgeToken is persisted, so
+	// AgentBridgeTokenPath can hand it to Phase 3 without exposing the
+	// token itself.
+	bridgeTokenPath string
 }
 
 func (config Config) validate() error {
@@ -155,6 +168,9 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	inventory := capabilityruntime.Inventory{}
 	routerSource := "openai_broker"
 	var routerStatus func(context.Context) (bool, error)
+	bridgeTokenPath := filepath.Join(config.Root, "agentbridge-token")
+	var bridge *agentbridge.Bridge
+	var bridgeToken string
 	beeperAccounts := dependencies.BeeperAccounts
 	if beeperAccounts == nil {
 		beeperAccounts = openBeeperAccounts(logger)
@@ -186,6 +202,18 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		}
 		flow = service
 		inventory = inv
+
+		// The agent bridge needs a runner of its own to hand the OpenClaw
+		// agent, which only the in-house build above actually has — a flow
+		// injected by a test carries no runner to reuse, so bridge stays nil
+		// in that case (see the Runtime.bridge doc comment).
+		token, tokenErr := loadOrMintBridgeToken(bridgeTokenPath, dependencies.Random)
+		if tokenErr != nil {
+			_ = store.Close()
+			return nil, tokenErr
+		}
+		bridgeToken = token
+		bridge = agentbridge.New(inventory, inventory.Runner(), token, logger)
 	}
 	handler.EnableCapabilities(flow)
 
@@ -201,19 +229,22 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	}
 
 	rt := &Runtime{
-		config:       config,
-		logger:       logger,
-		now:          now,
-		store:        store,
-		pairing:      pairingService,
-		mobile:       mobileServer,
-		flow:         flow,
-		inventory:    inventory,
-		router:       routerSource,
-		routerStatus: routerStatus,
-		process:      "ready",
-		certificate:  certificate,
-		handler:      handler,
+		config:          config,
+		logger:          logger,
+		now:             now,
+		store:           store,
+		pairing:         pairingService,
+		mobile:          mobileServer,
+		flow:            flow,
+		inventory:       inventory,
+		router:          routerSource,
+		routerStatus:    routerStatus,
+		process:         "ready",
+		certificate:     certificate,
+		handler:         handler,
+		bridge:          bridge,
+		bridgeToken:     bridgeToken,
+		bridgeTokenPath: bridgeTokenPath,
 		operatorPin: localtrust.ExpectedOperator{
 			PackageName: "app.codexlauncher",
 			// Release (frozen owner) APK signer. Debug builds use c613e660… — accept both below.
@@ -227,6 +258,34 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	rt.beeperAccounts = beeperAccounts
 	logger.Info("[phone-runtime] opened", "mode", "standalone_phone", "root", config.Root, "listen", config.ListenAddress, "registered_count", len(inventory.Registered), "task_capable", false, "local_pair_acked", rt.localPairAcked, "broker_ready_count", len(rt.brokerReady), "beeper_probe", beeperAccounts != nil)
 	return rt, nil
+}
+
+// loadOrMintBridgeToken returns the agent-bridge bearer token at path,
+// minting one on first run. A file that exists with non-empty content wins
+// over minting a new one, so the token survives a restart — the OpenClaw
+// plugin (Phase 3) reads it once and expects it to keep working.
+func loadOrMintBridgeToken(path string, random io.Reader) (string, error) {
+	if data, err := os.ReadFile(path); err == nil {
+		if token := strings.TrimSpace(string(data)); token != "" {
+			return token, nil
+		}
+	}
+	raw := make([]byte, 32)
+	if _, err := io.ReadFull(random, raw); err != nil {
+		return "", fmt.Errorf("mint agent-bridge token: %w", err)
+	}
+	token := hex.EncodeToString(raw)
+	if err := os.WriteFile(path, []byte(token), 0o600); err != nil {
+		return "", fmt.Errorf("persist agent-bridge token: %w", err)
+	}
+	return token, nil
+}
+
+// AgentBridgeTokenPath returns where the agent-bridge bearer token is
+// persisted, so Phase 3 can read it without this package handing out the
+// token itself.
+func (runtime *Runtime) AgentBridgeTokenPath() string {
+	return runtime.bridgeTokenPath
 }
 
 func (runtime *Runtime) Close() error {
@@ -301,14 +360,14 @@ type localPairAttestRequest struct {
 }
 
 type localPairAttestResponse struct {
-	OfferID        string `json:"offerId"`
-	Secret         string `json:"secret"`
-	SessionSecret  string `json:"sessionSecret"`
-	HostPublicKey  string `json:"hostPublicKey"`
-	TLSPublicKey   string `json:"tlsPublicKey"`
-	Host           string `json:"host"`
-	Port           int    `json:"port"`
-	Protocol       int    `json:"protocol"`
+	OfferID       string `json:"offerId"`
+	Secret        string `json:"secret"`
+	SessionSecret string `json:"sessionSecret"`
+	HostPublicKey string `json:"hostPublicKey"`
+	TLSPublicKey  string `json:"tlsPublicKey"`
+	Host          string `json:"host"`
+	Port          int    `json:"port"`
+	Protocol      int    `json:"protocol"`
 }
 
 type localPairAckRequest struct {
@@ -650,6 +709,18 @@ func (runtime *Runtime) Serve(ctx context.Context) error {
 			}
 			writer.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(writer).Encode(map[string]string{"status": "ok"})
+			return
+		}
+		if strings.HasPrefix(request.URL.Path, "/v1/agent-tools/") {
+			if !runtime.loopbackOnly(request.RemoteAddr) {
+				http.Error(writer, "loopback only", http.StatusForbidden)
+				return
+			}
+			if runtime.bridge == nil {
+				http.Error(writer, "agent bridge unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			runtime.bridge.Handler().ServeHTTP(writer, request)
 			return
 		}
 		runtime.mobile.Handler().ServeHTTP(writer, request)

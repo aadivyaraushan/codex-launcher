@@ -184,6 +184,19 @@ type Inventory struct {
 	// does; AdapterIDs and Report below are the only doors the world outside
 	// this package gets onto it.
 	tel *verification.Telemetry
+
+	// runner is the same execution.Runner the flow itself was built with. It
+	// stays unexported for the same reason reg does; Runner below is the
+	// one door the world outside this package gets onto it.
+	runner *execution.Runner
+}
+
+// Runner returns the execution.Runner this inventory's flow was built with,
+// so a second door onto the registry — the phone-runtime agent bridge,
+// today — drives the exact same adapters and telemetry rather than a second,
+// disconnected runner that would never see real traffic.
+func (i Inventory) Runner() *execution.Runner {
+	return i.runner
 }
 
 // ApplyKillList switches adapters on and off to match a remote list. It is
@@ -474,6 +487,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	resolver := stage2.New(reg, contacts.NewGraph(time.Now), classes, manifest.PlatformAndroid)
 	runner := execution.New(reg)
 	inv.tel = runner.Telemetry()
+	inv.runner = runner
 
 	logger.Info("[capability-runtime] production flow ready",
 		"registered_count", len(inv.Registered),
