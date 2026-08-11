@@ -30,6 +30,10 @@ export interface ToolCallRequest {
   handle?: string;
   body?: string;
   fields?: Record<string, string>;
+  // Current turn's session id, omitempty. The bridge's exfiltration gate
+  // buckets calls by turn; a request without it falls into one shared
+  // always-suspicious bucket.
+  turnKey?: string;
 }
 
 export interface PreviewSummary {
@@ -51,6 +55,10 @@ export interface ToolCallResult {
   detail?: string;
   preview?: PreviewSummary;
   error?: CallError;
+  // Id of the approval gate raised for this call, omitempty; set together
+  // with error.code === "approval_required" so the owner's answer on the
+  // launcher can be correlated back to this call.
+  gateId?: string;
 }
 
 export interface BridgeClientConfig {

@@ -115,6 +115,58 @@ test("a failed call surfaces the bridge error to the model instead of throwing",
   assert.equal(result.details.ok, false);
 });
 
+test("every call is stamped with the current turn key", async () => {
+  const registered = [];
+  const calls = [];
+  registerOperatorTools(
+    { registerTool: (tool) => registered.push(tool) },
+    {
+      descriptors: fixtureDescriptors,
+      client: {
+        listTools: async () => ({ tools: [] }),
+        callTool: async (request) => {
+          calls.push(request);
+          return { ok: true, done: true, detail: "sent" };
+        },
+      },
+      turnKey: () => "session-abc",
+    },
+  );
+  await registered[0].execute("call-3", { verb: "send", subject: "Maya", body: "hi" });
+  // The bridge's exfiltration gate buckets reads and sends by turn; a call
+  // without the key falls into one shared always-suspicious bucket.
+  assert.equal(calls[0].turnKey, "session-abc");
+});
+
+test("an approval_required answer reads as waiting for the owner, not as a failure", async () => {
+  const registered = [];
+  registerOperatorTools(
+    { registerTool: (tool) => registered.push(tool) },
+    {
+      descriptors: fixtureDescriptors,
+      client: {
+        listTools: async () => ({ tools: [] }),
+        callTool: async () => ({
+          ok: false,
+          gateId: "gate-1",
+          preview: { headline: "Send “hi” to Maya on Instagram" },
+          error: { code: "approval_required", message: "first message to this recipient needs owner approval" },
+        }),
+      },
+    },
+  );
+  const result = await registered[0].execute("call-4", { verb: "send", subject: "Maya", body: "hi" });
+  const text = result.content[0].text;
+  // The model must learn: nothing happened, the owner was asked, do not
+  // retry — approval arrives out of band on the launcher's sheet.
+  assert.match(text, /owner/i);
+  assert.match(text, /approval/i);
+  assert.match(text, /Send “hi” to Maya on Instagram/);
+  assert.doesNotMatch(text, /^approval_required:/);
+  assert.equal(result.details.gateId, "gate-1");
+  assert.equal(result.details.ok, false);
+});
+
 // --- bridge client against a mock TLS bridge ---
 
 // Like the real runtime certificate: self-signed, CN only, no SAN — the

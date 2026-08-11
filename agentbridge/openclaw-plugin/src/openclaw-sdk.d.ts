@@ -5,6 +5,12 @@
 // cannot resolve it without this stub. It declares just enough of the
 // shape definePluginEntry needs to type-check register(api) below.
 declare module "openclaw/plugin-sdk/plugin-entry" {
+  // ctx passed to the factory form of registerTool (see PluginApi below).
+  // sessionId is the ephemeral session UUID, regenerated on /new and /reset.
+  export interface RegisterToolContext {
+    sessionId: string;
+  }
+
   export function definePluginEntry(definition: {
     id: string;
     name?: string;
