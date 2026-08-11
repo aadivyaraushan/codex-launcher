@@ -4,6 +4,9 @@
   "description": "OpenClaw plugin exposing the Operator capability adapters as agent tools via the on-device agent bridge.",
   "type": "module",
   "main": "dist/index.js",
+  "openclaw": {
+    "extensions": ["./dist/index.js"]
+  },
   "scripts": {
     "build": "tsc -p .",
     "test": "npm run build && node --test test/plugin.test.mjs",

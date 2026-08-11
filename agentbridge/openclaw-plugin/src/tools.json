@@ -1,37 +1,3669 @@
 {
   "tools": [
     {
+      "name": "airbnb",
+      "description": "Adapter airbnb; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on airbnb.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "alltrails",
+      "description": "Adapter alltrails; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on alltrails.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "american",
+      "description": "Adapter american; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on american.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "applemusic",
+      "description": "Adapter applemusic; verbs: play, write",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on applemusic.",
+            "enum": [
+              "play",
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "asana",
+      "description": "Adapter asana; verbs: write",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on asana.",
+            "enum": [
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "audible",
+      "description": "Adapter audible; verbs: read, play",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "play",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on audible.",
+            "enum": [
+              "read",
+              "play"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "booking",
+      "description": "Adapter booking; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on booking.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "cashapp",
+      "description": "Adapter cashapp; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on cashapp.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "chatgpt",
+      "description": "Adapter chatgpt; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on chatgpt.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "chipotle",
+      "description": "Adapter chipotle; verbs: order",
+      "verbs": [
+        {
+          "name": "order",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on chipotle.",
+            "enum": [
+              "order"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "chromecast",
+      "description": "Adapter chromecast; verbs: play",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on chromecast.",
+            "enum": [
+              "play"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "citymapper",
+      "description": "Adapter citymapper; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on citymapper.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "claude",
+      "description": "Adapter claude; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on claude.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "creditkarma",
+      "description": "Adapter creditkarma; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on creditkarma.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "delta",
+      "description": "Adapter delta; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on delta.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "name": "discord",
       "description": "Adapter discord; verbs: read, send, modify, cancel",
       "verbs": [
-        { "name": "read", "requiresPreview": false },
-        { "name": "send", "requiresPreview": true },
-        { "name": "modify", "requiresPreview": true },
-        { "name": "cancel", "requiresPreview": true }
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "send",
+          "requiresPreview": true
+        },
+        {
+          "name": "modify",
+          "requiresPreview": true
+        },
+        {
+          "name": "cancel",
+          "requiresPreview": true
+        }
       ],
-      "ceiling": "completes"
+      "ceiling": "completes",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on discord.",
+            "enum": [
+              "read",
+              "send",
+              "modify",
+              "cancel"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "doordash",
+      "description": "Adapter doordash; verbs: read, order",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "order",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on doordash.",
+            "enum": [
+              "read",
+              "order"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "dropbox",
+      "description": "Adapter dropbox; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on dropbox.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "duolingo",
+      "description": "Adapter duolingo; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on duolingo.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "ebay",
+      "description": "Adapter ebay; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on ebay.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "evernote",
+      "description": "Adapter evernote; verbs: write",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on evernote.",
+            "enum": [
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "expedia",
+      "description": "Adapter expedia; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on expedia.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "facebook",
+      "description": "Adapter facebook; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on facebook.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "fitbit",
+      "description": "Adapter fitbit; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on fitbit.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "goodreads",
+      "description": "Adapter goodreads; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on goodreads.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "googledocs",
+      "description": "Adapter googledocs; verbs: write",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on googledocs.",
+            "enum": [
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "googlekeep",
+      "description": "Adapter googlekeep; verbs: write",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on googlekeep.",
+            "enum": [
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "googlemaps",
+      "description": "Adapter googlemaps; verbs: read, write",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on googlemaps.",
+            "enum": [
+              "read",
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "googlephotos",
+      "description": "Adapter googlephotos; verbs: read, write",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on googlephotos.",
+            "enum": [
+              "read",
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "googlesheets",
+      "description": "Adapter googlesheets; verbs: write",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on googlesheets.",
+            "enum": [
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "googleslides",
+      "description": "Adapter googleslides; verbs: write",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on googleslides.",
+            "enum": [
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "grok",
+      "description": "Adapter grok; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on grok.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "grubhub",
+      "description": "Adapter grubhub; verbs: read, order",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "order",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on grubhub.",
+            "enum": [
+              "read",
+              "order"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
     },
     {
       "name": "instagram",
       "description": "Adapter instagram; verbs: read, send, modify, cancel",
       "verbs": [
-        { "name": "read", "requiresPreview": false },
-        { "name": "send", "requiresPreview": true },
-        { "name": "modify", "requiresPreview": true },
-        { "name": "cancel", "requiresPreview": true }
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "send",
+          "requiresPreview": true
+        },
+        {
+          "name": "modify",
+          "requiresPreview": true
+        },
+        {
+          "name": "cancel",
+          "requiresPreview": true
+        }
       ],
-      "ceiling": "completes"
+      "ceiling": "completes",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on instagram.",
+            "enum": [
+              "read",
+              "send",
+              "modify",
+              "cancel"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "kayak",
+      "description": "Adapter kayak; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on kayak.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "kindle",
+      "description": "Adapter kindle; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on kindle.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "linkedin",
+      "description": "Adapter linkedin; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on linkedin.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "lyft",
+      "description": "Adapter lyft; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on lyft.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "maps",
+      "description": "Adapter maps; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "completes",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on maps.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
     },
     {
       "name": "messages",
       "description": "Adapter messages; verbs: read, send, modify, cancel",
       "verbs": [
-        { "name": "read", "requiresPreview": false },
-        { "name": "send", "requiresPreview": true },
-        { "name": "modify", "requiresPreview": true },
-        { "name": "cancel", "requiresPreview": true }
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "send",
+          "requiresPreview": true
+        },
+        {
+          "name": "modify",
+          "requiresPreview": true
+        },
+        {
+          "name": "cancel",
+          "requiresPreview": true
+        }
       ],
-      "ceiling": "completes"
+      "ceiling": "completes",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on messages.",
+            "enum": [
+              "read",
+              "send",
+              "modify",
+              "cancel"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "messenger",
+      "description": "Adapter messenger; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on messenger.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "mstodo",
+      "description": "Adapter mstodo; verbs: write",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on mstodo.",
+            "enum": [
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "netflix",
+      "description": "Adapter netflix; verbs: play, write",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on netflix.",
+            "enum": [
+              "play",
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "nike",
+      "description": "Adapter nike; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on nike.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "notification_reply",
+      "description": "Adapter notification_reply; verbs: send",
+      "verbs": [
+        {
+          "name": "send",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "completes",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on notification_reply.",
+            "enum": [
+              "send"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "opentable",
+      "description": "Adapter opentable; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on opentable.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "pandora",
+      "description": "Adapter pandora; verbs: play, read",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on pandora.",
+            "enum": [
+              "play",
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "pinterest",
+      "description": "Adapter pinterest; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on pinterest.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "pocketcasts",
+      "description": "Adapter pocketcasts; verbs: play, read",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on pocketcasts.",
+            "enum": [
+              "play",
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "priceline",
+      "description": "Adapter priceline; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on priceline.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "resy",
+      "description": "Adapter resy; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on resy.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "sephora",
+      "description": "Adapter sephora; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on sephora.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "shazam",
+      "description": "Adapter shazam; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on shazam.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "signal",
+      "description": "Adapter signal; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on signal.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "soundcloud",
+      "description": "Adapter soundcloud; verbs: play, read",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on soundcloud.",
+            "enum": [
+              "play",
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "southwest",
+      "description": "Adapter southwest; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on southwest.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "spotify",
+      "description": "Adapter spotify; verbs: play, write",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on spotify.",
+            "enum": [
+              "play",
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "starbucks",
+      "description": "Adapter starbucks; verbs: order",
+      "verbs": [
+        {
+          "name": "order",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on starbucks.",
+            "enum": [
+              "order"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "stubhub",
+      "description": "Adapter stubhub; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on stubhub.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "target",
+      "description": "Adapter target; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on target.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "taskrabbit",
+      "description": "Adapter taskrabbit; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on taskrabbit.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "teams",
+      "description": "Adapter teams; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on teams.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "threads",
+      "description": "Adapter threads; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on threads.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "thumbtack",
+      "description": "Adapter thumbtack; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on thumbtack.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "tiktok",
+      "description": "Adapter tiktok; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on tiktok.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "trello",
+      "description": "Adapter trello; verbs: write",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on trello.",
+            "enum": [
+              "write"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "tripadvisor",
+      "description": "Adapter tripadvisor; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on tripadvisor.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "turbotax",
+      "description": "Adapter turbotax; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on turbotax.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "uber",
+      "description": "Adapter uber; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on uber.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "ubereats",
+      "description": "Adapter ubereats; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on ubereats.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "united",
+      "description": "Adapter united; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on united.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "venmo",
+      "description": "Adapter venmo; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on venmo.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "viator",
+      "description": "Adapter viator; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on viator.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "walmart",
+      "description": "Adapter walmart; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on walmart.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "wayfair",
+      "description": "Adapter wayfair; verbs: read",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on wayfair.",
+            "enum": [
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": "Adapter whatsapp; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on whatsapp.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "youtube",
+      "description": "Adapter youtube; verbs: play, read",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on youtube.",
+            "enum": [
+              "play",
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "youtubemusic",
+      "description": "Adapter youtubemusic; verbs: play, read",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "read",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on youtubemusic.",
+            "enum": [
+              "play",
+              "read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "zelle",
+      "description": "Adapter zelle; verbs: compose",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        }
+      ],
+      "ceiling": "hands_off",
+      "inputSchema": {
+        "properties": {
+          "body": {
+            "description": "Free-text body for the verb, when it takes one.",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Any additional named fields the verb needs.",
+            "type": "object"
+          },
+          "handle": {
+            "description": "Device-resolved handle (phone number, place id, URI).",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "type": "string"
+          },
+          "verb": {
+            "description": "Which verb to invoke on zelle.",
+            "enum": [
+              "compose"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verb"
+        ],
+        "type": "object"
+      }
     }
   ]
 }
