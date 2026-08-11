@@ -1,0 +1,8 @@
+{
+  "note": "events for any other sessionKey are not this agent's turn and produce nothing",
+  "events": [
+    {"state": "delta", "deltaText": "someone else", "runId": "run-x", "sessionKey": "agent:other:main", "seq": 1},
+    {"state": "final", "runId": "run-x", "sessionKey": "agent:other:main", "seq": 2}
+  ],
+  "want": []
+}

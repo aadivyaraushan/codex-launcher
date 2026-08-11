@@ -1,0 +1,9 @@
+{
+  "note": "a final with no prior deltas falls back to its cumulative message snapshot (a plain JSON string); no Working event is invented for a run whose first event is already terminal",
+  "events": [
+    {"state": "final", "message": "done!", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 1}
+  ],
+  "want": [
+    {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "done!", "startsTurn": false}
+  ]
+}

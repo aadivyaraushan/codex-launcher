@@ -1,0 +1,12 @@
+{
+  "note": "a replace delta discards the accumulated text and starts over from its own deltaText",
+  "events": [
+    {"state": "delta", "deltaText": "Hel", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 1},
+    {"state": "delta", "deltaText": "Hello there", "replace": true, "runId": "run-1", "sessionKey": "agent:main:main", "seq": 2},
+    {"state": "final", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 3}
+  ],
+  "want": [
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "Hello there", "startsTurn": false}
+  ]
+}

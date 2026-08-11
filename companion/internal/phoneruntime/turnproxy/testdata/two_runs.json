@@ -1,0 +1,15 @@
+{
+  "note": "two sequential runs: the second run's Working event must carry startsTurn again or the event pump suppresses it after the terminal reply",
+  "events": [
+    {"state": "delta", "deltaText": "first answer", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 1},
+    {"state": "final", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 2},
+    {"state": "delta", "deltaText": "second answer", "runId": "run-2", "sessionKey": "agent:main:main", "seq": 3},
+    {"state": "final", "runId": "run-2", "sessionKey": "agent:main:main", "seq": 4}
+  ],
+  "want": [
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "first answer", "startsTurn": false},
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "second answer", "startsTurn": false}
+  ]
+}

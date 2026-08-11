@@ -32,12 +32,24 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agentbridge"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agentbridge/gates"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/localtrust"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/turnproxy"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
+	"github.com/codex-launcher/codex-launcher/companion/internal/promptqueue"
 )
 
 // ListenAddress is the fixed loopback port for phone-runtime. A process already
 // holding it is an error; never scan for another port.
 const ListenAddress = "127.0.0.1:9443"
+
+// turnProxySessionKey is the OpenClaw Gateway's default single-agent session
+// (see saved-results/openclaw-gateway-protocol.md). The phone agent only
+// ever speaks for that one session, so there is nothing to pick per task.
+const turnProxySessionKey = "agent:main:main"
+
+// turnProxyRetryDelay is how long the connect-retry loop waits between a
+// failed gateway dial and the next attempt. A package var so tests can
+// shrink it instead of waiting out a real 5 seconds.
+var turnProxyRetryDelay = 5 * time.Second
 
 var (
 	ErrInvalidConfig      = errors.New("phone runtime configuration is invalid")
@@ -49,6 +61,13 @@ type Config struct {
 	Root          string
 	DisplayName   string
 	ListenAddress string
+	// GatewayURL and GatewayTokenPath configure the OpenClaw Gateway
+	// connection that makes the runtime task capable. GatewayTokenPath is
+	// a path to the bearer token, never the token itself — it must never
+	// live in this config or in a log line. Leaving both empty is valid
+	// (Mac dev, and most existing tests); setting only one is not.
+	GatewayURL       string
+	GatewayTokenPath string
 }
 
 type Dependencies struct {
@@ -58,6 +77,10 @@ type Dependencies struct {
 	Flow   mobilesession.CapabilityFlow
 	// BeeperAccounts probes Beeper /v1/accounts for health beeper= (tests inject; prod uses openBeeperAccounts).
 	BeeperAccounts func(context.Context) ([]BeeperAccountStatus, error)
+	// TurnProxyConnect dials the OpenClaw Gateway. Nil means real: Open
+	// wires up an adapter around turnproxy.Connect. Tests inject a stub to
+	// avoid a live websocket.
+	TurnProxyConnect func(context.Context, turnproxy.Config) (TurnSource, error)
 }
 
 type Health struct {
@@ -116,6 +139,12 @@ type Runtime struct {
 	// only, no key) is exported in PEM form, so AgentBridgeCertPath can hand
 	// it to Phase 3 for certificate pinning.
 	bridgeCertPath string
+	// turnSource is the deferred TurnSource handed to the mobile handler
+	// when a gateway is configured; nil when running without one.
+	turnSource *deferredTurnSource
+	// turnProxyCancel stops the connect-retry goroutine; Close calls it.
+	// Nil when no gateway is configured, so there is nothing to stop.
+	turnProxyCancel context.CancelFunc
 }
 
 func (config Config) validate() error {
@@ -126,6 +155,9 @@ func (config Config) validate() error {
 		return ErrInvalidConfig
 	}
 	if config.ListenAddress == "" {
+		return ErrInvalidConfig
+	}
+	if (config.GatewayURL == "") != (config.GatewayTokenPath == "") {
 		return ErrInvalidConfig
 	}
 	return nil
@@ -165,7 +197,18 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		return nil, err
 	}
 	journal := eventjournal.New(store, logger)
-	handler, err := mobilesession.NewWithLogger(ctx, config.DisplayName, projectService, journal, logger, now)
+	var turnSource *deferredTurnSource
+	var handler *mobilesession.Handler
+	if config.GatewayURL != "" {
+		// The handler is built once, right here; the gateway websocket is
+		// dialed afterward (below, once the rest of Open has wired up gate
+		// approvals) and may take several retries to connect. turnSource
+		// stands in until then so the handler never waits on the network.
+		turnSource = newDeferredTurnSource()
+		handler, err = mobilesession.NewWithTaskSourceAndQueue(ctx, config.DisplayName, projectService, journal, turnSource, promptqueue.New(store, logger), logger, now)
+	} else {
+		handler, err = mobilesession.NewWithLogger(ctx, config.DisplayName, projectService, journal, logger, now)
+	}
 	if err != nil {
 		_ = store.Close()
 		return nil, err
@@ -243,13 +286,30 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	}
 	handler.EnableCapabilities(flow)
 
+	var turnProxyCancel context.CancelFunc
+	if turnSource != nil {
+		connect := dependencies.TurnProxyConnect
+		if connect == nil {
+			connect = connectTurnProxy
+		}
+		var connectCtx context.Context
+		connectCtx, turnProxyCancel = context.WithCancel(context.Background())
+		go runTurnProxyConnect(connectCtx, connect, config.GatewayURL, config.GatewayTokenPath, turnSource, handler, logger)
+	}
+
 	mobileServer, err := transport.NewServer(pairingService, handler.Handle, logger)
 	if err != nil {
+		if turnProxyCancel != nil {
+			turnProxyCancel()
+		}
 		_ = store.Close()
 		return nil, err
 	}
 	certificate, err := pairingService.TLSCertificate(now())
 	if err != nil {
+		if turnProxyCancel != nil {
+			turnProxyCancel()
+		}
 		_ = store.Close()
 		return nil, err
 	}
@@ -259,6 +319,9 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	// the runtime is currently serving, not a stale cert from a prior run.
 	bridgeCertPath := filepath.Join(config.Root, "agentbridge-cert.pem")
 	if err := writeAgentBridgeCert(bridgeCertPath, certificate); err != nil {
+		if turnProxyCancel != nil {
+			turnProxyCancel()
+		}
 		_ = store.Close()
 		return nil, err
 	}
@@ -281,6 +344,8 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		bridgeToken:     bridgeToken,
 		bridgeTokenPath: bridgeTokenPath,
 		bridgeCertPath:  bridgeCertPath,
+		turnSource:      turnSource,
+		turnProxyCancel: turnProxyCancel,
 		operatorPin: localtrust.ExpectedOperator{
 			PackageName: "app.codexlauncher",
 			// Release (frozen owner) APK signer. Debug builds use c613e660… — accept both below.
@@ -292,8 +357,69 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	}
 	rt.brokerReady = loadBrokerReady(config.Root)
 	rt.beeperAccounts = beeperAccounts
-	logger.Info("[phone-runtime] opened", "mode", "standalone_phone", "root", config.Root, "listen", config.ListenAddress, "registered_count", len(inventory.Registered), "task_capable", false, "local_pair_acked", rt.localPairAcked, "broker_ready_count", len(rt.brokerReady), "beeper_probe", beeperAccounts != nil)
+	logger.Info("[phone-runtime] opened", "mode", "standalone_phone", "root", config.Root, "listen", config.ListenAddress, "registered_count", len(inventory.Registered), "task_capable", false, "local_pair_acked", rt.localPairAcked, "broker_ready_count", len(rt.brokerReady), "beeper_probe", beeperAccounts != nil, "gateway_configured", turnSource != nil)
 	return rt, nil
+}
+
+// connectTurnProxy is the production TurnProxyConnect: it dials the real
+// gateway and returns its *turnproxy.Source, which already satisfies
+// TurnSource.
+func connectTurnProxy(ctx context.Context, cfg turnproxy.Config) (TurnSource, error) {
+	return turnproxy.Connect(ctx, cfg)
+}
+
+// runTurnProxyConnect dials the gateway and retries until it succeeds or
+// ctx is canceled (by Runtime.Close). The token is read fresh from disk on
+// every attempt rather than once up front, so rotating the file without
+// restarting the runtime still works the next time it is read — and a
+// token file that is briefly missing or unreadable is just another
+// retryable failure, not a fatal one.
+func runTurnProxyConnect(ctx context.Context, connect func(context.Context, turnproxy.Config) (TurnSource, error), gatewayURL, tokenPath string, deferred *deferredTurnSource, publisher turnproxy.EventPublisher, logger *slog.Logger) {
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		raw, err := os.ReadFile(tokenPath)
+		if err != nil {
+			logger.Error("[phone-runtime] turn proxy token unreadable", "error", err.Error())
+			if !waitOrCanceled(ctx, turnProxyRetryDelay) {
+				return
+			}
+			continue
+		}
+		cfg := turnproxy.Config{
+			URL:        gatewayURL,
+			Token:      strings.TrimSpace(string(raw)),
+			TaskID:     agentGateThreadID,
+			SessionKey: turnProxySessionKey,
+			Publisher:  publisher,
+			Logger:     logger,
+		}
+		source, err := connect(ctx, cfg)
+		if err != nil {
+			logger.Error("[phone-runtime] turn proxy connect failed", "error", err.Error())
+			if !waitOrCanceled(ctx, turnProxyRetryDelay) {
+				return
+			}
+			continue
+		}
+		deferred.set(source)
+		logger.Info("[phone-runtime] turn proxy connected")
+		return
+	}
+}
+
+// waitOrCanceled sleeps for delay, returning false early (without sleeping
+// out the rest of delay) if ctx is canceled first.
+func waitOrCanceled(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 // loadOrMintBridgeToken returns the agent-bridge bearer token at path,
@@ -349,10 +475,23 @@ func (runtime *Runtime) Close() error {
 	if runtime == nil || runtime.store == nil {
 		return nil
 	}
+	if runtime.turnProxyCancel != nil {
+		runtime.turnProxyCancel()
+	}
+	if runtime.turnSource != nil {
+		if err := runtime.turnSource.Close(); err != nil {
+			runtime.logger.Error("[phone-runtime] turn proxy close failed", "error", err.Error())
+		}
+	}
 	return runtime.store.Close()
 }
 
-func (runtime *Runtime) TaskCapable() bool { return false }
+// TaskCapable reports whether the runtime has a live gateway connection to
+// drive turns on. False both when no gateway is configured (Mac dev) and
+// when one is configured but the connect-retry loop hasn't succeeded yet.
+func (runtime *Runtime) TaskCapable() bool {
+	return runtime != nil && runtime.turnSource != nil && runtime.turnSource.connected()
+}
 
 func (runtime *Runtime) CapabilityCapable() bool {
 	return runtime != nil && runtime.flow != nil
@@ -662,7 +801,7 @@ func (runtime *Runtime) Health() Health {
 		Credentials:   credentials,
 		Adapters:      adapters,
 		ListenAddress: listen,
-		TaskCapable:   false,
+		TaskCapable:   runtime.TaskCapable(),
 		LocalPair:     localPair,
 	}
 }
