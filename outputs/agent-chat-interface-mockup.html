@@ -1,0 +1,148 @@
+<meta charset="utf-8">
+<title>Operator — everything is the agent talking</title>
+<style>
+  :root{
+    --bg:#111210; --surface:#1A1B18; --text:#F0EEE8; --muted:#969990;
+    --hairline:#30312D; --orange:#F06B3F; --success:#75A987; --warn:#D49A3B;
+  }
+  body{background:#0B0C0A;color:var(--text);font-family:"Instrument Sans",system-ui,-apple-system,sans-serif;
+       margin:0;padding:32px 20px;display:flex;flex-direction:column;align-items:center;gap:28px;}
+  h1{font-size:18px;font-weight:600;margin:0}
+  .sub{color:var(--muted);font-size:13px;max-width:720px;text-align:center;line-height:1.5;margin:0}
+  .row{display:flex;gap:24px;flex-wrap:wrap;justify-content:center}
+  .phone{width:300px;background:var(--bg);border:1px solid var(--hairline);border-radius:22px;
+         padding:18px 16px 14px;display:flex;flex-direction:column;height:560px;box-sizing:border-box}
+  .label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+         text-align:center;margin-top:10px;font-family:"JetBrains Mono",monospace}
+  .statusbar{display:flex;justify-content:space-between;font-family:"JetBrains Mono",monospace;
+             font-size:10px;color:var(--muted);margin-bottom:14px}
+  .threads{display:flex;flex-direction:column;flex:1;overflow:hidden}
+  .thread{padding:12px 4px;border-bottom:1px solid var(--hairline)}
+  .thread .t{font-size:15px;font-weight:500;display:flex;align-items:center;gap:8px}
+  .thread .m{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.45}
+  .thread .m b{color:var(--text);font-weight:500}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .dot.working{background:var(--orange)}
+  .dot.needs{background:none;border:1.5px solid var(--warn);transform:rotate(45deg);border-radius:1px}
+  .dot.quiet{background:none;border:1.5px solid var(--muted)}
+  .composer{margin-top:auto;border:1px solid var(--hairline);background:var(--surface);
+            border-radius:8px;padding:11px 12px;font-size:14px;color:var(--muted)}
+  .chat{display:flex;flex-direction:column;gap:10px;flex:1;overflow:hidden;font-size:13.5px;line-height:1.5}
+  .agent{max-width:92%}
+  .agent .who{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--muted);margin-bottom:3px}
+  .agent .body{background:var(--surface);border:1px solid var(--hairline);border-radius:4px 10px 10px 10px;padding:9px 11px}
+  .me{align-self:flex-end;max-width:85%;background:none;border:1px solid var(--hairline);
+      border-radius:10px 4px 10px 10px;padding:9px 11px;color:var(--text)}
+  .tool{font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--muted);padding:0 2px}
+  .tool .ok{color:var(--success)}
+  .card{border:1px solid var(--hairline);border-left:2px solid var(--warn);border-radius:6px;
+        padding:8px 10px;margin-top:7px;font-size:13px;color:var(--text);background:var(--bg)}
+  .card .from{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--muted);margin-bottom:3px}
+  .chips{display:flex;gap:8px;margin-top:8px}
+  .chip{border:1px solid var(--hairline);border-radius:6px;padding:7px 12px;font-size:13px;color:var(--text)}
+  .chip.go{border-color:var(--orange);color:var(--orange);font-weight:600}
+  .back{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--muted);margin-bottom:12px}
+</style>
+
+<h1>Everything is the agent talking</h1>
+<p class="sub">No sheets, no alerts, no capability screens. The whole launcher is threads of
+conversation with your agent. It talks first when something happens; anything it needs from you,
+it asks as a message and you answer as a message.</p>
+
+<div class="row">
+
+  <!-- Screen 1: Home = threads -->
+  <div>
+    <div class="phone">
+      <div class="statusbar"><span>09:41</span><span>agent running · 14 tools</span></div>
+      <div class="threads">
+        <div class="thread">
+          <div class="t"><span class="dot needs"></span>Sarah — Instagram</div>
+          <div class="m"><b>Agent:</b> She asked about Friday. I drafted a reply — OK to send?</div>
+        </div>
+        <div class="thread">
+          <div class="t"><span class="dot working"></span>Plan the Goa trip</div>
+          <div class="m"><b>Agent:</b> Comparing flights for Dec 14–18, two options so far…</div>
+        </div>
+        <div class="thread">
+          <div class="t"><span class="dot quiet"></span>Morning brief</div>
+          <div class="m"><b>Agent:</b> 3 things today — dentist 2pm, Dan's reply, rent due.</div>
+        </div>
+        <div class="thread">
+          <div class="t"><span class="dot working"></span>Fix the login bug</div>
+          <div class="m"><b>Agent:</b> Tests pass — writing up the diff now.</div>
+        </div>
+        <div class="thread">
+          <div class="t"><span class="dot quiet"></span>Clean up my Drive</div>
+          <div class="m"><b>You:</b> yeah archive everything older than 2024</div>
+        </div>
+      </div>
+      <div class="chips" style="margin-bottom:10px">
+        <span class="chip">+ on phone</span><span class="chip">+ on computer</span>
+      </div>
+      <div class="composer">Ask for anything…</div>
+    </div>
+    <div class="label">one list, no phone/computer split · two new-task buttons</div>
+  </div>
+
+  <!-- Screen 2: inside a thread, agent-initiated -->
+  <div>
+    <div class="phone">
+      <div class="back">← Sarah — Instagram</div>
+      <div class="chat">
+        <div class="tool">instagram · new message 09:38</div>
+        <div class="agent">
+          <div class="who">agent</div>
+          <div class="body">Sarah asked: <i>“are we still on for friday?”</i><br>
+          You're free after 6. My draft: <b>“Yes! 7pm at the usual place?”</b> — send it?</div>
+        </div>
+        <div class="chips"><span class="chip go">Send it</span><span class="chip">Change it</span></div>
+        <div class="me">make it 7:30</div>
+        <div class="agent">
+          <div class="who">agent</div>
+          <div class="body">Sent “Yes! 7:30 at the usual place?”</div>
+        </div>
+        <div class="tool">beeper.send → instagram/sarah <span class="ok">✓ delivered</span></div>
+      </div>
+      <div class="composer">Message the agent…</div>
+    </div>
+    <div class="label">agent talks first · you answer in chat</div>
+  </div>
+
+  <!-- Screen 3: approval gate as a message -->
+  <div>
+    <div class="phone">
+      <div class="back">← Send Dan the itinerary</div>
+      <div class="chat">
+        <div class="me">send dan the goa plan</div>
+        <div class="tool">gdrive.read → “Goa itinerary” <span class="ok">✓</span></div>
+        <div class="agent">
+          <div class="who">agent · needs your ok</div>
+          <div class="body">This pulls your Drive doc into a message, so I'm checking first.
+            Going to Dan on WhatsApp:
+            <div class="card">
+              <div class="from">→ dan · whatsapp</div>
+              “Here's the Goa plan: Dec 14–18, flights AI-683…” + itinerary.pdf
+            </div>
+          </div>
+        </div>
+        <div class="chips"><span class="chip go">Go ahead</span><span class="chip">Don't</span></div>
+        <div class="me">go ahead</div>
+        <div class="agent">
+          <div class="who">agent</div>
+          <div class="body">Sent. I'll tell you when he replies.</div>
+        </div>
+      </div>
+      <div class="composer">Message the agent…</div>
+    </div>
+    <div class="label">the old approval sheet = just a message</div>
+  </div>
+
+</div>
+
+<p class="sub" style="max-width:760px">
+<b>What dies:</b> the approval sheet, the question sheet, the capability sheet, “one tap left”
+as a separate screen state.&nbsp; <b>What they become:</b> agent messages in the thread, with the
+preview inline; you reply by tapping a suggested reply or just typing.&nbsp;
+<b>What stays:</b> Android's own permission screens (notification access), the app drawer,
+the tiny state dots on thread rows so a glance still shows what needs you.</p>
