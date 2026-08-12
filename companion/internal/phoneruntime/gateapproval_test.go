@@ -105,6 +105,9 @@ func TestGateRaisedRegistersApprovalAndTellsPhone(t *testing.T) {
 	if request.Reason == "" {
 		t.Fatal("the owner's sheet must say what the agent is asking to do")
 	}
+	if request.ComputerName == "" || request.ProjectLabel == "" {
+		t.Fatalf("decision_page requires non-empty computerName/projectLabel, got computer=%q project=%q", request.ComputerName, request.ProjectLabel)
+	}
 	wantDecisions := []decisions.Decision{decisions.DecisionAcceptOnce, decisions.DecisionDecline}
 	if len(request.AllowedDecisions) != len(wantDecisions) {
 		t.Fatalf("allowed decisions = %v, want exactly accept and decline — a gate releases once, never for a whole session", request.AllowedDecisions)
