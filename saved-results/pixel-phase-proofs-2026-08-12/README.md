@@ -5,9 +5,9 @@ Physical Pixel 9 serial **`4B230DLAQ001Z5`** only.
 | Phase | Result | Evidence |
 |------|--------|----------|
 | 3 OpenClaw tools | **PASS** | `phase3-openclaw-tools-pixel.md` |
-| 4 Hard gates | **PASS** | `phase4-hard-gates-on-pixel.md` — go ahead does not release; Approve once does (owner Messages self) |
+| 4 Hard gates | **PASS** | `phase4-hard-gates.md` / `phase4-hard-gates-on-pixel.md` — go ahead does not release; Approve once does (owner Messages self) |
 | 5 Turn proxy | **PASS** | `phase5-turnproxy-pong.md` |
-| 6 Home/thread + Approve | **PASS** | `phase6-home-thread-pixel.md` + `phase6-approve-sheet-on-pixel.md` |
+| 6 Home/thread + Approve | **PASS** | `phase6-home-thread-pixel.md` + `phase6-home-thread-gate.md` / `phase6-approve-sheet-on-pixel.md` |
 | 7 Beeper | **DEFERRED** | `phase7-beeper-pixel.md` |
 | 9 Boot persistence | **PARTIAL PASS** | `phase9-boot-persistence-pixel.md` + `phase9-soft-boot-pixel.md` (soft restore; no full reboot) |
 

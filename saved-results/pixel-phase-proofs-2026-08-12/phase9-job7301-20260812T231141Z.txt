@@ -1,0 +1,15 @@
+35446:  JOB #u0a451/7301: 8713ce6 com.termux/.app.api.JobSchedulerAPI$JobSchedulerService
+35447:    u0a451 tag=*job*r/com.termux/.app.api.JobSchedulerAPI$JobSchedulerService
+35450:      Service: com.termux/.app.api.JobSchedulerAPI$JobSchedulerService
+35456:      Extras: {com.termux.api.jobscheduler_script_path=/data/data/com.termux/files/usr/libexec/operator-runtime-watchdog}
+36118:  #u0a451/7301 from u0a451-> Num Required Constraints: 0, lifecycle=[300836213, (0%), 345836213]
+36764:    JobStatus{8713ce6 #u0a451/7301 com.termux/.app.api.JobSchedulerAPI$JobSchedulerService u=0 s=10451 TIME=+7m34s748ms:+22m34s748ms PERIODIC PERSISTED satisfied:0x3600000 unsatisfied:0x80000000}: 323336213
+37288:    JobStatus{db47d81 androidx.work.systemjobscheduler:u0a133/16812 #TikTokWorker#com.android.incallui.callscreen.impl.recording.retention.CallScreenRecordingsDeletionWorker#@androidx.work.systemjobscheduler@com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService u=0 s=10133 TIME=+22h19m28s630ms:none satisfied:0x3600000 unsatisfied:0x80000000}: 409730107
+38156:  ##u0a451/7301 from u0a451: Delay=+7m34s709ms, Deadline=+22m34s709ms
+39805:    ##u0a451/7301 from u0a451 active, exempted: com.termux [RUN_ANY_IN_BACKGROUND allowed] RUNNABLE
+40913:    ##u0a451/7301 from u0a451: com.termux RUNNABLE WHITELISTED
+42070:    ##u0a451/7301 from u0a451
+44904:        259730103 -> 259730136 (33), 1 bg jobs.
+46906:  0-ComponentInfo{com.termux/com.termux.app.api.JobSchedulerAPI$JobSchedulerService}: com.termux
+48518:        -7m08s457ms START-P: #u0a451/7301 com.termux/.app.api.JobSchedulerAPI$JobSchedulerService
+48520:        -7m08s430ms  STOP-P: #u0a451/7301 com.termux/.app.api.JobSchedulerAPI$JobSchedulerService onStartJob returned false

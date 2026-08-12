@@ -1,0 +1,8 @@
+OK messages:to 200 {"ok":false,"preview":{"headline":"Send a Google Messages message to +15551230999","lines":["Network: Google Messages","Conversation: +15551230999","phase4-gate-test-do-not-deliver"],"confirm":"Send message"},"error":{"code":"approval_required","message":"first message to this recipient needs owner approval"},"gateId":"gate-5b95ec4a2c110c9b003b919c634ac490"}
+
+OK messages:recipient 200 {"ok":false,"preview":{"headline":"Send a Google Messages message to +15551230999","lines":["Network: Google Messages","Conversation: +15551230999","phase4-gate-test-do-not-deliver"],"confirm":"Send message"},"error":{"code":"approval_required","message":"first message to this recipient needs owner approval"},"gateId":"gate-e265bbfac635c0a7e07d350c4bde2ea5"}
+
+OK messages:handle 200 {"ok":false,"preview":{"headline":"Send a Google Messages message to +15551230999","lines":["Network: Google Messages","Conversation: +15551230999","phase4-gate-test-do-not-deliver"],"confirm":"Send message"},"error":{"code":"approval_required","message":"first message to this recipient needs owner approval"},"gateId":"gate-7bcf5208ff268e78342cf0e8fbf84b8b"}
+
+ERR discord:to HTTP Error 502: Bad Gateway {"ok":false,"error":{"code":"adapter_failed","message":"capability needs clarification: I couldn't find a Discord conversation matching __operator_phase4_never_contacted_999__. Which conversation did you mean?"}}
+

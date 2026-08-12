@@ -1,0 +1,1 @@
+Send clickable=false bounds=[901,609][1027,735]
