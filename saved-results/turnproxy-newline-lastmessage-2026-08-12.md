@@ -19,7 +19,7 @@ Pixel overnight proofs (PR #8, `saved-results/pixel-phase-proofs-2026-08-12/`) s
 ## Result
 
 - Red tests first: mapper kept `"{\n  \"ok\": true\n}"`; refresh failed with `invalid_safe_projection`.
-- Green: `go test ./internal/phoneruntime/turnproxy/ ./internal/app/mobilesession/ ./internal/codex/taskstate/ ./internal/phoneruntime/ -count=2` passed.
+- Green: `go test ./internal/phoneruntime/turnproxy/ ./internal/app/mobilesession/ ./internal/codex/taskstate/ ./internal/phoneruntime/ -count=2` passed. Publish-path contract tests lock that a raw newline summary still returns `mobile task event is invalid` (task stays Working) and that the scrubbed form publishes and leaves Working.
 - Production Pixel software-attest path was not touched.
 
 ## How to re-prove on device
