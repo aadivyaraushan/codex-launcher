@@ -1,0 +1,26 @@
+{
+  "account_count": 4,
+  "connected_count": 4,
+  "accounts": [
+    {
+      "network": "Beeper",
+      "status": "connected",
+      "id_len": 6
+    },
+    {
+      "network": "Discord",
+      "status": "connected",
+      "id_len": 9
+    },
+    {
+      "network": "Google Messages",
+      "status": "connected",
+      "id_len": 9
+    },
+    {
+      "network": "Instagram",
+      "status": "connected",
+      "id_len": 11
+    }
+  ]
+}

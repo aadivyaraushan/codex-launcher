@@ -8,7 +8,7 @@ Physical Pixel 9 serial **`4B230DLAQ001Z5`** only.
 | 4 Hard gates | **PASS** | `phase4-hard-gates.md` / `phase4-hard-gates-on-pixel.md` — go ahead does not release; Approve once does (owner Messages self) |
 | 5 Turn proxy | **PASS** | `phase5-turnproxy-pong.md` |
 | 6 Home/thread + Approve | **PASS** | `phase6-home-thread-pixel.md` + `phase6-home-thread-gate.md` / `phase6-approve-sheet-on-pixel.md` |
-| 7 Beeper | **PARTIAL PASS** | `phase7-beeper-pixel.md` — connected+tools + screenshots + phone `/v1/ws`→`ready`; event→agent deferred |
+| 7 Beeper | **PASS** (scoped) | `phase7-beeper-pixel.md` — connected + 4 accounts + Messages `approval_required`→Deny; inbound event trigger still open |
 | 9 Boot persistence | **PARTIAL PASS** | `phase9-boot-persistence-pixel.md` + `phase9-soft-boot-pixel.md` (soft restore; no full reboot) |
 
 **Phase 5 quote:** `Agent: pong` (`phase5-after-reply-20260812T230351Z.xml` / `phase5-pass-home-agent-pong.png`).
@@ -19,4 +19,4 @@ Physical Pixel 9 serial **`4B230DLAQ001Z5`** only.
 
 **Phase 4/6 Approve:** PASS on owner Messages self-send (see phase4/phase6 approve notes).
 
-**Phase 7 overnight (23:30–23:33Z):** bridge `beeper=connected` + `taskCapable`/`localPair`, 4 accounts, messaging tools with alias fields, Operator home screenshots, phone-local `/v1/ws` → `ready`; event→agent watcher not armed (`BeeperBaseURL` unset in CLI/runit).
+**Phase 7 overnight (23:33–23:35Z):** bridge `beeper=connected` + 4 connected accounts + Messages send→`approval_required`→UI **Deny** (known_recipients=0). Inbound Beeper event→agent still open (blocks deleting overnight babysitting with Phase 9 full reboot).

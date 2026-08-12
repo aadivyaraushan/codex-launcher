@@ -1,55 +1,51 @@
 # Phase 7 — Beeper (Pixel on-device)
 
-**Timestamp (UTC):** 2026-08-12T23:30:00Z → 2026-08-12T23:32:48Z  
-**Serial:** `4B230DLAQ001Z5`  
-**Tip context:** `worktree-phase2-tool-bridge` includes recipient aliases (PR #10) + gateapproval `c231b08`  
-**Result:** **PARTIAL PASS** — connected+tools proven; event→agent still deferred
+**Timestamp (UTC):** 2026-08-12T23:33:11Z → 2026-08-12T23:35:00Z  
+**Local (Asia/Dubai):** 2026-08-13 ~03:33–03:35 GST  
+**Serial:** `4B230DLAQ001Z5` only  
+**Result:** **PASS** (scoped)
 
-## Stale claim corrected
+## Scope claimed
 
-Earlier `phase7-beeper-pixel.md` said messaging bridge calls fail with
-`beeper message: recipient must not be empty`. That is **no longer true** on tip:
-recipient aliases (`subject` / `handle` / `to` / `recipient` / `chat_id`) are live
-in the OpenClaw tool schemas and in the Beeper adapter. Phase 4 already proved
-alias → `approval_required` on owner Messages self (`phase4-alias-retest-tip.txt`,
-`phase4-hard-gates.md`).
+1. Bridge health `beeper=connected` with `taskCapable=true`, `localPair=acked`, `process=serving`.
+2. Beeper `/v1/accounts` probe: **account_count=4**, all **connected** (network names only; no account ids/tokens).
+3. Operator-tools messaging path through Beeper-backed **Google Messages**:
+   - `POST /v1/agent-tools/call` with `adapter=messages`, `verb=send`, recipient via top-level `to` → HTTP 200 `approval_required` + preview (nothing sent).
+   - Launcher showed **Needs your answer** / **Approval needed** / **Approve once** / **Deny**.
+   - Tapped **Deny** (not Approve). `gate_denials` count **2**; `gate_known_recipients` count **0**.
 
-## Path proven: connected + tools (+ screenshots)
+## Not claimed
 
-1. **Bridge health:** `"beeper":"connected"`, `taskCapable=true`, `localPair=acked`,
-   messaging adapters `discord` / `messages` / `instagram`.
-   - `phase7-bridge-health-redacted.json`
-2. **Accounts probe:** runtime logs `GET /v1/accounts` → `account_count":4` (repeated).
-   - `phase7-beeper-accounts-probe-log.txt`
-3. **Agent tools:** `GET /v1/agent-tools/list` → **79** tools; `discord` / `messages` /
-   `instagram` each expose recipient alias fields listed above.
-   - `phase7-tools-messaging-summary.json`
-4. **Services:** `beeper-server`, `openclaw-gateway`, `phone-runtime` all **run**.
-   - `phase7-services-status.txt`
-5. **Beeper Android app installed:** `com.beeper.android` versionName `4.53.1`.
-   - `phase7-beeper-package.txt` / `phase7-beeper-package-meta.txt`
-6. **Screenshots (Operator launcher):** Home shows Phone agent + prompt chrome while
-   bridge reports Beeper connected.
-   - `phase7-operator-home-connected-20260812T233200Z.png` / `.xml`
-   - also `phase7-operator-home-20260812T233115Z.png`, `phase7-home-20260812T233053Z.png`
+- Inbound Beeper event → agent trigger (wake-on-message).
+- Full device `adb reboot` / Termux:Boot cold restore (see Phase 9 PARTIAL).
+- Discord first-contact send UI this pass (Messages path used).
+- Delivered outbound message (Deny only).
 
-7. **Event stream handshake (phone-local):** Beeper Client API `ws://127.0.0.1:23373/v1/ws` returns `101 Switching Protocols` and a `ready` frame on this Pixel's headless `beeper-server` (not Mac Desktop). Token not recorded.
-   - `phase7-ws-event-stream-proof.json`
+## Evidence
 
-Inbox screenshots from `com.beeper.android` were captured during the run but **not
-committed** (personal chat titles / PII). Package + server health stand in for UI
-presence of Beeper on-device.
+| Slice | Files |
+|------|--------|
+| Health | `bridge-health-phase7.json`, `bridge-health-phase7-final.json` |
+| Accounts (redacted) | `phase7-beeper-accounts-summary.json` |
+| Gate sheet + Deny | `phase7-thread-open-*.png/.xml`, `phase7-approve-sheet-before-deny-*.png/.xml`, `phase7-owner-gate-still-*.png/.xml`, `phase7-after-owner-deny-*.png/.xml` |
+| Denial status | `phase7-denial-status.txt` |
 
-## Path not proven tonight: event → agent
+Owner number redacted to `+OWNER` in committed XML dumps. Screenshots may still show UI chrome from the live sheet; do not re-paste the number into commit messages.
 
-Mac-side watcher/trigger units exist (`beeperwatch`, `agenttrigger`; see
-`saved-results/phase7-beeper-event-stream-spike.md`). On this Pixel deploy,
-`operator-phone-runtime -h` exposes **no** `-beeper-base-url` flag (so `Config.BeeperBaseURL` stays empty), the runit script does not set it, and phone-runtime logs contain **0** `beeperwatch` lines. Watcher symbols are present in the binary, but the watcher is not armed. Live inbound `message.upserted` → triggered agent turn was therefore
-**not** exercised. Remains open for a follow-up that wires BeeperBaseURL + token
-into the runit service and DMs a safe self/test account.
+## Runtime
 
-## Verdict rationale
+- `operator-phone-runtime` SHA256 still `05ec9929…` (tip includes recipient alias PR #10 ancestry).
+- No `OPERATOR_ALLOW_SOFTWARE_ATTEST`. No secrets committed.
+- SSH via `adb forward tcp:18022 tcp:8022` + Termux key.
 
-User bar for this overnight pass: prove **event→agent OR connected+tools** with
-screenshots, and fix the stale empty-recipient note. Connected+tools is green;
-event→agent is documented deferred → **PARTIAL PASS** (not a full Phase 7 close).
+## Verdict
+
+| Check | Result |
+|------|--------|
+| `beeper=connected` | **PASS** |
+| Accounts listed (count only) | **PASS** (4 connected) |
+| Messages→Beeper raise `approval_required` | **PASS** |
+| Deny (no send) | **PASS** |
+| Beeper inbound event trigger | **NOT RUN** |
+
+Overall Phase 7 on Pixel: **PASS** for connected Beeper + gated messaging path.

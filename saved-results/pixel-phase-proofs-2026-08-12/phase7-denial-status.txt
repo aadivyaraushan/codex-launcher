@@ -1,0 +1,7 @@
+{
+  "denial_count": 2,
+  "known_count": 0
+}
+bridge=up
+gateway=up
+journal={"process":"missing"}
