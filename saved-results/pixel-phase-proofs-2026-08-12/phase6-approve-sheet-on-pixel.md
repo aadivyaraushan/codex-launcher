@@ -25,3 +25,5 @@ Phone agent thread hard-gate chrome:
 - After Approve: `phase4-after-approve-20260812T232651Z.png`, `phase4-05-post-approve-refresh-20260812T232725Z.png`
 
 Paired with Phase 4 PASS. Depends on tip `c231b08`.
+
+Corroborating capture set: `phase4-*-20260812T232528Z.*` (see Phase 4 note).

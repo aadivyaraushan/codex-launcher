@@ -1,0 +1,2 @@
+05ec9929083966ab05404f1e84474137e03dfa26007d13a5c607d667cf479c74  /data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/rootfs/usr/local/bin/operator-phone-runtime
+05ec9929083966ab05404f1e84474137e03dfa26007d13a5c607d667cf479c74  outputs/operator-phone-runtime-linux-arm64

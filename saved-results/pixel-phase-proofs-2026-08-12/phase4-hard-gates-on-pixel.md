@@ -37,3 +37,12 @@
 
 - Tip hotfix `c231b08` required so decision_page validates and the Approve card can appear.
 - No software-attest. No secrets committed. Number not repeated in commit messages.
+
+## Corroboration (same night, second capture)
+
+Independent UI sequence at `20260812T232528Z` on the same pending owner first-contact gate:
+
+- Sheet: `phase4-approve-sheet-20260812T232528Z.png` / `.xml`
+- `go ahead` still gated: `phase4-goahead-typed-20260812T232528Z.png` / `.xml` + `phase4-goahead-verdict-20260812T232528Z.txt`
+- After Approve once: `phase4-after-approve-20260812T232528Z.png` / `.xml` + `phase4-approve-tap-verdict-20260812T232528Z.txt`
+- Health/runtime: `bridge-health-phase4-approve.json`, `phase4-runtime-sha.txt` (tip SHA `05ec9929…`)
