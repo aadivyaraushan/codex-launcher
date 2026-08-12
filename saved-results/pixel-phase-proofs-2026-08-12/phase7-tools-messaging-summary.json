@@ -1,0 +1,103 @@
+{
+  "tool_count": 79,
+  "messaging_tools": [
+    {
+      "name": "messages",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "send",
+          "requiresPreview": true
+        },
+        {
+          "name": "modify",
+          "requiresPreview": true
+        },
+        {
+          "name": "cancel",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "recipient_alias_fields": [
+        "chat_id",
+        "handle",
+        "recipient",
+        "subject",
+        "to"
+      ]
+    },
+    {
+      "name": "instagram",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "send",
+          "requiresPreview": true
+        },
+        {
+          "name": "modify",
+          "requiresPreview": true
+        },
+        {
+          "name": "cancel",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "recipient_alias_fields": [
+        "chat_id",
+        "handle",
+        "recipient",
+        "subject",
+        "to"
+      ]
+    },
+    {
+      "name": "discord",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "send",
+          "requiresPreview": true
+        },
+        {
+          "name": "modify",
+          "requiresPreview": true
+        },
+        {
+          "name": "cancel",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "recipient_alias_fields": [
+        "chat_id",
+        "handle",
+        "recipient",
+        "subject",
+        "to"
+      ]
+    }
+  ],
+  "phone_runtime_run_has_beeper_base_url": false,
+  "event_to_agent": "not_started_no_-beeper-base-url"
+}
