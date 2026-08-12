@@ -9,6 +9,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 )
 
 // TurnSource is what a connected OpenClaw Gateway session looks like to the
@@ -18,6 +19,7 @@ import (
 type TurnSource interface {
 	mobilesession.TaskSource
 	mobilesession.ExistingTaskSource
+	mobilesession.TaskTranscriptSource
 	io.Closer
 	// Done returns a channel that closes when the underlying gateway
 	// connection drops, so the runtime can notice and redial.
@@ -27,6 +29,8 @@ type TurnSource interface {
 	// instead of the trigger prompt itself.
 	StartTriggeredTurn(ctx context.Context, taskID, prompt, preview string) (taskadapter.ExistingTaskResult, error)
 }
+
+var _ mobilesession.TaskTranscriptSource = (*deferredTurnSource)(nil)
 
 // errTurnSourceNotConnected is returned by every deferredTurnSource method
 // except ListRecent while no gateway connection has been made yet.
@@ -155,6 +159,14 @@ func (deferred *deferredTurnSource) InterruptExistingTurn(ctx context.Context, t
 		return taskadapter.ExistingTaskResult{}, errTurnSourceNotConnected
 	}
 	return inner.InterruptExistingTurn(ctx, taskID)
+}
+
+func (deferred *deferredTurnSource) ReadTranscript(ctx context.Context, taskID string, options tasktranscript.PageOptions) (tasktranscript.Page, error) {
+	inner := deferred.current()
+	if inner == nil {
+		return tasktranscript.Page{}, errTurnSourceNotConnected
+	}
+	return inner.ReadTranscript(ctx, taskID, options)
 }
 
 // Close closes the inner source if one was ever set, and is safe to call

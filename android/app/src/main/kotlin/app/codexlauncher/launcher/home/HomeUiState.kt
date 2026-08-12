@@ -127,6 +127,7 @@ data class HomeUiState(
     val canChangeComputer: Boolean,
     val canChangeProject: Boolean,
     val canSend: Boolean,
+    val canSendWithoutSelection: Boolean = false,
     val mustChooseProject: Boolean,
     val showAllApps: Boolean,
     val showAndroidSettings: Boolean,
@@ -157,6 +158,9 @@ object HomeUiPolicy {
                 null
             }
         val macReady = hasCurrentSnapshot && selectedProject != null
+        val visibleTasks = if (hasCurrentSnapshot) tasks else emptyList()
+        val canSendWithoutSelection =
+            !macReady && standalone.isReady && HomeSendRouter.phoneAgentPresent(visibleTasks.map { it.id })
         val canSend = macReady || standalone.isReady
         val title = if (paired) computerName else "Operator"
         val headline =
@@ -173,6 +177,7 @@ object HomeUiPolicy {
             canChangeComputer = false,
             canChangeProject = hasCurrentSnapshot && projects.isNotEmpty(),
             canSend = canSend,
+            canSendWithoutSelection = canSendWithoutSelection,
             mustChooseProject = hasCurrentSnapshot && selectedProject == null && !standalone.isReady,
             showAllApps = true,
             showAndroidSettings = true,

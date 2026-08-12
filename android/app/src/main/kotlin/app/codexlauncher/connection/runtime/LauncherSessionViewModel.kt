@@ -23,6 +23,7 @@ import app.codexlauncher.storage.actions.ActionJournal
 import app.codexlauncher.storage.connection.lastseen.shouldRecordSuccessfulConnection
 import app.codexlauncher.task.summary.TaskEventReducer
 import app.codexlauncher.task.summary.TaskQueueState
+import app.codexlauncher.task.summary.PHONE_AGENT_TASK_ID
 import app.codexlauncher.task.management.TaskAction
 import app.codexlauncher.task.management.TaskActionBridge
 import app.codexlauncher.task.management.TaskActionOutcome
@@ -428,6 +429,46 @@ class LauncherSessionViewModel(
         draftVersion: DraftVersion,
     ) {
         if (selection == null) {
+            val phoneAgent =
+                mutableState.value.snapshot?.tasks?.firstOrNull { it.id == PHONE_AGENT_TASK_ID }
+            if (phoneAgent != null && mutableState.value.taskControlsAvailable) {
+                AppLog.info(
+                    feature = "home-prompt",
+                    message = "home prompt sent as existing phone-agent turn",
+                    fields =
+                        mapOf(
+                            "task_id" to phoneAgent.id,
+                            "prompt_length" to prompt.length,
+                            "decision" to "start_existing_turn",
+                        ),
+                )
+                val outcome = queueTaskFollowUp(phoneAgent.id, prompt)
+                AppLog.info(
+                    feature = "home-prompt",
+                    message = "existing phone-agent turn finished",
+                    fields = mapOf("outcome" to outcome.toString(), "task_id" to phoneAgent.id),
+                )
+                when (outcome) {
+                    ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued -> {
+                        if (!clearConfirmedDraft(draftVersion)) {
+                            mutableState.value =
+                                mutableState.value.copy(
+                                    newTaskMessage = "Task started, but the saved draft could not be cleared.",
+                                )
+                        } else {
+                            mutableState.value = mutableState.value.copy(newTaskMessage = null)
+                        }
+                    }
+                    ExistingTaskControlOutcome.NeedsReview ->
+                        mutableState.value = mutableState.value.copy(newTaskMessage = null)
+                    else ->
+                        mutableState.value =
+                            mutableState.value.copy(
+                                newTaskMessage = "Could not send. Your draft is still here. Check the connection and try again.",
+                            )
+                }
+                return
+            }
             AppLog.info(
                 feature = "home-prompt",
                 message = "home send missing selection",
