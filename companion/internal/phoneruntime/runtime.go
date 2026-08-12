@@ -435,8 +435,9 @@ func (publisher *gatewayPublisher) PublishTaskEvent(ctx context.Context, event t
 // alive rather than returning after the first successful connect.
 func runTurnProxyConnect(ctx context.Context, connect func(context.Context, turnproxy.Config) (TurnSource, error), gatewayURL, tokenPath string, deferred *deferredTurnSource, handler gatewayTaskEventHandler, logger *slog.Logger) {
 	publisher := &gatewayPublisher{handler: handler, logger: logger}
+	var carried taskstate.LastMessage
 	for {
-		source, ok := dialTurnProxyWithRetry(ctx, connect, gatewayURL, tokenPath, publisher, logger)
+		source, ok := dialTurnProxyWithRetry(ctx, connect, gatewayURL, tokenPath, publisher, logger, carried)
 		if !ok {
 			return
 		}
@@ -450,6 +451,14 @@ func runTurnProxyConnect(ctx context.Context, connect func(context.Context, turn
 		case <-ctx.Done():
 			return
 		case <-source.Done():
+			// The dropped source is the only place that still knows what it
+			// last said — read it before closing so the redial's Config can
+			// seed the next Source and the Home preview doesn't go blank.
+			if task, err := source.CurrentTask(ctx, agentGateThreadID); err != nil {
+				logger.Error("[phone-runtime] turn proxy last-message read before close failed", "error", err.Error())
+			} else {
+				carried = task.LastMessage
+			}
 			// Clear and close before looping back to redial — the runtime
 			// must never report TaskCapable on a socket that is already
 			// dead, and the old connection must be fully released before a
@@ -470,7 +479,7 @@ func runTurnProxyConnect(ctx context.Context, connect func(context.Context, turn
 // rotating the file without restarting the runtime still works the next
 // time it is read — and a token file that is briefly missing or unreadable
 // is just another retryable failure, not a fatal one.
-func dialTurnProxyWithRetry(ctx context.Context, connect func(context.Context, turnproxy.Config) (TurnSource, error), gatewayURL, tokenPath string, publisher turnproxy.EventPublisher, logger *slog.Logger) (TurnSource, bool) {
+func dialTurnProxyWithRetry(ctx context.Context, connect func(context.Context, turnproxy.Config) (TurnSource, error), gatewayURL, tokenPath string, publisher turnproxy.EventPublisher, logger *slog.Logger, initialLastMessage taskstate.LastMessage) (TurnSource, bool) {
 	for {
 		if ctx.Err() != nil {
 			return nil, false
@@ -484,12 +493,13 @@ func dialTurnProxyWithRetry(ctx context.Context, connect func(context.Context, t
 			continue
 		}
 		cfg := turnproxy.Config{
-			URL:        gatewayURL,
-			Token:      strings.TrimSpace(string(raw)),
-			TaskID:     agentGateThreadID,
-			SessionKey: turnProxySessionKey,
-			Publisher:  publisher,
-			Logger:     logger,
+			URL:                gatewayURL,
+			Token:              strings.TrimSpace(string(raw)),
+			TaskID:             agentGateThreadID,
+			SessionKey:         turnProxySessionKey,
+			Publisher:          publisher,
+			Logger:             logger,
+			InitialLastMessage: initialLastMessage,
 		}
 		source, err := connect(ctx, cfg)
 		if err != nil {

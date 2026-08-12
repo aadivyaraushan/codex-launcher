@@ -262,6 +262,36 @@ func TestConnectPerformsOperatorHandshake(t *testing.T) {
 	}
 }
 
+// A fresh Source starts with a blank lastMessage, so every gateway redial
+// used to blank the phone agent's Home preview until the next turn. The
+// caller who redials knows what was last said; Connect must accept that
+// memory and hand it straight back from CurrentTask.
+func TestConnectSeedsTheLastMessageItWasGiven(t *testing.T) {
+	gateway := newFakeGateway(t, false)
+	seed := taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "Archived 41 conversations."}
+	source, err := Connect(context.Background(), Config{
+		URL:                gateway.url(),
+		Token:              "test-token",
+		TaskID:             testTaskID,
+		SessionKey:         testSessionKey,
+		Publisher:          newChannelPublisher(),
+		Logger:             slog.New(slog.DiscardHandler),
+		InitialLastMessage: seed,
+	})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(func() { source.Close() })
+
+	task, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask: %v", err)
+	}
+	if task.LastMessage != seed {
+		t.Fatalf("last message after connect = %+v, want the seeded %+v", task.LastMessage, seed)
+	}
+}
+
 func TestConnectRefusedAuthFailsClosed(t *testing.T) {
 	gateway := newFakeGateway(t, true)
 	_, err := Connect(context.Background(), Config{

@@ -28,6 +28,10 @@ type Config struct {
 	SessionKey string
 	Publisher  EventPublisher
 	Logger     *slog.Logger
+
+	// InitialLastMessage carries forward what the previous connection last
+	// knew, so a redial doesn't blank the Home preview before the next turn.
+	InitialLastMessage taskstate.LastMessage
 }
 
 // Source is a TaskSource/ExistingTaskSource (internal/app/mobilesession)
@@ -77,11 +81,12 @@ func Connect(ctx context.Context, cfg Config) (*Source, error) {
 		logger = slog.Default()
 	}
 	source := &Source{
-		cfg:       cfg,
-		logger:    logger,
-		mapper:    NewTurnMapper(cfg.TaskID, cfg.SessionKey),
-		state:     taskstate.IdleAfterReply,
-		updatedAt: time.Now().Unix(),
+		cfg:         cfg,
+		logger:      logger,
+		mapper:      NewTurnMapper(cfg.TaskID, cfg.SessionKey),
+		state:       taskstate.IdleAfterReply,
+		updatedAt:   time.Now().Unix(),
+		lastMessage: cfg.InitialLastMessage,
 	}
 	client, err := connectClient(ctx, cfg.URL, cfg.Token, logger, source.handleEvent)
 	if err != nil {

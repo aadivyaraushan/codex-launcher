@@ -26,8 +26,11 @@ type stubTurnSource struct {
 	// only queries Done() after installing the source, so tests can use it
 	// as an "installed" signal.
 	onDone func()
-	mu     sync.Mutex
-	closed bool
+	// lastMessage, when set, rides on the task this stub reports — the
+	// memory a redial is expected to carry into the next connection.
+	lastMessage taskstate.LastMessage
+	mu          sync.Mutex
+	closed      bool
 }
 
 func newStubTurnSource() *stubTurnSource {
@@ -42,11 +45,11 @@ func (s *stubTurnSource) Done() <-chan struct{} {
 }
 
 func (s *stubTurnSource) ListRecent(context.Context, int) ([]taskstate.Task, error) {
-	return []taskstate.Task{{ID: "phone-agent", Title: "Phone agent", State: taskstate.IdleAfterReply, UpdatedAtUnix: 1, Source: taskstate.SourceAppServer}}, nil
+	return []taskstate.Task{{ID: "phone-agent", Title: "Phone agent", State: taskstate.IdleAfterReply, UpdatedAtUnix: 1, Source: taskstate.SourceAppServer, LastMessage: s.lastMessage}}, nil
 }
 
 func (s *stubTurnSource) CurrentTask(context.Context, string) (taskstate.Task, error) {
-	return taskstate.Task{ID: "phone-agent", Title: "Phone agent", State: taskstate.IdleAfterReply, UpdatedAtUnix: 1, Source: taskstate.SourceAppServer}, nil
+	return taskstate.Task{ID: "phone-agent", Title: "Phone agent", State: taskstate.IdleAfterReply, UpdatedAtUnix: 1, Source: taskstate.SourceAppServer, LastMessage: s.lastMessage}, nil
 }
 
 func (s *stubTurnSource) StartExistingTurn(context.Context, string, string) (taskadapter.ExistingTaskResult, error) {
@@ -318,6 +321,69 @@ func TestGatewayReconnectsAfterDrop(t *testing.T) {
 	defer mu.Unlock()
 	if attempts < 2 {
 		t.Fatalf("connect attempts = %d, want a redial after the drop", attempts)
+	}
+}
+
+// A redial builds a fresh Source, and a fresh Source remembers nothing —
+// so without help, every gateway drop silently blanks the phone agent's
+// last-message preview on Home until the next turn. The runtime is the
+// only party who still holds the dropped connection; it must read the
+// last message off that source before closing it and seed the next dial's
+// config with it.
+func TestRedialCarriesTheLastMessageForward(t *testing.T) {
+	previousDelay := turnProxyRetryDelay
+	turnProxyRetryDelay = 20 * time.Millisecond
+	t.Cleanup(func() { turnProxyRetryDelay = previousDelay })
+
+	root := t.TempDir()
+	tokenPath := writeGatewayToken(t, root)
+	spoke := taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "Archived 41 conversations."}
+	first := newStubTurnSource()
+	first.lastMessage = spoke
+	second := newStubTurnSource()
+	var mu sync.Mutex
+	attempts := 0
+	var redialSeed taskstate.LastMessage
+	runtime, err := Open(context.Background(), gatewayConfig(root, tokenPath), Dependencies{
+		Random: rand.Reader,
+		TurnProxyConnect: func(_ context.Context, config turnproxy.Config) (TurnSource, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			attempts++
+			if attempts == 1 {
+				return first, nil
+			}
+			redialSeed = config.InitialLastMessage
+			return second, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer runtime.Close()
+	waitForTaskCapable(t, runtime)
+
+	close(first.done)
+
+	deadline := time.Now().Add(5 * time.Second)
+	redialed := false
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		redialed = attempts >= 2
+		mu.Unlock()
+		if redialed {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !redialed {
+		t.Fatal("the dropped connection was never redialed")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if redialSeed != spoke {
+		t.Fatalf("redial seed = %+v, want the dropped source's last message %+v", redialSeed, spoke)
 	}
 }
 
