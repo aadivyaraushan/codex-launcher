@@ -56,3 +56,6 @@ agentbridge/openclaw-plugin/dist/
 .DS_Store
 Thumbs.db
 .vercel
+saved-results/**/bootstrap/termux_ed25519
+saved-results/**/bootstrap/*_ed25519
+!**/*.pub
