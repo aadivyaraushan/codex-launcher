@@ -5,7 +5,7 @@
 **Branch:** `cursor/phase10-packaging-readme-ac95` (from `cursor/phase9-boot-persistence-9b54`)  
 **Base for PR:** `worktree-phase2-tool-bridge`  
 **PR:** https://github.com/aadivyaraushan/codex-launcher/pull/4  
-**Tip commit:** `bff3b8d` (`de910f1` packaging + follow-up)  
+**Tip commit:** see branch tip (`de910f1` packaging + verification/judge follow-ups)  
 **Deliverable judge:** **PASS** (after follow-up; first pass was PASS-WITH-WARNINGS)  
 **Plan source:** standing decisions in `planning/handoff-2026-08-12.md` (master plan file may be absent remotely)
 
