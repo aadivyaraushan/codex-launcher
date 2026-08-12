@@ -6,8 +6,7 @@
 **Base for PR:** `worktree-phase2-tool-bridge`  
 **PR:** https://github.com/aadivyaraushan/codex-launcher/pull/4  
 **Tip commit:** `bff3b8d` (`de910f1` packaging + follow-up)  
-**Deliverable judge:** initial **PASS-WITH-WARNINGS**; follow-up addressed evidence
-  placeholders, plugin start-here README, and handoff AVD wording  
+**Deliverable judge:** **PASS** (after follow-up; first pass was PASS-WITH-WARNINGS)  
 **Plan source:** standing decisions in `planning/handoff-2026-08-12.md` (master plan file may be absent remotely)
 
 ## Result
