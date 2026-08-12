@@ -22,6 +22,10 @@ type TurnSource interface {
 	// Done returns a channel that closes when the underlying gateway
 	// connection drops, so the runtime can notice and redial.
 	Done() <-chan struct{}
+	// StartTriggeredTurn starts a turn the Beeper watcher fired on the
+	// owner's behalf, stamping preview as the Home task's last message
+	// instead of the trigger prompt itself.
+	StartTriggeredTurn(ctx context.Context, taskID, prompt, preview string) (taskadapter.ExistingTaskResult, error)
 }
 
 // errTurnSourceNotConnected is returned by every deferredTurnSource method
@@ -127,6 +131,14 @@ func (deferred *deferredTurnSource) StartExistingTurn(ctx context.Context, taskI
 		return taskadapter.ExistingTaskResult{}, errTurnSourceNotConnected
 	}
 	return inner.StartExistingTurn(ctx, taskID, prompt)
+}
+
+func (deferred *deferredTurnSource) StartTriggeredTurn(ctx context.Context, taskID, prompt, preview string) (taskadapter.ExistingTaskResult, error) {
+	inner := deferred.current()
+	if inner == nil {
+		return taskadapter.ExistingTaskResult{}, errTurnSourceNotConnected
+	}
+	return inner.StartTriggeredTurn(ctx, taskID, prompt, preview)
 }
 
 func (deferred *deferredTurnSource) RedirectExistingTurn(ctx context.Context, taskID, prompt string) (taskadapter.ExistingTaskResult, error) {

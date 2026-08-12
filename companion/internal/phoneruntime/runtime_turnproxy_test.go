@@ -31,6 +31,15 @@ type stubTurnSource struct {
 	lastMessage taskstate.LastMessage
 	mu          sync.Mutex
 	closed      bool
+	triggered   []triggeredTurn
+}
+
+// triggeredTurn records one StartTriggeredTurn call so tests can assert what
+// the Beeper watcher delivered.
+type triggeredTurn struct {
+	taskID  string
+	prompt  string
+	preview string
 }
 
 func newStubTurnSource() *stubTurnSource {
@@ -54,6 +63,19 @@ func (s *stubTurnSource) CurrentTask(context.Context, string) (taskstate.Task, e
 
 func (s *stubTurnSource) StartExistingTurn(context.Context, string, string) (taskadapter.ExistingTaskResult, error) {
 	return taskadapter.ExistingTaskResult{ThreadID: "phone-agent", TurnID: "turn-1"}, nil
+}
+
+func (s *stubTurnSource) StartTriggeredTurn(_ context.Context, taskID, prompt, preview string) (taskadapter.ExistingTaskResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.triggered = append(s.triggered, triggeredTurn{taskID: taskID, prompt: prompt, preview: preview})
+	return taskadapter.ExistingTaskResult{ThreadID: taskID, TurnID: "turn-trigger-1"}, nil
+}
+
+func (s *stubTurnSource) triggeredTurns() []triggeredTurn {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]triggeredTurn(nil), s.triggered...)
 }
 
 func (s *stubTurnSource) RedirectExistingTurn(context.Context, string, string) (taskadapter.ExistingTaskResult, error) {

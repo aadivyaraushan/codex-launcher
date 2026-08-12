@@ -32,6 +32,8 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agentbridge"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agentbridge/gates"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agenttrigger"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/beeperwatch"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/localtrust"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/turnproxy"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
@@ -79,6 +81,12 @@ type Config struct {
 	// (Mac dev, and most existing tests); setting only one is not.
 	GatewayURL       string
 	GatewayTokenPath string
+	// BeeperBaseURL is the Beeper Client API base URL the runtime watches
+	// for inbound messages to trigger the agent on. Empty means no
+	// watcher — the default. The watcher's bearer token is never carried
+	// in this config; it comes from BEEPER_ACCESS_TOKEN or the local
+	// Beeper account database (loadBeeperAccessToken, beeper_health.go).
+	BeeperBaseURL string
 }
 
 type Dependencies struct {
@@ -92,6 +100,9 @@ type Dependencies struct {
 	// wires up an adapter around turnproxy.Connect. Tests inject a stub to
 	// avoid a live websocket.
 	TurnProxyConnect func(context.Context, turnproxy.Config) (TurnSource, error)
+	// BeeperWatch runs the Beeper watcher. Nil means real: beeperwatch.Run.
+	// Tests inject a stub to avoid a live websocket.
+	BeeperWatch func(context.Context, beeperwatch.Config)
 }
 
 type Health struct {
@@ -161,6 +172,10 @@ type Runtime struct {
 	// from under it. Nil alongside turnProxyCancel when no gateway is
 	// configured.
 	turnProxyDone chan struct{}
+	// beeperWatchDone closes when the Beeper watcher goroutine returns, so
+	// Close can wait for it too. Nil when no watcher was started (no
+	// BeeperBaseURL configured, or no access token was available).
+	beeperWatchDone chan struct{}
 }
 
 func (config Config) validate() error {
@@ -174,6 +189,10 @@ func (config Config) validate() error {
 		return ErrInvalidConfig
 	}
 	if (config.GatewayURL == "") != (config.GatewayTokenPath == "") {
+		return ErrInvalidConfig
+	}
+	if config.BeeperBaseURL != "" && config.GatewayURL == "" {
+		// A watcher with no gateway has no agent session to deliver to.
 		return ErrInvalidConfig
 	}
 	return nil
@@ -304,6 +323,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 
 	var turnProxyCancel context.CancelFunc
 	var turnProxyDone chan struct{}
+	var beeperWatchDone chan struct{}
 	if turnSource != nil {
 		connect := dependencies.TurnProxyConnect
 		if connect == nil {
@@ -316,17 +336,42 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 			defer close(turnProxyDone)
 			runTurnProxyConnect(connectCtx, connect, config.GatewayURL, config.GatewayTokenPath, turnSource, handler, logger)
 		}()
+
+		if config.BeeperBaseURL != "" {
+			// The watcher shares the turn proxy's cancel so both stop
+			// together on teardown; its own done channel is nil (and stays
+			// nil) if there is no access token to start it with.
+			if token := loadBeeperAccessToken(); token == "" {
+				logger.Warn("[phone-runtime] Beeper watcher not started", "reason", "no_access_token")
+			} else {
+				watch := dependencies.BeeperWatch
+				if watch == nil {
+					watch = beeperwatch.Run
+				}
+				delivery := &triggerDelivery{root: config.Root, turnSource: turnSource, logger: logger}
+				beeperWatchDone = make(chan struct{})
+				go func() {
+					defer close(beeperWatchDone)
+					watch(connectCtx, beeperwatch.Config{
+						BaseURL: config.BeeperBaseURL,
+						Token:   token,
+						Notify:  delivery.deliver,
+						Logger:  logger,
+					})
+				}()
+			}
+		}
 	}
 
 	mobileServer, err := transport.NewServer(pairingService, handler.Handle, logger)
 	if err != nil {
-		stopTurnProxyConnect(turnProxyCancel, turnProxyDone, turnSource, logger)
+		stopTurnProxyConnect(turnProxyCancel, turnProxyDone, beeperWatchDone, turnSource, logger)
 		_ = store.Close()
 		return nil, err
 	}
 	certificate, err := pairingService.TLSCertificate(now())
 	if err != nil {
-		stopTurnProxyConnect(turnProxyCancel, turnProxyDone, turnSource, logger)
+		stopTurnProxyConnect(turnProxyCancel, turnProxyDone, beeperWatchDone, turnSource, logger)
 		_ = store.Close()
 		return nil, err
 	}
@@ -336,7 +381,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	// the runtime is currently serving, not a stale cert from a prior run.
 	bridgeCertPath := filepath.Join(config.Root, "agentbridge-cert.pem")
 	if err := writeAgentBridgeCert(bridgeCertPath, certificate); err != nil {
-		stopTurnProxyConnect(turnProxyCancel, turnProxyDone, turnSource, logger)
+		stopTurnProxyConnect(turnProxyCancel, turnProxyDone, beeperWatchDone, turnSource, logger)
 		_ = store.Close()
 		return nil, err
 	}
@@ -362,6 +407,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		turnSource:      turnSource,
 		turnProxyCancel: turnProxyCancel,
 		turnProxyDone:   turnProxyDone,
+		beeperWatchDone: beeperWatchDone,
 		operatorPin: localtrust.ExpectedOperator{
 			PackageName: "app.codexlauncher",
 			// Release (frozen owner) APK signer. Debug builds use c613e660… — accept both below.
@@ -426,6 +472,35 @@ func (publisher *gatewayPublisher) PublishTaskEvent(ctx context.Context, event t
 		return lastErr
 	}
 	return lastErr
+}
+
+// triggerDelivery turns one inbound Beeper message into a triggered turn on
+// the phone agent's task; deliver is beeperwatch.Config's Notify.
+type triggerDelivery struct {
+	root       string
+	turnSource *deferredTurnSource
+	logger     *slog.Logger
+}
+
+// deliver loads the owner's rules, builds the trigger prompt and preview,
+// and starts a triggered turn. Failures are logged with the message id
+// only — never the message text or any token, matching beeperwatch's own
+// logging discipline — and otherwise just drop the message rather than
+// retrying, the same at-most-once delivery beeperwatch itself promises.
+func (delivery *triggerDelivery) deliver(ctx context.Context, msg beeperwatch.Message) {
+	rules, err := agenttrigger.EnsureRules(delivery.root)
+	if err != nil {
+		if rules == "" {
+			delivery.logger.Error("[phone-runtime] agent rules unavailable, dropping trigger", "id", msg.ID, "error", err.Error())
+			return
+		}
+		delivery.logger.Error("[phone-runtime] agent rules read failed, using the rules it returned anyway", "id", msg.ID, "error", err.Error())
+	}
+	prompt := agenttrigger.Prompt(msg, rules)
+	preview := agenttrigger.Preview(msg)
+	if _, err := delivery.turnSource.StartTriggeredTurn(ctx, agentGateThreadID, prompt, preview); err != nil {
+		delivery.logger.Error("[phone-runtime] triggered turn failed", "id", msg.ID, "error", err.Error())
+	}
 }
 
 // runTurnProxyConnect owns the gateway connection for the runtime's
@@ -522,19 +597,25 @@ func dialTurnProxyWithRetry(ctx context.Context, connect func(context.Context, t
 	}
 }
 
-// stopTurnProxyConnect cancels the connect-retry goroutine, waits for it to
-// actually exit, so a caller closing the store next never races the
-// goroutine still using it, and then closes whatever source the goroutine
-// installed — so every teardown path (Close and Open's error paths) releases
-// the socket identically. A nil cancel means no gateway was configured —
-// there is nothing to stop, and this must not block or panic in that case.
-func stopTurnProxyConnect(cancel context.CancelFunc, done chan struct{}, source *deferredTurnSource, logger *slog.Logger) {
+// stopTurnProxyConnect cancels the connect-retry goroutine (and, sharing the
+// same cancel, the Beeper watcher goroutine if one was started), waits for
+// both to actually exit, so a caller closing the store next never races
+// either still using it, and then closes whatever source the connect
+// goroutine installed — so every teardown path (Close and Open's error
+// paths) releases the socket identically. A nil cancel means no gateway was
+// configured — there is nothing to stop, and this must not block or panic
+// in that case. A nil beeperDone means the watcher never started, so there
+// is nothing to wait for there either.
+func stopTurnProxyConnect(cancel context.CancelFunc, done, beeperDone chan struct{}, source *deferredTurnSource, logger *slog.Logger) {
 	if cancel == nil {
 		return
 	}
 	cancel()
 	if done != nil {
 		<-done
+	}
+	if beeperDone != nil {
+		<-beeperDone
 	}
 	if source != nil {
 		if err := source.Close(); err != nil {
@@ -609,7 +690,7 @@ func (runtime *Runtime) Close() error {
 	if runtime == nil || runtime.store == nil {
 		return nil
 	}
-	stopTurnProxyConnect(runtime.turnProxyCancel, runtime.turnProxyDone, runtime.turnSource, runtime.logger)
+	stopTurnProxyConnect(runtime.turnProxyCancel, runtime.turnProxyDone, runtime.beeperWatchDone, runtime.turnSource, runtime.logger)
 	return runtime.store.Close()
 }
 

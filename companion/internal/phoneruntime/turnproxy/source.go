@@ -155,6 +155,22 @@ func (source *Source) applyRunStateLocked(chatPayload ChatEventPayload) {
 // returns once the gateway acknowledges the request; the reply itself
 // streams back later as "chat" events.
 func (source *Source) StartExistingTurn(ctx context.Context, taskID, prompt string) (taskadapter.ExistingTaskResult, error) {
+	return source.sendChat(ctx, taskID, prompt, taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt})
+}
+
+// StartTriggeredTurn sends chat.send the same way StartExistingTurn does,
+// but for a turn the Beeper watcher started on the owner's behalf rather
+// than the owner typing it: the Home preview shows preview (a plain,
+// speakerless line) instead of the trigger prompt itself, since the prompt
+// is never something the owner said.
+func (source *Source) StartTriggeredTurn(ctx context.Context, taskID, prompt, preview string) (taskadapter.ExistingTaskResult, error) {
+	return source.sendChat(ctx, taskID, prompt, taskstate.LastMessage{From: taskstate.SpeakerPlain, Text: preview})
+}
+
+// sendChat is the shared chat.send path StartExistingTurn and
+// StartTriggeredTurn both use; only the LastMessage they stamp afterward
+// differs.
+func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastMessage taskstate.LastMessage) (taskadapter.ExistingTaskResult, error) {
 	if taskID != source.cfg.TaskID {
 		return taskadapter.ExistingTaskResult{}, fmt.Errorf("turnproxy: unknown task %q", taskID)
 	}
@@ -173,7 +189,7 @@ func (source *Source) StartExistingTurn(ctx context.Context, taskID, prompt stri
 		turnID = serverRunID
 	}
 	source.mu.Lock()
-	source.lastMessage = taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt}
+	source.lastMessage = lastMessage
 	source.mu.Unlock()
 	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID, TurnID: turnID}, nil
 }

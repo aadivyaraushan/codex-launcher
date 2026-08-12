@@ -59,3 +59,36 @@ server is Beeper Desktop on the paired Mac; the headless `beeper-server`
 binary crashed under Termux proot (`Could not find a PHDR`, see
 beeper-server-phone-linux-spike.md). The watcher should therefore take the
 base URL from config, not assume localhost-on-phone.
+
+## Mac-side slice built on this spike (judged PASS 2026-08-12)
+
+Three units, all TDD (red first, Sonnet implementation, fresh green
+confirmed by the orchestrator with `-race`):
+
+1. `phoneruntime/beeperwatch` (commit ed4bee2): dial /v1/ws, full handshake
+   per connection, message.upserted → Notify; bounded id dedupe surviving
+   reconnects; isSender/isHidden/isDeleted filtered; entries-optional ids
+   loaded via an injectable loader; ids-only logging.
+2. `phoneruntime/agenttrigger`: `EnsureRules` materializes an owner-editable
+   `<root>/agent-rules.md` on first use (drafts/summaries allowed, autonomous
+   sends only to the allow list, which starts empty) and never overwrites an
+   edited file; `Prompt` marks the turn as an automatic trigger, not the
+   owner; `Preview` = "New message from <sender>".
+3. Runtime wiring: `Config.BeeperBaseURL` (empty = off; requires a gateway),
+   token via BEEPER_ACCESS_TOKEN/account.db at Open, watcher shares the turn
+   proxy's cancel, delivery = `StartTriggeredTurn` on the phone-agent task —
+   a new turnproxy method that sends chat.send like a normal turn but stamps
+   the Home preview as plain text ("New message from Maya"), never "You: …".
+
+Independent judge (fresh context, first-principles checklist before seeing
+the code) verdict: PASS — build clean, 127 phoneruntime tests race-clean.
+One gap flagged as must-fix-next, not slice-blocking: the allow list is
+prose in the prompt only; `gates` policy allows sends to any already-known
+recipient and bridge.go passed `AllowListed: false` hardcoded, so
+"autonomous sends only to allow-listed people" had no code enforcement while
+trigger turns start from attacker-controlled message text. Enforcement is
+the next unit after this slice's commit.
+
+Still open for Phase 7: live proof (test account DMs the owner's Instagram;
+agent wakes and acts per rules) — needs the phone and a running gateway;
+watcher Loader is nil in production wiring for now (entries-only coverage).

@@ -356,6 +356,44 @@ func TestStartTurnForwardsChatSendAndStreamsReply(t *testing.T) {
 	}
 }
 
+// A triggered turn (a Beeper message waking the agent) sends chat.send like
+// any turn, but the Home preview must not claim the owner spoke — the
+// stamped last message is a plain preview, not {user, prompt}.
+func TestStartTriggeredTurnSendsChatAndStampsAPlainPreview(t *testing.T) {
+	source, gateway, _ := connectedSource(t)
+
+	result, err := source.StartTriggeredTurn(context.Background(), testTaskID, "[trigger] Maya: you around tonight?", "New message from Maya")
+	if err != nil {
+		t.Fatalf("StartTriggeredTurn: %v", err)
+	}
+	if result.ThreadID != testTaskID {
+		t.Fatalf("result thread = %q, want %q", result.ThreadID, testTaskID)
+	}
+
+	request := gateway.nextRequest(t)
+	if request.Method != "chat.send" {
+		t.Fatalf("gateway saw %q, want chat.send", request.Method)
+	}
+	var params struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(request.Params, &params); err != nil {
+		t.Fatalf("decode chat.send params: %v", err)
+	}
+	if params.Message != "[trigger] Maya: you around tonight?" {
+		t.Fatalf("message = %q, want the trigger prompt verbatim", params.Message)
+	}
+
+	task, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask: %v", err)
+	}
+	want := taskstate.LastMessage{From: taskstate.SpeakerPlain, Text: "New message from Maya"}
+	if task.LastMessage != want {
+		t.Fatalf("last message = %+v, want the plain preview %+v", task.LastMessage, want)
+	}
+}
+
 // The protocol doc marks the chat.send ack shape as unknown: the gateway
 // may assign its own runId rather than echoing the idempotencyKey. When the
 // ack carries one, it is the id the stream will use, so it must win.
