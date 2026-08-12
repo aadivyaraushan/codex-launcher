@@ -821,7 +821,7 @@ func validateTasks(raw json.RawMessage) bool {
 	seen := make(map[string]struct{}, len(tasks))
 	for _, task := range tasks {
 		id := stringValue(task["taskId"])
-		if !onlyAllowedKeys(task, "taskId", "title", "projectLabel", "state", "activeTurnId", "canRedirect", "queueState", "lastActivityAt", "pendingRequest") ||
+		if !onlyAllowedKeys(task, "taskId", "title", "projectLabel", "state", "activeTurnId", "canRedirect", "queueState", "lastActivityAt", "pendingRequest", "lastMessage") ||
 			!validID(id) || !safeDisplayString(task["title"], 256) || !safeDisplayString(task["projectLabel"], 128) ||
 			!knownTaskState(stringValue(task["state"])) || !validRFC3339(stringValue(task["lastActivityAt"])) ||
 			(task["activeTurnId"] != nil && !validID(stringValue(task["activeTurnId"]))) ||
@@ -842,8 +842,24 @@ func validateTasks(raw json.RawMessage) bool {
 				return false
 			}
 		}
+		if lastMessage := task["lastMessage"]; lastMessage != nil {
+			var message map[string]json.RawMessage
+			if json.Unmarshal(lastMessage, &message) != nil || !exactKeys(message, "from", "text") ||
+				!knownSpeaker(stringValue(message["from"])) || !safeDisplayString(message["text"], 512) {
+				return false
+			}
+		}
 	}
 	return true
+}
+
+func knownSpeaker(from string) bool {
+	switch from {
+	case "agent", "user", "plain":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateTaskPage(body map[string]json.RawMessage) bool {

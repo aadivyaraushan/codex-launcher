@@ -47,6 +47,7 @@ type Source struct {
 	state        taskstate.State
 	activeTurnID string
 	updatedAt    int64
+	lastMessage  taskstate.LastMessage
 }
 
 type chatSendParams struct {
@@ -108,6 +109,11 @@ func (source *Source) handleEvent(event string, payload json.RawMessage) {
 	source.mu.Lock()
 	mobileEvents := source.mapper.Apply(chatPayload)
 	source.applyRunStateLocked(chatPayload)
+	for _, mobileEvent := range mobileEvents {
+		if mobileEvent.Kind == "reply" {
+			source.lastMessage = taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: mobileEvent.Summary}
+		}
+	}
 	source.mu.Unlock()
 
 	for _, mobileEvent := range mobileEvents {
@@ -161,6 +167,9 @@ func (source *Source) StartExistingTurn(ctx context.Context, taskID, prompt stri
 	if serverRunID := serverAssignedRunID(payload); serverRunID != "" {
 		turnID = serverRunID
 	}
+	source.mu.Lock()
+	source.lastMessage = taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt}
+	source.mu.Unlock()
 	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID, TurnID: turnID}, nil
 }
 
@@ -192,6 +201,9 @@ func (source *Source) RedirectExistingTurn(ctx context.Context, taskID, prompt s
 	if _, err := source.client.request(ctx, "sessions.steer", params); err != nil {
 		return taskadapter.ExistingTaskResult{}, err
 	}
+	source.mu.Lock()
+	source.lastMessage = taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt}
+	source.mu.Unlock()
 	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID}, nil
 }
 
@@ -236,6 +248,7 @@ func (source *Source) snapshot() taskstate.Task {
 		CanRedirect:   source.state == taskstate.Working,
 		UpdatedAtUnix: source.updatedAt,
 		Source:        taskstate.SourceAppServer,
+		LastMessage:   source.lastMessage,
 	}
 }
 

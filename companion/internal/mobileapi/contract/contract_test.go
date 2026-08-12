@@ -326,6 +326,39 @@ func TestSnapshotCarriesOnlySafeComputerAndOpaqueProjectChoices(t *testing.T) {
 	}
 }
 
+func TestSnapshotTaskLastMessageIsOptionalAndStrictlyShaped(t *testing.T) {
+	task := `{"taskId":"thread-1","title":"Build launcher","projectLabel":"Launcher","state":"working","lastActivityAt":"2026-07-13T10:02:00Z","queueState":"none","lastMessage":`
+	frame := func(lastMessage string) string {
+		return `{"version":{"major":1,"minor":0},"messageId":"snapshot-last-message","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[],"tasks":[` + task + lastMessage + `}]}}`
+	}
+	for name, lastMessage := range map[string]string{
+		"agent": `{"from":"agent","text":"Tests pass."}`,
+		"user":  `{"from":"user","text":"archive everything older than 2024"}`,
+		"plain": `{"from":"plain","text":"Comparing flights for Dec 14-18"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := DecodeText([]byte(frame(lastMessage))); err != nil {
+				t.Fatalf("safe lastMessage was rejected: %v", err)
+			}
+		})
+	}
+	for name, lastMessage := range map[string]string{
+		"unknown speaker":   `{"from":"gateway","text":"ok"}`,
+		"missing text":      `{"from":"agent"}`,
+		"missing from":      `{"text":"ok"}`,
+		"extra key":         `{"from":"agent","text":"ok","raw":"payload"}`,
+		"control character": `{"from":"agent","text":"ok\nInjected"}`,
+		"not an object":     `"just text"`,
+		"oversize text":     `{"from":"agent","text":"` + strings.Repeat("a", 513) + `"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := DecodeText([]byte(frame(lastMessage))); !errors.Is(err, ErrInvalidEnvelope) {
+				t.Fatalf("DecodeText() error = %v, want %v", err, ErrInvalidEnvelope)
+			}
+		})
+	}
+}
+
 func TestAttachmentChunksRequireOrderSizeDigestAndAuthentication(t *testing.T) {
 	key := []byte("0123456789abcdef0123456789abcdef")
 	quota := NewAttachmentQuota(DefaultAttachmentLimits())

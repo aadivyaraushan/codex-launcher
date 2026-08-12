@@ -44,6 +44,31 @@ class TaskEventReducerTest {
     }
 
     @Test
+    fun aReplyBecomesTheLastMessageAndOtherEventsLeaveItAlone() {
+        val original =
+            listOf(
+                TaskSummary(
+                    "task-1", "Title", "Project", TaskState.WORKING, Instant.EPOCH,
+                    lastMessage = TaskLastMessage(MessageSpeaker.USER, "archive everything older than 2024"),
+                ),
+            )
+
+        val reply =
+            ProtocolCodec.decodeText(
+                """{"version":{"major":1,"minor":0},"messageId":"event-reply","sender":"companion","type":"event","seq":2,"body":{"taskId":"task-1","event":"reply","state":"idle_after_reply","summary":"Archived 41 conversations."}}""",
+            )
+        val afterReply = requireNotNull(TaskEventReducer.apply(original, reply))
+        assertEquals(TaskLastMessage(MessageSpeaker.AGENT, "Archived 41 conversations."), afterReply[0].lastMessage)
+
+        val activity =
+            ProtocolCodec.decodeText(
+                """{"version":{"major":1,"minor":0},"messageId":"event-activity","sender":"companion","type":"event","seq":3,"body":{"taskId":"task-1","event":"activity","state":"working","summary":"Codex is working"}}""",
+            )
+        val afterActivity = requireNotNull(TaskEventReducer.apply(original, activity))
+        assertEquals(TaskLastMessage(MessageSpeaker.USER, "archive everything older than 2024"), afterActivity[0].lastMessage)
+    }
+
+    @Test
     fun unknownTaskRequiresAFreshSnapshotInsteadOfCreatingAnIncompleteRow() {
         val message =
             ProtocolCodec.decodeText(

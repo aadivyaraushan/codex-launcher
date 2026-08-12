@@ -463,6 +463,53 @@ func TestListRecentReturnsThePhoneAgentTask(t *testing.T) {
 	}
 }
 
+func TestCurrentTaskRemembersWhoSpokeLast(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+
+	result, err := source.StartExistingTurn(context.Background(), testTaskID, "hello agent")
+	if err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+
+	sent, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask after send: %v", err)
+	}
+	wantUser := taskstate.LastMessage{From: taskstate.SpeakerUser, Text: "hello agent"}
+	if sent.LastMessage != wantUser {
+		t.Fatalf("last message after send = %#v, want %#v", sent.LastMessage, wantUser)
+	}
+
+	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "Hi there", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 1})
+	publisher.next(t)
+
+	if _, err := source.RedirectExistingTurn(context.Background(), testTaskID, "change of plan"); err != nil {
+		t.Fatalf("RedirectExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+	steered, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask after steer: %v", err)
+	}
+	wantSteer := taskstate.LastMessage{From: taskstate.SpeakerUser, Text: "change of plan"}
+	if steered.LastMessage != wantSteer {
+		t.Fatalf("last message after steer = %#v, want %#v", steered.LastMessage, wantSteer)
+	}
+
+	gateway.sendChat(ChatEventPayload{State: "final", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 2})
+	publisher.next(t)
+
+	replied, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask after reply: %v", err)
+	}
+	wantAgent := taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "Hi there"}
+	if replied.LastMessage != wantAgent {
+		t.Fatalf("last message after reply = %#v, want %#v", replied.LastMessage, wantAgent)
+	}
+}
+
 func TestCurrentTaskTracksRunState(t *testing.T) {
 	source, gateway, publisher := connectedSource(t)
 

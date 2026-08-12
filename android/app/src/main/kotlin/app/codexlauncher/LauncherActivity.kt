@@ -86,6 +86,7 @@ import app.codexlauncher.launcher.home.HomeSendDecision
 import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.launcher.home.HomeUiPolicy
 import app.codexlauncher.launcher.home.lastConnectedLabel
+import app.codexlauncher.launcher.home.sortedForHome
 import app.codexlauncher.launcher.home.toHomeTask
 import app.codexlauncher.launcher.surface.AttachmentChoiceDialog
 import app.codexlauncher.launcher.surface.BackgroundConnectionWarningDialog
@@ -564,7 +565,7 @@ class LauncherActivity : ComponentActivity() {
                                     computerName = sessionUiState.snapshot?.computerName ?: "Paired computer",
                                     connection = sessionUiState.connection,
                                     projects = sessionUiState.snapshot?.projects ?: emptyList(),
-                                    tasks = sessionUiState.snapshot?.tasks?.map { it.toHomeTask() } ?: emptyList(),
+                                    tasks = sessionUiState.snapshot?.tasks?.sortedForHome()?.map { it.toHomeTask() } ?: emptyList(),
                                     lastConnectedLabel = lastConnectionEpoch?.let { lastConnectedLabel(applicationContext, it) },
                                     standalone = standaloneStatus,
                                     promptDestination = capabilityState.destination,

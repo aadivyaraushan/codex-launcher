@@ -86,7 +86,21 @@ type Task struct {
 	CanRedirect   bool
 	UpdatedAtUnix int64
 	Source        Source
+	LastMessage   LastMessage
 }
+
+// LastMessage is the most recent message exchanged on a task, when one is
+// known. The zero value means absent.
+type LastMessage struct {
+	From string
+	Text string
+}
+
+const (
+	SpeakerAgent = "agent"
+	SpeakerUser  = "user"
+	SpeakerPlain = "plain"
+)
 
 func MapAppServerThread(raw json.RawMessage) (Task, error) {
 	var thread struct {
@@ -127,8 +141,12 @@ func MapAppServerThread(raw json.RawMessage) (Task, error) {
 	} else if strings.TrimSpace(thread.Preview) != "" {
 		title = thread.Preview
 	}
+	lastMessage := LastMessage{}
+	if preview := safeDisplay(thread.Preview, "", 512); preview != "" {
+		lastMessage = LastMessage{From: SpeakerPlain, Text: preview}
+	}
 	return Task{ID: thread.ID, Title: safeDisplay(title, "Codex task", 256), ProjectLabel: safeDisplay(projectLabel(thread.CWD), "Project", 128), ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", UpdatedAtUnix: thread.UpdatedAt, Source: SourceAppServer,
-		State: Map(Signals{ThreadID: thread.ID, RuntimeStatus: thread.Status.Type, ActiveFlags: thread.Status.ActiveFlags, LastTurnStatus: lastTurnStatus})}, nil
+		State: Map(Signals{ThreadID: thread.ID, RuntimeStatus: thread.Status.Type, ActiveFlags: thread.Status.ActiveFlags, LastTurnStatus: lastTurnStatus}), LastMessage: lastMessage}, nil
 }
 
 func MapDesktopSnapshot(raw json.RawMessage) (Task, error) {

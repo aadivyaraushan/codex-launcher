@@ -166,6 +166,10 @@ type snapshotTask struct {
 	CanRedirect    bool   `json:"canRedirect"`
 	QueueState     string `json:"queueState"`
 	LastActivityAt string `json:"lastActivityAt"`
+	LastMessage    *struct {
+		From string `json:"from"`
+		Text string `json:"text"`
+	} `json:"lastMessage,omitempty"`
 }
 
 func New(ctx context.Context, computerName string, projectService *projects.Service, journal *eventjournal.Journal, now func() time.Time) (*Handler, error) {
@@ -611,6 +615,7 @@ func mergeProvisionalTask(tasks []snapshotTask, provisional snapshotTask) []snap
 			tasks[index].CanRedirect = provisional.CanRedirect
 			tasks[index].QueueState = provisional.QueueState
 			tasks[index].LastActivityAt = provisional.LastActivityAt
+			tasks[index].LastMessage = provisional.LastMessage
 			return tasks
 		}
 	}
@@ -2271,12 +2276,19 @@ func loadSnapshotTasks(ctx context.Context, source TaskSource, queue *promptqueu
 			}
 			queueState = string(status)
 		}
-		projected = append(projected, snapshotTask{
+		entry := snapshotTask{
 			TaskID: task.ID, Title: task.Title, ProjectLabel: task.ProjectLabel, State: string(task.State),
 			ActiveTurnID: task.ActiveTurnID, CanRedirect: task.CanRedirect,
 			QueueState:     queueState,
 			LastActivityAt: time.Unix(task.UpdatedAtUnix, 0).UTC().Format(time.RFC3339),
-		})
+		}
+		if task.LastMessage != (taskstate.LastMessage{}) {
+			entry.LastMessage = &struct {
+				From string `json:"from"`
+				Text string `json:"text"`
+			}{From: task.LastMessage.From, Text: task.LastMessage.Text}
+		}
+		projected = append(projected, entry)
 	}
 	return projected, nil
 }

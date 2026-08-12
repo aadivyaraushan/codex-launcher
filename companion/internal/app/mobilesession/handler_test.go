@@ -443,6 +443,7 @@ func TestColdHelloIncludesOnlyTypedSafeTaskSummaries(t *testing.T) {
 		return []taskstate.Task{{
 			ID: "thread-1", Title: "Build launcher", ProjectLabel: "uf-u", State: taskstate.Working,
 			UpdatedAtUnix: sessionNow.Add(-time.Minute).Unix(), Source: taskstate.SourceDesktop,
+			LastMessage:   taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "Tests pass — writing up the diff now."},
 		}}, nil
 	}))
 
@@ -465,6 +466,10 @@ func TestColdHelloIncludesOnlyTypedSafeTaskSummaries(t *testing.T) {
 			ProjectLabel   string `json:"projectLabel"`
 			State          string `json:"state"`
 			LastActivityAt string `json:"lastActivityAt"`
+			LastMessage    *struct {
+				From string `json:"from"`
+				Text string `json:"text"`
+			} `json:"lastMessage"`
 		} `json:"tasks"`
 	}
 	if err := json.Unmarshal(sender.messages[1].Body, &snapshot); err != nil {
@@ -473,6 +478,10 @@ func TestColdHelloIncludesOnlyTypedSafeTaskSummaries(t *testing.T) {
 	if len(snapshot.Tasks) != 1 || snapshot.Tasks[0].TaskID != "thread-1" || snapshot.Tasks[0].Title != "Build launcher" ||
 		snapshot.Tasks[0].ProjectLabel != "uf-u" || snapshot.Tasks[0].State != "working" || snapshot.Tasks[0].LastActivityAt != "2026-07-13T11:59:00Z" {
 		t.Fatalf("tasks = %#v", snapshot.Tasks)
+	}
+	if snapshot.Tasks[0].LastMessage == nil || snapshot.Tasks[0].LastMessage.From != "agent" ||
+		snapshot.Tasks[0].LastMessage.Text != "Tests pass — writing up the diff now." {
+		t.Fatalf("last message = %#v", snapshot.Tasks[0].LastMessage)
 	}
 	if bytes.Contains(sender.messages[1].Body, []byte(`"source"`)) || bytes.Contains(sender.messages[1].Body, []byte(`"raw"`)) {
 		t.Fatalf("snapshot exposed an internal task field: %s", sender.messages[1].Body)

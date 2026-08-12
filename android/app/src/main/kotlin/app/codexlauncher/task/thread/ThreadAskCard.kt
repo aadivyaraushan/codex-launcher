@@ -14,9 +14,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import app.codexlauncher.appearance.theme.QuietInstrumentTokens
+import app.codexlauncher.capability.outcome.StateMark
 
 /**
  * Inline agent-message rendering of a pending [ThreadMessage.Ask], replacing
@@ -49,6 +52,18 @@ fun ThreadAskCard(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            // The mark carries its own label (StateMark, Home); only add a
+            // second Text when the ask's own wording says something the mark
+            // doesn't already say, mirroring how HomeScreen avoids repeating
+            // "Needs your answer" next to the shape that already reads it.
+            val askLabel =
+                if (ask.kind == AskKind.HARD_GATE) QuietInstrumentTokens.approvalLabel else QuietInstrumentTokens.waitingLabel
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StateMark(mark = StateMark.WAITING_FOR_USER)
+                if (askLabel != StateMark.WAITING_FOR_USER.label) {
+                    Text(askLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             Text(ask.prompt, style = MaterialTheme.typography.bodyLarge)
             if (card.computerName != null || card.projectLabel != null) {
                 Text("${card.computerName.orEmpty()} · ${card.projectLabel.orEmpty()}", style = MaterialTheme.typography.labelLarge)

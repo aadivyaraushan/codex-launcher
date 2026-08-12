@@ -389,13 +389,14 @@ object ProtocolCodec {
         tasks.all { element ->
             val task = element.jsonObject
             val id = optionalString(task, "taskId")
-            task.keys.all { it in setOf("taskId", "title", "projectLabel", "state", "activeTurnId", "canRedirect", "queueState", "lastActivityAt", "pendingRequest") } &&
+            task.keys.all { it in setOf("taskId", "title", "projectLabel", "state", "activeTurnId", "canRedirect", "queueState", "lastActivityAt", "pendingRequest", "lastMessage") } &&
                 id.isValidId() && ids.add(id) && optionalString(task, "title").isSafeDisplay(256) &&
                 optionalString(task, "projectLabel").isSafeDisplay(128) && optionalString(task, "state") in taskStates &&
                 (task["activeTurnId"] == null || optionalString(task, "activeTurnId").isValidId()) &&
                 (task["canRedirect"] == null || isJsonBoolean(task["canRedirect"])) &&
                 optionalString(task, "queueState") in setOf("", "none", "queued", "outcome_unknown") &&
-                runCatching { Instant.parse(optionalString(task, "lastActivityAt")) }.isSuccess && validPendingRequest(task["pendingRequest"])
+                runCatching { Instant.parse(optionalString(task, "lastActivityAt")) }.isSuccess && validPendingRequest(task["pendingRequest"]) &&
+                validLastMessage(task["lastMessage"])
         }
     }.getOrDefault(false)
 
@@ -460,6 +461,13 @@ object ProtocolCodec {
             val request = value.jsonObject
             request.keys == setOf("requestId", "kind", "summary") && optionalString(request, "requestId").isValidId() &&
                 optionalString(request, "kind") in requestKinds && optionalString(request, "summary").isSafeDisplay(512)
+        }.getOrDefault(false)
+
+    private fun validLastMessage(value: kotlinx.serialization.json.JsonElement?): Boolean =
+        value == null || runCatching {
+            val message = value.jsonObject
+            message.keys == setOf("from", "text") && optionalString(message, "from") in setOf("agent", "user", "plain") &&
+                optionalString(message, "text").isSafeDisplay(512)
         }.getOrDefault(false)
 
     private fun validOptionalError(value: kotlinx.serialization.json.JsonElement?, required: Boolean): Boolean {

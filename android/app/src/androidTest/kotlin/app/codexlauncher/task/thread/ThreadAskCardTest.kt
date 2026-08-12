@@ -1,9 +1,11 @@
 package app.codexlauncher.task.thread
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.codexlauncher.appearance.theme.AppearanceMode
@@ -111,6 +113,31 @@ class ThreadAskCardTest {
         }
         compose.onNodeWithText("Approve once").assertIsNotEnabled()
         compose.onNodeWithText("Deny").assertIsNotEnabled()
+    }
+
+    @Test
+    fun hardGateCardCarriesTheWaitingForUserMarkAndAnApprovalLabel() {
+        val ask = ThreadMessageMapper.fromDecision(commandRequest())
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                ThreadAskCard(ask, sending = false, actionable = true, onDecision = {}, onReply = {}, onNotNow = {})
+            }
+        }
+        compose.onNodeWithText("Needs your answer").assertIsDisplayed()
+        compose.onNodeWithText("Approval needed").assertIsDisplayed()
+    }
+
+    @Test
+    fun questionCardCarriesTheWaitingForUserMarkWithoutRepeatingItsLabel() {
+        val ask = ThreadMessageMapper.fromDecision(choiceQuestionRequest())
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.LIGHT) {
+                ThreadAskCard(ask, sending = false, actionable = true, onDecision = {}, onReply = {}, onNotNow = {})
+            }
+        }
+        // The mark's own label is "Needs your answer" (StateMark.WAITING_FOR_USER);
+        // it must appear exactly once, not duplicated by a second Text.
+        compose.onAllNodesWithText("Needs your answer").assertCountEquals(1)
     }
 
     private fun commandRequest() =
