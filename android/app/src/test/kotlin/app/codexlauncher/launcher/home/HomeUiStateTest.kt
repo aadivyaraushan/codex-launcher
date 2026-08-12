@@ -6,6 +6,7 @@ import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
 import app.codexlauncher.task.summary.MessageSpeaker
+import app.codexlauncher.task.summary.PHONE_AGENT_TASK_ID
 import app.codexlauncher.task.summary.TaskLastMessage
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary
@@ -306,5 +307,51 @@ class HomeUiStateTest {
                 paired = true,
             ).canSend,
         )
+    }
+
+    @Test
+    fun phoneAgentTaskEnablesSendWithoutSelectionWhenStandaloneIsReady() {
+        val ready =
+            StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+        val state =
+            HomeUiPolicy.render(
+                computerName = "Operator",
+                connection =
+                    ConnectionSnapshot(
+                        phase = ConnectionPhase.ONLINE,
+                        selectedProjectId = null,
+                        baseSequence = 1,
+                    ),
+                projects = emptyList(),
+                tasks = listOf(HomeTask(id = PHONE_AGENT_TASK_ID, title = "Phone agent", stateLabel = "Replied")),
+                standalone = ready,
+                paired = true,
+            )
+
+        assertTrue(state.canSend)
+        assertTrue(state.canSendWithoutSelection)
+    }
+
+    @Test
+    fun macProjectPathDoesNotSkipSelectionEvenIfPhoneAgentIsListed() {
+        val ready =
+            StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+        val state =
+            HomeUiPolicy.render(
+                computerName = "studio-mac",
+                connection =
+                    ConnectionSnapshot(
+                        phase = ConnectionPhase.ONLINE,
+                        selectedProjectId = "launcher",
+                        baseSequence = 42,
+                    ),
+                projects = projects,
+                tasks = listOf(HomeTask(id = PHONE_AGENT_TASK_ID, title = "Phone agent", stateLabel = "Replied")),
+                standalone = ready,
+                paired = true,
+            )
+
+        assertTrue(state.canSend)
+        assertFalse(state.canSendWithoutSelection)
     }
 }

@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 )
 
 // EventPublisher delivers MobileEvents to the phone. It is the launcher's
@@ -52,6 +55,8 @@ type Source struct {
 	activeTurnID string
 	updatedAt    int64
 	lastMessage  taskstate.LastMessage
+	entries      []tasktranscript.Entry
+	nextEntry    uint64
 }
 
 type chatSendParams struct {
@@ -87,6 +92,10 @@ func Connect(ctx context.Context, cfg Config) (*Source, error) {
 		state:       taskstate.IdleAfterReply,
 		updatedAt:   time.Now().Unix(),
 		lastMessage: taskstate.SafeLastMessage(cfg.InitialLastMessage),
+		entries:     []tasktranscript.Entry{},
+	}
+	if cfg.InitialLastMessage.Text != "" {
+		source.appendTranscriptLocked(kindFromSpeaker(cfg.InitialLastMessage.From), cfg.InitialLastMessage.Text, "seed")
 	}
 	client, err := connectClient(ctx, cfg.URL, cfg.Token, logger, source.handleEvent)
 	if err != nil {
@@ -115,8 +124,12 @@ func (source *Source) handleEvent(event string, payload json.RawMessage) {
 	mobileEvents := source.mapper.Apply(chatPayload)
 	source.applyRunStateLocked(chatPayload)
 	for _, mobileEvent := range mobileEvents {
-		if mobileEvent.Kind == "reply" {
+		switch mobileEvent.Kind {
+		case "reply":
 			source.lastMessage = taskstate.SafeLastMessage(taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: mobileEvent.Summary})
+			source.appendTranscriptLocked(tasktranscript.KindAgent, mobileEvent.Summary, chatPayload.RunID)
+		case "failure", "interrupted":
+			source.appendTranscriptLocked(tasktranscript.KindActivity, mobileEvent.Summary, chatPayload.RunID)
 		}
 	}
 	source.logger.Info("[turnproxy] applied chat event", "gateway_state", chatPayload.State, "run_id", chatPayload.RunID, "emitted", len(mobileEvents), "task_state", string(source.state))
@@ -191,6 +204,7 @@ func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastM
 	}
 	source.mu.Lock()
 	source.lastMessage = taskstate.SafeLastMessage(lastMessage)
+	source.appendTranscriptLocked(kindFromSpeaker(lastMessage.From), lastMessage.Text, turnID)
 	source.mu.Unlock()
 	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID, TurnID: turnID}, nil
 }
@@ -225,6 +239,7 @@ func (source *Source) RedirectExistingTurn(ctx context.Context, taskID, prompt s
 	}
 	source.mu.Lock()
 	source.lastMessage = taskstate.SafeLastMessage(taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt})
+	source.appendTranscriptLocked(tasktranscript.KindUser, prompt, "steer")
 	source.mu.Unlock()
 	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID}, nil
 }
@@ -253,6 +268,56 @@ func (source *Source) CurrentTask(ctx context.Context, taskID string) (taskstate
 // for; limit is accepted for interface compatibility and otherwise unused.
 func (source *Source) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {
 	return []taskstate.Task{source.snapshot()}, nil
+}
+
+// ReadTranscript returns the last known user/agent lines this Source has
+// seen in this connection (seeded last message, prompts sent, replies
+// streamed). It is not a full gateway history.
+func (source *Source) ReadTranscript(_ context.Context, taskID string, options tasktranscript.PageOptions) (tasktranscript.Page, error) {
+	if taskID != source.cfg.TaskID || options.TaskID != "" && options.TaskID != source.cfg.TaskID {
+		return tasktranscript.Page{}, tasktranscript.ErrTaskMismatch
+	}
+	if options.Limit < 1 || options.Limit > tasktranscript.MaxPageEntries {
+		return tasktranscript.Page{}, tasktranscript.ErrInvalidTranscript
+	}
+	if options.BeforeEntryID != "" && !validTranscriptID(options.BeforeEntryID) {
+		return tasktranscript.Page{}, tasktranscript.ErrInvalidTranscript
+	}
+
+	source.mu.Lock()
+	entries := append([]tasktranscript.Entry(nil), source.entries...)
+	source.mu.Unlock()
+
+	end := len(entries)
+	if options.BeforeEntryID != "" {
+		end = -1
+		for index := range entries {
+			if entries[index].ID == options.BeforeEntryID {
+				end = index
+				break
+			}
+		}
+		if end < 0 {
+			return tasktranscript.Page{}, tasktranscript.ErrUnknownCursor
+		}
+	}
+	start := end - options.Limit
+	if start < 0 {
+		start = 0
+	}
+	page := tasktranscript.Page{
+		TaskID:    source.cfg.TaskID,
+		Entries:   append([]tasktranscript.Entry(nil), entries[start:end]...),
+		Truncated: false,
+	}
+	if page.Entries == nil {
+		page.Entries = []tasktranscript.Entry{}
+	}
+	if start > 0 && len(page.Entries) != 0 {
+		page.EarlierCursor = page.Entries[0].ID
+	}
+	source.logger.Info("[turnproxy] transcript read", "task_id", taskID, "entry_count", len(page.Entries), "has_earlier", page.EarlierCursor != "")
+	return page, nil
 }
 
 func (source *Source) snapshot() taskstate.Task {
@@ -289,6 +354,58 @@ func (source *Source) Close() error {
 		return nil
 	}
 	return source.client.Close()
+}
+
+func (source *Source) appendTranscriptLocked(kind tasktranscript.Kind, text, turnID string) {
+	text = boundTranscriptText(text)
+	if text == "" {
+		return
+	}
+	source.nextEntry++
+	entryID := fmt.Sprintf("entry-%d", source.nextEntry)
+	if !validTranscriptID(turnID) {
+		turnID = fmt.Sprintf("turn-%d", source.nextEntry)
+	}
+	source.entries = append(source.entries, tasktranscript.Entry{
+		ID:     entryID,
+		TurnID: turnID,
+		Kind:   kind,
+		Text:   text,
+	})
+	if len(source.entries) > tasktranscript.MaxPageEntries {
+		source.entries = source.entries[len(source.entries)-tasktranscript.MaxPageEntries:]
+	}
+}
+
+func kindFromSpeaker(from string) tasktranscript.Kind {
+	switch from {
+	case taskstate.SpeakerUser:
+		return tasktranscript.KindUser
+	case taskstate.SpeakerAgent:
+		return tasktranscript.KindAgent
+	default:
+		return tasktranscript.KindActivity
+	}
+}
+
+func boundTranscriptText(text string) string {
+	if utf8.RuneCountInString(text) <= tasktranscript.MaxEntryRunes {
+		return text
+	}
+	return string([]rune(text)[:tasktranscript.MaxEntryRunes])
+}
+
+func validTranscriptID(value string) bool {
+	if value == "" || utf8.RuneCountInString(value) > 128 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || strings.ContainsRune("._:-", character) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func newIdempotencyKey() string {

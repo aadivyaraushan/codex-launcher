@@ -2,6 +2,9 @@ package app.codexlauncher.task.summary
 
 import java.time.Instant
 
+/** Wire id of the phone-runtime's one persistent task. */
+const val PHONE_AGENT_TASK_ID = "phone-agent"
+
 enum class TaskState(val wireName: String) {
     WORKING("working"),
     WAITING_FOR_APPROVAL("waiting_for_approval"),

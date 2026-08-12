@@ -441,12 +441,16 @@ private fun OnlineContent(
                 IconButton(
                     onClick = { onSend(composerState.text, selection) },
                     enabled =
-                        state.canSend &&
-                            composerState.canEdit &&
-                            composerState.text.isNotBlank() &&
-                            composerState.version != null &&
-                            selection != null &&
-                            !newTaskNeedsReview,
+                        HomeSendRouter.sendEnabled(
+                            canSend = state.canSend,
+                            composerReady =
+                                composerState.canEdit &&
+                                    composerState.text.isNotBlank() &&
+                                    composerState.version != null,
+                            newTaskNeedsReview = newTaskNeedsReview,
+                            selectionPresent = selection != null,
+                            canSendWithoutSelection = state.canSendWithoutSelection,
+                        ),
                     modifier =
                         Modifier.size(48.dp).semantics {
                             contentDescription = "Send prompt"

@@ -588,11 +588,16 @@ class LauncherActivity : ComponentActivity() {
                                         !sessionUiState.connection.selectedProjectId.isNullOrBlank() &&
                                         sessionUiState.connection.baseSequence != null &&
                                         sessionUiState.connection.baseSequence!! > 0
+                                val phoneAgentPresent =
+                                    HomeSendRouter.phoneAgentPresent(
+                                        sessionUiState.snapshot?.tasks?.map { it.id } ?: emptyList(),
+                                    )
                                 val decision =
                                     HomeSendRouter.decide(
                                         standalone = standaloneStatus,
                                         macOnlineWithProject = macOnlineWithProject,
                                         macPaired = pairedComputer != null,
+                                        phoneAgentPresent = phoneAgentPresent,
                                     )
                                 AppLog.info(
                                     feature = "standalone",
@@ -602,6 +607,7 @@ class LauncherActivity : ComponentActivity() {
                                             "decision" to decision.name.lowercase(),
                                             "standalone_ready" to standaloneStatus.isReady,
                                             "mac_online_with_project" to macOnlineWithProject,
+                                            "phone_agent_present" to phoneAgentPresent,
                                         ),
                                 )
                                 when (decision) {
@@ -634,6 +640,32 @@ class LauncherActivity : ComponentActivity() {
                                                 }
                                             }
                                             sessionViewModel.submitHomePrompt(prompt, selection, version)
+                                        }
+                                    }
+                                    HomeSendDecision.StartExistingPhoneAgent -> {
+                                        homeRouteMessage = null
+                                        scope.launch {
+                                            if (sessionViewModel.state.value.connection.phase != ConnectionPhase.ONLINE) {
+                                                val local = LocalRuntimeEndpoint.load(applicationContext)
+                                                if (local != null) {
+                                                    sessionViewModel.connect(local, force = true)
+                                                    var online = false
+                                                    repeat(50) {
+                                                        if (sessionViewModel.state.value.connection.phase ==
+                                                            ConnectionPhase.ONLINE
+                                                        ) {
+                                                            online = true
+                                                            return@repeat
+                                                        }
+                                                        delay(100)
+                                                    }
+                                                    if (!online) {
+                                                        homeRouteMessage = "Operator services unavailable."
+                                                        return@launch
+                                                    }
+                                                }
+                                            }
+                                            sessionViewModel.submitHomePrompt(prompt, null, version)
                                         }
                                     }
                                     HomeSendDecision.LinkLocalRuntime -> {

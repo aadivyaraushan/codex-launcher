@@ -14,6 +14,7 @@ import (
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/turnproxy"
 )
 
@@ -84,6 +85,10 @@ func (s *stubTurnSource) RedirectExistingTurn(context.Context, string, string) (
 
 func (s *stubTurnSource) InterruptExistingTurn(context.Context, string) (taskadapter.ExistingTaskResult, error) {
 	return taskadapter.ExistingTaskResult{ThreadID: "phone-agent", TurnID: "turn-1"}, nil
+}
+
+func (s *stubTurnSource) ReadTranscript(_ context.Context, taskID string, _ tasktranscript.PageOptions) (tasktranscript.Page, error) {
+	return tasktranscript.Page{TaskID: taskID, Entries: []tasktranscript.Entry{}}, nil
 }
 
 func (s *stubTurnSource) Close() error {
