@@ -26,6 +26,27 @@ func TestParseRuntimeCLIWiresGatewayFlags(t *testing.T) {
 	if cli.AllowSoftwareAttest {
 		t.Fatal("software attest must stay off by default")
 	}
+	if cli.BeeperBaseURL != "" {
+		t.Fatalf("BeeperBaseURL = %q, want empty when the flag is omitted", cli.BeeperBaseURL)
+	}
+}
+
+func TestParseRuntimeCLIWiresBeeperBaseURL(t *testing.T) {
+	cli, err := parseRuntimeCLI([]string{
+		"-root", "/var/lib/operator-phone",
+		"-gateway-url", "ws://127.0.0.1:18789",
+		"-gateway-token-path", "/var/lib/operator-phone/gateway-token",
+		"-beeper-base-url", "http://127.0.0.1:23373",
+	}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if cli.BeeperBaseURL != "http://127.0.0.1:23373" {
+		t.Fatalf("BeeperBaseURL = %q, want the loopback Client API URL", cli.BeeperBaseURL)
+	}
+	if cli.AllowSoftwareAttest {
+		t.Fatal("software attest must stay off when wiring Beeper")
+	}
 }
 
 func TestParseRuntimeCLIAllowSoftwareFromFlag(t *testing.T) {
@@ -77,6 +98,7 @@ func TestHelpListsGatewayAndAttestFlags(t *testing.T) {
 		"-gateway-url",
 		"-gateway-token-path",
 		"-allow-software-attest",
+		"-beeper-base-url",
 	} {
 		if !strings.Contains(out, needle) {
 			t.Fatalf("help missing %s:\n%s", needle, out)
@@ -84,5 +106,8 @@ func TestHelpListsGatewayAndAttestFlags(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(out), "bearer token value") {
 		t.Fatalf("help must not talk about token values:\n%s", out)
+	}
+	if strings.Contains(out, "-beeper-token") {
+		t.Fatalf("Beeper token must not be a CLI flag (Config has no token path; token comes from env or account.db):\n%s", out)
 	}
 }

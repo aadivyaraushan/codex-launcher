@@ -23,6 +23,11 @@ and `-gateway-token-path /var/lib/operator-phone/gateway-token` so turn-proxy
 can become task-capable without hand-editing config. The token file must
 already exist on disk; the run script never contains the token value.
 
+It also passes `-beeper-base-url http://127.0.0.1:23373` so the inbound
+Beeper watcher can start. The Beeper access token is never a flag or a
+value in this script; phone-runtime loads it from `BEEPER_ACCESS_TOKEN`
+or the local Beeper account database.
+
 ## AVD software attestation (local-pair only)
 
 Pixel-like emulators cannot produce a Google-rooted Android Key Attestation

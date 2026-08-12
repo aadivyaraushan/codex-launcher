@@ -30,6 +30,7 @@ type runtimeCLI struct {
 	GatewayURL          string
 	GatewayTokenPath    string
 	AllowSoftwareAttest bool
+	BeeperBaseURL       string
 }
 
 func envFlagOn(value string) bool {
@@ -52,6 +53,7 @@ func parseRuntimeCLI(args []string, output io.Writer) (runtimeCLI, error) {
 	gatewayURL := fs.String("gateway-url", "", "OpenClaw gateway websocket URL; requires -gateway-token-path (path only, never the token value)")
 	gatewayTokenPath := fs.String("gateway-token-path", "", "path to the OpenClaw gateway bearer token file (never the token itself)")
 	allowSoftware := fs.Bool("allow-software-attest", false, "AVD-only: accept software Keystore attestation and emulator cert chains; never enable on release Pixel builds")
+	beeperBaseURL := fs.String("beeper-base-url", "", "Beeper Client API base URL to watch for inbound messages (e.g. http://127.0.0.1:23373); empty disables the watcher. Token is never a flag — it comes from BEEPER_ACCESS_TOKEN or the local Beeper account database")
 	if err := fs.Parse(args); err != nil {
 		return runtimeCLI{}, err
 	}
@@ -62,6 +64,7 @@ func parseRuntimeCLI(args []string, output io.Writer) (runtimeCLI, error) {
 		GatewayURL:          strings.TrimSpace(*gatewayURL),
 		GatewayTokenPath:    strings.TrimSpace(*gatewayTokenPath),
 		AllowSoftwareAttest: *allowSoftware,
+		BeeperBaseURL:       strings.TrimSpace(*beeperBaseURL),
 	}
 	if envFlagOn(os.Getenv("OPERATOR_ALLOW_SOFTWARE_ATTEST")) {
 		cli.AllowSoftwareAttest = true
@@ -106,6 +109,7 @@ func run(args []string) int {
 		GatewayURL:          cli.GatewayURL,
 		GatewayTokenPath:    tokenPath,
 		AllowSoftwareAttest: cli.AllowSoftwareAttest,
+		BeeperBaseURL:       cli.BeeperBaseURL,
 	}, phoneruntime.Dependencies{Random: rand.Reader, Logger: logger})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "operator-phone-runtime: open: %v\n", err)

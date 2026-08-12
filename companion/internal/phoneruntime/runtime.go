@@ -340,6 +340,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 				}
 				delivery := &triggerDelivery{root: config.Root, turnSource: turnSource, logger: logger}
 				beeperWatchDone = make(chan struct{})
+				logger.Info("[phone-runtime] Beeper watcher starting", "base_url", config.BeeperBaseURL)
 				go func() {
 					defer close(beeperWatchDone)
 					watch(connectCtx, beeperwatch.Config{

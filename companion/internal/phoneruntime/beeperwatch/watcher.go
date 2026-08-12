@@ -121,7 +121,7 @@ func runOnce(ctx context.Context, cfg Config, logger *slog.Logger, seen *seenSet
 	if err := subscribeAll(ctx, conn); err != nil {
 		return fmt.Errorf("beeperwatch: subscribe: %w", err)
 	}
-	logger.Debug("[beeperwatch] connected and subscribed")
+	logger.Info("[beeperwatch] connected and subscribed")
 
 	for {
 		_, data, err := conn.Read(ctx)
