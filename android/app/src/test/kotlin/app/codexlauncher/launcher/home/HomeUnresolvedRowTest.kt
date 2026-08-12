@@ -1,7 +1,7 @@
 package app.codexlauncher.launcher.home
 
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
-import app.codexlauncher.capability.outcome.StateMark
+import app.codexlauncher.task.mark.StateMark
 import app.codexlauncher.task.summary.TaskQueueState
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary

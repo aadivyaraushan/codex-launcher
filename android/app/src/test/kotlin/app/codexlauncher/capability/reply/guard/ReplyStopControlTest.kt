@@ -29,7 +29,7 @@ import org.junit.Test
  *
  *  - The confirm sheet holds only the strings the Mac pre-rendered —
  *    `requestId`, `adapterId`, `verb`, `headline`, `lines`, `confirmLabel`,
- *    `fingerprint` (`CapabilityInteraction.kt:39-47`). No person, and
+ *    `fingerprint`. No person, and
  *    `adapterId` is a display label like "gmail", not an Android package.
  *  - `device_action` reaches `carryOutDeviceReply` with no sheet at all
  *    (`LauncherSessionViewModel.kt:1189-1197`), by design.

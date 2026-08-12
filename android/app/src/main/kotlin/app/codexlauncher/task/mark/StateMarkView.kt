@@ -1,4 +1,4 @@
-package app.codexlauncher.capability.outcome
+package app.codexlauncher.task.mark
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme

@@ -101,7 +101,6 @@ class LauncherApplication : Application() {
                 localState.lastConnections.record(pairingGeneration, epochMillis)
             },
             recordResumeCursor = localState.resumeCursors::record,
-            unresolvedCapabilityChecks = localState.capabilityUnresolvedChecks,
         )
     }
     val streamClient: StreamClient by lazy { LauncherStreamClient(session) }

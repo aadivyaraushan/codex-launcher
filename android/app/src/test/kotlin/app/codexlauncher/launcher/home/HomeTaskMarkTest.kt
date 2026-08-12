@@ -1,6 +1,6 @@
 package app.codexlauncher.launcher.home
 
-import app.codexlauncher.capability.outcome.StateMark
+import app.codexlauncher.task.mark.StateMark
 import app.codexlauncher.task.summary.TaskQueueState
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary
@@ -14,7 +14,7 @@ import org.junit.Test
  * The marks have to reach the screen.
  *
  * DESIGN.md fixes what "one tap left" and "handed off" look like, and the
- * capability.outcome package builds and tests both. None of that protects
+ * task.mark package builds and tests both. None of that protects
  * anybody while the home list has no way to carry a mark: a task that is
  * sitting one tap short of sending shows a line of text and nothing else,
  * and the state a user is most likely to misread is the state we drew

@@ -98,7 +98,7 @@ internal fun NotificationAccessDialog(onOpenSettings: () -> Unit, onDismiss: () 
  * that often would be intolerable. It matches the quiet, dismissible banner
  * this app already uses for an outcome it cannot fully vouch for — plain
  * text plus buttons, stacked on top of whatever screen is showing
- * (`CapabilitySheet.kt`'s `unresolvedCheck` banner).
+ * (the old capability sheet's unresolved-check banner).
  *
  * The wording never says "sent" or "delivered": Operator handed the text to
  * the app, and has no way to know whether the other person ever saw it.

@@ -21,7 +21,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
-import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
 import app.codexlauncher.task.configuration.PermissionModeOption
@@ -43,45 +42,7 @@ class HomeScreenTest {
     @get:Rule
     val compose = createComposeRule()
 
-    @Test
-    fun homeComposerShowsWhereThePromptWillRunAndLetsTheUserChooseComputer() {
-        var destination by mutableStateOf(PromptDestination.AUTO)
-        compose.setContent {
-            QuietInstrumentTheme(AppearanceMode.DARK) {
-                HomeScreen(
-                    state = onlineState(selectedProjectName = "Codex Launcher"),
-                    promptDestination = destination,
-                    onPromptDestinationChange = { destination = it },
-                )
-            }
-        }
 
-        compose.onNodeWithContentDescription("Auto destination selected").assertIsDisplayed()
-        compose.onNodeWithText("Apps first · Codex on studio-mac if none match").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Computer destination").performClick()
-        compose.onNodeWithContentDescription("Computer destination selected").assertIsDisplayed()
-        compose.onNodeWithText("Send directly to Codex on studio-mac").assertIsDisplayed()
-    }
-
-    @Test
-    fun appActionInProgressLocksTheDestinationAndSendControl() {
-        compose.setContent {
-            QuietInstrumentTheme(AppearanceMode.LIGHT) {
-                HomeScreen(
-                    state = onlineState(selectedProjectName = "Codex Launcher"),
-                    promptDestination = PromptDestination.AUTO,
-                    capabilityBusy = true,
-                    capabilityMessage = "Checking app actions…",
-                    composerState = readyDraft("Add milk to Todoist"),
-                )
-            }
-        }
-
-        compose.onNodeWithContentDescription("Auto destination selected").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Computer destination").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Send prompt using Auto").assertIsNotEnabled()
-        compose.onNodeWithText("Checking app actions…").assertIsDisplayed()
-    }
 
     @Test
     fun selectedAttachmentIsVisibleAndCanBeRemovedBeforeSend() {

@@ -1,7 +1,6 @@
 package app.codexlauncher.launcher.home
 
-import app.codexlauncher.capability.interaction.PromptDestination
-import app.codexlauncher.capability.outcome.StateMark
+import app.codexlauncher.task.mark.StateMark
 import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
@@ -81,7 +80,8 @@ class HomeUiStateTest {
     }
 
     @Test
-    fun unknownOrMissingProjectCannotEnableComputerSend() {
+    fun unknownOrMissingProjectCannotEnableMacSendWithoutStandalone() {
+        val notReady = StandaloneRuntimeStatus.notReady()
         for (projectId in listOf(null, "removed-project")) {
             val state =
                 HomeUiPolicy.render(
@@ -94,8 +94,7 @@ class HomeUiStateTest {
                         ),
                     projects = projects,
                     tasks = tasks,
-                    standalone = standaloneReady,
-                    promptDestination = PromptDestination.COMPUTER,
+                    standalone = notReady,
                     paired = true,
                 )
 
@@ -234,7 +233,6 @@ class HomeUiStateTest {
                 projects = projects,
                 tasks = tasks,
                 standalone = ready,
-                promptDestination = PromptDestination.AUTO,
                 paired = false,
             )
 
@@ -257,7 +255,6 @@ class HomeUiStateTest {
                 projects = projects,
                 tasks = tasks,
                 standalone = notReady,
-                promptDestination = PromptDestination.AUTO,
                 paired = false,
             )
 
@@ -268,7 +265,7 @@ class HomeUiStateTest {
     }
 
     @Test
-    fun autoSendStaysTiedToStandaloneEvenWhenMacIsOnline() {
+    fun macOnlineOrStandaloneReadyEnablesSend() {
         val ready =
             StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
         val notReady = StandaloneRuntimeStatus.notReady()
@@ -285,52 +282,27 @@ class HomeUiStateTest {
                 connection = online,
                 projects = projects,
                 tasks = tasks,
-                standalone = ready,
-                promptDestination = PromptDestination.AUTO,
-                paired = true,
-            ).canSend,
-        )
-        assertFalse(
-            HomeUiPolicy.render(
-                computerName = "studio-mac",
-                connection = online,
-                projects = projects,
-                tasks = tasks,
                 standalone = notReady,
-                promptDestination = PromptDestination.AUTO,
-                paired = true,
-            ).canSend,
-        )
-    }
-
-    @Test
-    fun computerDestinationRequiresOnlineProjectEvenWhenStandaloneReady() {
-        val ready =
-            StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
-        assertFalse(
-            HomeUiPolicy.render(
-                computerName = "studio-mac",
-                connection = ConnectionSnapshot.initial(),
-                projects = projects,
-                tasks = tasks,
-                standalone = ready,
-                promptDestination = PromptDestination.COMPUTER,
                 paired = true,
             ).canSend,
         )
         assertTrue(
             HomeUiPolicy.render(
                 computerName = "studio-mac",
-                connection =
-                    ConnectionSnapshot(
-                        phase = ConnectionPhase.ONLINE,
-                        selectedProjectId = "launcher",
-                        baseSequence = 42,
-                    ),
+                connection = ConnectionSnapshot.initial(),
                 projects = projects,
                 tasks = tasks,
                 standalone = ready,
-                promptDestination = PromptDestination.COMPUTER,
+                paired = true,
+            ).canSend,
+        )
+        assertFalse(
+            HomeUiPolicy.render(
+                computerName = "studio-mac",
+                connection = ConnectionSnapshot.initial(),
+                projects = projects,
+                tasks = tasks,
+                standalone = notReady,
                 paired = true,
             ).canSend,
         )
