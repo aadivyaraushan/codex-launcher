@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
-	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/disconnect"
 	capabilityruntime "github.com/codex-launcher/codex-launcher/companion/internal/capability/runtime"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
@@ -93,7 +93,6 @@ type Dependencies struct {
 	Random io.Reader
 	Logger *slog.Logger
 	Now    func() time.Time
-	Flow   mobilesession.CapabilityFlow
 	// BeeperAccounts probes Beeper /v1/accounts for health beeper= (tests inject; prod uses openBeeperAccounts).
 	BeeperAccounts func(context.Context) ([]BeeperAccountStatus, error)
 	// TurnProxyConnect dials the OpenClaw Gateway. Nil means real: Open
@@ -108,7 +107,6 @@ type Dependencies struct {
 type Health struct {
 	Mode          string            `json:"mode"`
 	Process       string            `json:"process"`
-	Router        string            `json:"router"`
 	Beeper        string            `json:"beeper"`
 	Credentials   map[string]string `json:"credentials"`
 	Adapters      []string          `json:"adapters"`
@@ -124,14 +122,10 @@ type Runtime struct {
 	store     io.Closer
 	pairing   *pairing.Service
 	mobile    *transport.Server
-	flow      mobilesession.CapabilityFlow
 	inventory capabilityruntime.Inventory
-	router    string
-	// routerStatus probes Android OpenAI broker GET /v1/broker/openai/status per Health call.
-	routerStatus func(context.Context) (keyed bool, err error)
-	mu           sync.Mutex
-	process      string
-	boundAddr    string
+	mu        sync.Mutex
+	process   string
+	boundAddr string
 	certificate  tls.Certificate
 	handler      *mobilesession.Handler
 	// Callers: CreateLocalPairOffer / ReleasePendingViaAttestation; Android LocalPairHandshake.
@@ -147,9 +141,8 @@ type Runtime struct {
 	// beeperAccounts probes local/remote Beeper for health beeper= (no tokens stored).
 	beeperAccounts func(context.Context) ([]BeeperAccountStatus, error)
 	// bridge serves the on-phone OpenClaw agent's tool calls over
-	// /v1/agent-tools/*. It is nil when the production flow was injected
-	// (tests) rather than built in-house, since only the in-house build has
-	// a runner to hand it.
+	// /v1/agent-tools/*. Open builds it unconditionally from the production
+	// inventory's runner, so it is set on every successful Open.
 	bridge *agentbridge.Bridge
 	// bridgeToken is the bearer token bridge checks on every request.
 	bridgeToken string
@@ -249,87 +242,69 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		return nil, err
 	}
 
-	flow := dependencies.Flow
-	inventory := capabilityruntime.Inventory{}
-	routerSource := "openai_broker"
-	var routerStatus func(context.Context) (bool, error)
 	bridgeTokenPath := filepath.Join(config.Root, "agentbridge-token")
-	var bridge *agentbridge.Bridge
-	var bridgeToken string
 	beeperAccounts := dependencies.BeeperAccounts
 	if beeperAccounts == nil {
 		beeperAccounts = openBeeperAccounts(logger)
 	}
-	if flow == nil {
-		// Fact-force (edit): callers=Open/Serve phone-runtime; replace stage1explicit with
-		// Android OpenAI broker (plan A2). User: Slice 1 openai-beeper-phone-runtime.
-		brokered, brokerErr := stage1openai.NewBrokered(phoneOpenAIBrokerBaseURL(), logger)
-		if brokerErr != nil {
-			_ = store.Close()
-			return nil, brokerErr
-		}
-		routerStatus = brokered.Status
-		prod := capabilityruntime.ProductionConfig{
-			Model:             brokered.Model,
-			Logger:            logger,
-			MapsBrokerBaseURL: phoneMapsBrokerBaseURL(),
-		}
-		// Fact-force (edit): callers=Open phone-runtime NewProduction;
-		// API=BeeperAPI+BeeperReadOnly; user: Slice 4 B4+B5.
-		if api, readOnly := beeperAPIFromEnv(logger); api != nil {
-			prod.BeeperAPI = api
-			prod.BeeperReadOnly = readOnly
-		}
-		service, inv, buildErr := capabilityruntime.NewProduction(prod)
-		if buildErr != nil {
-			_ = store.Close()
-			return nil, buildErr
-		}
-		flow = service
-		inventory = inv
 
-		// The agent bridge needs a runner of its own to hand the OpenClaw
-		// agent, which only the in-house build above actually has — a flow
-		// injected by a test carries no runner to reuse, so bridge stays nil
-		// in that case (see the Runtime.bridge doc comment).
-		token, tokenErr := loadOrMintBridgeToken(bridgeTokenPath, dependencies.Random)
-		if tokenErr != nil {
-			_ = store.Close()
-			return nil, tokenErr
-		}
-		bridgeToken = token
-		gateStore := newDurableGateStore(ctx, store)
-
-		// approvals and router form a cycle with bridge: approvals needs the
-		// router to register decisions on, the router needs approvals to
-		// resolve them, and approvals needs the bridge to actually release a
-		// gate — but the bridge itself needs approvals (as its Notifier)
-		// before it exists. Build approvals and the router first with sink
-		// and releaser left nil, wire the router in, then backfill releaser
-		// once bridge is built below.
-		approvals := newGateApprovals(logger, now, nil, handler, nil)
-		router := decisions.NewRouter(approvals, logger)
-		approvals.sink = router
-		handler.EnableDecisions(router)
-
-		bridge = agentbridge.New(inventory, inventory.Runner(), token, logger, agentbridge.GateDeps{
-			Policy:   gates.New(gateStore, newGateIDFunc(logger)),
-			Store:    gateStore,
-			Notifier: approvals,
-			// Read fresh on every call, deliberately: an owner edit to
-			// agent-rules.md must apply to the very next send, not wait for
-			// a restart.
-			AllowListed: func(recipient string) bool {
-				rules, err := agenttrigger.EnsureRules(config.Root)
-				if err != nil {
-					return false
-				}
-				return agenttrigger.Allowed(rules, recipient)
-			},
-		})
-		approvals.releaser = bridge
+	prod := capabilityruntime.ProductionConfig{
+		Logger:            logger,
+		MapsBrokerBaseURL: phoneMapsBrokerBaseURL(),
 	}
-	handler.EnableCapabilities(flow)
+	// Fact-force (edit): callers=Open phone-runtime NewProduction;
+	// API=BeeperAPI+BeeperReadOnly; user: Slice 4 B4+B5.
+	if api, readOnly := beeperAPIFromEnv(logger); api != nil {
+		prod.BeeperAPI = api
+		prod.BeeperReadOnly = readOnly
+	}
+	inventory, buildErr := capabilityruntime.NewProduction(prod)
+	if buildErr != nil {
+		_ = store.Close()
+		return nil, buildErr
+	}
+
+	// The agent bridge needs a runner to hand the OpenClaw agent; it is
+	// built unconditionally from the inventory NewProduction just returned
+	// — there is no longer a routed flow that could stand in for it.
+	token, tokenErr := loadOrMintBridgeToken(bridgeTokenPath, dependencies.Random)
+	if tokenErr != nil {
+		_ = store.Close()
+		return nil, tokenErr
+	}
+	bridgeToken := token
+	gateStore := newDurableGateStore(ctx, store)
+
+	// approvals and router form a cycle with bridge: approvals needs the
+	// router to register decisions on, the router needs approvals to
+	// resolve them, and approvals needs the bridge to actually release a
+	// gate — but the bridge itself needs approvals (as its Notifier)
+	// before it exists. Build approvals and the router first with sink
+	// and releaser left nil, wire the router in, then backfill releaser
+	// once bridge is built below.
+	approvals := newGateApprovals(logger, now, nil, handler, nil)
+	router := decisions.NewRouter(approvals, logger)
+	approvals.sink = router
+	handler.EnableDecisions(router)
+
+	disconnector := disconnect.New(inventory.Runner(), capabilityruntime.ConsentGate(), logger)
+	bridge := agentbridge.New(inventory, inventory.Runner(), token, logger, agentbridge.GateDeps{
+		Policy:       gates.New(gateStore, newGateIDFunc(logger)),
+		Store:        gateStore,
+		Notifier:     approvals,
+		Disconnector: disconnector,
+		// Read fresh on every call, deliberately: an owner edit to
+		// agent-rules.md must apply to the very next send, not wait for
+		// a restart.
+		AllowListed: func(recipient string) bool {
+			rules, err := agenttrigger.EnsureRules(config.Root)
+			if err != nil {
+				return false
+			}
+			return agenttrigger.Allowed(rules, recipient)
+		},
+	})
+	approvals.releaser = bridge
 
 	var turnProxyCancel context.CancelFunc
 	var turnProxyDone chan struct{}
@@ -403,10 +378,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		store:           store,
 		pairing:         pairingService,
 		mobile:          mobileServer,
-		flow:            flow,
 		inventory:       inventory,
-		router:          routerSource,
-		routerStatus:    routerStatus,
 		process:         "ready",
 		certificate:     certificate,
 		handler:         handler,
@@ -711,10 +683,6 @@ func (runtime *Runtime) TaskCapable() bool {
 	return runtime != nil && runtime.turnSource != nil && runtime.turnSource.connected()
 }
 
-func (runtime *Runtime) CapabilityCapable() bool {
-	return runtime != nil && runtime.flow != nil
-}
-
 func (runtime *Runtime) HasPendingLocalPairOffer() bool {
 	if runtime == nil {
 		return false
@@ -997,24 +965,9 @@ func (runtime *Runtime) Health() Health {
 	} else if pending {
 		localPair = "offer_pending"
 	}
-	router := runtime.router
-	if runtime.routerStatus != nil {
-		keyed, statusErr := runtime.routerStatus(context.Background())
-		switch {
-		case statusErr != nil:
-			// Per-ask failures still report openai_broker; only no_key is special.
-			router = "openai_broker"
-			runtime.logger.Info("[phone-runtime] router status probe failed", "error", statusErr)
-		case !keyed:
-			router = "openai_broker:no_key"
-		default:
-			router = "openai_broker"
-		}
-	}
 	return Health{
 		Mode:          "standalone_phone",
 		Process:       process,
-		Router:        router,
 		Beeper:        beeper,
 		Credentials:   credentials,
 		Adapters:      adapters,

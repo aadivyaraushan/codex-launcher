@@ -39,9 +39,6 @@ func TestHealthReportsReadinessWithoutSecrets(t *testing.T) {
 	if report.Process != "ready" {
 		t.Fatalf("Process = %q, want ready", report.Process)
 	}
-	if report.Router == "" {
-		t.Fatal("Router status missing")
-	}
 	if report.ListenAddress != phoneruntime.ListenAddress {
 		t.Fatalf("ListenAddress = %q, want %s", report.ListenAddress, phoneruntime.ListenAddress)
 	}
@@ -174,9 +171,6 @@ func TestCapabilityOnlyWelcomeOmitsDesktopTasks(t *testing.T) {
 
 	if rt.TaskCapable() {
 		t.Fatal("phone runtime must not advertise desktop tasks")
-	}
-	if !rt.CapabilityCapable() {
-		t.Fatal("phone runtime must expose capability actions")
 	}
 }
 

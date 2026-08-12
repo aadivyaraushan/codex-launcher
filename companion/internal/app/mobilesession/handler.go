@@ -15,12 +15,7 @@ import (
 	"unicode"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
-	capabilityadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
-	"github.com/codex-launcher/codex-launcher/companion/internal/capability/consent"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/devicework"
-	"github.com/codex-launcher/codex-launcher/companion/internal/capability/execution"
-	capabilityflow "github.com/codex-launcher/codex-launcher/companion/internal/capability/flow"
-	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
@@ -38,13 +33,6 @@ import (
 
 type TaskSource interface {
 	ListRecent(context.Context, int) ([]taskstate.Task, error)
-}
-
-type CapabilityFlow interface {
-	Prepare(context.Context, string, string, string) (capabilityflow.Preview, error)
-	Confirm(context.Context, string, string, string) (capabilityadapter.Outcome, error)
-	Cancel(string, string, string) error
-	Disconnect(context.Context, string) error
 }
 
 type TaskTranscriptSource interface {
@@ -118,7 +106,6 @@ type Handler struct {
 	existingTaskSource ExistingTaskSource
 	promptQueue        *promptqueue.Queue
 	decisionRouter     *decisions.Router
-	capabilityFlow     CapabilityFlow
 	deviceWork         *devicework.Ledger
 	nextID             atomic.Uint64
 	publishMu          sync.Mutex
@@ -377,12 +364,6 @@ func (handler *Handler) EnableDecisions(router *decisions.Router) {
 	}
 }
 
-func (handler *Handler) EnableCapabilities(flow CapabilityFlow) {
-	if handler != nil && flow != nil {
-		handler.capabilityFlow = flow
-	}
-}
-
 type decisionPage struct {
 	RequestID string            `json:"requestId"`
 	TaskID    string            `json:"taskId"`
@@ -522,7 +503,7 @@ func (handler *Handler) handleHello(ctx context.Context, sender transport.Messag
 			handler.logger.Info("[mobile-session] new task options ready", "model_count", len(options.Models), "permission_mode_count", len(options.PermissionModes), "output_shape", "safe_option_catalog")
 		}
 	}
-	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, handler.attachmentCapable, handler.decisionRouter != nil, handler.capabilityFlow != nil, options)); err != nil {
+	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, handler.attachmentCapable, handler.decisionRouter != nil, options)); err != nil {
 		return err
 	}
 	var body struct {
@@ -713,44 +694,6 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	handler.mu.Unlock()
 	if current == nil || current.ConnectionID() != sender.ConnectionID() {
 		return ErrSessionSuperseded
-	}
-	if action.Kind == "capability_request" || action.Kind == "capability_confirm" || action.Kind == "capability_disconnect" {
-		params := capabilityActionParams{
-			ActionID:    action.ActionID,
-			Kind:        action.Kind,
-			RequestID:   action.RequestID,
-			Utterance:   action.Utterance,
-			Fingerprint: action.Fingerprint,
-			Decision:    string(action.Decision),
-			AdapterID:   action.AdapterID,
-		}
-		// Prepare/Confirm can call the OpenAI broker for many seconds. Doing that
-		// on the WebSocket read goroutine starves coder/websocket Read, so the
-		// phone stops getting pong replies and drops the session (~40s). Run the
-		// long path off the read loop; disconnect stays inline (fast).
-		if action.Kind == "capability_request" || action.Kind == "capability_confirm" {
-			go func() {
-				handler.publishMu.Lock()
-				defer handler.publishMu.Unlock()
-				handler.mu.Lock()
-				current := handler.active[sender.DeviceID()]
-				handler.mu.Unlock()
-				if current == nil || current.ConnectionID() != sender.ConnectionID() {
-					return
-				}
-				if err := handler.handleCapabilityAction(handler.ctx, sender, params); err != nil {
-					handler.logger.Error(
-						"[mobile-session] async capability action failed",
-						"device_id", sender.DeviceID(),
-						"kind", params.Kind,
-						"request_id", params.ActionID,
-						"error_class", fmt.Sprintf("%T", err),
-					)
-				}
-			}()
-			return nil
-		}
-		return handler.handleCapabilityAction(ctx, sender, params)
 	}
 	result := map[string]any{"actionId": action.ActionID, "state": "confirmed"}
 	refreshTasks := false
@@ -944,197 +887,6 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	return nil
 }
 
-// capabilityActionParams carries the fields handleCapabilityAction needs out
-// of the wire action. It exists so a new capability action kind (like
-// capability_disconnect) can add one field without every call site growing
-// another positional string parameter.
-type capabilityActionParams struct {
-	ActionID    string
-	Kind        string
-	RequestID   string
-	Utterance   string
-	Fingerprint string
-	Decision    string
-	AdapterID   string
-}
-
-func (handler *Handler) handleCapabilityAction(ctx context.Context, sender transport.MessageSender, params capabilityActionParams) error {
-	actionID, kind, requestID, utterance, fingerprint, decision, adapterID :=
-		params.ActionID, params.Kind, params.RequestID, params.Utterance, params.Fingerprint, params.Decision, params.AdapterID
-	if handler.capabilityFlow == nil {
-		// There is no error to map here — this build was simply never given a
-		// capability flow, which happens on a desktop that has not wired one
-		// up. "desktop_incompatible" says exactly that.
-		return handler.publishCapabilityFailure(ctx, sender, actionID, failureDesktopIncompatible)
-	}
-	switch kind {
-	case "capability_request":
-		ownerID := capabilityOwner(sender)
-		preview, err := handler.capabilityFlow.Prepare(ctx, ownerID, actionID, utterance)
-		if err != nil {
-			// A question is not a failure. The flow returns QuestionError when
-			// it understood the request perfectly well and needs one more word
-			// before it can act — most often which of several people named
-			// "Maya" was meant. Nothing broke and nothing was refused, so
-			// "failed" with a hardcoded "invalid_action" tells the user their
-			// request was wrong when it was not.
-			//
-			// "cancelled" is the honest word the shipped phone will accept.
-			// Its decoder holds a closed set of error codes
-			// (ProtocolCodec.kt:618) and drops the whole envelope on an
-			// unknown one, so a new code like "needs_disambiguation" would
-			// mean the user is told nothing at all. "cancelled" is already a
-			// valid action state there (:601) and carries no error object
-			// (:216 permits one only on failed and outcome_unknown), which is
-			// exactly right: we stopped, we did not act, and nothing is wrong.
-			//
-			// Delivering the question text and routing an answer back is a
-			// wire change on both sides and is not done here.
-			var question *capabilityflow.QuestionError
-			if errors.As(err, &question) {
-				handler.logger.Info("[mobile-session] capability needs an answer before it can act", "device_id", sender.DeviceID(), "request_id", actionID, "question_length", len(question.Question))
-				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", question.Question)
-			}
-			// Fact-force (edit): Slice 1 A2 fail-closed — typed OpenAI broker errors become
-			// the same cancelled+question path stage2 questions use (plan fail-closed table).
-			// Callers: Prepare → stage1openai.ErrRouterNotProvisioned|ErrRouterUnreachable.
-			// User: "Implement OpenAI+Beeper phone-runtime plan — SLICE 1 only"
-			if errors.Is(err, stage1openai.ErrRouterNotProvisioned) {
-				msg := "Operator's router isn't set up on this phone yet. Ask the operator to finish setup."
-				handler.logger.Info("[mobile-session] router not provisioned", "device_id", sender.DeviceID(), "request_id", actionID)
-				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", msg)
-			}
-			if errors.Is(err, stage1openai.ErrRouterUnreachable) {
-				msg := "I couldn't reach the router just now. Try again in a moment."
-				handler.logger.Info("[mobile-session] router unreachable", "device_id", sender.DeviceID(), "request_id", actionID)
-				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", msg)
-			}
-			code := capabilityFailureCode(err)
-			handler.logger.Error("[mobile-session] capability prepare failed", "device_id", sender.DeviceID(), "request_id", actionID, "error_class", fmt.Sprintf("%T", err), "code", code)
-			return handler.publishCapabilityFailure(ctx, sender, actionID, code)
-		}
-		body, err := json.Marshal(struct {
-			RequestID    string   `json:"requestId"`
-			AdapterID    string   `json:"adapterId"`
-			Verb         string   `json:"verb"`
-			Headline     string   `json:"headline"`
-			Lines        []string `json:"lines"`
-			ConfirmLabel string   `json:"confirmLabel"`
-			Fingerprint  string   `json:"fingerprint"`
-		}{preview.RequestID, preview.AdapterID, string(preview.Verb), preview.Headline, preview.Lines, preview.Confirm, preview.Fingerprint})
-		if err != nil {
-			return err
-		}
-		handler.logger.Info("[mobile-session] capability preview ready", "device_id", sender.DeviceID(), "request_id", actionID, "adapter_id", preview.AdapterID, "verb", preview.Verb, "line_count", len(preview.Lines))
-		return handler.send(ctx, sender, "capability_preview", nil, body)
-	case "capability_confirm":
-		ownerID := capabilityOwner(sender)
-		if decision == "cancel" {
-			if err := handler.capabilityFlow.Cancel(ownerID, requestID, fingerprint); err != nil {
-				code := capabilityFailureCode(err)
-				handler.logger.Error("[mobile-session] capability cancel failed", "device_id", sender.DeviceID(), "request_id", requestID, "error_class", fmt.Sprintf("%T", err), "code", code)
-				return handler.publishCapabilityFailure(ctx, sender, actionID, code)
-			}
-			return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled")
-		}
-		outcome, err := handler.capabilityFlow.Confirm(ctx, ownerID, requestID, fingerprint)
-		if err != nil {
-			// Device work is checked first because it is a different
-			// situation from the other two branches below, not because
-			// ordering could make one shadow another — the three error
-			// types are distinct, so any order would type-switch correctly.
-			var deviceWork *capabilityadapter.DeviceWorkError
-			if errors.As(err, &deviceWork) {
-				return handler.handOffToDevice(ctx, sender, actionID, requestID, deviceWork)
-			}
-			var unknown *capabilityadapter.OutcomeUnknownError
-			if errors.As(err, &unknown) {
-				handler.logger.Error("[mobile-session] capability execute outcome unknown", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", unknown.AdapterID, "verb", unknown.Verb)
-				return handler.publishCapabilityActionResult(ctx, sender, actionID, "outcome_unknown")
-			}
-			code := capabilityFailureCode(err)
-			handler.logger.Error("[mobile-session] capability execute failed", "device_id", sender.DeviceID(), "request_id", requestID, "error_class", fmt.Sprintf("%T", err), "code", code)
-			return handler.publishCapabilityFailure(ctx, sender, actionID, code)
-		}
-		body, err := json.Marshal(struct {
-			RequestID   string `json:"requestId"`
-			Ceiling     string `json:"ceiling"`
-			Done        bool   `json:"done"`
-			Detail      string `json:"detail"`
-			HandedOffTo string `json:"handedOffTo"`
-		}{requestID, string(outcome.Reached), outcome.Done, outcome.Detail, outcome.HandedOffTo})
-		if err != nil {
-			return err
-		}
-		event, err := handler.journal.Apply(ctx, "capability_result", body, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) { return current, nil })
-		if err != nil {
-			return err
-		}
-		handler.queueDelivery("capability_result", event.Sequence, body, []transport.MessageSender{sender})
-		handler.logger.Info("[mobile-session] capability result queued", "device_id", sender.DeviceID(), "request_id", requestID, "ceiling", outcome.Reached, "done", outcome.Done)
-		return nil
-	case "capability_disconnect":
-		if err := handler.capabilityFlow.Disconnect(ctx, adapterID); err != nil {
-			// The same rule as the confirm branch above, for the same reason.
-			// A revoke request that went out and lost its reply may already
-			// have killed the token; Google answers a second revoke of a dead
-			// token with a 4xx, so "failed" here would repeat forever while
-			// the access is in fact already gone.
-			var unknown *capabilityadapter.OutcomeUnknownError
-			if errors.As(err, &unknown) {
-				handler.logger.Error("[mobile-session] capability disconnect outcome unknown", "device_id", sender.DeviceID(), "adapter_id", adapterID, "verb", unknown.Verb)
-				return handler.publishCapabilityActionResult(ctx, sender, actionID, "outcome_unknown")
-			}
-			code := capabilityFailureCode(err)
-			handler.logger.Error("[mobile-session] capability disconnect failed", "device_id", sender.DeviceID(), "adapter_id", adapterID, "error_class", fmt.Sprintf("%T", err), "code", code)
-			return handler.publishCapabilityFailure(ctx, sender, actionID, code)
-		}
-		handler.logger.Info("[mobile-session] capability disconnected", "device_id", sender.DeviceID(), "adapter_id", adapterID)
-		return handler.publishCapabilityActionResult(ctx, sender, actionID, "confirmed")
-	default:
-		return ErrUnsupportedMessage
-	}
-}
-
-func capabilityOwner(sender transport.MessageSender) string {
-	return fmt.Sprintf("%s/%s/%d", sender.DeviceID(), sender.SessionID(), sender.ConnectionID())
-}
-
-// handOffToDevice records that requestID is now waiting on sender's phone
-// and asks it to carry out deviceWork's instruction. The ask goes out with
-// send, not through the journal: device_action is never replayed, because a
-// request the phone missed while offline has to expire rather than fire
-// late into a conversation that has moved on. No result frame is sent here
-// — until the phone answers, the honest thing to say is nothing at all.
-func (handler *Handler) handOffToDevice(ctx context.Context, sender transport.MessageSender, actionID, requestID string, deviceWork *capabilityadapter.DeviceWorkError) error {
-	// Resolve now, once, so nothing downstream has to ask what a blank
-	// ceiling means. An adapter that named nothing gets read as hands_off —
-	// the most modest claim, not the strongest.
-	ceiling := deviceWork.Ceiling.OrHandsOff()
-	record := devicework.Record{RequestID: requestID, DeviceID: sender.DeviceID(), Kind: deviceWork.Kind, ActionID: actionID, AdapterID: deviceWork.AdapterID, Ceiling: ceiling}
-	if !handler.deviceWork.Wait(record) {
-		// The request is already on the books. Handing it to the phone a
-		// second time would put the same message in front of a real person
-		// twice, so the honest response to a duplicate confirm is silence.
-		handler.logger.Info("[mobile-session] device action already outstanding", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", deviceWork.AdapterID, "kind", deviceWork.Kind, "ceiling", string(ceiling))
-		return nil
-	}
-	body, err := json.Marshal(struct {
-		RequestID string `json:"requestId"`
-		Kind      string `json:"kind"`
-		Handle    string `json:"handle"`
-		Text      string `json:"text"`
-	}{requestID, deviceWork.Kind, deviceWork.Handle, deviceWork.Text})
-	if err != nil {
-		return err
-	}
-	// Handle and Text are what a real person wrote — never in the log line.
-	// ceiling is the cap that will be applied to whatever the phone reports
-	// back, so it belongs in this log line rather than a new one.
-	handler.logger.Info("[mobile-session] device action handed to phone", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", deviceWork.AdapterID, "kind", deviceWork.Kind, "ceiling", string(ceiling))
-	return handler.send(ctx, sender, "device_action", nil, body)
-}
-
 // handleDeviceActionResult is the phone answering a device_action. Only the
 // first answer for a request is accepted — the ledger enforces that — so a
 // replay, a confused phone, or an answer that arrives after the request was
@@ -1257,37 +1009,6 @@ const (
 	failureDesktopIncompatible actionFailureCode = "desktop_incompatible"
 	failureInternal            actionFailureCode = "internal"
 )
-
-// capabilityFailureCode turns a Go error into the one word out of the
-// phone's fixed vocabulary that best tells the user what actually happened.
-//
-// "internal" is the default for anything not explicitly recognized below,
-// and that default is deliberate, not lazy: "internal" admits we cannot
-// explain what went wrong, while "invalid_action" claims to know the user
-// did something wrong. Only the errors listed below have actually
-// established that the request itself was the problem; every other error
-// gets the honest, unassuming answer.
-func capabilityFailureCode(err error) actionFailureCode {
-	switch {
-	case errors.Is(err, consent.ErrNotGranted), errors.Is(err, manifest.ErrGateNotCleared):
-		// The request was fine. The one thing missing is something the user
-		// can fix themselves — connect the app, or clear the checkpoint —
-		// and "unauthorized" is the only word in the set that says so.
-		return failureUnauthorized
-	case errors.Is(err, consent.ErrNeverShipped),
-		errors.Is(err, execution.ErrVerbNotOffered),
-		errors.Is(err, execution.ErrPreviewRequired),
-		errors.Is(err, capabilityflow.ErrUnknownRequest),
-		errors.Is(err, capabilityflow.ErrRequestExists),
-		errors.Is(err, capabilityflow.ErrFingerprintMismatch):
-		// These really are the user (or a stale client) asking for something
-		// that does not exist or does not match what was previewed.
-		// "invalid_action" is the truth here.
-		return failureInvalidAction
-	default:
-		return failureInternal
-	}
-}
 
 // publishCapabilityActionResult reports a non-failure outcome: confirmed,
 // cancelled, or outcome_unknown. A "failed" result always needs a caller to
@@ -2208,7 +1929,7 @@ func (handler *Handler) send(ctx context.Context, sender transport.MessageSender
 	return nil
 }
 
-func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable, attachmentCapable, decisionCapable, capabilityCapable bool, options taskoptions.Catalog) json.RawMessage {
+func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable, attachmentCapable, decisionCapable bool, options taskoptions.Catalog) json.RawMessage {
 	capabilities := []string{"set_project"}
 	if taskCapable {
 		capabilities = append(capabilities, "desktop_tasks")
@@ -2227,9 +1948,6 @@ func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCap
 	}
 	if decisionCapable {
 		capabilities = append(capabilities, "decisions")
-	}
-	if capabilityCapable {
-		capabilities = append(capabilities, "capability_actions")
 	}
 	body, _ := json.Marshal(struct {
 		SessionID      string              `json:"sessionId"`

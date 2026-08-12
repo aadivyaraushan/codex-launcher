@@ -57,7 +57,7 @@ func run(args []string) int {
 	}
 	defer runtime.Close()
 
-	logger.Info("[phone-runtime] serve starting", "mode", runtime.Health().Mode, "process", runtime.Health().Process, "router", runtime.Health().Router, "listen", runtime.Health().ListenAddress)
+	logger.Info("[phone-runtime] serve starting", "mode", runtime.Health().Mode, "process", runtime.Health().Process, "listen", runtime.Health().ListenAddress)
 	if err := runtime.Serve(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "operator-phone-runtime: serve: %v\n", err)
 		return 1

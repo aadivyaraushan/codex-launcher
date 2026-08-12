@@ -36,8 +36,7 @@ import (
 // would mask an adapter that should have been skipped for needing a sign-in.
 func fullyConfigured(t *testing.T) Inventory {
 	t.Helper()
-	_, inv, err := NewProduction(ProductionConfig{
-		Model:           stubModel,
+	inv, err := NewProduction(ProductionConfig{
 		Logger:          quietLogger(),
 		MapsAPIKey:      "test-maps-key",
 		YouTubeAPIKey:   "test-youtube-key",

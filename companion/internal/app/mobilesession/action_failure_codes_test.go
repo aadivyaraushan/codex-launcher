@@ -3,6 +3,7 @@ package mobilesession
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -197,6 +198,21 @@ func failedActionResult(t *testing.T, result contract.Message) contract.Message 
 		t.Fatalf("expected a failed action result so the error object is allowed at all: %s", result.Body)
 	}
 	return result
+}
+
+// errorCodeOf pulls the error code out of an action_result body, or returns ""
+// if there is no error object.
+func errorCodeOf(t *testing.T, result contract.Message) string {
+	t.Helper()
+	var decoded struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(result.Body, &decoded); err != nil {
+		t.Fatalf("could not read the result body: %v (%s)", err, result.Body)
+	}
+	return decoded.Error.Code
 }
 
 func greet(t *testing.T, handler *Handler, sender *recordingSender) {
