@@ -28,6 +28,9 @@ export interface ToolCallRequest {
   verb: string;
   subject?: string;
   handle?: string;
+  to?: string;
+  recipient?: string;
+  chat_id?: string;
   body?: string;
   fields?: Record<string, string>;
   // Current turn's session id, omitempty. The bridge's exfiltration gate

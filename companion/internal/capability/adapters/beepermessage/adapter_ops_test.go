@@ -397,6 +397,76 @@ func TestSendStillRequiresRecipient(t *testing.T) {
 	}
 }
 
+func TestSendResolvesRecipientFromHandleAndFieldAliases(t *testing.T) {
+	api := &fakeBeeper{chats: []beeper.Chat{{ID: "c1", Network: "Discord", Title: "Maya"}}}
+	a := New(Spec{ID: "discord", Network: "Discord"}, api, testLogger())
+	cases := []struct {
+		name string
+		in   adapter.Intent
+	}{
+		{"handle", adapter.Intent{AdapterID: "discord", Verb: manifest.Send, Handle: "Maya", Body: "hi"}},
+		{"fields.to", adapter.Intent{AdapterID: "discord", Verb: manifest.Send, Body: "hi", Fields: map[string]string{"to": "Maya"}}},
+		{"fields.recipient", adapter.Intent{AdapterID: "discord", Verb: manifest.Send, Body: "hi", Fields: map[string]string{"recipient": "Maya"}}},
+		{"fields.chat_id", adapter.Intent{AdapterID: "discord", Verb: manifest.Send, Body: "hi", Fields: map[string]string{"chat_id": "Maya"}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan, err := a.Resolve(t.Context(), tc.in)
+			if err != nil {
+				t.Fatalf("Resolve: %v", err)
+			}
+			if plan.Handle != "c1" {
+				t.Fatalf("resolved handle=%q, want c1", plan.Handle)
+			}
+		})
+	}
+}
+
+func TestSendStillFailsClosedWhenAliasesAreBlank(t *testing.T) {
+	a := New(Spec{ID: "discord", Network: "Discord"}, &fakeBeeper{}, testLogger())
+	_, err := a.Resolve(t.Context(), adapter.Intent{
+		AdapterID: "discord", Verb: manifest.Send, Handle: "  ", Body: "hi",
+		Fields: map[string]string{"to": "", "recipient": " ", "chat_id": ""},
+	})
+	if !errors.Is(err, ErrNoRecipient) {
+		t.Fatalf("got %v, want ErrNoRecipient", err)
+	}
+}
+
+func TestMessagesSendAcceptsHandleAsPhoneRecipient(t *testing.T) {
+	api := &fakeBeeper{accounts: []beeper.Account{{ID: "google-account-live", Network: "Google Messages", Status: "connected"}}}
+	a := New(Spec{ID: "messages", Network: "Google Messages", StartByPhone: true}, api, testLogger())
+	plan, err := a.Resolve(t.Context(), adapter.Intent{
+		AdapterID: "messages", Verb: manifest.Send, Handle: "+1 224-322-8828", Body: "hi",
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if plan.Details["start_phone"] != "+12243228828" {
+		t.Fatalf("plan = %+v", plan)
+	}
+}
+
+func TestManageResolvesRecipientFromHandle(t *testing.T) {
+	api := &fakeBeeper{
+		chats: []beeper.Chat{{ID: "c1", Network: "Discord", Title: "crew"}},
+		chatByID: map[string]beeper.Chat{
+			"c1": {ID: "c1", Network: "Discord", Title: "crew", Capabilities: beeper.ChatCapabilities{Archive: true}},
+		},
+	}
+	a := New(Spec{ID: "discord", Network: "Discord"}, api, testLogger())
+	plan, err := a.Resolve(t.Context(), adapter.Intent{
+		AdapterID: "discord", Verb: manifest.Modify, Handle: "crew",
+		Fields: map[string]string{"operation": "archive"},
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if plan.Handle != "c1" {
+		t.Fatalf("resolved handle=%q, want c1", plan.Handle)
+	}
+}
+
 var _ = context.Background
 
 // (ops tests live in adapter_ops_test.go)
