@@ -31,22 +31,32 @@ export function buildAgentTools(descriptors: ToolDescriptor[]): Omit<AgentToolDe
   return descriptors.map(buildOneAgentTool);
 }
 
+const messagingAdapters = new Set(["discord", "messages", "instagram"]);
+
 function buildOneAgentTool(descriptor: ToolDescriptor): Omit<AgentToolDefinition, "execute"> {
   const previewVerbs = descriptor.verbs.filter((verb) => verb.requiresPreview).map((verb) => verb.name);
   const previewNote =
     previewVerbs.length > 0
       ? ` Verbs ${previewVerbs.join(", ")} pause for a preview before executing.`
       : " No verbs require a preview.";
-  const description = `${descriptor.description}. Ceiling: ${descriptor.ceiling}.${previewNote}`;
+  let description = `${descriptor.description}. Ceiling: ${descriptor.ceiling}.${previewNote}`;
+  if (messagingAdapters.has(descriptor.name)) {
+    description +=
+      " For send, set subject to the person, phone number, or chat (handle, to, recipient, and chat_id are aliases). First contact waits for the owner to tap Approve — do not retry.";
+  }
 
   const verbNames = descriptor.verbs.map((verb) => verb.name);
   const verbSchema = Type.Union(verbNames.map((name) => Type.Literal(name)));
+  const recipientField = (text: string) => Type.Optional(Type.String({ description: text }));
 
   const parameters = Type.Object({
     verb: verbSchema,
-    subject: Type.Optional(Type.String()),
-    handle: Type.Optional(Type.String()),
-    body: Type.Optional(Type.String()),
+    subject: recipientField("Who to message: contact name, phone number, or chat. Prefer this field for send."),
+    handle: recipientField("Same as subject when you already have a phone number or chat id."),
+    to: recipientField("Alias for subject: the person or chat to send to."),
+    recipient: recipientField("Alias for subject: the person or chat to send to."),
+    chat_id: recipientField("Alias for subject: the person or chat to send to."),
+    body: Type.Optional(Type.String({ description: "Message text for send, or search text for read." })),
     fields: Type.Optional(Type.Record(Type.String(), Type.String())),
   });
 
@@ -88,8 +98,10 @@ async function executeTool(
     adapter,
     verb: params.verb as string,
   };
-  if (params.subject !== undefined) request.subject = params.subject as string;
-  if (params.handle !== undefined) request.handle = params.handle as string;
+  const recipient = recipientFromParams(params);
+  if (recipient !== undefined) request.subject = recipient;
+  const handle = filledString(params.handle);
+  if (handle !== undefined) request.handle = handle;
   if (params.body !== undefined) request.body = params.body as string;
   if (params.fields !== undefined) request.fields = params.fields as Record<string, string>;
   const key = turnKey?.();
@@ -103,6 +115,34 @@ async function executeTool(
     content: [{ type: "text", text }],
     details: result,
   };
+}
+
+function filledString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function recipientFromParams(params: Record<string, unknown>): string | undefined {
+  const fields = isRecord(params.fields) ? params.fields : {};
+  return (
+    filledString(params.subject) ??
+    filledString(params.handle) ??
+    filledString(params.to) ??
+    filledString(params.recipient) ??
+    filledString(params.chat_id) ??
+    filledString(fields.to) ??
+    filledString(fields.recipient) ??
+    filledString(fields.chat_id) ??
+    filledString(fields.handle) ??
+    filledString(fields.subject)
+  );
 }
 
 // renderResultText turns a bridge envelope into the text the model reads.

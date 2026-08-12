@@ -30,6 +30,38 @@ const fixtureDescriptors = [
   },
 ];
 
+test("messaging tool schema names recipient aliases so the model can fill them", () => {
+  const tools = buildAgentTools([
+    {
+      name: "discord",
+      description: "Adapter discord; verbs: read, send",
+      verbs: [
+        { name: "read", requiresPreview: false },
+        { name: "send", requiresPreview: true },
+      ],
+      ceiling: "completes",
+    },
+    {
+      name: "messages",
+      description: "Adapter messages; verbs: read, send",
+      verbs: [
+        { name: "read", requiresPreview: false },
+        { name: "send", requiresPreview: true },
+      ],
+      ceiling: "completes",
+    },
+  ]);
+  for (const tool of tools) {
+    const schema = JSON.parse(JSON.stringify(tool.parameters));
+    const props = schema.properties;
+    for (const field of ["subject", "handle", "to", "recipient", "chat_id", "body"]) {
+      assert.ok(props[field], `${tool.name} schema missing ${field}`);
+    }
+    assert.match(String(props.subject.description), /contact|person|recipient|who/i);
+    assert.match(tool.description, /Approve|recipient|Beeper/i);
+  }
+});
+
 test("buildAgentTools maps descriptors honestly", () => {
   const tools = buildAgentTools(fixtureDescriptors);
   assert.equal(tools.length, 2);
@@ -113,6 +145,66 @@ test("a failed call surfaces the bridge error to the model instead of throwing",
   assert.match(result.content[0].text, /verb_not_offered/);
   assert.match(result.content[0].text, /does not offer order/);
   assert.equal(result.details.ok, false);
+});
+
+test("execute maps handle and recipient aliases onto subject before the bridge call", async () => {
+  const cases = [
+    { verb: "send", handle: "Maya", body: "hi" },
+    { verb: "send", to: "Maya", body: "hi" },
+    { verb: "send", recipient: "Maya", body: "hi" },
+    { verb: "send", chat_id: "Maya", body: "hi" },
+    { verb: "send", body: "hi", fields: { to: "Maya" } },
+  ];
+  for (const params of cases) {
+    const registered = [];
+    const calls = [];
+    registerOperatorTools(
+      { registerTool: (tool) => registered.push(tool) },
+      {
+        descriptors: fixtureDescriptors,
+        client: {
+          listTools: async () => ({ tools: [] }),
+          callTool: async (request) => {
+            calls.push(request);
+            return { ok: true, done: true, detail: "sent" };
+          },
+        },
+      },
+    );
+    await registered[0].execute("call-alias", params);
+    assert.equal(calls[0].subject, "Maya", `params=${JSON.stringify(params)}`);
+    assert.equal(calls[0].adapter, "instagram");
+    assert.equal(calls[0].verb, "send");
+    assert.equal(calls[0].body, "hi");
+  }
+});
+
+test("execute does not invent a recipient when every alias is empty", async () => {
+  const registered = [];
+  const calls = [];
+  registerOperatorTools(
+    { registerTool: (tool) => registered.push(tool) },
+    {
+      descriptors: fixtureDescriptors,
+      client: {
+        listTools: async () => ({ tools: [] }),
+        callTool: async (request) => {
+          calls.push(request);
+          return { ok: false, error: { code: "adapter_failed", message: "beeper message: recipient must not be empty" } };
+        },
+      },
+    },
+  );
+  await registered[0].execute("call-empty", {
+    verb: "send",
+    subject: "  ",
+    handle: "",
+    to: " ",
+    body: "hi",
+    fields: { recipient: "", chat_id: " " },
+  });
+  assert.equal(calls[0].subject, undefined);
+  assert.equal(calls[0].handle, undefined);
 });
 
 test("every call is stamped with the current turn key", async () => {

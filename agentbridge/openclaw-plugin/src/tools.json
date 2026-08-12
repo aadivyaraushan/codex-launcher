@@ -687,7 +687,7 @@
     },
     {
       "name": "discord",
-      "description": "Adapter discord; verbs: read, send, modify, cancel",
+      "description": "Adapter discord; verbs: read, send, modify, cancel. For send, set subject to the person, phone number, or chat (handle, to, recipient, and chat_id are aliases).",
       "verbs": [
         {
           "name": "read",
@@ -710,7 +710,7 @@
       "inputSchema": {
         "properties": {
           "body": {
-            "description": "Free-text body for the verb, when it takes one.",
+            "description": "Free-text body for the verb, when it takes one. For send: the message text.",
             "type": "string"
           },
           "fields": {
@@ -721,11 +721,11 @@
             "type": "object"
           },
           "handle": {
-            "description": "Device-resolved handle (phone number, place id, URI).",
+            "description": "Same as subject when you already have a phone number, chat id, or other resolved identity.",
             "type": "string"
           },
           "subject": {
-            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "description": "Who or what this call is about. For send: the contact name, phone number, or chat. Prefer this field.",
             "type": "string"
           },
           "verb": {
@@ -737,6 +737,18 @@
               "cancel"
             ],
             "type": "string"
+          },
+          "to": {
+            "type": "string",
+            "description": "Alias for subject: the person or chat to send to."
+          },
+          "recipient": {
+            "type": "string",
+            "description": "Alias for subject: the person or chat to send to."
+          },
+          "chat_id": {
+            "type": "string",
+            "description": "Alias for subject: the person or chat to send to."
           }
         },
         "required": [
@@ -1532,7 +1544,7 @@
     },
     {
       "name": "instagram",
-      "description": "Adapter instagram; verbs: read, send, modify, cancel",
+      "description": "Adapter instagram; verbs: read, send, modify, cancel. For send, set subject to the person, phone number, or chat (handle, to, recipient, and chat_id are aliases).",
       "verbs": [
         {
           "name": "read",
@@ -1555,7 +1567,7 @@
       "inputSchema": {
         "properties": {
           "body": {
-            "description": "Free-text body for the verb, when it takes one.",
+            "description": "Free-text body for the verb, when it takes one. For send: the message text.",
             "type": "string"
           },
           "fields": {
@@ -1566,11 +1578,11 @@
             "type": "object"
           },
           "handle": {
-            "description": "Device-resolved handle (phone number, place id, URI).",
+            "description": "Same as subject when you already have a phone number, chat id, or other resolved identity.",
             "type": "string"
           },
           "subject": {
-            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "description": "Who or what this call is about. For send: the contact name, phone number, or chat. Prefer this field.",
             "type": "string"
           },
           "verb": {
@@ -1582,6 +1594,18 @@
               "cancel"
             ],
             "type": "string"
+          },
+          "to": {
+            "type": "string",
+            "description": "Alias for subject: the person or chat to send to."
+          },
+          "recipient": {
+            "type": "string",
+            "description": "Alias for subject: the person or chat to send to."
+          },
+          "chat_id": {
+            "type": "string",
+            "description": "Alias for subject: the person or chat to send to."
           }
         },
         "required": [
@@ -1817,7 +1841,7 @@
     },
     {
       "name": "messages",
-      "description": "Adapter messages; verbs: read, send, modify, cancel",
+      "description": "Adapter messages; verbs: read, send, modify, cancel. For send, set subject to the person, phone number, or chat (handle, to, recipient, and chat_id are aliases).",
       "verbs": [
         {
           "name": "read",
@@ -1840,7 +1864,7 @@
       "inputSchema": {
         "properties": {
           "body": {
-            "description": "Free-text body for the verb, when it takes one.",
+            "description": "Free-text body for the verb, when it takes one. For send: the message text.",
             "type": "string"
           },
           "fields": {
@@ -1851,11 +1875,11 @@
             "type": "object"
           },
           "handle": {
-            "description": "Device-resolved handle (phone number, place id, URI).",
+            "description": "Same as subject when you already have a phone number, chat id, or other resolved identity.",
             "type": "string"
           },
           "subject": {
-            "description": "Unresolved subject (a contact name, a place, a track title).",
+            "description": "Who or what this call is about. For send: the contact name, phone number, or chat. Prefer this field.",
             "type": "string"
           },
           "verb": {
@@ -1867,6 +1891,18 @@
               "cancel"
             ],
             "type": "string"
+          },
+          "to": {
+            "type": "string",
+            "description": "Alias for subject: the person or chat to send to."
+          },
+          "recipient": {
+            "type": "string",
+            "description": "Alias for subject: the person or chat to send to."
+          },
+          "chat_id": {
+            "type": "string",
+            "description": "Alias for subject: the person or chat to send to."
           }
         },
         "required": [

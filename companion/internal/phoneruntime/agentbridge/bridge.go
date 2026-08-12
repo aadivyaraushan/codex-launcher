@@ -187,6 +187,10 @@ func describeTool(m manifest.Manifest) ToolDescriptor {
 		description += string(v)
 	}
 	description += ", disconnect (undo this app's credentials and consent)"
+	switch m.ID {
+	case "discord", "messages", "instagram":
+		description += ". For send, set subject to the person, phone number, or chat (handle, to, recipient, and chat_id are aliases)"
+	}
 	verbs = append(verbs, VerbDescriptor{Name: "disconnect", RequiresPreview: true})
 	verbNames = append(verbNames, "disconnect")
 	return ToolDescriptor{
@@ -204,15 +208,27 @@ func describeTool(m manifest.Manifest) ToolDescriptor {
 				},
 				"subject": map[string]any{
 					"type":        "string",
-					"description": "Unresolved subject (a contact name, a place, a track title).",
+					"description": "Who or what this call is about. For send: the contact name, phone number, or chat. Prefer this field.",
 				},
 				"handle": map[string]any{
 					"type":        "string",
-					"description": "Device-resolved handle (phone number, place id, URI).",
+					"description": "Same as subject when you already have a phone number, chat id, or other resolved identity.",
+				},
+				"to": map[string]any{
+					"type":        "string",
+					"description": "Alias for subject: the person or chat to send to.",
+				},
+				"recipient": map[string]any{
+					"type":        "string",
+					"description": "Alias for subject: the person or chat to send to.",
+				},
+				"chat_id": map[string]any{
+					"type":        "string",
+					"description": "Alias for subject: the person or chat to send to.",
 				},
 				"body": map[string]any{
 					"type":        "string",
-					"description": "Free-text body for the verb, when it takes one.",
+					"description": "Free-text body for the verb, when it takes one. For send: the message text.",
 				},
 				"fields": map[string]any{
 					"type":                 "object",
