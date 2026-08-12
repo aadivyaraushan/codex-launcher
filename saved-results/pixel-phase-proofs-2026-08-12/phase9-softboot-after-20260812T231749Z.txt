@@ -1,0 +1,18 @@
+Warning: Permanently added '[127.0.0.1]:18022' (ED25519) to the list of known hosts.
+bridge=up
+gateway=up
+journal={"process":"watchdog_already_running"} 
+proot warning: can't sanitize binding "/proc/self/fd/0": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
+run: /etc/operator/services/phone-runtime: (pid 19695) 8s; run: log: (pid 17529) 279s
+run: /etc/operator/services/openclaw-gateway: (pid 19007) 129s; run: log: (pid 9416) 86000s
+18789 open
+9443 open
+{"mode":"standalone_phone","process":"serving","beeper":"connected","credentials":{"gcalendar":"unavailable:android_broker_pending","gdrive":"unavailable:android_broker_pending","msteams":"unavailable:android_broker_pending","notion":"unavailable:android_broker_pending","outlook":"unavailable:android_broker_pending","podcasts":"unavailable:no PODCASTS_FEED_URL configured","slack":"unavailable:android_broker_pending","spotify":"unavailable:android_broker_pending","todoist":"ready","youtube":"unavailable:no YOUTUBE_API_KEY configured; the deep-link hand-off still covers opening the app"},"adapters":["venmo","cashapp","zelle","starbucks","chipotle","spotify","audible","applemusic","uber","ubereats","resy","doordash","googlephotos","teams","booking","tripadvisor","viator","stubhub","alltrails","taskrabbit","thumbtack","creditkarma","turbotax","lyft","googlekeep","whatsapp","messenger","signal","googlemaps","netflix","facebook","united","delta","southwest","american","citymapper","youtube","airbnb","opentable","grubhub","threads","tiktok","expedia","target","walmart","nike","sephora","wayfair","kayak","priceline","linkedin","ebay","pinterest","duolingo","fitbit","shazam","chromecast","youtubemusic","soundcloud","pandora","asana","trello","mstodo","googledocs","dropbox","googlesheets","evernote","googleslides","pocketcasts","goodreads","kindle","claude","chatgpt","grok","instagram","discord","messages","notification_reply","maps"],"listenAddress":"127.0.0.1:9443","taskCapable":false,"localPair":"acked"}
+
+2026-08-12_23:20:21.38527 {"time":"2026-08-12T23:20:21.384948572Z","level":"ERROR","msg":"[phone-runtime] turn proxy connect failed","error":"turnproxy: dial gateway: failed to WebSocket dial: failed to send handshake request: Get \"http://127.0.0.1:18789\": dial tcp 127.0.0.1:18789: connect: connection refused"}
+2026-08-12_23:20:26.40393 {"time":"2026-08-12T23:20:26.403661058Z","level":"ERROR","msg":"[phone-runtime] turn proxy connect failed","error":"turnproxy: dial gateway: failed to WebSocket dial: failed to send handshake request: Get \"http://127.0.0.1:18789\": dial tcp 127.0.0.1:18789: connect: connection refused"}
+2026-08-12_23:20:31.45927 {"time":"2026-08-12T23:20:31.458952727Z","level":"ERROR","msg":"[phone-runtime] turn proxy connect failed","error":"turnproxy: dial gateway: failed to WebSocket dial: failed to send handshake request: Get \"http://127.0.0.1:18789\": dial tcp 127.0.0.1:18789: connect: connection refused"}
+2026-08-12_23:20:36.47927 {"time":"2026-08-12T23:20:36.478913382Z","level":"ERROR","msg":"[phone-runtime] turn proxy connect failed","error":"turnproxy: dial gateway: failed to WebSocket dial: failed to send handshake request: Get \"http://127.0.0.1:18789\": dial tcp 127.0.0.1:18789: connect: connection refused"}
+2026-08-12_23:20:41.49816 {"time":"2026-08-12T23:20:41.497822442Z","level":"ERROR","msg":"[phone-runtime] turn proxy connect failed","error":"turnproxy: dial gateway: failed to WebSocket dial: failed to send handshake request: Get \"http://127.0.0.1:18789\": dial tcp 127.0.0.1:18789: connect: connection refused"}

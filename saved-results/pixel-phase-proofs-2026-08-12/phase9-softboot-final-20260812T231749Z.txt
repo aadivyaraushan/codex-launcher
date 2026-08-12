@@ -1,0 +1,24 @@
+Warning: Permanently added '[127.0.0.1]:18022' (ED25519) to the list of known hosts.
+proot warning: can't sanitize binding "/proc/self/fd/0": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
+health serving taskCapable= True localPair= acked
+HEALTH_OK
+run: /etc/operator/services/phone-runtime: (pid 19854) 14s; run: log: (pid 17529) 303s
+run: /etc/operator/services/openclaw-gateway: (pid 19007) 153s; run: log: (pid 9416) 86024s
+18789 open
+9443 open
+{
+  "mode": "standalone_phone",
+  "process": "serving",
+  "beeper": "connected",
+  "taskCapable": true,
+  "localPair": "acked",
+  "listenAddress": "127.0.0.1:9443"
+}
+2026-08-12_23:16:41.22422 {"time":"2026-08-12T23:16:41.224129657Z","level":"INFO","msg":"[phone-runtime] turn proxy connected"}
+2026-08-12_23:21:12.89397 {"time":"2026-08-12T23:21:12.893835641Z","level":"INFO","msg":"[phone-runtime] turn proxy connected"}
+Warning: Permanently added '[127.0.0.1]:18022' (ED25519) to the list of known hosts.
+bridge=up
+gateway=up
+journal={"process":"watchdog_already_running"} 

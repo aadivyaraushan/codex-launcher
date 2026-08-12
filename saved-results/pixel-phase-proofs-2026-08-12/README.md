@@ -9,11 +9,11 @@ Physical Pixel 9 serial **`4B230DLAQ001Z5`** only.
 | 5 Turn proxy | **PASS** | `phase5-turnproxy-pong.md` |
 | 6 Home/thread | **PARTIAL PASS** | `phase6-home-thread-pixel.md` (thread opens; Approve not exercised) |
 | 7 Beeper | **DEFERRED** | `phase7-beeper-pixel.md` |
-| 9 Boot persistence | **PARTIAL PASS** | `phase9-boot-persistence-pixel.md` (soft restore; no full reboot) |
+| 9 Boot persistence | **PARTIAL PASS** | `phase9-boot-persistence-pixel.md` + `phase9-soft-boot-pixel.md` (soft restore; no full reboot) |
 
 **Phase 5 quote:** `Agent: pong` (`phase5-after-reply-20260812T230351Z.xml` / `phase5-pass-home-agent-pong.png`).
 
-**Phase 6 quote:** Task transcript opens from Home Phone agent row (`phase6-thread-open-20260812T230940Z.png`).
+**Phase 6 quote:** Task transcript opens from Home Phone agent row (`phase6-thread-open-20260812T230940Z.png`; overnight reconfirm `phase6-thread-open-20260812T231657Z.png`).
 
 **Hotfix on tip:** `cbd0ee1` — action-journal `withStandaloneWrite` fallback (unpaired phone-runtime). Tip also includes PR #11 ReadTranscript + Home Send.
 
