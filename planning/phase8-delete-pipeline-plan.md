@@ -182,12 +182,49 @@ path, same principle as Unit 1:
   `ScenarioCatalogTest`.
 - The `capabilityActionsCapable` handshake flag: remove the phone's use;
   hello/capability negotiation stays wire-compatible (flag simply unused).
+- Survey deltas (read-only sweep, 2026-08-12) — the map above missed:
+  - `capability/handoff/HandOffActions.kt` dies (only callers:
+    CapabilitySheet + LauncherActivity:924). `handoff/youtube/`,
+    `capability/reply/`, `capability/notifications/` are UNRELATED
+    features that survive — a name-based sweep must not catch them.
+  - `CapabilityOutcome.kt` splits: `CapabilityOutcome`/`Ceiling`/
+    `CapabilityBadge`/`toTaskState()` die; `StateMark`/`MarkShape`/
+    `MarkFill`/`MarkTone`/`StateMarkView` are shared design-system
+    primitives (TaskSummary, HomeScreen, ThreadAskCard) — keep, move
+    out of the capability package. `TaskQueueState.OUTCOME_UNKNOWN` and
+    `TaskState.UNVERIFIED` are general task infra driven by the wire —
+    they stay.
+  - Wipe pipeline: `LocalStateWiper.kt` WipeStep.CAPABILITY_UNRESOLVED_CHECK
+    (:27, :43, :158 param, :174) + `LocalStateOwner.kt` (:7-8, :40, :64)
+    + `LauncherApplication.kt:104` DI param +
+    `LocalStateWiperInstrumentedTest.kt` (positional 12-arg fromStores
+    call — edit in lockstep).
+  - The phone's on-disk `unresolved_capability_check` DataStore file is
+    orphaned after deletion — inert, one short sentence, no reader left;
+    accepted as harmless (no migration).
+  - ScenarioCatalog has SIX capability entries (:55, :60-64), not one;
+    UiScenarioActivity's ReplyConsentScenario is shared (targeted edit),
+    CapabilitySheetLaterPhaseScenario dies. `ScenarioCatalogTest`
+    exhaustive set literal must drop the 6 wire names.
+  - Shared tests needing targeted edits (not deletion):
+    `LauncherSessionViewModelTest` (5 tests + helper; the
+    `missingProjectCapability*` test is a false positive — different
+    "capability", stays), `HomeUiStateTest` (7 promptDestination args),
+    `HomeScreenTest`, `UiScenarioActivityTest`,
+    `CompanionSessionClientTest` (uses CAPABILITY_RESULT as a stand-in
+    replay frame — re-point at a live frame type since the protocol
+    prune removes it), `HomeUnresolvedRowTest`/`HomeTaskMarkTest` only
+    shift if StateMark's package moves.
 
 ### Unit 5 — Orphan sweep + full matrix (the wave's proof)
 
 - `grep -rn "capability_request\|capability_confirm\|capability_disconnect\|capability_preview\|capability_result\|stage1\|stage2\|classAddressing\|classMapFor\|capabilityflow\|CapabilitySheet\|CapabilityInteraction\|PromptDestination"`
   across Go, Kotlin, schema, docs, release checks — zero hits outside
-  `planning/` and `saved-results/` history.
+  `planning/` and `saved-results/` history, EXCEPT the deliberate
+  negative fixtures that prove rejection: the two Unit 3 regression
+  tests (`contract_test.go`, `ProtocolContractTest.kt`) and
+  `protocol/fixtures/invalid/schema-drift.jsonl:41` (still rejected,
+  now as an unknown kind).
 - `go test -count=1 ./companion/...` — fully green INCLUDING the openai
   package deletions (today's 3 Mac-only TestBrokered* failures disappear
   with stage1; a green full suite on the Mac becomes possible for the

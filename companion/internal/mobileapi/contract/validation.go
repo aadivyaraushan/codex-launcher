@@ -49,7 +49,7 @@ func DecodeText(frame []byte) (Message, error) {
 	if message.Version.Major != ProtocolMajor || message.Version.Minor < 0 || uint64(message.Version.Minor) > maxProtocolChunk {
 		return Message{}, ErrUnsupportedVersion
 	}
-	sequenceType := message.Type == "snapshot" || message.Type == "event" || message.Type == "action_result" || message.Type == "capability_result" || message.Type == "attachment_ack"
+	sequenceType := message.Type == "snapshot" || message.Type == "event" || message.Type == "action_result" || message.Type == "attachment_ack"
 	if sequenceType != (message.Sequence != nil) || message.Sequence != nil && (*message.Sequence == 0 || *message.Sequence > maxProtocolInteger) {
 		return Message{}, ErrInvalidEnvelope
 	}
@@ -571,23 +571,6 @@ func validateBody(message Message) error {
 		if message.Sender != "companion" || !validateDecisionPage(body) {
 			return ErrInvalidEnvelope
 		}
-	case "capability_preview":
-		if message.Sender != "companion" || !exactKeys(body, "requestId", "adapterId", "verb", "headline", "lines", "confirmLabel", "fingerprint") ||
-			!validID(stringValue(body["requestId"])) || !validID(stringValue(body["adapterId"])) || !knownCapabilityVerb(stringValue(body["verb"])) ||
-			!safeDisplayString(body["headline"], 256) || !safeDisplayString(body["confirmLabel"], 64) || !isSHA256(stringValue(body["fingerprint"])) ||
-			!validateCapabilityLines(body["lines"]) {
-			return ErrInvalidEnvelope
-		}
-	case "capability_result":
-		done, okay := boolValueOK(body["done"])
-		ceiling := stringValue(body["ceiling"])
-		handedOffTo := stringValue(body["handedOffTo"])
-		if message.Sender != "companion" || message.Sequence == nil || !exactKeys(body, "requestId", "ceiling", "done", "detail", "handedOffTo") ||
-			!validID(stringValue(body["requestId"])) || !knownCapabilityCeiling(ceiling) || !okay || !safeDisplayString(body["detail"], 2048) ||
-			(handedOffTo != "" && !safeDisplayString(body["handedOffTo"], 128)) ||
-			(ceiling == "hands_off" && done && handedOffTo == "") || (ceiling != "hands_off" && handedOffTo != "") || (!done && handedOffTo != "") {
-			return ErrInvalidEnvelope
-		}
 	case "device_action":
 		// This is the Mac asking the phone to carry out something only the
 		// phone can do, so the frame has to pin the one instruction the phone
@@ -1023,20 +1006,6 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 	}
 	kind := stringValue(body["kind"])
 	switch kind {
-	case "capability_request":
-		if !exactKeys(body, "actionId", "kind", "utterance") || !boundedString(body["utterance"], 4096) || strings.TrimSpace(stringValue(body["utterance"])) == "" {
-			return ErrInvalidAction
-		}
-	case "capability_confirm":
-		decision := stringValue(body["decision"])
-		if !exactKeys(body, "actionId", "kind", "requestId", "fingerprint", "decision") || !validID(stringValue(body["requestId"])) ||
-			!isSHA256(stringValue(body["fingerprint"])) || (decision != "confirm" && decision != "cancel") {
-			return ErrInvalidAction
-		}
-	case "capability_disconnect":
-		if !exactKeys(body, "actionId", "kind", "adapterId") || !validID(stringValue(body["adapterId"])) {
-			return ErrInvalidAction
-		}
 	case "start_turn":
 		existingTask := onlyAllowedKeys(body, "actionId", "kind", "taskId", "text", "attachmentIds") &&
 			validID(stringValue(body["taskId"])) && boundedString(body["text"], 131072) && strings.TrimSpace(stringValue(body["text"])) != "" &&
@@ -1095,32 +1064,6 @@ func validateAction(sender string, body map[string]json.RawMessage) error {
 		return ErrInvalidAction
 	}
 	return nil
-}
-
-func validateCapabilityLines(raw json.RawMessage) bool {
-	var lines []json.RawMessage
-	if json.Unmarshal(raw, &lines) != nil || len(lines) == 0 || len(lines) > 8 {
-		return false
-	}
-	for _, line := range lines {
-		if !safeDisplayString(line, 1024) {
-			return false
-		}
-	}
-	return true
-}
-
-func knownCapabilityVerb(value string) bool {
-	switch value {
-	case "read", "compose", "send", "order", "book", "play", "write", "cancel", "modify":
-		return true
-	default:
-		return false
-	}
-}
-
-func knownCapabilityCeiling(value string) bool {
-	return value == "completes" || value == "one_tap" || value == "hands_off"
 }
 
 func knownDeviceActionKind(value string) bool {

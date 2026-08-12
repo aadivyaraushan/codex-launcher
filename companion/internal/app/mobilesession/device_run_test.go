@@ -23,7 +23,7 @@ import (
 // capability sheet. Now the caller is the agent bridge, sitting inside a
 // synchronous tool call — so the ask-and-wait becomes one blocking method,
 // RunOnDevice, and the answer goes back to the agent instead of being
-// journaled as a capability_result frame.
+// journaled as a frame for the phone's deleted result sheet.
 //
 //	RunOnDevice          ->  device_action goes out, the call blocks
 //	the phone answers    ->  the call returns, one word turned into a sentence
@@ -114,7 +114,7 @@ func deviceAnswerFrame(requestID, outcome string) string {
 
 // silenceAfter fails if the handler sends anything further — the answer to
 // device work now goes back to the waiting caller, never out to the phone
-// as a capability_result or action_result frame.
+// as a result frame of any kind.
 func silenceAfter(t *testing.T, sender *recordingSender) {
 	t.Helper()
 	select {
@@ -159,8 +159,8 @@ func TestRunOnDeviceAsksThePhoneAndReturnsItsAnswer(t *testing.T) {
 	if r.result.Detail != "Handed to the app — we can't see whether it reached them." {
 		t.Fatalf("the one outcome word was not turned into its sentence: %q", r.result.Detail)
 	}
-	// The answer belongs to the waiting caller. The old world's
-	// capability_result frame must not follow it out to the phone.
+	// The answer belongs to the waiting caller. The old world's result
+	// frame must not follow it out to the phone.
 	silenceAfter(t, sender)
 }
 

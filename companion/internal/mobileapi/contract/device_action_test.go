@@ -11,9 +11,8 @@ import (
 // reply cannot: routing needs the language model, which is on the Mac, and the
 // reply box lives inside an Android notification, which is on the phone. So
 // this is the first capability whose Execute has to happen somewhere else, and
-// the wire has no way to say that today — the phone only ever *asks*
-// (capability_request / capability_confirm / capability_disconnect) and the Mac
-// only ever *answers* (capability_preview / capability_result).
+// the wire's answer is RunOnDevice: the Mac asks with `device_action`, the
+// phone answers with `device_action_result`.
 //
 // `device_action` is the Mac asking. `device_action_result` is the phone
 // answering. Both are new, and both peers must ship them together: bodies are
@@ -152,8 +151,9 @@ func TestAKindThePhoneCannotCarryOutIsRejected(t *testing.T) {
 }
 
 func TestTheReplyTextIsBoundedAndNeverEmpty(t *testing.T) {
-	// Same bound as a capability_request's utterance (validation.go:976), for
-	// the same reason: it is raw text a person wrote, so it is length-checked
+	// Same reasoning as any other raw-text field the wire carries (e.g.
+	// start_turn's text, validation.go:1011): it is raw text a person wrote,
+	// so it is length-checked
 	// rather than display-sanitised, and an empty one is a bug upstream —
 	// firing a blank message into someone's chat is not a no-op.
 	tooLong := `{"requestId":"cap-action-1","kind":"notification_reply","handle":"maya","text":"` + strings.Repeat("a", 4097) + `"}`
@@ -189,9 +189,9 @@ func TestTheHandleMustNameSomebody(t *testing.T) {
 }
 
 func TestNeitherFrameIsSequenced(t *testing.T) {
-	// device_action is not replayed from the journal, for the same reason
-	// capability_preview is not: it asks for something to happen *now*, and a
-	// request the phone missed while offline must expire rather than fire late
+	// device_action is not replayed from the journal: it asks for something
+	// to happen *now*, and a request the phone missed while offline must
+	// expire rather than fire late
 	// into a conversation that has moved on. The waiting record's timeout is
 	// what ends it (see the plan's three cleanup rules), not a redelivery.
 	sequenced := []byte(`{"version":{"major":1,"minor":0},"messageId":"dev-1","sender":"companion","type":"device_action","seq":4,"body":{"requestId":"cap-action-1","kind":"notification_reply","handle":"maya","text":"` + replyText + `"}}`)

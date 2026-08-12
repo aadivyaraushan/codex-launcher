@@ -13,53 +13,23 @@ import org.junit.Test
 import java.io.File
 
 class ProtocolContractTest {
+    // The predetermined-function pipeline is gone (Phase 8), and its five
+    // wire names left with it — disconnecting an app is now the agent's
+    // gated disconnect verb, not a frame. A frame carrying any of the five
+    // names, including one that was valid for years, must fail exactly like
+    // a name that never existed: a name the codec accepts but nobody handles
+    // is a frame that silently disappears.
     @Test
-    fun `capability request preview confirmation and result share one strict contract`() {
-        val valid =
+    fun `capability frames left the protocol with their pipeline`() {
+        val rejected =
             listOf(
                 """{"version":{"major":1,"minor":0},"messageId":"cap-request","sender":"phone","type":"action","body":{"actionId":"cap-action-1","kind":"capability_request","utterance":"Add buy oat milk to Todoist"}}""",
                 """{"version":{"major":1,"minor":0},"messageId":"cap-preview","sender":"companion","type":"capability_preview","body":{"requestId":"cap-action-1","adapterId":"todoist","verb":"write","headline":"Create a Todoist task","lines":["Buy oat milk","Before tomorrow"],"confirmLabel":"Create task","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}""",
                 """{"version":{"major":1,"minor":0},"messageId":"cap-confirm","sender":"phone","type":"action","body":{"actionId":"cap-confirm-1","kind":"capability_confirm","requestId":"cap-action-1","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","decision":"confirm"}}""",
                 """{"version":{"major":1,"minor":0},"messageId":"cap-result","sender":"companion","type":"capability_result","seq":2,"body":{"requestId":"cap-action-1","ceiling":"completes","done":true,"detail":"Created Todoist task","handedOffTo":""}}""",
+                """{"version":{"major":1,"minor":0},"messageId":"cap-disconnect","sender":"phone","type":"action","body":{"actionId":"cap-disconnect-1","kind":"capability_disconnect","adapterId":"todoist"}}""",
             )
-        valid.forEach { ProtocolCodec.decodeText(it) }
-
-        val invalid =
-            listOf(
-                """{"version":{"major":1,"minor":0},"messageId":"secret","sender":"companion","type":"capability_preview","body":{"requestId":"cap-action-1","adapterId":"todoist","verb":"write","headline":"Create","lines":[],"confirmLabel":"Create","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","accessToken":"secret"}}""",
-                """{"version":{"major":1,"minor":0},"messageId":"bad-fingerprint","sender":"phone","type":"action","body":{"actionId":"cap-confirm-1","kind":"capability_confirm","requestId":"cap-action-1","fingerprint":"changed","decision":"confirm"}}""",
-                """{"version":{"major":1,"minor":0},"messageId":"bad-result","sender":"companion","type":"capability_result","body":{"requestId":"cap-action-1","ceiling":"completes","done":true,"detail":"Created","handedOffTo":""}}""",
-            )
-        invalid.forEach { assertTrue(runCatching { ProtocolCodec.decodeText(it) }.isFailure) }
-    }
-
-    // "Every official account connection can be revoked by the user" is a
-    // promise both halves of the product already keep internally and neither
-    // can be asked to keep: the only callers of either revoke path are three
-    // proof commands on the Mac. This is the message that lets a person ask.
-    //
-    // The strictness here is the same as everywhere else on this wire: exactly
-    // the three keys, a real adapter id, and phone-to-companion only. A
-    // disconnect the companion could send to itself is a disconnect that can
-    // arrive from anything that gets a frame onto the socket.
-    @Test
-    fun `a disconnect names exactly one app and travels only from the phone`() {
-        ProtocolCodec.decodeText(
-            """{"version":{"major":1,"minor":0},"messageId":"cap-disconnect","sender":"phone","type":"action","body":{"actionId":"cap-disconnect-1","kind":"capability_disconnect","adapterId":"todoist"}}""",
-        )
-
-        val invalid = listOf(
-            // No app named: a disconnect that names nothing is either a bug or
-            // a request to disconnect everything, and the two must never be
-            // the same frame.
-            """{"version":{"major":1,"minor":0},"messageId":"no-app","sender":"phone","type":"action","body":{"actionId":"cap-disconnect-1","kind":"capability_disconnect","adapterId":""}}""",
-            // The companion asking the phone to disconnect an app is backwards:
-            // this is the user's action, and only the user's device sends it.
-            """{"version":{"major":1,"minor":0},"messageId":"wrong-way","sender":"companion","type":"action","body":{"actionId":"cap-disconnect-1","kind":"capability_disconnect","adapterId":"todoist"}}""",
-            // An extra field is an extra instruction nobody validated.
-            """{"version":{"major":1,"minor":0},"messageId":"extra","sender":"phone","type":"action","body":{"actionId":"cap-disconnect-1","kind":"capability_disconnect","adapterId":"todoist","alsoWipe":true}}""",
-        )
-        invalid.forEach { frame -> assertTrue(frame, runCatching { ProtocolCodec.decodeText(frame) }.isFailure) }
+        rejected.forEach { frame -> assertTrue(frame, runCatching { ProtocolCodec.decodeText(frame) }.isFailure) }
     }
 
     @Test

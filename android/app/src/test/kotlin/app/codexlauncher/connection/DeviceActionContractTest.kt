@@ -138,7 +138,7 @@ class DeviceActionContractTest {
 
     @Test
     fun `the reply text is bounded and never blank`() {
-        // The same bound a capability_request's utterance gets, for the same
+        // The same bound start_turn's text gets, for the same
         // reason: raw text a person wrote, so length-checked rather than
         // display-sanitised. A blank one is a bug upstream — firing an empty
         // message into someone's chat is not a no-op.
@@ -162,10 +162,10 @@ class DeviceActionContractTest {
 
     @Test
     fun `neither frame is sequenced`() {
-        // device_action is not replayed from the journal, for the same reason
-        // capability_preview is not: it asks for something to happen now, and a
-        // request the phone missed while offline must expire rather than fire
-        // late into a conversation that has moved on.
+        // device_action is not replayed from the journal: it asks for
+        // something to happen now, and a request the phone missed while
+        // offline must expire rather than fire late into a conversation
+        // that has moved on.
         assertThrows(Exception::class.java) {
             ProtocolCodec.decodeText(
                 """{"version":{"major":1,"minor":0},"messageId":"dev-1","sender":"companion","type":"device_action","seq":4,"body":{"requestId":"cap-action-1","kind":"notification_reply","handle":"maya","text":"$replyText"}}""",

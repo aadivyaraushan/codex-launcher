@@ -10,13 +10,9 @@
 {"version":{"major":1,"minor":0},"messageId":"m-010","sender":"companion","type":"attachment_ack","seq":3,"body":{"uploadId":"upload-2","state":"complete","receivedBytes":4,"sha256":"3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7","nextChunk":1}}
 {"version":{"major":1,"minor":0},"messageId":"m-011","sender":"phone","type":"ack","body":{"throughSeq":3}}
 {"version":{"major":1,"minor":0},"messageId":"m-012","sender":"phone","type":"action","body":{"actionId":"action-project-main","kind":"set_project","projectId":"project-main"}}
-{"version":{"major":1,"minor":0},"messageId":"m-014","sender":"companion","type":"action_result","seq":4,"body":{"actionId":"action-capability-1","state":"cancelled","question":"Which of Maya's surfaces did you mean?"}}
 {"version":{"major":1,"minor":0},"messageId":"m-015","sender":"phone","type":"action","body":{"actionId":"action-archive-1","kind":"archive_task","taskId":"task-1"}}
 {"version":{"major":1,"minor":0},"messageId":"m-016","sender":"phone","type":"action","body":{"actionId":"action-fork-1","kind":"fork_task","taskId":"task-1"}}
 {"version":{"major":1,"minor":0},"messageId":"m-017","sender":"phone","type":"action","body":{"actionId":"action-rename-1","kind":"rename_task","taskId":"task-1","title":"Refactor auth module"}}
-{"version":{"major":1,"minor":0},"messageId":"m-018","sender":"phone","type":"action","body":{"actionId":"action-capability-request-1","kind":"capability_request","utterance":"Draft a reply to Maya about the launch date"}}
-{"version":{"major":1,"minor":0},"messageId":"m-019","sender":"phone","type":"action","body":{"actionId":"action-capability-confirm-1","kind":"capability_confirm","requestId":"request-capability-1","fingerprint":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","decision":"confirm"}}
-{"version":{"major":1,"minor":0},"messageId":"m-020","sender":"phone","type":"action","body":{"actionId":"action-capability-disconnect-1","kind":"capability_disconnect","adapterId":"adapter-mail-1"}}
 {"version":{"major":1,"minor":0},"messageId":"m-021","sender":"phone","type":"action","body":{"actionId":"action-dismiss-1","kind":"dismiss_unknown_control","taskId":"task-1","targetActionId":"action-unknown-1"}}
 {"version":{"major":1,"minor":0},"messageId":"m-022","sender":"phone","type":"action","body":{"actionId":"action-start-new-task-1","kind":"start_turn","projectId":"project-main","text":"Set up the new onboarding flow","modelId":"model-gpt-5","reasoningId":"reasoning-high","permissionModeId":"permission-mode-auto"}}
 {"version":{"major":1,"minor":0},"messageId":"m-023","sender":"phone","type":"task_read","body":{"requestId":"request-task-read-1","taskId":"task-1","limit":20}}
