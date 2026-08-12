@@ -14,7 +14,7 @@
 | [#2](https://github.com/aadivyaraushan/codex-launcher/pull/2) | `cursor/phase8-unit4-kotlin-82e1` | `54d2df3` | Phase 8 Units 4–5 (+ evidence). Units 1–3 already on base. |
 | [#3](https://github.com/aadivyaraushan/codex-launcher/pull/3) | `cursor/phase9-boot-persistence-9b54` | `3fd3af7` | Phase 9 boot package (ancestor includes #2 tip) |
 | [#4](https://github.com/aadivyaraushan/codex-launcher/pull/4) | `cursor/phase10-packaging-readme-ac95` | `c8606f5` | Phase 10 packaging/README (ancestor includes #3 tip) |
-| Phase 11 PR | `cursor/phase11-e2e-judged-proof-a240` | this branch | Phase 11 evidence + handoff; stacked on #4 tip |
+| [#5](https://github.com/aadivyaraushan/codex-launcher/pull/5) | `cursor/phase11-e2e-judged-proof-a240` | this branch | Phase 11 evidence + handoff; stacked on #4 tip |
 
 `gh pr view` (read-only) reported #2/#3/#4 as **MERGEABLE** with `mergeStateStatus: UNSTABLE` (likely CI/checks — not treated as a green light to merge from this agent).
 
@@ -24,8 +24,8 @@ Ancestry check (verified): PR2 tip ⊂ PR3 tip ⊂ PR4 tip ⊂ Phase 11 branch s
 
 **Prefer one tip merge** so history stays linear:
 
-1. Review/merge **Phase 11 PR** (or #4 if Phase 11 is not ready) into `worktree-phase2-tool-bridge`.  
-   - That single tip already contains Phase 8 Unit 4–5 + Phase 9 + Phase 10 (+ Phase 11 evidence if merging Phase 11).
+1. Review/merge **PR #5** (Phase 11 tip; or #4 if somehow preferred) into `worktree-phase2-tool-bridge`.  
+   - That single tip already contains Phase 8 Unit 4–5 + Phase 9 + Phase 10 + Phase 11 evidence.
 2. Close #2 and #3 as **superseded** once their commits are on the integration branch (do not force-push those heads).
 3. Do **not** merge to `main` from this work unless the owner explicitly asks.
 4. Do **not** force-push any of these branches.
