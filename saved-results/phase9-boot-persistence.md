@@ -3,7 +3,10 @@
 **Date:** 2026-08-12  
 **For:** OpenClaw phone-agent pivot — remove held-Mac-SSH dependency for gateway + tool bridge.  
 **Branch:** `cursor/phase9-boot-persistence-9b54` (from `cursor/phase8-unit4-kotlin-82e1`)  
-**Plan:** `planning/phase9-boot-persistence-plan.md` (adversarial judge **PASS**)
+**PR:** https://github.com/aadivyaraushan/codex-launcher/pull/3 → `worktree-phase2-tool-bridge`  
+**Commit:** `18f065a`  
+**Plan:** `planning/phase9-boot-persistence-plan.md` (adversarial judge **PASS**)  
+**Deliverable judge:** **PASS** (code-complete; on-device bar unclaimed)
 
 ## Result
 
