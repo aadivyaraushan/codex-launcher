@@ -33,7 +33,7 @@ var ErrEmptyDraft = errors.New("deeplink: draft text must not be empty")
 // separate); Google Maps travel uses read (directions) or write (saved-place
 // intent); airlines + Citymapper + Kayak + Priceline use travel/read (flight status /
 // manage-booking browse / transit directions / trip search — never book).
-// Ceiling is always hands_off. AppClass feeds stage2 ClassMap.
+// Ceiling is always hands_off. AppClass labels the adapter for inventory grouping.
 type Spec struct {
 	ID             string
 	AppName        string
@@ -105,7 +105,7 @@ func Wave1Specs() []Spec {
 		// Play Store id=com.netflix.mediaclient — HTTP 200. play (search/open title) + write (My List intent); never claim played/added.
 		{ID: "netflix", AppName: "Netflix", AndroidPackage: "com.netflix.mediaclient", Verbs: []manifest.Verb{manifest.Play, manifest.Write}, AppClass: "media", ProvesCeiling: "netflix_prepare_open_smoke"},
 		// Play Store id=com.facebook.katana — HTTP 200. Personal posts: compose hands_off; never claim posted.
-		// AppClass messaging (stage1 has no social class; matches Discord/WhatsApp compose peers).
+		// AppClass messaging (no separate social class; matches Discord/WhatsApp compose peers).
 		{ID: "facebook", AppName: "Facebook", AndroidPackage: "com.facebook.katana", Verbs: []manifest.Verb{manifest.Compose}, AppClass: "messaging", ProvesCeiling: "facebook_prepare_open_smoke"},
 		// Play Store id=com.united.mobile.android — HTTP 200. Flight status / manage-booking browse; never book.
 		{ID: "united", AppName: "United", AndroidPackage: "com.united.mobile.android", Verbs: []manifest.Verb{manifest.Read}, AppClass: "travel", ProvesCeiling: "united_prepare_open_smoke"},
@@ -126,10 +126,10 @@ func Wave1Specs() []Spec {
 		// Play Store id=com.grubhub.android — HTTP 200. read/order hand-off; never claim checkout completed.
 		{ID: "grubhub", AppName: "Grubhub", AndroidPackage: "com.grubhub.android", Verbs: []manifest.Verb{manifest.Read, manifest.Order}, AppClass: "food", ProvesCeiling: "grubhub_prepare_open_smoke"},
 		// Play Store id=com.instagram.barcelona — HTTP 200. Compose hands_off; Wave 2 post/reply → overnight compose only; never claim posted/replied.
-		// AppClass messaging (stage1 has no social class; matches Facebook compose peer).
+		// AppClass messaging (no separate social class; matches Facebook compose peer).
 		{ID: "threads", AppName: "Threads", AndroidPackage: "com.instagram.barcelona", Verbs: []manifest.Verb{manifest.Compose}, AppClass: "messaging", ProvesCeiling: "threads_prepare_open_smoke"},
 		// Play Store id=com.zhiliaoapp.musically — HTTP 200 (com.ss.android.ugc.trill 404). Compose hands_off; never claim posted.
-		// AppClass messaging (match Facebook; media ClassMap verbs are play/read/write).
+		// AppClass messaging (match Facebook; media inventory verbs are play/read/write).
 		{ID: "tiktok", AppName: "TikTok", AndroidPackage: "com.zhiliaoapp.musically", Verbs: []manifest.Verb{manifest.Compose}, AppClass: "messaging", ProvesCeiling: "tiktok_prepare_open_smoke"},
 		// Play Store id=com.expedia.bookings — HTTP 200. Search/prepare-and-open; Wave 3 book demoted → read; never claim booked.
 		{ID: "expedia", AppName: "Expedia", AndroidPackage: "com.expedia.bookings", Verbs: []manifest.Verb{manifest.Read}, AppClass: "travel", ProvesCeiling: "expedia_search_prepare_open_smoke"},
@@ -144,7 +144,7 @@ func Wave1Specs() []Spec {
 		{ID: "wayfair", AppName: "Wayfair", AndroidPackage: "com.wayfair.wayfair", Verbs: []manifest.Verb{manifest.Read}, AppClass: "shopping", ProvesCeiling: "wayfair_prepare_open_smoke"},
 		// Play Store id=com.kayak.android — HTTP 200 (2026-08-02). Search/prepare-and-open; Wave 3 book demoted → read; never claim booked.
 		{ID: "kayak", AppName: "Kayak", AndroidPackage: "com.kayak.android", Verbs: []manifest.Verb{manifest.Read}, AppClass: "travel", ProvesCeiling: "kayak_search_prepare_open_smoke"},
-		// Callers: Wave1Specs → runtime/deeplink ClassMap, stage1 coaching, HandOffActions, serve-deeplink-proof.
+		// Callers: Wave1Specs inventory registration and prepare-and-open proofs.
 		// User ask: Wave1Specs 51 → 54 — priceline/linkedin/ebay prepare-and-open.
 		// Play Store id=com.priceline.android.negotiator — HTTP 200 (2026-08-02). Travel search; book demoted → read; never claim booked.
 		{ID: "priceline", AppName: "Priceline", AndroidPackage: "com.priceline.android.negotiator", Verbs: []manifest.Verb{manifest.Read}, AppClass: "travel", ProvesCeiling: "priceline_search_prepare_open_smoke"},
@@ -152,11 +152,11 @@ func Wave1Specs() []Spec {
 		{ID: "linkedin", AppName: "LinkedIn", AndroidPackage: "com.linkedin.android", Verbs: []manifest.Verb{manifest.Compose}, AppClass: "messaging", ProvesCeiling: "linkedin_prepare_open_smoke"},
 		// Play Store id=com.ebay.mobile — HTTP 200 (2026-08-02). Shopping browse/open read only; never claim cart/bid/checkout.
 		{ID: "ebay", AppName: "eBay", AndroidPackage: "com.ebay.mobile", Verbs: []manifest.Verb{manifest.Read}, AppClass: "shopping", ProvesCeiling: "ebay_browse_prepare_open_smoke"},
-		// Callers: Wave1Specs → runtime/deeplink ClassMap, stage1 coaching, HandOffActions, serve-deeplink-proof.
+		// Callers: Wave1Specs inventory registration and prepare-and-open proofs.
 		// User ask: Wave1Specs 54 → 55 — Pinterest prepare-and-open.
 		// Play Store id=com.pinterest — HTTP 200 (2026-08-02). Compose hands_off (Facebook/Threads peer); never claim pinned/posted/saved.
 		{ID: "pinterest", AppName: "Pinterest", AndroidPackage: "com.pinterest", Verbs: []manifest.Verb{manifest.Compose}, AppClass: "messaging", ProvesCeiling: "pinterest_prepare_open_smoke"},
-		// Callers: Wave1Specs → runtime/deeplink ClassMap, stage1 coaching, HandOffActions, serve-deeplink-proof.
+		// Callers: Wave1Specs inventory registration and prepare-and-open proofs.
 		// User ask: Wave1Specs 55 → 58 — Duolingo/Fitbit/Shazam prepare-and-open.
 		// Play Store id=com.duolingo — HTTP 200 (2026-08-02). Services read browse/open; never claim lesson completed.
 		{ID: "duolingo", AppName: "Duolingo", AndroidPackage: "com.duolingo", Verbs: []manifest.Verb{manifest.Read}, AppClass: "services", ProvesCeiling: "duolingo_prepare_open_smoke"},
@@ -164,7 +164,7 @@ func Wave1Specs() []Spec {
 		{ID: "fitbit", AppName: "Fitbit", AndroidPackage: "com.fitbit.FitbitMobile", Verbs: []manifest.Verb{manifest.Read}, AppClass: "services", ProvesCeiling: "fitbit_prepare_open_smoke"},
 		// Play Store id=com.shazam.android — HTTP 200 (2026-08-02). Media read identify/search intent; never claim identified/played/saved.
 		{ID: "shazam", AppName: "Shazam", AndroidPackage: "com.shazam.android", Verbs: []manifest.Verb{manifest.Read}, AppClass: "media", ProvesCeiling: "shazam_prepare_open_smoke"},
-		// Callers: Wave1Specs → runtime/deeplink ClassMap, stage1 coaching, HandOffActions, serve-deeplink-proof.
+		// Callers: Wave1Specs inventory registration and prepare-and-open proofs.
 		// User ask: Wave1Specs 58 → 61 — Chromecast/YouTube Music/SoundCloud prepare-and-open.
 		// Play Store id=com.google.android.apps.chromecast.app — HTTP 200 (2026-08-02). Media play cast/open intent; never claim cast started/playing/connected.
 		{ID: "chromecast", AppName: "Chromecast", AndroidPackage: "com.google.android.apps.chromecast.app", Verbs: []manifest.Verb{manifest.Play}, AppClass: "media", ProvesCeiling: "chromecast_prepare_open_smoke"},
@@ -172,7 +172,7 @@ func Wave1Specs() []Spec {
 		{ID: "youtubemusic", AppName: "YouTube Music", AndroidPackage: "com.google.android.apps.youtube.music", Verbs: []manifest.Verb{manifest.Play, manifest.Read}, AppClass: "media", ProvesCeiling: "youtubemusic_prepare_open_smoke"},
 		// Play Store id=com.soundcloud.android — HTTP 200 (2026-08-02). Media play|read like YouTube; never claim played/playlist/library.
 		{ID: "soundcloud", AppName: "SoundCloud", AndroidPackage: "com.soundcloud.android", Verbs: []manifest.Verb{manifest.Play, manifest.Read}, AppClass: "media", ProvesCeiling: "soundcloud_prepare_open_smoke"},
-		// Callers: Wave1Specs → runtime/deeplink ClassMap, stage1 coaching, HandOffActions, serve-deeplink-proof.
+		// Callers: Wave1Specs inventory registration and prepare-and-open proofs.
 		// User ask: Wave1Specs 61 → 64 — Pandora/Asana/Trello prepare-and-open.
 		// Play Store id=com.pandora.android — HTTP 200 (2026-08-02). Media play|read like SoundCloud; never claim played/playlist/station changed.
 		{ID: "pandora", AppName: "Pandora", AndroidPackage: "com.pandora.android", Verbs: []manifest.Verb{manifest.Play, manifest.Read}, AppClass: "media", ProvesCeiling: "pandora_prepare_open_smoke"},
@@ -180,7 +180,7 @@ func Wave1Specs() []Spec {
 		{ID: "asana", AppName: "Asana", AndroidPackage: "com.asana.app", Verbs: []manifest.Verb{manifest.Write}, AppClass: "tasks", ProvesCeiling: "asana_prepare_open_smoke"},
 		// Play Store id=com.trello — HTTP 200 (2026-08-02). Tasks write create/open card intent; never claim card moved/assigned/completed. Not Todoist RT-2.
 		{ID: "trello", AppName: "Trello", AndroidPackage: "com.trello", Verbs: []manifest.Verb{manifest.Write}, AppClass: "tasks", ProvesCeiling: "trello_prepare_open_smoke"},
-		// Callers: Wave1Specs → runtime/deeplink ClassMap, stage1 coaching, HandOffActions, serve-deeplink-proof.
+		// Callers: Wave1Specs inventory registration and prepare-and-open proofs.
 		// User ask: Wave1Specs 64 → 67 — Microsoft To Do / Google Docs / Dropbox prepare-and-open.
 		// Play Store id=com.microsoft.todos — HTTP 200 (2026-08-02). Tasks write create/open intent; never claim task created/assigned/completed. Not Todoist RT-2.
 		{ID: "mstodo", AppName: "Microsoft To Do", AndroidPackage: "com.microsoft.todos", Verbs: []manifest.Verb{manifest.Write}, AppClass: "tasks", ProvesCeiling: "mstodo_prepare_open_smoke"},
@@ -188,7 +188,7 @@ func Wave1Specs() []Spec {
 		{ID: "googledocs", AppName: "Google Docs", AndroidPackage: "com.google.android.apps.docs.editors.docs", Verbs: []manifest.Verb{manifest.Write}, AppClass: "notes", ProvesCeiling: "googledocs_prepare_open_smoke"},
 		// Play Store id=com.dropbox.android — HTTP 200 (2026-08-02). Notes read browse/open file intent; never claim uploaded/downloaded/shared/synced.
 		{ID: "dropbox", AppName: "Dropbox", AndroidPackage: "com.dropbox.android", Verbs: []manifest.Verb{manifest.Read}, AppClass: "notes", ProvesCeiling: "dropbox_prepare_open_smoke"},
-		// Callers: Wave1Specs → runtime/deeplink ClassMap, stage1 coaching, HandOffActions, serve-deeplink-proof.
+		// Callers: Wave1Specs inventory registration and prepare-and-open proofs.
 		// User ask: Wave1Specs 67 → 70 — Google Sheets / Evernote / Google Slides prepare-and-open.
 		// Play Store id=com.google.android.apps.docs.editors.sheets — HTTP 200 (2026-08-02). Notes write draft/open sheet intent; never claim sheet created/saved/shared. Separate from Drive OAuth and googledocs Spec.
 		{ID: "googlesheets", AppName: "Google Sheets", AndroidPackage: "com.google.android.apps.docs.editors.sheets", Verbs: []manifest.Verb{manifest.Write}, AppClass: "notes", ProvesCeiling: "googlesheets_prepare_open_smoke"},
@@ -196,7 +196,7 @@ func Wave1Specs() []Spec {
 		{ID: "evernote", AppName: "Evernote", AndroidPackage: "com.evernote", Verbs: []manifest.Verb{manifest.Write}, AppClass: "notes", ProvesCeiling: "evernote_prepare_open_smoke"},
 		// Play Store id=com.google.android.apps.docs.editors.slides — HTTP 200 (2026-08-02). Notes write draft/open slides intent; never claim slide created/saved/shared. Separate from Drive OAuth and googledocs Spec.
 		{ID: "googleslides", AppName: "Google Slides", AndroidPackage: "com.google.android.apps.docs.editors.slides", Verbs: []manifest.Verb{manifest.Write}, AppClass: "notes", ProvesCeiling: "googleslides_prepare_open_smoke"},
-		// Callers: Wave1Specs → runtime/deeplink ClassMap, stage1 coaching, HandOffActions, serve-deeplink-proof.
+		// Callers: Wave1Specs inventory registration and prepare-and-open proofs.
 		// User ask: Wave1Specs 70 → 73 — Pocket Casts / Goodreads / Kindle prepare-and-open.
 		// Pack goal: prepare-and-open only; never claim played/downloaded/subscribed, review posted/shelved/rated, purchased/downloaded/read completed.
 		// Play Store id=au.com.shiftyjelly.pocketcasts — HTTP 200 (2026-08-02). Media play|read open/search podcast app; never claim played/downloaded/subscribed. Separate from Podcasts RT-2 RSS adapter (podcasts id).
@@ -205,7 +205,7 @@ func Wave1Specs() []Spec {
 		{ID: "goodreads", AppName: "Goodreads", AndroidPackage: "com.goodreads", Verbs: []manifest.Verb{manifest.Read}, AppClass: "notes", ProvesCeiling: "goodreads_prepare_open_smoke"},
 		// Play Store id=com.amazon.kindle — HTTP 200 (2026-08-02). Media read open library/book intent (Kindle reader app); never claim purchased/downloaded/read completed. Not Amazon shopping (C2).
 		{ID: "kindle", AppName: "Kindle", AndroidPackage: "com.amazon.kindle", Verbs: []manifest.Verb{manifest.Read}, AppClass: "media", ProvesCeiling: "kindle_prepare_open_smoke"},
-		// Callers: Wave1Specs → runtime/deeplink ClassMap, stage1 coaching, HandOffActions, serve-deeplink-proof.
+		// Callers: Wave1Specs inventory registration and prepare-and-open proofs.
 		// User ask: Wave1Specs 73 → 76 — Claude/ChatGPT/Grok prepare-and-open.
 		// Pack goal: prepare-and-open draft prompt / open official apps only; never claim replied/sent/answered/completed chat. Operator does not call their APIs.
 		// Play Store id=com.anthropic.claude — HTTP 200 (2026-08-02). Messaging compose hand-off.

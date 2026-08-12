@@ -650,9 +650,6 @@ class LauncherActivity : ComponentActivity() {
                                             destination = LauncherDestination.PAIRING
                                         }
                                     }
-                                    HomeSendDecision.ComputerOffline -> {
-                                        homeRouteMessage = "Computer offline"
-                                    }
                                 }
                             },
                             routeMessage = homeRouteMessage,

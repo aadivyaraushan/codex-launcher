@@ -6,7 +6,6 @@ enum class HomeSendDecision {
     StartComputerTask,
     LinkLocalRuntime,
     OpenPairing,
-    ComputerOffline,
 }
 
 /**

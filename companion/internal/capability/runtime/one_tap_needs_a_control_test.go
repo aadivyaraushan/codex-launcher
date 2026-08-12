@@ -13,7 +13,7 @@ import (
 // user still has to make. The phone models that: CapabilityOutcome.of builds
 // an ONE_TAP_LEFT outcome carrying confirmControl = "Confirm", the name of the
 // control that finishes it (CapabilityOutcome.kt:245). Nothing renders it.
-// CapabilitySheet's RESULT dialog shows the detail line, the message and
+// The phone RESULT dialog shows the detail line, the message and
 // recoveryAction, and its buttons are Copy draft, Open <app>, Disconnect
 // <name> and Done — not one of them driven by confirmControl.
 //
@@ -42,7 +42,7 @@ func TestNoAdapterAsksForATapThePhoneCannotOffer(t *testing.T) {
 	if len(oneTap) > 0 {
 		t.Errorf("these adapters declare a one_tap ceiling: %v.\n"+
 			"The phone has no way to offer that tap yet: CapabilityOutcome carries "+
-			"confirmControl but CapabilitySheet's RESULT dialog never renders it, so "+
+			"confirmControl but the phone RESULT dialog never renders it, so "+
 			"the user gets a 'One tap left' notification and then a dialog whose only "+
 			"button is Done. Render confirmControl in that dialog (or drop the field), "+
 			"then delete this test.", oneTap)

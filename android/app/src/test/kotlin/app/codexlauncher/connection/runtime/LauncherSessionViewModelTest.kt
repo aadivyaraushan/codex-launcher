@@ -126,8 +126,8 @@ class LauncherSessionViewModelTest {
     // Unit 4 (Phase 8): the predetermined-function pipeline is gone, so a Home
     // prompt has exactly one route — the agent task path. Even a companion that
     // still advertises the old capability_actions handshake word must see a
-    // start_turn, never a capability_request: the flag has nothing left to
-    // turn on, and the wire rejects the old kinds anyway (Unit 3).
+    // start_turn, never an old capability action kind: the flag has nothing left
+    // to turn on, and the wire rejects those kinds anyway (Unit 3).
     @Test
     fun `a home prompt starts a task even when the companion advertises capability actions`() = runBlocking {
         lateinit var observer: SessionObserver
