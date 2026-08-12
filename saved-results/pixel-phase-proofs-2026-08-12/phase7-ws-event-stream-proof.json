@@ -1,0 +1,19 @@
+{
+  "utc": "2026-08-12T23:33:40Z",
+  "serial": "4B230DLAQ001Z5",
+  "ws_http_status": "HTTP/1.1 101 Switching Protocols",
+  "ws_ready": true,
+  "ws_frame_type": "ready",
+  "bridge": {
+    "mode": "standalone_phone",
+    "process": "serving",
+    "beeper": "connected",
+    "taskCapable": true,
+    "localPair": "acked",
+    "listenAddress": "127.0.0.1:9443"
+  },
+  "runtime_cli_has_beeper_base_url_flag": false,
+  "runit_run_mentions_beeper_base_url": false,
+  "beeperwatch_log_lines_current": 0,
+  "note": "Phone-local beeper-server /v1/ws handshake; no token material recorded."
+}

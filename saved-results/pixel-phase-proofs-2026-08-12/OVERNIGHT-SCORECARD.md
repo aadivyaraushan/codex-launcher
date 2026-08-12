@@ -13,10 +13,12 @@
 | 4 Hard gates | **PASS** | Prior + checkpointed Approve evidence (`b4a31ec`) |
 | 5 Turn proxy | **PASS** | Prior pong evidence |
 | 6 Home/thread + Approve | **PASS** | Prior + home-thread artifacts |
-| 7 Beeper | **PARTIAL PASS** | connected+tools + screenshots; stale empty-recipient claim fixed; event→agent deferred (no BeeperBaseURL in runit) |
+| 7 Beeper | **PARTIAL PASS** | connected+tools + screenshots + phone-local `/v1/ws`→`ready`; stale empty-recipient claim fixed; event→agent deferred (CLI has no `-beeper-base-url`; runit unset; 0 beeperwatch logs) |
 | 9 Soft-boot | **PARTIAL PASS** | Documented soft restore; no full reboot overnight |
 
 ## Key commits this session
+
+- (follow-up) phone-local Beeper WS `ready` corroboration on Pixel
 
 - `b4a31ec` — checkpoint Phase 4/6 Approve + home-thread evidence (on PR branch; included in merge)
 - `7c308c1` — Merge PR #8
@@ -29,9 +31,10 @@
 - `phase7-tools-messaging-summary.json` (79 tools; alias fields)
 - `phase7-operator-home-connected-20260812T233200Z.png`
 - `phase7-beeper-package.txt` (`com.beeper.android` 4.53.1)
+- `phase7-ws-event-stream-proof.json` (phone-local Beeper `/v1/ws` 101 + `ready`)
 
 ## Open follow-ups
 
-1. Wire `-beeper-base-url http://127.0.0.1:23373` (+ token) into phone-runtime runit; prove event→agent with a safe self/test inbound DM.
+1. Add `-beeper-base-url` (or env) to `operator-phone-runtime` CLI, wire `http://127.0.0.1:23373` + token into runit, then prove event→agent with a safe self/test inbound DM (no strangers).
 2. Full device reboot UI proof for Phase 9 (USB stranding risk).
 3. Do not commit Beeper inbox screenshots (PII).

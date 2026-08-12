@@ -33,6 +33,9 @@ alias → `approval_required` on owner Messages self (`phase4-alias-retest-tip.t
    - `phase7-operator-home-connected-20260812T233200Z.png` / `.xml`
    - also `phase7-operator-home-20260812T233115Z.png`, `phase7-home-20260812T233053Z.png`
 
+7. **Event stream handshake (phone-local):** Beeper Client API `ws://127.0.0.1:23373/v1/ws` returns `101 Switching Protocols` and a `ready` frame on this Pixel's headless `beeper-server` (not Mac Desktop). Token not recorded.
+   - `phase7-ws-event-stream-proof.json`
+
 Inbox screenshots from `com.beeper.android` were captured during the run but **not
 committed** (personal chat titles / PII). Package + server health stand in for UI
 presence of Beeper on-device.
@@ -41,9 +44,7 @@ presence of Beeper on-device.
 
 Mac-side watcher/trigger units exist (`beeperwatch`, `agenttrigger`; see
 `saved-results/phase7-beeper-event-stream-spike.md`). On this Pixel deploy,
-`/etc/operator/services/phone-runtime/run` does **not** pass `-beeper-base-url`
-(or set `BeeperBaseURL`), and phone-runtime logs contain **0** `beeperwatch`
-lines. Live inbound `message.upserted` → triggered agent turn was therefore
+`operator-phone-runtime -h` exposes **no** `-beeper-base-url` flag (so `Config.BeeperBaseURL` stays empty), the runit script does not set it, and phone-runtime logs contain **0** `beeperwatch` lines. Watcher symbols are present in the binary, but the watcher is not armed. Live inbound `message.upserted` → triggered agent turn was therefore
 **not** exercised. Remains open for a follow-up that wires BeeperBaseURL + token
 into the runit service and DMs a safe self/test account.
 
