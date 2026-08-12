@@ -123,6 +123,52 @@ class LauncherSessionViewModelTest {
         assertFalse(connection.hasAcknowledged(2))
     }
 
+    // Unit 4 (Phase 8): the predetermined-function pipeline is gone, so a Home
+    // prompt has exactly one route — the agent task path. Even a companion that
+    // still advertises the old capability_actions handshake word must see a
+    // start_turn, never a capability_request: the flag has nothing left to
+    // turn on, and the wire rejects the old kinds anyway (Unit 3).
+    @Test
+    fun `a home prompt starts a task even when the companion advertises capability actions`() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val viewModel =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { ProjectChoice("main", "Main") },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = FakeActionJournal(),
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"welcome-legacy-flag","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":["set_project","desktop_tasks","new_task_options","capability_actions"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Balanced."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Project changes.","isDefault":true}]}}}""",
+            ),
+        )
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+
+        val pending = async {
+            viewModel.submitHomePrompt("Reply to Maya that I am on my way", NewTaskSelection("codex-1", "medium", "workspace-write"), DraftVersion(1, 4))
+        }
+        val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+        assertEquals("start_turn", action.body.getValue("kind").jsonPrimitive.content)
+
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"result-2","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed"}}""",
+            ),
+        )
+        pending.await()
+    }
+
     @Test
     fun failedNewTaskPublishesAVisibleDraftRetainedMessage() = runBlocking {
         lateinit var observer: SessionObserver
