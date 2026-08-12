@@ -67,8 +67,9 @@ import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.connection.stream.CodexConnectionService
 import app.codexlauncher.connection.stream.userWarning
 import app.codexlauncher.diagnostics.AppLog
-import app.codexlauncher.decision.approval.ApprovalSheet
-import app.codexlauncher.decision.question.QuestionSheet
+import app.codexlauncher.task.thread.TaskThreadAssembler
+import app.codexlauncher.task.thread.ThreadAskPolicy
+import app.codexlauncher.task.thread.TypedTextRoute
 import app.codexlauncher.launcher.apps.AppDrawerScreen
 import app.codexlauncher.launcher.apps.InstalledApp
 import app.codexlauncher.launcher.apps.InstalledAppsLoader
@@ -757,6 +758,19 @@ class LauncherActivity : ComponentActivity() {
                     LauncherDestination.TASK ->
                         sessionUiState.transcript?.let { transcript ->
                             val taskSummary = sessionUiState.snapshot?.tasks?.singleOrNull { it.id == transcript.taskId }
+                            val thread = TaskThreadAssembler.assemble(transcript, decisionState)
+                            // Both the tappable "answer this question" flow and typed
+                            // text (routed through TypedTextRoute.ANSWER) resolve a
+                            // pending question the same way: answer its first
+                            // question with the given text. Returns whether an
+                            // answer was actually sent, not the protocol outcome.
+                            val answerPinnedQuestion: suspend (String) -> Boolean = answer@{ text ->
+                                val requestId = thread.pinnedAsk?.requestId ?: return@answer false
+                                val request = decisionState.requests.firstOrNull { it.requestId == requestId } ?: return@answer false
+                                val question = request.questions.firstOrNull() ?: return@answer false
+                                sessionViewModel.answerDecision(requestId, mapOf(question.id to listOf(text)))
+                                true
+                            }
                             TaskScreen(
                                 state = transcript,
                                 onBack = {
@@ -799,6 +813,14 @@ class LauncherActivity : ComponentActivity() {
                                     sessionViewModel.removeAttachment(uploadId)
                                     attachmentMessage = null
                                 },
+                                thread = thread,
+                                onAskDecision = { decision ->
+                                    thread.pinnedAsk?.let { pinned -> scope.launch { sessionViewModel.respondToDecision(pinned.requestId, decision) } }
+                                },
+                                onAskReply = { text -> scope.launch { answerPinnedQuestion(text) } },
+                                onAskNotNow = { thread.pinnedAsk?.let { sessionViewModel.dismissQuestion(it.requestId) } },
+                                typedTextAnswers = ThreadAskPolicy.routeTypedText(thread.pinnedAsk, "") == TypedTextRoute.ANSWER,
+                                onAnswer = answerPinnedQuestion,
                             )
                         } ?: LauncherLoadingScreen()
                     LauncherDestination.TASK_DETAIL ->
@@ -884,22 +906,6 @@ class LauncherActivity : ComponentActivity() {
                         onStop = { scope.launch(Dispatchers.IO) { launcherApplication.durableStops.stop(key) } },
                         onDismiss = { launcherApplication.replyGuard.dismissOffer() },
                     )
-                }
-                decisionState.active?.let { request ->
-                    if (request.kind == "question") {
-                        QuestionSheet(
-                            request = request,
-                            sending = decisionState.sending,
-                            onSubmit = { answers -> scope.launch { sessionViewModel.answerDecision(answers) } },
-                            onNotNow = { sessionViewModel.dismissQuestion() },
-                        )
-                    } else {
-                        ApprovalSheet(
-                            request = request,
-                            sending = decisionState.sending,
-                            onDecision = { decision -> scope.launch { sessionViewModel.respondToDecision(decision) } },
-                        )
-                    }
                 }
                 CapabilitySheet(
                     state = capabilityState,

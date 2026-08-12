@@ -28,9 +28,10 @@ sealed interface ThreadMessage {
         val prompt: String,
         val card: AskPreviewCard,
         val approveActions: List<AskAction>,
-        val denyAction: AskAction,
+        val denyActions: List<AskAction>,
         val suggestedReplies: List<String>,
         val acceptsTypedAnswer: Boolean,
+        val computerFallbackNote: String?,
     ) : ThreadMessage
 }
 
@@ -38,6 +39,13 @@ sealed interface ThreadMessage {
  * HARD_GATE asks (command/access approvals) can only be resolved by tapping
  * a structured action — see ThreadAskPolicy for why typed text never
  * releases one. QUESTION asks accept either a suggested reply or free text.
+ *
+ * Both approve and deny actions render only the decisions the executing
+ * side actually offered (allowedDecisions on the wire) — a deny button is
+ * not unconditional, it names "decline" as "Deny" and "cancel" as "Deny and
+ * stop", in that order, and questions never carry either. Sending a decision
+ * the executing side never offered is a protocol error, not a fallback to
+ * guard against on the phone.
  */
 enum class AskKind { HARD_GATE, QUESTION }
 
@@ -52,6 +60,7 @@ data class AskPreviewCard(
     val content: String?,
     val computerName: String?,
     val projectLabel: String?,
+    val workingDirectory: String?,
 ) {
     val affectedPathsLabel: String
         get() = if (affectedPaths.isEmpty()) "None" else affectedPaths.joinToString("\n")

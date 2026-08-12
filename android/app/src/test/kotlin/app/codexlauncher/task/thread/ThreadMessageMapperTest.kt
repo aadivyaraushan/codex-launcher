@@ -75,6 +75,18 @@ class ThreadMessageMapperTest {
         expiresAt = Instant.EPOCH.plusSeconds(3600),
     )
 
+    private fun secretQuestionRequest() = questionRequest().copy(
+        questions = listOf(
+            DecisionQuestion(
+                id = "password",
+                header = "Secret",
+                prompt = "Enter the account password",
+                options = emptyList(),
+                secret = true,
+            ),
+        ),
+    )
+
     // ── Approval events become hard-gate ask messages ──
 
     @Test
@@ -93,6 +105,7 @@ class ThreadMessageMapperTest {
         assertEquals("curl -X POST https://api.example.com/send", card.content)
         assertEquals("Mac mini", card.computerName)
         assertEquals("personal", card.projectLabel)
+        assertEquals("/home/user", card.workingDirectory)
     }
 
     @Test
@@ -119,24 +132,49 @@ class ThreadMessageMapperTest {
     }
 
     @Test
-    fun denyIsAlwaysPresentEvenWhenTheOfferedScopesOmitIt() {
-        val ask = ThreadMessageMapper.fromDecision(
-            approvalRequest(allowedDecisions = listOf("accept")),
+    fun denyRendersOnlyTheDenyDecisionsTheExecutingSideOffered() {
+        // Same rule as approve: the sheet only showed Deny when "decline" was
+        // offered and "Deny and stop" when "cancel" was — sending a decision
+        // the executing side never offered is a protocol error.
+        val declineOnly = ThreadMessageMapper.fromDecision(
+            approvalRequest(allowedDecisions = listOf("accept", "decline")),
         )
-        assertEquals("decline", ask.denyAction.decision)
-        assertTrue(ask.denyAction.label.isNotBlank())
+        assertEquals(listOf("decline"), declineOnly.denyActions.map { it.decision })
+        val cancelOnly = ThreadMessageMapper.fromDecision(
+            approvalRequest(allowedDecisions = listOf("accept_for_session", "cancel")),
+        )
+        assertEquals(listOf("cancel"), cancelOnly.denyActions.map { it.decision })
+        assertTrue(cancelOnly.denyActions.single().label.isNotBlank())
+    }
+
+    @Test
+    fun denyAndDenyAndStopCarryDistinctWording() {
+        val ask = ThreadMessageMapper.fromDecision(
+            approvalRequest(allowedDecisions = listOf("accept", "decline", "cancel")),
+        )
+        assertEquals(listOf("decline", "cancel"), ask.denyActions.map { it.decision })
+        assertEquals(2, ask.denyActions.map { it.label }.distinct().size)
     }
 
     @Test
     fun aCommandTheProtocolCannotExplainOffersNoApproveAtAll() {
         // Fail closed, same as the sheet: an approval whose command cannot be
         // rendered understandably must not be approvable from the phone, but
-        // deny stays available.
+        // deny stays available and the card says why approval moved.
         val ask = ThreadMessageMapper.fromDecision(
             approvalRequest(commandUnderstandable = false),
         )
         assertTrue(ask.approveActions.isEmpty())
-        assertEquals("decline", ask.denyAction.decision)
+        assertEquals(listOf("decline"), ask.denyActions.map { it.decision })
+        assertEquals(
+            "Some command details could not be shown safely. Review this request on the computer to allow it.",
+            ask.computerFallbackNote,
+        )
+    }
+
+    @Test
+    fun anOrdinaryApprovalCarriesNoComputerFallbackNote() {
+        assertNull(ThreadMessageMapper.fromDecision(approvalRequest()).computerFallbackNote)
     }
 
     @Test
@@ -158,6 +196,21 @@ class ThreadMessageMapperTest {
     fun aNonGateQuestionAcceptsTypedAnswers() {
         val ask = ThreadMessageMapper.fromDecision(questionRequest())
         assertEquals(true, ask.acceptsTypedAnswer)
+        assertNull(ask.computerFallbackNote)
+    }
+
+    @Test
+    fun aSecretQuestionIsNeverAnswerableFromThePhone() {
+        // The sheet never rendered an answer field for a secret question; the
+        // thread must not either — no typed answers, no suggested replies,
+        // and the card says where to answer instead.
+        val ask = ThreadMessageMapper.fromDecision(secretQuestionRequest())
+        assertEquals(false, ask.acceptsTypedAnswer)
+        assertTrue(ask.suggestedReplies.isEmpty())
+        assertEquals(
+            "Answer this on your computer. Secret answers are never sent from the phone.",
+            ask.computerFallbackNote,
+        )
     }
 
     // ── Transcript entries become plain thread messages ──
@@ -211,11 +264,13 @@ class ThreadAskPolicyTest {
             content = null,
             computerName = null,
             projectLabel = null,
+            workingDirectory = null,
         ),
         approveActions = listOf(AskAction(decision = "accept", label = "Approve")),
-        denyAction = AskAction(decision = "decline", label = "Deny"),
+        denyActions = listOf(AskAction(decision = "decline", label = "Deny")),
         suggestedReplies = emptyList(),
         acceptsTypedAnswer = kind == AskKind.QUESTION,
+        computerFallbackNote = null,
     )
 
     @Test

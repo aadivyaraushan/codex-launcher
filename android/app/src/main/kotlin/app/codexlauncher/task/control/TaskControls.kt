@@ -49,6 +49,8 @@ fun TaskControls(
     attachmentMessage: String? = null,
     onAttach: () -> Unit = {},
     onRemoveAttachment: (String) -> Unit = {},
+    typedTextAnswers: Boolean = false,
+    onAnswer: suspend (String) -> Boolean = { false },
 ) {
     val active = taskState in setOf(TaskState.WORKING, TaskState.WAITING_FOR_APPROVAL, TaskState.WAITING_FOR_ANSWER)
     var localText by remember { mutableStateOf("") }
@@ -91,7 +93,7 @@ fun TaskControls(
             }
             TaskQueueState.NONE -> Unit
         }
-        if (active) {
+        if (active && !typedTextAnswers) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (mode == ExistingTaskSendMode.QUEUE) {
                     Button(onClick = { mode = ExistingTaskSendMode.QUEUE }, enabled = !sending) { Text("Queue") }
@@ -127,15 +129,25 @@ fun TaskControls(
                     val submitted = text
                     sending = true
                     scope.launch {
-                        val outcome = if (mode == ExistingTaskSendMode.REDIRECT) onRedirect(submitted) else onQueueFollowUp(submitted)
-                        message = outcome.message()
-                        if (outcome in setOf(ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued, ExistingTaskControlOutcome.Redirected)) updateText("")
+                        if (typedTextAnswers) {
+                            // Typed text has exactly one meaning while a
+                            // question is pending: it answers that question,
+                            // never queue/redirect (see TaskScreen callers).
+                            val delivered = onAnswer(submitted)
+                            message = if (delivered) "Answer sent" else "Couldn't send the answer"
+                            if (delivered) updateText("")
+                        } else {
+                            val outcome = if (mode == ExistingTaskSendMode.REDIRECT) onRedirect(submitted) else onQueueFollowUp(submitted)
+                            message = outcome.message()
+                            if (outcome in setOf(ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued, ExistingTaskControlOutcome.Redirected)) updateText("")
+                        }
                         sending = false
                     }
                 },
             ) {
                 Text(
                     when {
+                        typedTextAnswers -> "Send answer"
                         !active -> "Send follow-up"
                         mode == ExistingTaskSendMode.REDIRECT -> "Redirect now"
                         else -> "Queue follow-up"

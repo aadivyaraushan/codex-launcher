@@ -1040,7 +1040,7 @@ class LauncherSessionViewModelTest {
         )
         assertEquals("approval-1", viewModel.decisions.value.active?.requestId)
 
-        val response = async { viewModel.respondToDecision("decline") }
+        val response = async { viewModel.respondToDecision("approval-1", "decline") }
         val action = ProtocolCodec.decodeText(connection.awaitType("action"))
         val actionId = action.body.getValue("actionId").jsonPrimitive.content
         assertEquals("approval-1", action.body.getValue("requestId").jsonPrimitive.content)
