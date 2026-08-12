@@ -568,9 +568,9 @@ func (b *Bridge) DenyGate(gateID string) error {
 	return nil
 }
 
-// fillRecipientAliases copies handle / fields.to / fields.recipient /
-// fields.chat_id onto subject when subject is empty, so Resolve and the
-// first-contact gate key the same person.
+// fillRecipientAliases copies handle, top-level to/recipient/chat_id, and
+// the same names in fields onto subject when subject is empty, so Resolve
+// and the first-contact gate key the same person.
 func fillRecipientAliases(req *ToolCallRequest) {
 	req.Subject = strings.TrimSpace(req.Subject)
 	req.Handle = strings.TrimSpace(req.Handle)
@@ -580,6 +580,12 @@ func fillRecipientAliases(req *ToolCallRequest) {
 	if req.Handle != "" {
 		req.Subject = req.Handle
 		return
+	}
+	for _, c := range []string{req.To, req.Recipient, req.ChatID} {
+		if s := strings.TrimSpace(c); s != "" {
+			req.Subject = s
+			return
+		}
 	}
 	if req.Fields == nil {
 		return

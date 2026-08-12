@@ -54,7 +54,7 @@ Do **not** message strangers. Use a chat with yourself or one known contact you 
 
 Hard gates are not weakened: empty recipient still fails closed; first-contact still requires Approve.
 
-Follow-up after an independent judge (PASS-WITH-WARNINGS): alias fields and send-oriented descriptions are limited to discord/messages/instagram; other tools keep the generic subject/handle schema. `handleCall` copies handle/fields aliases onto `subject` before Resolve and the gate, so first-contact history is not keyed on an empty string. `TestFieldsAliasFirstContactStopsForApproval` checks `fields.to` raises `approval_required` and does not Execute.
+Follow-up 2: `ToolCallRequest` now has top-level `to` / `recipient` / `chat_id` (Go + plugin wire types), so a direct `/call` matches the list schema. `TestAliasFirstContactStopsForApproval` covers `fields.to`, top-level `to`, and handle-only.
 
 ## Sibling sites checked
 

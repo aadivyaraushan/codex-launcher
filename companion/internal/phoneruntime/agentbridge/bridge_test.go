@@ -285,6 +285,7 @@ func TestListMessagingSchemaNamesRecipientAliases(t *testing.T) {
 	server, _ := bridgeWith(t,
 		newFake("discord", manifest.Read, manifest.Send),
 		newFake("messages", manifest.Read, manifest.Send),
+		newFake("instagram", manifest.Read, manifest.Send),
 		newFake("gcal.event", manifest.Read),
 	)
 
@@ -300,7 +301,7 @@ func TestListMessagingSchemaNamesRecipientAliases(t *testing.T) {
 	for _, tool := range result.Tools {
 		byName[tool.Name] = tool
 	}
-	for _, name := range []string{"discord", "messages"} {
+	for _, name := range []string{"discord", "messages", "instagram"} {
 		tool, ok := byName[name]
 		if !ok {
 			t.Fatalf("%s missing from list: %s", name, raw)
