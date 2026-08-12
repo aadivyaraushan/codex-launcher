@@ -1,0 +1,3 @@
+bridge=down
+gateway=up
+journal={"process":"exited","attempt":2}

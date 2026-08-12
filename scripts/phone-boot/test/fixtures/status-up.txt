@@ -1,0 +1,3 @@
+bridge=up
+gateway=up
+journal={"process":"starting","attempt":1}
