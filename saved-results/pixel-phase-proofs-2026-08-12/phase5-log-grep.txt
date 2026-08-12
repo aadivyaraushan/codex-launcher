@@ -1,0 +1,58 @@
+proot warning: can't sanitize binding "/proc/self/fd/0": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
+bash: line 2: rg: command not found
+sed: couldn't write 216 items to stdout: Broken pipe
+====GW====
+2026-08-11_23:28:14.24975 [90m2026-08-11T23:28:14.248+00:00[39m [36m[gateway][39m [36mloading configuration…[39m
+2026-08-11_23:28:15.47220 [90m2026-08-11T23:28:15.471+00:00[39m [36m[gateway][39m [36mresolving authentication…[39m
+2026-08-11_23:28:15.55599 [90m2026-08-11T23:28:15.555+00:00[39m [36m[gateway][39m [36mstarting...[39m
+2026-08-11_23:28:17.23625 [90m2026-08-11T23:28:17.235+00:00[39m [36m[gateway][39m [36mauto-enabled plugins for this runtime without writing config:[39m
+2026-08-11_23:28:17.23629 [36m- openai/gpt-5.6-sol model configured, enabled automatically.[39m
+2026-08-11_23:28:22.82956 [90m2026-08-11T23:28:22.829+00:00[39m [36m[gateway][39m [36mstarting HTTP server...[39m
+2026-08-11_23:28:24.42895 [90m2026-08-11T23:28:24.428+00:00[39m [32m[health-monitor][39m [36mstarted (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)[39m
+2026-08-11_23:28:26.77368 [90m2026-08-11T23:28:26.772+00:00[39m [35m[plugins][39m [33mplugins.allow is empty; discovered non-bundled plugins may auto-load: codex (/root/.[REDACTED_LONG]@openclaw/codex/dist/index.js), operator-tools (/root/.openclaw/extensions/operator-tools/dist/index.js). To trust them explicitly, set plugins.allow in openclaw.json (e.g. "plugins": { "allow": ["codex", "operator-tools"] }). Run 'openclaw plugins list --enabled --verbose' or 'openclaw plugins inspect codex', 'openclaw plugins inspect operator-tools' to confirm plugin ids.[39m
+2026-08-11_23:28:40.78881 [90m2026-08-11T23:28:40.788+00:00[39m [35m[plugins][39m [33moperator-tools: loaded without install/load-path provenance; treat as untracked local code. Verify source with 'openclaw plugins inspect operator-tools', then pin trust via plugins.allow (e.g. "plugins": { "allow": ["operator-tools"] }) or reinstall from a trusted source so OpenClaw records install provenance. (/root/.openclaw/extensions/operator-tools/dist/index.js)[39m
+2026-08-11_23:28:40.81611 [90m2026-08-11T23:28:40.814+00:00[39m [36m[gateway][39m [36m[plugins] loaded without install/load-path provenance; treat as untracked local code. Verify source with 'openclaw plugins inspect operator-tools', then pin trust via plugins.allow (e.g. "plugins": { "allow": ["operator-tools"] }) or reinstall from a trusted source so OpenClaw records install provenance. (plugin=operator-tools, source=/root/.openclaw/extensions/operator-tools/dist/index.js)[39m
+2026-08-11_23:28:41.08257 [90m2026-08-11T23:28:41.081+00:00[39m [36m[gateway][39m [36magent model: openai/gpt-5.6-sol (thinking=low, fast=off)[39m
+2026-08-11_23:28:41.10414 [90m2026-08-11T23:28:41.103+00:00[39m [36m[gateway][39m [36mhttp server listening (10 plugins: browser, canvas, codex, device-pair, file-transfer, memory-core, ollama, operator-tools, phone-control, talk-voice; 24.4s)[39m
+2026-08-11_23:28:41.12293 [90m2026-08-11T23:28:41.122+00:00[39m [36m[gateway][39m [36mlog file: /tmp/openclaw/openclaw-2026-08-11.log[39m
+2026-08-11_23:28:50.87873 [90m2026-08-11T23:28:50.878+00:00[39m [36m[gateway][39m [36mstarting channels and sidecars...[39m
+2026-08-11_23:28:53.80913 [90m2026-08-11T23:28:53.808+00:00[39m [36m[gateway][39m [36mready[39m
+2026-08-11_23:28:54.01658 [90m2026-08-11T23:28:54.016+00:00[39m [36m[heartbeat][39m [36mstarted[39m
+2026-08-11_23:29:07.61251 [90m2026-08-11T23:29:07.611+00:00[39m [35m[plugins][39m [33mplugins.allow is empty; discovered non-bundled plugins may auto-load: codex (/root/.[REDACTED_LONG]@openclaw/codex/dist/index.js), operator-tools (/root/.openclaw/extensions/operator-tools/dist/index.js). To trust them explicitly, set plugins.allow in openclaw.json (e.g. "plugins": { "allow": ["codex", "operator-tools"] }). Run 'openclaw plugins list --enabled --verbose' or 'openclaw plugins inspect codex', 'openclaw plugins inspect operator-tools' to confirm plugin ids.[39m
+2026-08-11_23:29:08.87396 [90m2026-08-11T23:29:08.873+00:00[39m [35m[plugins][39m [33moperator-tools: loaded without install/load-path provenance; treat as untracked local code. Verify source with 'openclaw plugins inspect operator-tools', then pin trust via plugins.allow (e.g. "plugins": { "allow": ["operator-tools"] }) or reinstall from a trusted source so OpenClaw records install provenance. (/root/.openclaw/extensions/operator-tools/dist/index.js)[39m
+2026-08-11_23:29:08.88380 [90m2026-08-11T23:29:08.883+00:00[39m [36m[gateway][39m [36magent runtime plugins pre-warmed in 5084ms[39m
+2026-08-11_23:34:18.30658 [90m2026-08-11T23:34:18.305+00:00[39m [36m[ws][39m [36m⇄ res ✓ agent 702ms runId=d0959e4d-396c-48cc-b0de-f97a822b82a9 conn=18925243…bedc id=277efa3f…8b30[39m
+2026-08-11_23:34:49.03339 [90m2026-08-11T23:34:49.032+00:00[39m [33m[agent/embedded][39m [33m[trace:embedded-run] startup stages: runId=d0959e4d-396c-48cc-b0de-f97a822b82a9 sessionId=ad5cd071-9e49-48d1-9789-7ef44c608269 phase=attempt-dispatch totalMs=7431 stages=workspace:3ms@3ms,runtime-plugins:4ms@7ms,hooks:3ms@10ms,model-resolution:7204ms@7214ms,auth:184ms@7398ms,context-engine:8ms@7406ms,attempt-workspace:11ms@7417ms,attempt-prompt:1ms@7418ms,attempt-runtime-plan:13ms@7431ms,attempt-dispatch:0ms@7431ms[39m
+2026-08-11_23:35:03.18197 [90m2026-08-11T23:35:03.181+00:00[39m [36m[agents/tool-policy][39m [36mtool policy removed 3 tool(s) via gateway sender owner-only tools.deny: cron, gateway, nodes; matched cron, gateway, nodes[39m
+2026-08-11_23:35:04.14062 [90m2026-08-11T23:35:04.140+00:00[39m [36m[agents/tool-policy][39m [36mtool policy removed 3 tool(s) via gateway sender owner-only tools.deny: cron, gateway, nodes; matched cron, gateway, nodes[39m
+2026-08-11_23:35:16.95917 [90m2026-08-11T23:35:16.958+00:00[39m [33m[agent/embedded][39m [36mcodex app-server one-shot cleanup retired shared client[39m
+2026-08-11_23:35:18.41777 2026-08-11T23:35:18.406+00:00 YES — instagram, discord, messages
+2026-08-11_23:35:18.42969 [90m2026-08-11T23:35:18.429+00:00[39m [33m[agents/agent-command][39m [36m[agent] run d0959e4d-396c-48cc-b0de-f97a822b82a9 ended with stopReason=stop[39m
+2026-08-12_07:51:41.23654 [90m2026-08-12T07:51:41.234+00:00[39m [36m[ws][39m [36mwebchat connected conn=1360aed3-7979-4c18-ac2d-3786fbe1a267 remote=127.0.0.1 client=openclaw-control-ui webchat vdev[39m
+2026-08-12_07:51:42.90514 [90m2026-08-12T07:51:42.903+00:00[39m [36m[ws][39m [36m⇄ res ✓ agent.identity.get 59ms conn=1360aed3…a267 id=aa09d26b…06ef[39m
+2026-08-12_07:51:44.36013 [90m2026-08-12T07:51:44.359+00:00[39m [36m[ws][39m [36m⇄ res ✓ sessions.subscribe 1517ms conn=1360aed3…a267 id=181cd60c…57d8[39m
+2026-08-12_07:51:44.37739 [90m2026-08-12T07:51:44.377+00:00[39m [36m[ws][39m [36m⇄ res ✓ sessions.messages.subscribe 1536ms conn=1360aed3…a267 id=d4753176…7ccc[39m
+2026-08-12_07:51:53.23859 [90m2026-08-12T07:51:53.238+00:00[39m [36m[ws][39m [36m⇄ res ✓ config.get 10400ms conn=1360aed3…a267 id=41443896…0899[39m
+2026-08-12_07:51:53.31290 [90m2026-08-12T07:51:53.312+00:00[39m [36m[ws][39m [36m⇄ res ✓ chat.startup 10474ms conn=1360aed3…a267 id=acf7c0b6…2d28[39m
+2026-08-12_07:51:54.90927 [90m2026-08-12T07:51:54.908+00:00[39m [36m[ws][39m [36m⇄ res ✓ models.authStatus 12065ms conn=1360aed3…a267 id=a2d09264…10d5[39m
+2026-08-12_07:55:07.53962 [90m2026-08-12T07:55:07.537+00:00[39m [36m[ws][39m [36mwebchat disconnected code=1001 reason=n/a conn=1360aed3-7979-4c18-ac2d-3786fbe1a267[39m
+2026-08-12_07:55:08.64616 [90m2026-08-12T07:55:08.645+00:00[39m [36m[ws][39m [36mwebchat connected conn=6f4e306d-6b3f-4ede-9d2a-9de295354841 remote=127.0.0.1 client=openclaw-control-ui webchat vdev[39m
+2026-08-12_07:55:10.18115 [90m2026-08-12T07:55:10.180+00:00[39m [36m[ws][39m [36m⇄ res ✓ agent.identity.get 176ms conn=6f4e306d…4841 id=6b0c1887…521e[39m
+2026-08-12_07:55:15.78806 [90m2026-08-12T07:55:15.787+00:00[39m [36m[ws][39m [36m⇄ res ✓ config.get 5790ms conn=6f4e306d…4841 id=777de4c2…0386[39m
+2026-08-12_07:55:16.16819 [90m2026-08-12T07:55:16.167+00:00[39m [36m[ws][39m [36m⇄ res ✓ chat.startup 6172ms conn=6f4e306d…4841 id=e93beac8…c2f6[39m
+2026-08-12_07:55:18.28564 [90m2026-08-12T07:55:18.285+00:00[39m [36m[ws][39m [36m⇄ res ✓ chat.metadata 1563ms conn=6f4e306d…4841 id=e1a8309c…2be5[39m
+2026-08-12_07:55:18.31896 [90m2026-08-12T07:55:18.318+00:00[39m [36m[ws][39m [36m⇄ res ✓ models.authStatus 8322ms conn=6f4e306d…4841 id=23dfd638…55e0[39m
+2026-08-12_11:59:51.34392 [90m2026-08-12T11:59:51.340+00:00[39m [36m[ws][39m [36mwebchat disconnected code=1001 reason=n/a conn=6f4e306d-6b3f-4ede-9d2a-9de295354841[39m
+2026-08-12_22:01:02.69925 [90m2026-08-12T22:01:02.698+00:00[39m [36m[ws][39m [36m⇄ res ✓ agent 107ms runId=b6c818e9-d3ca-4447-92f8-d2e76ab272c0 conn=a3a16bf5…408d id=87205be1…c27c[39m
+2026-08-12_22:01:06.48192 [90m2026-08-12T22:01:06.481+00:00[39m [35m[plugins][39m [33mplugins.allow is empty; discovered non-bundled plugins may auto-load: codex (/root/.[REDACTED_LONG]@openclaw/codex/dist/index.js), operator-tools (/root/.openclaw/extensions/operator-tools/dist/index.js). To trust them explicitly, set plugins.allow in openclaw.json (e.g. "plugins": { "allow": ["codex", "operator-tools"] }). Run 'openclaw plugins list --enabled --verbose' or 'openclaw plugins inspect codex', 'openclaw plugins inspect operator-tools' to confirm plugin ids.[39m
+2026-08-12_22:01:14.61605 [90m2026-08-12T22:01:14.615+00:00[39m [35m[plugins][39m [33moperator-tools: loaded without install/load-path provenance; treat as untracked local code. Verify source with 'openclaw plugins inspect operator-tools', then pin trust via plugins.allow (e.g. "plugins": { "allow": ["operator-tools"] }) or reinstall from a trusted source so OpenClaw records install provenance. (/root/.openclaw/extensions/operator-tools/dist/index.js)[39m
+2026-08-12_22:01:18.16474 [90m2026-08-12T22:01:18.164+00:00[39m [33m[agent/embedded][39m [33m[trace:embedded-run] startup stages: runId=b6c818e9-d3ca-4447-92f8-d2e76ab272c0 sessionId=0fd2e877-ba40-493a-9a8f-75e2dd7a05cb phase=attempt-dispatch totalMs=12613 stages=workspace:2ms@2ms,runtime-plugins:9081ms@9083ms,hooks:5ms@9088ms,model-resolution:3447ms@12535ms,auth:59ms@12594ms,context-engine:3ms@12597ms,attempt-workspace:12ms@12609ms,attempt-prompt:1ms@12610ms,attempt-runtime-plan:3ms@12613ms,attempt-dispatch:0ms@12613ms[39m
+2026-08-12_22:01:23.79269 [90m2026-08-12T22:01:23.791+00:00[39m [36m[agents/tool-policy][39m [36mtool policy removed 3 tool(s) via gateway sender owner-only tools.deny: cron, gateway, nodes; matched cron, gateway, nodes[39m
+2026-08-12_22:01:24.16223 [90m2026-08-12T22:01:24.161+00:00[39m [36m[agents/tool-policy][39m [36mtool policy removed 3 tool(s) via gateway sender owner-only tools.deny: cron, gateway, nodes; matched cron, gateway, nodes[39m
+2026-08-12_22:01:38.84309 [90m2026-08-12T22:01:38.842+00:00[39m [33m[agent/embedded][39m [36mcodex app-server one-shot cleanup retired shared client[39m
+2026-08-12_22:01:39.37000 2026-08-12T22:01:39.352+00:00 {"discord":true,"messages":true,"instagram":true}
+2026-08-12_22:01:39.37006 
+2026-08-12_22:01:39.37007 All three tools are available.
+2026-08-12_22:01:39.38537 [90m2026-08-12T22:01:39.385+00:00[39m [33m[agents/agent-command][39m [36m[agent] run b6c818e9-d3ca-4447-92f8-d2e76ab272c0 ended with stopReason=stop[39m

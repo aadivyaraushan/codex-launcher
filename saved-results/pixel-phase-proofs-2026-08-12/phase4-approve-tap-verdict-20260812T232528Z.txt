@@ -1,0 +1,3 @@
+approve_gone=True
+needs_gone=True
+deny_gone=True

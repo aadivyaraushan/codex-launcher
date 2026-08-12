@@ -68,3 +68,7 @@ Prefer Pixel 9-like AVD, API 36 (Android 16) if available, else closest.
 
 - Owner/AVD: run reboot proof + WebChat screenshots to close Phase 9 on-device bar.
 - Then Phase 10 packaging/README; Phase 11 e2e judged proof.
+
+## On-device Pixel soft-restore (2026-08-12 overnight)
+
+Physical Pixel serial `4B230DLAQ001Z5`: boot package + job **7301** verified; soft `sv` stop/start restored `bridge=up gateway=up` and `taskCapable=true` without full device reboot. See `saved-results/pixel-phase-proofs-2026-08-12/phase9-boot-persistence-pixel.md`. Full reboot UI bar still unclaimed.

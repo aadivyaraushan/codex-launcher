@@ -1,0 +1,8 @@
+{
+  "mode": "standalone_phone",
+  "process": "serving",
+  "beeper": "connected",
+  "taskCapable": true,
+  "localPair": "acked",
+  "listenAddress": "127.0.0.1:9443"
+}

@@ -1,0 +1,10 @@
+proot warning: can't sanitize binding "/proc/self/fd/0": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
+BRIDGE_TOOL_COUNT 79
+MATCH discord
+MATCH instagram
+MATCH messages
+ALL_NAMES_JSON
+["airbnb", "alltrails", "american", "applemusic", "asana", "audible", "booking", "cashapp", "chatgpt", "chipotle", "chromecast", "citymapper", "claude", "creditkarma", "delta", "discord", "doordash", "dropbox", "duolingo", "ebay", "evernote", "expedia", "facebook", "fitbit", "goodreads", "googledocs", "googlekeep", "googlemaps", "googlephotos", "googlesheets", "googleslides", "grok", "grubhub", "instagram", "kayak", "kindle", "linkedin", "lyft", "maps", "messages", "messenger", "mstodo", "netflix", "nike", "notification_reply", "opentable", "pandora", "pinterest", "pocketcasts", "priceline", "resy", "sephora", "shazam", "signal", "soundcloud", "southwest", "spotify", "starbucks", "stubhub", "target", "taskrabbit", "teams", "threads", "thumbtack", "tiktok", "trello", "tripadvisor", "turbotax", "uber", "ubereats", "united", "venmo", "viator", "walmart", "wayfair", "whatsapp", "youtube", "youtubemusic", "zelle"]
+WROTE_SUMMARY

@@ -1,0 +1,45 @@
+Warning: Permanently added '[127.0.0.1]:18022' (ED25519) to the list of known hosts.
+proot warning: can't sanitize binding "/proc/self/fd/0": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
+=== BEFORE 20260812T231749Z ===
+bridge=up
+gateway=up
+journal={"process":"missing"}
+run: /etc/operator/services/phone-runtime: (pid 17669) 76s; run: log: (pid 17529) 98s
+run: /etc/operator/services/openclaw-gateway: (pid 16745) 192s; run: log: (pid 9416) 85819s
+{'process': 'serving', 'taskCapable': True, 'localPair': 'acked', 'listenAddress': '127.0.0.1:9443'}
+18789 open
+9443 open
+=== STOP 20260812T231749Z ===
+kill: run: /etc/operator/services/phone-runtime: (pid 17669) 84s
+kill: run: /etc/operator/services/openclaw-gateway: (pid 16745) 207s, want down, got TERM
+Warning: Permanently added '[127.0.0.1]:18022' (ED25519) to the list of known hosts.
+SSH_OK
+bridge=up
+gateway=down
+journal={"process":"watchdog_already_running"} 
+proot warning: can't sanitize binding "/proc/self/fd/0": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
+run: /etc/operator/services/phone-runtime: (pid 18816) 8s; run: log: (pid 17529) 123s
+down: /etc/operator/services/openclaw-gateway: 9s, normally up; run: log: (pid 9416) 85844s
+18789 closed
+9443 open
+Warning: Permanently added '[127.0.0.1]:18022' (ED25519) to the list of known hosts.
+proot warning: can't sanitize binding "/proc/self/fd/0": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
+ok: down: /etc/operator/services/openclaw-gateway: 26s, normally up
+kill: run: /etc/operator/services/phone-runtime: (pid 18816) 32s
+Warning: Permanently added '[127.0.0.1]:18022' (ED25519) to the list of known hosts.
+RESTORE_BEGIN
+operator-phone-boot: watchdog already running
+proot warning: can't sanitize binding "/proc/self/fd/0": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
+GATEWAY_PORT_UP try=53
+Warning: Permanently added '[127.0.0.1]:18022' (ED25519) to the list of known hosts.
+bridge=up
+gateway=up
+journal={"process":"watchdog_already_running"} 

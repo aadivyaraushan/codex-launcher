@@ -1,0 +1,7 @@
+bridge=up
+gateway=up
+journal={"process":"watchdog_already_running"} 
+EXIT:0
+run: /etc/operator/services/phone-runtime: (pid 17669) 9s; run: log: (pid 17529) 31s
+run: /etc/operator/services/openclaw-gateway: (pid 16745) 125s; run: log: (pid 9416) 85752s
+{'mode': 'standalone_phone', 'process': 'serving', 'taskCapable': True, 'localPair': 'acked', 'beeper': 'connected'}

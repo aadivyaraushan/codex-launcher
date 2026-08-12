@@ -1,0 +1,5 @@
+typed_go_ahead=True
+queued_attempt=True
+still_approve_after_goahead=True
+still_needs=True
+still_deny=True

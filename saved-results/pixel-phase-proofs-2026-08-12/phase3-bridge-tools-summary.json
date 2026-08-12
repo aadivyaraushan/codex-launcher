@@ -1,0 +1,1280 @@
+{
+  "count": 79,
+  "names": [
+    "airbnb",
+    "alltrails",
+    "american",
+    "applemusic",
+    "asana",
+    "audible",
+    "booking",
+    "cashapp",
+    "chatgpt",
+    "chipotle",
+    "chromecast",
+    "citymapper",
+    "claude",
+    "creditkarma",
+    "delta",
+    "discord",
+    "doordash",
+    "dropbox",
+    "duolingo",
+    "ebay",
+    "evernote",
+    "expedia",
+    "facebook",
+    "fitbit",
+    "goodreads",
+    "googledocs",
+    "googlekeep",
+    "googlemaps",
+    "googlephotos",
+    "googlesheets",
+    "googleslides",
+    "grok",
+    "grubhub",
+    "instagram",
+    "kayak",
+    "kindle",
+    "linkedin",
+    "lyft",
+    "maps",
+    "messages",
+    "messenger",
+    "mstodo",
+    "netflix",
+    "nike",
+    "notification_reply",
+    "opentable",
+    "pandora",
+    "pinterest",
+    "pocketcasts",
+    "priceline",
+    "resy",
+    "sephora",
+    "shazam",
+    "signal",
+    "soundcloud",
+    "southwest",
+    "spotify",
+    "starbucks",
+    "stubhub",
+    "target",
+    "taskrabbit",
+    "teams",
+    "threads",
+    "thumbtack",
+    "tiktok",
+    "trello",
+    "tripadvisor",
+    "turbotax",
+    "uber",
+    "ubereats",
+    "united",
+    "venmo",
+    "viator",
+    "walmart",
+    "wayfair",
+    "whatsapp",
+    "youtube",
+    "youtubemusic",
+    "zelle"
+  ],
+  "summary": [
+    {
+      "name": "spotify",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter spotify; verbs: play, write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "ubereats",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter ubereats; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "walmart",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter walmart; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "soundcloud",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter soundcloud; verbs: play, read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "pandora",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter pandora; verbs: play, read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "trello",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter trello; verbs: write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "dropbox",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter dropbox; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "kindle",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter kindle; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "doordash",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "order",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter doordash; verbs: read, order, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "googlemaps",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter googlemaps; verbs: read, write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "facebook",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter facebook; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "grubhub",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "order",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter grubhub; verbs: read, order, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "tiktok",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter tiktok; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "duolingo",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter duolingo; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "zelle",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter zelle; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "googlephotos",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter googlephotos; verbs: read, write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "stubhub",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter stubhub; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "netflix",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter netflix; verbs: play, write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "youtube",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter youtube; verbs: play, read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "airbnb",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter airbnb; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "googleslides",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter googleslides; verbs: write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "cashapp",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter cashapp; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "applemusic",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter applemusic; verbs: play, write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "viator",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter viator; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "creditkarma",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter creditkarma; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "fitbit",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter fitbit; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "maps",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter maps; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "teams",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter teams; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "opentable",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter opentable; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "pocketcasts",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter pocketcasts; verbs: play, read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "goodreads",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter goodreads; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "claude",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter claude; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "discord",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "send",
+          "requiresPreview": true
+        },
+        {
+          "name": "modify",
+          "requiresPreview": true
+        },
+        {
+          "name": "cancel",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter discord; verbs: read, send, modify, cancel, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "lyft",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter lyft; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "southwest",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter southwest; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "threads",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter threads; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "resy",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter resy; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "booking",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter booking; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "ebay",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter ebay; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "instagram",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "send",
+          "requiresPreview": true
+        },
+        {
+          "name": "modify",
+          "requiresPreview": true
+        },
+        {
+          "name": "cancel",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter instagram; verbs: read, send, modify, cancel, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "uber",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter uber; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "turbotax",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter turbotax; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "notification_reply",
+      "verbs": [
+        {
+          "name": "send",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter notification_reply; verbs: send, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "venmo",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter venmo; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "alltrails",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter alltrails; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "thumbtack",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter thumbtack; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "googledocs",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter googledocs; verbs: write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "googlesheets",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter googlesheets; verbs: write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "evernote",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter evernote; verbs: write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "taskrabbit",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter taskrabbit; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "shazam",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter shazam; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "united",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter united; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "delta",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter delta; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "messages",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "send",
+          "requiresPreview": true
+        },
+        {
+          "name": "modify",
+          "requiresPreview": true
+        },
+        {
+          "name": "cancel",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter messages; verbs: read, send, modify, cancel, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "chipotle",
+      "verbs": [
+        {
+          "name": "order",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter chipotle; verbs: order, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "messenger",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter messenger; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "expedia",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter expedia; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "target",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter target; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "priceline",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter priceline; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "linkedin",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter linkedin; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "starbucks",
+      "verbs": [
+        {
+          "name": "order",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter starbucks; verbs: order, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "audible",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter audible; verbs: read, play, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "signal",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter signal; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "citymapper",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter citymapper; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "chromecast",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter chromecast; verbs: play, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "mstodo",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter mstodo; verbs: write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "chatgpt",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter chatgpt; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "wayfair",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter wayfair; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "tripadvisor",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter tripadvisor; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "american",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter american; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "sephora",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter sephora; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "pinterest",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter pinterest; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "youtubemusic",
+      "verbs": [
+        {
+          "name": "play",
+          "requiresPreview": false
+        },
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter youtubemusic; verbs: play, read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "asana",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter asana; verbs: write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "grok",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter grok; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "googlekeep",
+      "verbs": [
+        {
+          "name": "write",
+          "requiresPreview": true
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter googlekeep; verbs: write, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "whatsapp",
+      "verbs": [
+        {
+          "name": "compose",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter whatsapp; verbs: compose, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "nike",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter nike; verbs: read, disconnect (undo this app's credentials and consent)"
+    },
+    {
+      "name": "kayak",
+      "verbs": [
+        {
+          "name": "read",
+          "requiresPreview": false
+        },
+        {
+          "name": "disconnect",
+          "requiresPreview": true
+        }
+      ],
+      "description": "Adapter kayak; verbs: read, disconnect (undo this app's credentials and consent)"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+{"discord":true,"messages":true,"instagram":true}
+
+All three tools are available.
