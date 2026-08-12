@@ -62,14 +62,11 @@ object DeviceReplyRequest {
         val plan = ReplyAdapter.plan(
             handle = picked,
             text = text,
-            // The phone has no way to see a finger tap the confirmation
-            // sheet. What stands in for it is the shape of the wire itself:
-            // the Mac sends a device_action only in reply to a
-            // capability_confirm it already sent, and the phone sends that
-            // capability_confirm only when someone confirmed the sheet on
-            // this device. By the time carryOut runs, that chain has already
-            // happened upstream — attended is true because it was proven
-            // before this call, not assumed here.
+            // The Mac only sends device_action after the owner has already
+            // approved the irreversible step on the agent/approval path.
+            // By the time carryOut runs, that chain has already happened
+            // upstream — attended is true because it was proven before this
+            // call, not assumed here.
             attended = true,
         )
 

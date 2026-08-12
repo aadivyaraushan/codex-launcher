@@ -19,7 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
-import app.codexlauncher.capability.outcome.StateMark
+import app.codexlauncher.task.mark.StateMark
 
 /**
  * Inline agent-message rendering of a pending [ThreadMessage.Ask], replacing

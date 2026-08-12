@@ -44,8 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
-import app.codexlauncher.capability.outcome.StateMark
-import app.codexlauncher.capability.interaction.PromptDestination
+import app.codexlauncher.task.mark.StateMark
 import app.codexlauncher.task.configuration.NewTaskOptionControls
 import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
@@ -67,10 +66,7 @@ fun HomeScreen(
     composerState: DraftComposerState = DraftComposerState(phase = DraftComposerPhase.READY),
     onPromptChange: (String) -> Unit = {},
     onSend: (String, NewTaskSelection?) -> Unit = { _, _ -> },
-    promptDestination: PromptDestination = PromptDestination.AUTO,
-    capabilityBusy: Boolean = false,
-    capabilityMessage: String? = null,
-    onPromptDestinationChange: (PromptDestination) -> Unit = {},
+    routeMessage: String? = null,
     newTaskNeedsReview: Boolean = false,
     newTaskMessage: String? = null,
     onDismissNewTaskReview: () -> Unit = {},
@@ -121,10 +117,7 @@ fun HomeScreen(
                     onPromptChange = onPromptChange,
                     onChooseProject = onChooseProject,
                     onSend = onSend,
-                    promptDestination = promptDestination,
-                    capabilityBusy = capabilityBusy,
-                    capabilityMessage = capabilityMessage,
-                    onPromptDestinationChange = onPromptDestinationChange,
+                    routeMessage = routeMessage,
                     newTaskNeedsReview = newTaskNeedsReview,
                     newTaskMessage = newTaskMessage,
                     onDismissNewTaskReview = onDismissNewTaskReview,
@@ -249,10 +242,7 @@ private fun OnlineContent(
     onPromptChange: (String) -> Unit,
     onChooseProject: () -> Unit,
     onSend: (String, NewTaskSelection?) -> Unit,
-    promptDestination: PromptDestination,
-    capabilityBusy: Boolean,
-    capabilityMessage: String?,
-    onPromptDestinationChange: (PromptDestination) -> Unit,
+    routeMessage: String?,
     newTaskNeedsReview: Boolean,
     newTaskMessage: String?,
     onDismissNewTaskReview: () -> Unit,
@@ -342,51 +332,27 @@ private fun OnlineContent(
         }
         item {
             Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                NewSessionButton(
-                    label = "on phone",
-                    selected = promptDestination == PromptDestination.AUTO,
-                    enabled = !capabilityBusy,
-                    description = "New session on phone",
-                    onClick = { onPromptDestinationChange(PromptDestination.AUTO) },
-                    modifier = Modifier.weight(1f),
-                )
-                NewSessionButton(
-                    label = "on computer",
-                    selected = promptDestination == PromptDestination.COMPUTER,
-                    enabled = !capabilityBusy,
-                    description = "New session on computer",
-                    onClick = { onPromptDestinationChange(PromptDestination.COMPUTER) },
-                    modifier = Modifier.weight(1f),
-                )
+            if (state.canChangeProject || state.selectedProjectName != null) {
+                OutlinedButton(
+                    onClick = onChooseProject,
+                    enabled = state.canChangeProject,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.fillMaxWidth().height(QuietInstrumentTokens.securityActionHeightDp.dp),
+                ) {
+                    Text(state.selectedProjectName ?: "Choose project")
+                }
             }
-            if (promptDestination == PromptDestination.COMPUTER) {
-                if (state.canChangeProject || state.selectedProjectName != null) {
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = onChooseProject,
-                        enabled = state.canChangeProject,
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier.fillMaxWidth().height(QuietInstrumentTokens.securityActionHeightDp.dp),
-                    ) {
-                        Text(state.selectedProjectName ?: "Choose project")
-                    }
-                }
-                if (newTaskOptions != null && selection != null) {
-                    Spacer(Modifier.height(8.dp))
-                    NewTaskOptionControls(
-                        options = newTaskOptions,
-                        selection = selection,
-                        onSelectionChange = {
-                            selectedModelId = it.modelId
-                            selectedReasoningId = it.reasoningId
-                            selectedPermissionId = it.permissionModeId
-                        },
-                    )
-                }
+            if (newTaskOptions != null && selection != null) {
+                Spacer(Modifier.height(8.dp))
+                NewTaskOptionControls(
+                    options = newTaskOptions,
+                    selection = selection,
+                    onSelectionChange = {
+                        selectedModelId = it.modelId
+                        selectedReasoningId = it.reasoningId
+                        selectedPermissionId = it.permissionModeId
+                    },
+                )
             }
             if (state.showLinkLocalRuntime) {
                 Spacer(Modifier.height(8.dp))
@@ -423,7 +389,7 @@ private fun OnlineContent(
             attachmentMessage?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             }
-            capabilityMessage?.let {
+            routeMessage?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             when {
@@ -479,50 +445,16 @@ private fun OnlineContent(
                             composerState.canEdit &&
                             composerState.text.isNotBlank() &&
                             composerState.version != null &&
-                            (selection != null || promptDestination == PromptDestination.AUTO) &&
-                            !newTaskNeedsReview &&
-                            !capabilityBusy,
+                            selection != null &&
+                            !newTaskNeedsReview,
                     modifier =
                         Modifier.size(48.dp).semantics {
-                            contentDescription = "Send prompt using ${promptDestination.displayName}"
+                            contentDescription = "Send prompt"
                         },
                 ) {
                     Text("↑")
                 }
             }
-        }
-    }
-}
-
-private val PromptDestination.displayName: String
-    get() = if (this == PromptDestination.AUTO) "Auto" else "Computer"
-
-/**
- * One of the two new-session buttons (DESIGN.md, Home): "on phone" and "on
- * computer" are the only place the two kinds of thread differ up front. The
- * selected destination renders filled; the other outlined — that contrast is
- * the whole selection indicator, there is no separate label or checkmark.
- */
-@Composable
-private fun NewSessionButton(
-    label: String,
-    selected: Boolean,
-    enabled: Boolean,
-    description: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val buttonModifier =
-        modifier
-            .height(QuietInstrumentTokens.securityActionHeightDp.dp)
-            .semantics { contentDescription = description }
-    if (selected) {
-        Button(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(6.dp), modifier = buttonModifier) {
-            Text(label)
-        }
-    } else {
-        OutlinedButton(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(6.dp), modifier = buttonModifier) {
-            Text(label)
         }
     }
 }

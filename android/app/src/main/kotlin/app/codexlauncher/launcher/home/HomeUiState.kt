@@ -1,7 +1,6 @@
 package app.codexlauncher.launcher.home
 
-import app.codexlauncher.capability.interaction.PromptDestination
-import app.codexlauncher.capability.outcome.StateMark
+import app.codexlauncher.task.mark.StateMark
 import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
@@ -37,11 +36,8 @@ private fun TaskState.toStateMark(): StateMark? =
         TaskState.ONE_TAP_LEFT -> StateMark.ONE_TAP_LEFT
         TaskState.HANDED_OFF -> StateMark.HANDED_OFF
         TaskState.FAILED -> StateMark.FAILED
-        // A task we lost track of gets its own mark. This reverses the
-        // earlier decision that UNVERIFIED needed none because "the sheet's
-        // CapabilityOutcome already carries it": that holds for a sheet open
-        // in front of you, not for a row in a list you are scrolling past,
-        // where nothing else says anything is wrong.
+        // A task we lost track of gets its own mark: a row in a list you are
+        // scrolling past has nothing else saying anything is wrong.
         TaskState.UNVERIFIED -> StateMark.UNVERIFIED
         // Working, waiting, and replied tasks use words plus shape
         // (DESIGN.md, Home): every ordinary lifecycle state carries its
@@ -148,7 +144,6 @@ object HomeUiPolicy {
         tasks: List<HomeTask>,
         lastConnectedLabel: String? = null,
         standalone: StandaloneRuntimeStatus = StandaloneRuntimeStatus.notReady(),
-        promptDestination: PromptDestination = PromptDestination.AUTO,
         paired: Boolean = true,
     ): HomeUiState {
         val hasCurrentSnapshot =
@@ -162,11 +157,7 @@ object HomeUiPolicy {
                 null
             }
         val macReady = hasCurrentSnapshot && selectedProject != null
-        val canSend =
-            when (promptDestination) {
-                PromptDestination.AUTO -> standalone.isReady
-                PromptDestination.COMPUTER -> macReady
-            }
+        val canSend = macReady || standalone.isReady
         val title = if (paired) computerName else "Operator"
         val headline =
             when {
@@ -182,10 +173,7 @@ object HomeUiPolicy {
             canChangeComputer = false,
             canChangeProject = hasCurrentSnapshot && projects.isNotEmpty(),
             canSend = canSend,
-            mustChooseProject =
-                promptDestination == PromptDestination.COMPUTER &&
-                    hasCurrentSnapshot &&
-                    selectedProject == null,
+            mustChooseProject = hasCurrentSnapshot && selectedProject == null && !standalone.isReady,
             showAllApps = true,
             showAndroidSettings = true,
             lastConnectedLabel = lastConnectedLabel.takeIf { paired },

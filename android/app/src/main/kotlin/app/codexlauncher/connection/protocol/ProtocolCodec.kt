@@ -171,12 +171,6 @@ object ProtocolCodec {
                 !optionalString(body, "requestId").isValidId() || !optionalString(body, "taskId").isValidId()
             ) fail(ProtocolError.INVALID_ENVELOPE)
             MessageType.DECISION_PAGE -> if (sender != Sender.COMPANION || !validDecisionPage(body)) fail(ProtocolError.INVALID_ENVELOPE)
-            // The predetermined-function pipeline that produced these two frame
-            // types is gone (Phase 8). The enum members stay only because the
-            // Unit 4 Kotlin UI wave (CapabilityInteraction, LauncherSessionViewModel)
-            // still references them; on the wire they now fail exactly like any
-            // frame type the codec has never heard of.
-            MessageType.CAPABILITY_PREVIEW, MessageType.CAPABILITY_RESULT -> fail(ProtocolError.INVALID_ENVELOPE)
             // The Mac decides a reply is needed but cannot send it: only the
             // phone holds the live notification. "text" is bounded the same
             // way start_turn's text is, not isSafeDisplay'd,

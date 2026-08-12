@@ -68,7 +68,7 @@ type ProductionConfig struct {
 	// search" and a working adapter.
 	PodcastsFeedURL string
 	// Fact-force (edit): callers=cmd/codex-launcher/production.go,
-	// phoneruntime/runtime.go, beeper_stage2_readonly_test.go; existing file
+	// phoneruntime/runtime.go; existing file
 	// production.go (not new). User: "Continue OpenAI+Beeper — SLICE 4: B4 + B5".
 	// BeeperAPI is present when the local or remote Beeper target is
 	// authenticated. It replaces the Instagram, Discord, and Google Messages

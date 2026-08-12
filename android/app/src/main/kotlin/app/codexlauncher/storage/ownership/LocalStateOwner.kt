@@ -4,8 +4,6 @@ import android.content.Context
 import app.codexlauncher.storage.actions.ActionRecordStore
 import app.codexlauncher.storage.actions.StoredActionJournal
 import app.codexlauncher.storage.actions.actionRecordDataStore
-import app.codexlauncher.storage.capability.unresolved.UnresolvedCapabilityDataStore
-import app.codexlauncher.storage.capability.unresolved.unresolvedCapabilityDataStore
 import app.codexlauncher.storage.drafts.DraftKeyStore
 import app.codexlauncher.storage.drafts.EncryptedDraftStore
 import app.codexlauncher.storage.connection.lastseen.LastConnectionStore
@@ -37,7 +35,6 @@ class LocalStateOwner(context: Context) {
     val actionJournal = StoredActionJournal(actionRecords)
     val lastConnections = LastConnectionStore(appContext.lastConnectionDataStore, gate)
     val resumeCursors = ResumeCursorStore(appContext, gate)
-    val capabilityUnresolvedChecks = UnresolvedCapabilityDataStore(appContext.unresolvedCapabilityDataStore, gate)
     val pairingKeys = PairingKeyStore()
     private val draftKeys = DraftKeyStore()
     val drafts =
@@ -61,6 +58,5 @@ class LocalStateOwner(context: Context) {
             deviceIdentity = deviceIdentity,
             pairingKeys = pairingKeys,
             pairingRecords = pairingRecords,
-            capabilityUnresolvedChecks = capabilityUnresolvedChecks,
         )
 }

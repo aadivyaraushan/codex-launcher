@@ -1,7 +1,7 @@
 package app.codexlauncher.capability.reply
 
 import app.codexlauncher.capability.notifications.ReplySource
-import app.codexlauncher.capability.outcome.Ceiling
+import app.codexlauncher.capability.reply.outcome.Ceiling
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

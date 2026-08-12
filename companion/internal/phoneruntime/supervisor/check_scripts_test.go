@@ -1,6 +1,7 @@
 package supervisor_test
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,13 @@ func scriptDir(t *testing.T) string {
 		t.Fatal("runtime.Caller failed")
 	}
 	return filepath.Dir(file)
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	dir := scriptDir(t)
+	// companion/internal/phoneruntime/supervisor -> repo root
+	return filepath.Clean(filepath.Join(dir, "..", "..", "..", ".."))
 }
 
 func TestSupervisorScriptsSyntaxAndContract(t *testing.T) {
@@ -60,5 +68,43 @@ func TestSupervisorScriptsSyntaxAndContract(t *testing.T) {
 		if !strings.Contains(string(watchBody), needle) {
 			t.Fatalf("watchdog missing required contract fragment %q", needle)
 		}
+	}
+}
+
+func TestSupervisorMatchesPhoneBootCanonical(t *testing.T) {
+	root := repoRoot(t)
+	pairs := [][2]string{
+		{
+			filepath.Join(root, "companion/internal/phoneruntime/supervisor/10-operator-runtime.sh"),
+			filepath.Join(root, "scripts/phone-boot/termux/boot/10-operator-runtime.sh"),
+		},
+		{
+			filepath.Join(root, "companion/internal/phoneruntime/supervisor/operator-runtime-watchdog.sh"),
+			filepath.Join(root, "scripts/phone-boot/termux/libexec/operator-runtime-watchdog.sh"),
+		},
+	}
+	for _, pair := range pairs {
+		a, err := os.ReadFile(pair[0])
+		if err != nil {
+			t.Fatalf("read %s: %v", pair[0], err)
+		}
+		b, err := os.ReadFile(pair[1])
+		if err != nil {
+			t.Fatalf("read %s: %v (phone-boot is canonical; copy missing)", pair[1], err)
+		}
+		if !bytes.Equal(a, b) {
+			t.Fatalf("drift between\n  %s\nand\n  %s\nKeep both identical; phone-boot is the install source.", pair[0], pair[1])
+		}
+	}
+}
+
+func TestPhoneBootShellContract(t *testing.T) {
+	root := repoRoot(t)
+	script := filepath.Join(root, "scripts/phone-boot/test/run-tests.sh")
+	cmd := exec.Command("bash", script)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("phone-boot shell contract failed: %v\n%s", err, out)
 	}
 }

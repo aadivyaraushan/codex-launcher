@@ -1,6 +1,6 @@
 package app.codexlauncher.capability.reply
 
-import app.codexlauncher.capability.outcome.CapabilityOutcome
+import app.codexlauncher.capability.reply.outcome.CapabilityOutcome
 import app.codexlauncher.diagnostics.AppLog
 
 /**

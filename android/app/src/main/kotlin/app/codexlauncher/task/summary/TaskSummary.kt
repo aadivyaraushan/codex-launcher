@@ -10,18 +10,17 @@ enum class TaskState(val wireName: String) {
     INTERRUPTED("interrupted"),
     IDLE_AFTER_REPLY("idle_after_reply"),
 
-    // Capability-aware states (see capability.outcome.StateMark): a task can
-    // finish one tap short of the irreversible step, or hand off to another
-    // app entirely, without that being WORKING, FAILED, or a reply.
+    // Task-mark states (see task.mark.StateMark): a task can finish one tap
+    // short of the irreversible step, or hand off to another app entirely,
+    // without that being WORKING, FAILED, or a reply.
     ONE_TAP_LEFT("one_tap_left"),
     HANDED_OFF("handed_off"),
 
     // A run whose phone dropped off mid-flight before we could learn what
     // happened: it is not still running, it did not fail, and it is not a
     // confirmed reply either. The companion never sends this over the wire —
-    // it only ever arrives locally, from a CapabilityOutcome derived on the
-    // phone — but it still needs a TaskState so the home list can render it
-    // honestly instead of guessing.
+    // it only ever arrives locally — but it still needs a TaskState so the
+    // home list can render it honestly instead of guessing.
     UNVERIFIED("unverified"),
     ;
 

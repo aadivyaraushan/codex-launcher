@@ -36,7 +36,7 @@ import org.junit.Test
  *
  * [StopStore] is the seam. The real one is Jetpack Preferences DataStore,
  * shaped after `storage/projects/ProjectSelectionStore.kt` the same way
- * `UnresolvedCapabilityStore` already is. This file uses a fake, so the rules
+ * durable preference stores already are. This file uses a fake, so the rules
  * below stay free of Android and can run on the JVM.
  */
 class DurableStopsTest {

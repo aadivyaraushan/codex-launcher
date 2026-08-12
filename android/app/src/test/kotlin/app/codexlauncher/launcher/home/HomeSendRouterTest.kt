@@ -1,6 +1,5 @@
 package app.codexlauncher.launcher.home
 
-import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -12,37 +11,10 @@ class HomeSendRouterTest {
         StandaloneRuntimeStatus(localPairAcked = false, runtimeServing = false, reachable = false)
 
     @Test
-    fun autoWithStandaloneReadyRoutesToCapabilityEvenWhenMacOnline() {
-        assertEquals(
-            HomeSendDecision.CapabilityOnPhone,
-            HomeSendRouter.decide(
-                destination = PromptDestination.AUTO,
-                standalone = ready,
-                macOnlineWithProject = true,
-                macPaired = true,
-            ),
-        )
-    }
-
-    @Test
-    fun autoWithoutStandaloneReadyNeverFallsBackToMac() {
-        assertEquals(
-            HomeSendDecision.LinkLocalRuntime,
-            HomeSendRouter.decide(
-                destination = PromptDestination.AUTO,
-                standalone = notReady,
-                macOnlineWithProject = true,
-                macPaired = true,
-            ),
-        )
-    }
-
-    @Test
-    fun computerWithOnlineProjectStartsMacTask() {
+    fun macOnlineWithProjectStartsTaskEvenWhenStandaloneReady() {
         assertEquals(
             HomeSendDecision.StartComputerTask,
             HomeSendRouter.decide(
-                destination = PromptDestination.COMPUTER,
                 standalone = ready,
                 macOnlineWithProject = true,
                 macPaired = true,
@@ -51,12 +23,23 @@ class HomeSendRouterTest {
     }
 
     @Test
-    fun computerWhenUnpairedOpensPairing() {
+    fun standaloneReadyStartsTaskWhenMacIsNotOnline() {
+        assertEquals(
+            HomeSendDecision.StartComputerTask,
+            HomeSendRouter.decide(
+                standalone = ready,
+                macOnlineWithProject = false,
+                macPaired = true,
+            ),
+        )
+    }
+
+    @Test
+    fun unpairedWithoutStandaloneOpensPairing() {
         assertEquals(
             HomeSendDecision.OpenPairing,
             HomeSendRouter.decide(
-                destination = PromptDestination.COMPUTER,
-                standalone = ready,
+                standalone = notReady,
                 macOnlineWithProject = false,
                 macPaired = false,
             ),
@@ -64,12 +47,11 @@ class HomeSendRouterTest {
     }
 
     @Test
-    fun computerWhenPairedButOfflineShowsOffline() {
+    fun pairedOfflineWithoutStandaloneLinksLocalRuntime() {
         assertEquals(
-            HomeSendDecision.ComputerOffline,
+            HomeSendDecision.LinkLocalRuntime,
             HomeSendRouter.decide(
-                destination = PromptDestination.COMPUTER,
-                standalone = ready,
+                standalone = notReady,
                 macOnlineWithProject = false,
                 macPaired = true,
             ),

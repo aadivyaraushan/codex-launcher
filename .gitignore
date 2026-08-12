@@ -1,6 +1,7 @@
 # Local agent and scratch state
 .gstack/
 work/
+.worktrees/
 
 # Android and Gradle output
 .gradle/
@@ -33,12 +34,23 @@ coverage.out
 *.crt
 *.cer
 *.token
+*agentbridge-token*
+*agentbridge-cert*
+**/secrets/
+**/private/
+*.sqlite
+*.sqlite3
+*.db
 
 # Virtual machines and emulator state
 *.qcow2
 *.vdi
 *.vmdk
 *.avd/
+
+# Node / plugin local installs
+node_modules/
+agentbridge/openclaw-plugin/dist/
 
 # Operating-system files
 .DS_Store

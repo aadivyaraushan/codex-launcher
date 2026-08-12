@@ -55,7 +55,7 @@ func TestWave1DeepLinkSpecsAreHandsOffPrepareAndOpen(t *testing.T) {
 		{"googlemaps", "Google Maps", "com.google.android.apps.maps", "travel", "googlemaps_prepare_open_smoke", []manifest.Verb{manifest.Read, manifest.Write}},
 		// Netflix: media play (search/open title) + write (My List intent); never claim played/added.
 		{"netflix", "Netflix", "com.netflix.mediaclient", "media", "netflix_prepare_open_smoke", []manifest.Verb{manifest.Play, manifest.Write}},
-		// Facebook personal: messaging compose hand-off; never claim posted (no social class in stage1).
+		// Facebook personal: messaging compose hand-off; never claim posted (no separate social class).
 		{"facebook", "Facebook", "com.facebook.katana", "messaging", "facebook_prepare_open_smoke", []manifest.Verb{manifest.Compose}},
 		// Airlines + Citymapper: travel/read only (flight status / manage-booking browse / transit); never book.
 		{"united", "United", "com.united.mobile.android", "travel", "united_prepare_open_smoke", []manifest.Verb{manifest.Read}},
@@ -71,9 +71,9 @@ func TestWave1DeepLinkSpecsAreHandsOffPrepareAndOpen(t *testing.T) {
 		{"opentable", "OpenTable", "com.opentable", "food", "opentable_prepare_open_smoke", []manifest.Verb{manifest.Read}},
 		// Grubhub: food read|order; never claim checkout completed. Play Store id=com.grubhub.android — HTTP 200.
 		{"grubhub", "Grubhub", "com.grubhub.android", "food", "grubhub_prepare_open_smoke", []manifest.Verb{manifest.Read, manifest.Order}},
-		// Threads / TikTok: messaging compose (Facebook peer; no stage1 social class); never claim posted/replied.
+		// Threads / TikTok: messaging compose (Facebook peer; no separate social class); never claim posted/replied.
 		{"threads", "Threads", "com.instagram.barcelona", "messaging", "threads_prepare_open_smoke", []manifest.Verb{manifest.Compose}},
-		// TikTok: messaging compose (match Facebook; media ClassMap is play/read/write). Play id=com.zhiliaoapp.musically (com.ss.android.ugc.trill 404).
+		// TikTok: messaging compose (match Facebook; media inventory verbs are play/read/write). Play id=com.zhiliaoapp.musically (com.ss.android.ugc.trill 404).
 		{"tiktok", "TikTok", "com.zhiliaoapp.musically", "messaging", "tiktok_prepare_open_smoke", []manifest.Verb{manifest.Compose}},
 		// Expedia: travel read (Wave 3 book demoted → read like Booking/Airbnb); never claim booked.
 		{"expedia", "Expedia", "com.expedia.bookings", "travel", "expedia_search_prepare_open_smoke", []manifest.Verb{manifest.Read}},
@@ -91,38 +91,38 @@ func TestWave1DeepLinkSpecsAreHandsOffPrepareAndOpen(t *testing.T) {
 		// Callers: go test ./companion/internal/capability/adapters/deeplink/ (this file).
 		// User ask: Wave1Specs 54 → 55 — Pinterest messaging compose; ProvesCeiling locked per Spec.
 		{"pinterest", "Pinterest", "com.pinterest", "messaging", "pinterest_prepare_open_smoke", []manifest.Verb{manifest.Compose}},
-		// Callers: Wave1Specs → runtime/deeplink, HandOffActions, stage1, deeplink_proof, this test.
+		// Callers: Wave1Specs inventory registration and this test.
 		// User ask: Wave1Specs 55 → 58 — Duolingo/Fitbit services read + Shazam media read; ProvesCeiling locked.
 		{"duolingo", "Duolingo", "com.duolingo", "services", "duolingo_prepare_open_smoke", []manifest.Verb{manifest.Read}},
 		{"fitbit", "Fitbit", "com.fitbit.FitbitMobile", "services", "fitbit_prepare_open_smoke", []manifest.Verb{manifest.Read}},
 		{"shazam", "Shazam", "com.shazam.android", "media", "shazam_prepare_open_smoke", []manifest.Verb{manifest.Read}},
-		// Callers: Wave1Specs → runtime/deeplink, HandOffActions, stage1, deeplink_proof, this test.
+		// Callers: Wave1Specs inventory registration and this test.
 		// User ask: Wave1Specs 58 → 61 — Chromecast media play + YouTube Music/SoundCloud media play|read; ProvesCeiling locked.
 		{"chromecast", "Chromecast", "com.google.android.apps.chromecast.app", "media", "chromecast_prepare_open_smoke", []manifest.Verb{manifest.Play}},
 		{"youtubemusic", "YouTube Music", "com.google.android.apps.youtube.music", "media", "youtubemusic_prepare_open_smoke", []manifest.Verb{manifest.Play, manifest.Read}},
 		{"soundcloud", "SoundCloud", "com.soundcloud.android", "media", "soundcloud_prepare_open_smoke", []manifest.Verb{manifest.Play, manifest.Read}},
-		// Callers: Wave1Specs → runtime/deeplink, HandOffActions, stage1, deeplink_proof, this test.
+		// Callers: Wave1Specs inventory registration and this test.
 		// User ask: Wave1Specs 61 → 64 — Pandora media play|read + Asana/Trello tasks write; ProvesCeiling locked.
 		{"pandora", "Pandora", "com.pandora.android", "media", "pandora_prepare_open_smoke", []manifest.Verb{manifest.Play, manifest.Read}},
 		{"asana", "Asana", "com.asana.app", "tasks", "asana_prepare_open_smoke", []manifest.Verb{manifest.Write}},
 		{"trello", "Trello", "com.trello", "tasks", "trello_prepare_open_smoke", []manifest.Verb{manifest.Write}},
-		// Callers: Wave1Specs → runtime/deeplink, HandOffActions, stage1, deeplink_proof, this test.
+		// Callers: Wave1Specs inventory registration and this test.
 		// User ask: Wave1Specs 64 → 67 — Microsoft To Do tasks write + Google Docs notes write + Dropbox notes read; ProvesCeiling locked.
 		{"mstodo", "Microsoft To Do", "com.microsoft.todos", "tasks", "mstodo_prepare_open_smoke", []manifest.Verb{manifest.Write}},
 		{"googledocs", "Google Docs", "com.google.android.apps.docs.editors.docs", "notes", "googledocs_prepare_open_smoke", []manifest.Verb{manifest.Write}},
 		{"dropbox", "Dropbox", "com.dropbox.android", "notes", "dropbox_prepare_open_smoke", []manifest.Verb{manifest.Read}},
-		// Callers: Wave1Specs → runtime/deeplink, HandOffActions, stage1, deeplink_proof, this test.
+		// Callers: Wave1Specs inventory registration and this test.
 		// User ask: Wave1Specs 67 → 70 — Google Sheets / Evernote / Google Slides notes write; ProvesCeiling locked.
 		{"googlesheets", "Google Sheets", "com.google.android.apps.docs.editors.sheets", "notes", "googlesheets_prepare_open_smoke", []manifest.Verb{manifest.Write}},
 		{"evernote", "Evernote", "com.evernote", "notes", "evernote_prepare_open_smoke", []manifest.Verb{manifest.Write}},
 		{"googleslides", "Google Slides", "com.google.android.apps.docs.editors.slides", "notes", "googleslides_prepare_open_smoke", []manifest.Verb{manifest.Write}},
-		// Callers: Wave1Specs → runtime/deeplink, HandOffActions, stage1, deeplink_proof, this test.
+		// Callers: Wave1Specs inventory registration and this test.
 		// User ask: Wave1Specs 70 → 73 — Pocket Casts media play|read + Goodreads notes read + Kindle media read; ProvesCeiling locked.
 		// Pack goal: prepare-and-open only; never claim played/downloaded/subscribed (Pocket Casts), review posted/shelved/rated (Goodreads), purchased/downloaded/read completed (Kindle). Not Podcasts RT-2; not Amazon shopping.
 		{"pocketcasts", "Pocket Casts", "au.com.shiftyjelly.pocketcasts", "media", "pocketcasts_prepare_open_smoke", []manifest.Verb{manifest.Play, manifest.Read}},
 		{"goodreads", "Goodreads", "com.goodreads", "notes", "goodreads_prepare_open_smoke", []manifest.Verb{manifest.Read}},
 		{"kindle", "Kindle", "com.amazon.kindle", "media", "kindle_prepare_open_smoke", []manifest.Verb{manifest.Read}},
-		// Callers: Wave1Specs → runtime/deeplink, HandOffActions, stage1, deeplink_proof, this test.
+		// Callers: Wave1Specs inventory registration and this test.
 		// User ask: Wave1Specs 73 → 76 — Claude/ChatGPT/Grok messaging compose; ProvesCeiling locked.
 		// Pack goal: prepare-and-open draft prompt / open official apps only; never claim replied/sent/answered/completed chat. Operator does not call their APIs.
 		{"claude", "Claude", "com.anthropic.claude", "messaging", "claude_prepare_open_smoke", []manifest.Verb{manifest.Compose}},

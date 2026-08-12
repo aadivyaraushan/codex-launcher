@@ -51,8 +51,6 @@ import app.codexlauncher.appearance.theme.QuietInstrumentTheme
 import app.codexlauncher.appearance.theme.ThemePreferenceStore
 import app.codexlauncher.appearance.theme.themeDataStore
 import app.codexlauncher.appearance.settings.AppearanceScreen
-import app.codexlauncher.capability.interaction.CapabilitySheet
-import app.codexlauncher.capability.handoff.HandOffActions
 import app.codexlauncher.capability.reply.guard.ThreadKey
 import app.codexlauncher.connection.pairing.PairingScreen
 import app.codexlauncher.connection.pairing.PairingViewModel
@@ -83,7 +81,6 @@ import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
 import app.codexlauncher.runtime.localpair.bootstrap.LocalPairLoopbackBootstrap
 import app.codexlauncher.launcher.home.HomeSendRouter
 import app.codexlauncher.launcher.home.HomeSendDecision
-import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.launcher.home.HomeUiPolicy
 import app.codexlauncher.launcher.home.lastConnectedLabel
 import app.codexlauncher.launcher.home.sortedForHome
@@ -164,7 +161,6 @@ class LauncherActivity : ComponentActivity() {
             val draftComposerState by draftComposerViewModel.state.collectAsState()
             val attachmentUploads by sessionViewModel.attachments.collectAsState()
             val decisionState by sessionViewModel.decisions.collectAsState()
-            val capabilityState by sessionViewModel.capabilityInteraction.collectAsState()
             val projectUiState by sessionViewModel.projectSelection.state.collectAsState()
             val notificationAccessBlock by launcherApplication.notificationAccessAsk.state.collectAsState()
             val lastRepliedConversation by launcherApplication.replyGuard.lastReplied.collectAsState()
@@ -568,7 +564,6 @@ class LauncherActivity : ComponentActivity() {
                                     tasks = sessionUiState.snapshot?.tasks?.sortedForHome()?.map { it.toHomeTask() } ?: emptyList(),
                                     lastConnectedLabel = lastConnectionEpoch?.let { lastConnectedLabel(applicationContext, it) },
                                     standalone = standaloneStatus,
-                                    promptDestination = capabilityState.destination,
                                     paired = pairedComputer != null,
                                 ).let { rendered ->
                                     if (localAutoLinkBusy) {
@@ -595,7 +590,6 @@ class LauncherActivity : ComponentActivity() {
                                         sessionUiState.connection.baseSequence!! > 0
                                 val decision =
                                     HomeSendRouter.decide(
-                                        destination = capabilityState.destination,
                                         standalone = standaloneStatus,
                                         macOnlineWithProject = macOnlineWithProject,
                                         macPaired = pairedComputer != null,
@@ -606,52 +600,39 @@ class LauncherActivity : ComponentActivity() {
                                     fields =
                                         mapOf(
                                             "decision" to decision.name.lowercase(),
-                                            "destination" to capabilityState.destination.name.lowercase(),
                                             "standalone_ready" to standaloneStatus.isReady,
                                             "mac_online_with_project" to macOnlineWithProject,
                                         ),
                                 )
                                 when (decision) {
-                                    HomeSendDecision.CapabilityOnPhone -> {
-                                        homeRouteMessage = null
-                                        scope.launch {
-                                            // AUTO + standalone-ready must use loopback phone-runtime
-                                            // even when a Mac pairing record exists (Mac may be offline
-                                            // and holding activeConnection). HomeSendRouter already
-                                            // chose CapabilityOnPhone; open the local sink first.
-                                            val local = LocalRuntimeEndpoint.load(applicationContext)
-                                            if (local != null) {
-                                                sessionViewModel.connect(local, force = true)
-                                                var online = false
-                                                repeat(50) {
-                                                    if (sessionViewModel.state.value.connection.phase ==
-                                                        ConnectionPhase.ONLINE
-                                                    ) {
-                                                        online = true
-                                                        return@repeat
-                                                    }
-                                                    delay(100)
-                                                }
-                                                if (!online) {
-                                                    homeRouteMessage = "Operator services unavailable."
-                                                    return@launch
-                                                }
-                                            }
-                                            sessionViewModel.submitHomePrompt(
-                                                prompt = prompt,
-                                                selection = selection,
-                                                draftVersion = version,
-                                                forceCapability = true,
-                                            )
-                                        }
-                                    }
                                     HomeSendDecision.StartComputerTask -> {
                                         if (selection == null) {
-                                            homeRouteMessage = "Choose model options before sending to the computer"
+                                            homeRouteMessage = "Choose model options before sending"
                                             return@HomeScreen
                                         }
                                         homeRouteMessage = null
                                         scope.launch {
+                                            // Prefer local companion when Mac is not online with a project.
+                                            if (!macOnlineWithProject && standaloneStatus.isReady) {
+                                                val local = LocalRuntimeEndpoint.load(applicationContext)
+                                                if (local != null) {
+                                                    sessionViewModel.connect(local, force = true)
+                                                    var online = false
+                                                    repeat(50) {
+                                                        if (sessionViewModel.state.value.connection.phase ==
+                                                            ConnectionPhase.ONLINE
+                                                        ) {
+                                                            online = true
+                                                            return@repeat
+                                                        }
+                                                        delay(100)
+                                                    }
+                                                    if (!online) {
+                                                        homeRouteMessage = "Operator services unavailable."
+                                                        return@launch
+                                                    }
+                                                }
+                                            }
                                             sessionViewModel.submitHomePrompt(prompt, selection, version)
                                         }
                                     }
@@ -669,15 +650,9 @@ class LauncherActivity : ComponentActivity() {
                                             destination = LauncherDestination.PAIRING
                                         }
                                     }
-                                    HomeSendDecision.ComputerOffline -> {
-                                        homeRouteMessage = "Computer offline"
-                                    }
                                 }
                             },
-                            promptDestination = capabilityState.destination,
-                            capabilityBusy = capabilityState.busy,
-                            capabilityMessage = capabilityState.message ?: homeRouteMessage,
-                            onPromptDestinationChange = sessionViewModel::setPromptDestination,
+                            routeMessage = homeRouteMessage,
                             newTaskNeedsReview = sessionUiState.newTaskNeedsReview,
                             newTaskMessage = sessionUiState.newTaskMessage ?: homeDictationMessage,
                             onDismissNewTaskReview = {
@@ -908,23 +883,6 @@ class LauncherActivity : ComponentActivity() {
                         onDismiss = { launcherApplication.replyGuard.dismissOffer() },
                     )
                 }
-                CapabilitySheet(
-                    state = capabilityState,
-                    onRespond = { confirm -> scope.launch { sessionViewModel.respondToCapability(confirm) } },
-                    onDismiss = sessionViewModel::dismissCapabilityResult,
-                    onCopyDraft = { draft ->
-                        val clipboard = getSystemService(android.content.ClipboardManager::class.java)
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Operator draft", draft))
-                        AppLog.info(
-                            feature = "handoff",
-                            message = "hand-off draft copied",
-                            fields = mapOf("draft_length" to draft.length, "decision" to "copy_to_clipboard"),
-                        )
-                    },
-                    onOpenHandOff = { appName -> HandOffActions.openApp(this@LauncherActivity, appName) },
-                    onDisconnect = { scope.launch { sessionViewModel.disconnectCapability() } },
-                    onCheckDone = sessionViewModel::markCapabilityChecked,
-                )
                 if (unpairConfirmVisible) {
                     UnpairConfirmationDialog(
                         onDismiss = { unpairConfirmVisible = false },

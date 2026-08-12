@@ -22,7 +22,7 @@ import (
 // per-notification `sbn.key` is made and thrown away on the phone
 // (NotificationProbeService.kt:182-196) and has never crossed the wire. The Mac
 // names a *person* — a contact handle, the same thing its routing already
-// resolves (stage2/resolver.go:172) — and the phone turns that into a
+// resolves via the contacts graph — and the phone turns that into a
 // conversation with ReplyAdapter.pick, which declines rather than guessing
 // between two matches. Sending a conversation key the Mac invented would be
 // asking it to name something it has never seen.
