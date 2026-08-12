@@ -1,0 +1,4 @@
+08-13 03:09:59.265 12558 12558 I CodexLauncher/task-transcript: [task-transcript] level=INFO message=live transcript refresh coalesced decision=refresh_after_pending_read reason=interval task_id=phone-agent
+08-13 03:10:01.271 12558 12558 I CodexLauncher/task-transcript: [task-transcript] level=INFO message=live transcript refresh coalesced decision=refresh_after_pending_read reason=interval task_id=phone-agent
+08-13 03:10:03.276 12558 12558 I CodexLauncher/task-transcript: [task-transcript] level=INFO message=live transcript refresh coalesced decision=refresh_after_pending_read reason=interval task_id=phone-agent
+08-13 03:10:05.281 12558 12558 I CodexLauncher/task-transcript: [task-transcript] level=INFO message=live transcript refresh coalesced decision=refresh_after_pending_read reason=interval task_id=phone-agent

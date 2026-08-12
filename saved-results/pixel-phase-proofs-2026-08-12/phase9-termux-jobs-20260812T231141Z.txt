@@ -1,0 +1,27 @@
+Usage: termux-job-scheduler [options]
+Schedule a script to run at specified intervals.
+  -p/--pending               list pending jobs and exit
+  --cancel-all               cancel all pending jobs and exit
+  --cancel                   cancel given job-id and exit
+Options for scheduling:
+  -s/--script path           path to the script to be called
+  --job-id int               job id (will overwrite any previous job with the same id)
+  --period-ms int            schedule job approximately every period-ms milliseconds (default 0 means once).
+                             Note that since Android N, the minimum period is 900,000ms (15 minutes).
+  --network text             run only when this type of network available (default any): any|unmetered|cellular|not_roaming|none
+  --battery-not-low boolean  run only when battery is not low, default true (at least Android O)
+  --storage-not-low boolean  run only when storage is not low, default false (at least Android O)
+  --charging boolean         run only when charging, default false
+  --persisted boolean        should the job survive reboots, default false
+  --trigger-content-uri text (at least Android N)
+  --trigger-content-flag int default 1, (at least Android N)
+---
+getopt: invalid option -- l
+---
+-rwx------. 1 u0_a451 u0_a451 3986 Sep 18  2025 /data/data/com.termux/files/usr/bin/termux-job-scheduler
+total 11
+drwx------. 2 u0_a451 u0_a451 3452 Aug  5 06:16 .
+drwx------. 3 u0_a451 u0_a451 3452 Aug  5 05:55 ..
+-rw-------. 1 u0_a451 u0_a451   39 Aug 13 03:12 watchdog-state.json
+-rw-------. 1 u0_a451 u0_a451    0 Aug 13 03:12 watchdog.lock
+{"process":"watchdog_already_running"}

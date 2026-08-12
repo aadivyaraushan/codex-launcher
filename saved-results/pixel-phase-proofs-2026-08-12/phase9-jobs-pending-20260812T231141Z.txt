@@ -1,0 +1,2 @@
+Pending Job 7301: /data/data/com.termux/files/usr/libexec/operator-runtime-watchdog	(periodic: 900000ms) (persisted)
+

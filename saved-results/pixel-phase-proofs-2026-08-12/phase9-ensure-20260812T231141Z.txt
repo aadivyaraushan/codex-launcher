@@ -1,0 +1,7 @@
+Warning: Permanently added '[127.0.0.1]:18022' (ED25519) to the list of known hosts.
+operator-phone-boot: watchdog already running
+ensure_exit=0
+bridge=up
+gateway=down
+journal={"process":"watchdog_already_running"} 
+status_exit=1
