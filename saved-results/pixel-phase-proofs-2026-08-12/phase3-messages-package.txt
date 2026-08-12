@@ -1,0 +1,13 @@
+package:/data/app/~~G8y2xzbTovw2xyEMhTt0aA==/com.google.android.apps.messaging-JOITGHoLCGqSLv0xqX7_cQ==/base.apk
+package:/data/app/~~G8y2xzbTovw2xyEMhTt0aA==/com.google.android.apps.messaging-JOITGHoLCGqSLv0xqX7_cQ==/split_config.arm64_v8a.apk
+package:/data/app/~~G8y2xzbTovw2xyEMhTt0aA==/com.google.android.apps.messaging-JOITGHoLCGqSLv0xqX7_cQ==/split_config.en.apk
+package:/data/app/~~G8y2xzbTovw2xyEMhTt0aA==/com.google.android.apps.messaging-JOITGHoLCGqSLv0xqX7_cQ==/split_config.es.apk
+package:/data/app/~~G8y2xzbTovw2xyEMhTt0aA==/com.google.android.apps.messaging-JOITGHoLCGqSLv0xqX7_cQ==/split_config.xxhdpi.apk
+3137:    versionName=messages.android_20260731_00_RC00.phone_dynamic
+3161:    lastUpdateTime=2026-08-09 17:06:06
+3162:    installerPackageName=com.android.vending
+3305:      firstInstallTime=2023-01-01 16:00:09
+3369:    versionName=messages.android_20250511_01_RC03.phone_dynamic
+3388:    lastUpdateTime=1970-01-01 03:59:59
+3389:    installerPackageName=null
+3529:      firstInstallTime=1970-01-01 03:59:59

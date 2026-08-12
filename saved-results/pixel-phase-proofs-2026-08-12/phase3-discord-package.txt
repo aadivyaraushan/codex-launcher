@@ -1,0 +1,5 @@
+package:/data/app/~~v1TlMuVhUtewl_HCt-Ocdg==/com.discord-gjzMvWQIgP8zJqdCRfhmag==/base.apk
+package:/data/app/~~v1TlMuVhUtewl_HCt-Ocdg==/com.discord-gjzMvWQIgP8zJqdCRfhmag==/split_config.arm64_v8a.apk
+package:/data/app/~~v1TlMuVhUtewl_HCt-Ocdg==/com.discord-gjzMvWQIgP8zJqdCRfhmag==/split_config.en.apk
+package:/data/app/~~v1TlMuVhUtewl_HCt-Ocdg==/com.discord-gjzMvWQIgP8zJqdCRfhmag==/split_config.es.apk
+package:/data/app/~~v1TlMuVhUtewl_HCt-Ocdg==/com.discord-gjzMvWQIgP8zJqdCRfhmag==/split_config.xxhdpi.apk

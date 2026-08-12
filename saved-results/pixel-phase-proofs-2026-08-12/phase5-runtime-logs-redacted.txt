@@ -1,0 +1,167 @@
+proot warning: can't sanitize binding "/proc/self/fd/0": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/1": No such file or directory
+proot warning: can't sanitize binding "/proc/self/fd/2": No such file or directory
+Wed Aug 12 22:03:47 UTC 2026
+GATEWAY_LOGS
+current
+lock
+2026-08-11_23:28:14.24975 [90m2026-08-11T23:28:14.248+00:00[39m [36m[gateway][39m [36mloading configuration…[39m
+2026-08-11_23:28:15.47220 [90m2026-08-11T23:28:15.471+00:00[39m [36m[gateway][39m [36mresolving authentication…[39m
+2026-08-11_23:28:15.55599 [90m2026-08-11T23:28:15.555+00:00[39m [36m[gateway][39m [36mstarting...[39m
+2026-08-11_23:28:17.23625 [90m2026-08-11T23:28:17.235+00:00[39m [36m[gateway][39m [36mauto-enabled plugins for this runtime without writing config:[39m
+2026-08-11_23:28:17.23629 [36m- openai/gpt-5.6-sol model configured, enabled automatically.[39m
+2026-08-11_23:28:22.82956 [90m2026-08-11T23:28:22.829+00:00[39m [36m[gateway][39m [36mstarting HTTP server...[39m
+2026-08-11_23:28:24.42895 [90m2026-08-11T23:28:24.428+00:00[39m [32m[health-monitor][39m [36mstarted (interval: 300s, startup-grace: 60s, channel-connect-grace: 120s)[39m
+2026-08-11_23:28:26.77368 [90m2026-08-11T23:28:26.772+00:00[39m [35m[plugins][39m [33mplugins.allow is empty; discovered non-bundled plugins may auto-load: codex (/root/.[REDACTED_LONG]@openclaw/codex/dist/index.js), operator-tools (/root/.openclaw/extensions/operator-tools/dist/index.js). To trust them explicitly, set plugins.allow in openclaw.json (e.g. "plugins": { "allow": ["codex", "operator-tools"] }). Run 'openclaw plugins list --enabled --verbose' or 'openclaw plugins inspect codex', 'openclaw plugins inspect operator-tools' to confirm plugin ids.[39m
+2026-08-11_23:28:40.78881 [90m2026-08-11T23:28:40.788+00:00[39m [35m[plugins][39m [33moperator-tools: loaded without install/load-path provenance; treat as untracked local code. Verify source with 'openclaw plugins inspect operator-tools', then pin trust via plugins.allow (e.g. "plugins": { "allow": ["operator-tools"] }) or reinstall from a trusted source so OpenClaw records install provenance. (/root/.openclaw/extensions/operator-tools/dist/index.js)[39m
+2026-08-11_23:28:40.81611 [90m2026-08-11T23:28:40.814+00:00[39m [36m[gateway][39m [36m[plugins] loaded without install/load-path provenance; treat as untracked local code. Verify source with 'openclaw plugins inspect operator-tools', then pin trust via plugins.allow (e.g. "plugins": { "allow": ["operator-tools"] }) or reinstall from a trusted source so OpenClaw records install provenance. (plugin=operator-tools, source=/root/.openclaw/extensions/operator-tools/dist/index.js)[39m
+2026-08-11_23:28:41.08257 [90m2026-08-11T23:28:41.081+00:00[39m [36m[gateway][39m [36magent model: openai/gpt-5.6-sol (thinking=low, fast=off)[39m
+2026-08-11_23:28:41.10414 [90m2026-08-11T23:28:41.103+00:00[39m [36m[gateway][39m [36mhttp server listening (10 plugins: browser, canvas, codex, device-pair, file-transfer, memory-core, ollama, operator-tools, phone-control, talk-voice; 24.4s)[39m
+2026-08-11_23:28:41.12293 [90m2026-08-11T23:28:41.122+00:00[39m [36m[gateway][39m [36mlog file: /tmp/openclaw/openclaw-2026-08-11.log[39m
+2026-08-11_23:28:50.87873 [90m2026-08-11T23:28:50.878+00:00[39m [36m[gateway][39m [36mstarting channels and sidecars...[39m
+2026-08-11_23:28:53.80913 [90m2026-08-11T23:28:53.808+00:00[39m [36m[gateway][39m [36mready[39m
+2026-08-11_23:28:54.01658 [90m2026-08-11T23:28:54.016+00:00[39m [36m[heartbeat][39m [36mstarted[39m
+2026-08-11_23:29:07.61251 [90m2026-08-11T23:29:07.611+00:00[39m [35m[plugins][39m [33mplugins.allow is empty; discovered non-bundled plugins may auto-load: codex (/root/.[REDACTED_LONG]@openclaw/codex/dist/index.js), operator-tools (/root/.openclaw/extensions/operator-tools/dist/index.js). To trust them explicitly, set plugins.allow in openclaw.json (e.g. "plugins": { "allow": ["codex", "operator-tools"] }). Run 'openclaw plugins list --enabled --verbose' or 'openclaw plugins inspect codex', 'openclaw plugins inspect operator-tools' to confirm plugin ids.[39m
+2026-08-11_23:29:08.87396 [90m2026-08-11T23:29:08.873+00:00[39m [35m[plugins][39m [33moperator-tools: loaded without install/load-path provenance; treat as untracked local code. Verify source with 'openclaw plugins inspect operator-tools', then pin trust via plugins.allow (e.g. "plugins": { "allow": ["operator-tools"] }) or reinstall from a trusted source so OpenClaw records install provenance. (/root/.openclaw/extensions/operator-tools/dist/index.js)[39m
+2026-08-11_23:29:08.88380 [90m2026-08-11T23:29:08.883+00:00[39m [36m[gateway][39m [36magent runtime plugins pre-warmed in 5084ms[39m
+2026-08-11_23:34:18.30658 [90m2026-08-11T23:34:18.305+00:00[39m [36m[ws][39m [36m⇄ res ✓ agent 702ms runId=d0959e4d-396c-48cc-b0de-f97a822b82a9 conn=18925243…bedc id=277efa3f…8b30[39m
+2026-08-11_23:34:49.03339 [90m2026-08-11T23:34:49.032+00:00[39m [33m[agent/embedded][39m [33m[trace:embedded-run] startup stages: runId=d0959e4d-396c-48cc-b0de-f97a822b82a9 sessionId=ad5cd071-9e49-48d1-9789-7ef44c608269 phase=attempt-dispatch totalMs=7431 stages=workspace:3ms@3ms,runtime-plugins:4ms@7ms,hooks:3ms@10ms,model-resolution:7204ms@7214ms,auth:184ms@7398ms,context-engine:8ms@7406ms,attempt-workspace:11ms@7417ms,attempt-prompt:1ms@7418ms,attempt-runtime-plan:13ms@7431ms,attempt-dispatch:0ms@7431ms[39m
+2026-08-11_23:35:03.18197 [90m2026-08-11T23:35:03.181+00:00[39m [36m[agents/tool-policy][39m [36mtool policy removed 3 tool(s) via gateway sender owner-only tools.deny: cron, gateway, nodes; matched cron, gateway, nodes[39m
+2026-08-11_23:35:04.14062 [90m2026-08-11T23:35:04.140+00:00[39m [36m[agents/tool-policy][39m [36mtool policy removed 3 tool(s) via gateway sender owner-only tools.deny: cron, gateway, nodes; matched cron, gateway, nodes[39m
+2026-08-11_23:35:16.95917 [90m2026-08-11T23:35:16.958+00:00[39m [33m[agent/embedded][39m [36mcodex app-server one-shot cleanup retired shared client[39m
+2026-08-11_23:35:18.41777 2026-08-11T23:35:18.406+00:00 YES — instagram, discord, messages
+2026-08-11_23:35:18.42969 [90m2026-08-11T23:35:18.429+00:00[39m [33m[agents/agent-command][39m [36m[agent] run d0959e4d-396c-48cc-b0de-f97a822b82a9 ended with stopReason=stop[39m
+2026-08-12_07:51:41.23654 [90m2026-08-12T07:51:41.234+00:00[39m [36m[ws][39m [36mwebchat connected conn=1360aed3-7979-4c18-ac2d-3786fbe1a267 remote=127.0.0.1 client=openclaw-control-ui webchat vdev[39m
+2026-08-12_07:51:42.90514 [90m2026-08-12T07:51:42.903+00:00[39m [36m[ws][39m [36m⇄ res ✓ agent.identity.get 59ms conn=1360aed3…a267 id=aa09d26b…06ef[39m
+2026-08-12_07:51:44.36013 [90m2026-08-12T07:51:44.359+00:00[39m [36m[ws][39m [36m⇄ res ✓ sessions.subscribe 1517ms conn=1360aed3…a267 id=181cd60c…57d8[39m
+2026-08-12_07:51:44.37739 [90m2026-08-12T07:51:44.377+00:00[39m [36m[ws][39m [36m⇄ res ✓ sessions.messages.subscribe 1536ms conn=1360aed3…a267 id=d4753176…7ccc[39m
+2026-08-12_07:51:53.23859 [90m2026-08-12T07:51:53.238+00:00[39m [36m[ws][39m [36m⇄ res ✓ config.get 10400ms conn=1360aed3…a267 id=41443896…0899[39m
+2026-08-12_07:51:53.31290 [90m2026-08-12T07:51:53.312+00:00[39m [36m[ws][39m [36m⇄ res ✓ chat.startup 10474ms conn=1360aed3…a267 id=acf7c0b6…2d28[39m
+2026-08-12_07:51:54.90927 [90m2026-08-12T07:51:54.908+00:00[39m [36m[ws][39m [36m⇄ res ✓ models.authStatus 12065ms conn=1360aed3…a267 id=a2d09264…10d5[39m
+2026-08-12_07:55:07.53962 [90m2026-08-12T07:55:07.537+00:00[39m [36m[ws][39m [36mwebchat disconnected code=1001 reason=n/a conn=1360aed3-7979-4c18-ac2d-3786fbe1a267[39m
+2026-08-12_07:55:08.64616 [90m2026-08-12T07:55:08.645+00:00[39m [36m[ws][39m [36mwebchat connected conn=6f4e306d-6b3f-4ede-9d2a-9de295354841 remote=127.0.0.1 client=openclaw-control-ui webchat vdev[39m
+2026-08-12_07:55:10.18115 [90m2026-08-12T07:55:10.180+00:00[39m [36m[ws][39m [36m⇄ res ✓ agent.identity.get 176ms conn=6f4e306d…4841 id=6b0c1887…521e[39m
+2026-08-12_07:55:15.78806 [90m2026-08-12T07:55:15.787+00:00[39m [36m[ws][39m [36m⇄ res ✓ config.get 5790ms conn=6f4e306d…4841 id=777de4c2…0386[39m
+2026-08-12_07:55:16.16819 [90m2026-08-12T07:55:16.167+00:00[39m [36m[ws][39m [36m⇄ res ✓ chat.startup 6172ms conn=6f4e306d…4841 id=e93beac8…c2f6[39m
+2026-08-12_07:55:18.28564 [90m2026-08-12T07:55:18.285+00:00[39m [36m[ws][39m [36m⇄ res ✓ chat.metadata 1563ms conn=6f4e306d…4841 id=e1a8309c…2be5[39m
+2026-08-12_07:55:18.31896 [90m2026-08-12T07:55:18.318+00:00[39m [36m[ws][39m [36m⇄ res ✓ models.authStatus 8322ms conn=6f4e306d…4841 id=23dfd638…55e0[39m
+2026-08-12_11:59:51.34392 [90m2026-08-12T11:59:51.340+00:00[39m [36m[ws][39m [36mwebchat disconnected code=1001 reason=n/a conn=6f4e306d-6b3f-4ede-9d2a-9de295354841[39m
+2026-08-12_22:01:02.69925 [90m2026-08-12T22:01:02.698+00:00[39m [36m[ws][39m [36m⇄ res ✓ agent 107ms runId=b6c818e9-d3ca-4447-92f8-d2e76ab272c0 conn=a3a16bf5…408d id=87205be1…c27c[39m
+2026-08-12_22:01:06.48192 [90m2026-08-12T22:01:06.481+00:00[39m [35m[plugins][39m [33mplugins.allow is empty; discovered non-bundled plugins may auto-load: codex (/root/.[REDACTED_LONG]@openclaw/codex/dist/index.js), operator-tools (/root/.openclaw/extensions/operator-tools/dist/index.js). To trust them explicitly, set plugins.allow in openclaw.json (e.g. "plugins": { "allow": ["codex", "operator-tools"] }). Run 'openclaw plugins list --enabled --verbose' or 'openclaw plugins inspect codex', 'openclaw plugins inspect operator-tools' to confirm plugin ids.[39m
+2026-08-12_22:01:14.61605 [90m2026-08-12T22:01:14.615+00:00[39m [35m[plugins][39m [33moperator-tools: loaded without install/load-path provenance; treat as untracked local code. Verify source with 'openclaw plugins inspect operator-tools', then pin trust via plugins.allow (e.g. "plugins": { "allow": ["operator-tools"] }) or reinstall from a trusted source so OpenClaw records install provenance. (/root/.openclaw/extensions/operator-tools/dist/index.js)[39m
+2026-08-12_22:01:18.16474 [90m2026-08-12T22:01:18.164+00:00[39m [33m[agent/embedded][39m [33m[trace:embedded-run] startup stages: runId=b6c818e9-d3ca-4447-92f8-d2e76ab272c0 sessionId=0fd2e877-ba40-493a-9a8f-75e2dd7a05cb phase=attempt-dispatch totalMs=12613 stages=workspace:2ms@2ms,runtime-plugins:9081ms@9083ms,hooks:5ms@9088ms,model-resolution:3447ms@12535ms,auth:59ms@12594ms,context-engine:3ms@12597ms,attempt-workspace:12ms@12609ms,attempt-prompt:1ms@12610ms,attempt-runtime-plan:3ms@12613ms,attempt-dispatch:0ms@12613ms[39m
+2026-08-12_22:01:23.79269 [90m2026-08-12T22:01:23.791+00:00[39m [36m[agents/tool-policy][39m [36mtool policy removed 3 tool(s) via gateway sender owner-only tools.deny: cron, gateway, nodes; matched cron, gateway, nodes[39m
+2026-08-12_22:01:24.16223 [90m2026-08-12T22:01:24.161+00:00[39m [36m[agents/tool-policy][39m [36mtool policy removed 3 tool(s) via gateway sender owner-only tools.deny: cron, gateway, nodes; matched cron, gateway, nodes[39m
+2026-08-12_22:01:38.84309 [90m2026-08-12T22:01:38.842+00:00[39m [33m[agent/embedded][39m [36mcodex app-server one-shot cleanup retired shared client[39m
+2026-08-12_22:01:39.37000 2026-08-12T22:01:39.352+00:00 {"discord":true,"messages":true,"instagram":true}
+2026-08-12_22:01:39.37006 
+2026-08-12_22:01:39.37007 All three tools are available.
+2026-08-12_22:01:39.38537 [90m2026-08-12T22:01:39.385+00:00[39m [33m[agents/agent-command][39m [36m[agent] run b6c818e9-d3ca-4447-92f8-d2e76ab272c0 ended with stopReason=stop[39m
+RUNTIME_LOGS
+@400000006a75bdf910db9ed4.s
+@400000006a760de71a059924.s
+@400000006a772e6225e502fc.u
+@400000006a78fd6413f1cbfc.u
+@400000006a7b860a1bcfb67c.u
+current
+lock
+2026-08-12_22:00:52.06829 2026/08/12 22:00:52 http: TLS handshake error from 127.0.0.1:35978: EOF
+2026-08-12_22:00:54.08829 2026/08/12 22:00:54 http: TLS handshake error from 127.0.0.1:59016: EOF
+2026-08-12_22:00:56.10145 2026/08/12 22:00:56 http: TLS handshake error from 127.0.0.1:59028: EOF
+2026-08-12_22:00:58.11620 2026/08/12 22:00:58 http: TLS handshake error from 127.0.0.1:59044: EOF
+2026-08-12_22:01:00.11743 2026/08/12 22:01:00 http: TLS handshake error from 127.0.0.1:59056: EOF
+2026-08-12_22:01:02.13159 2026/08/12 22:01:02 http: TLS handshake error from 127.0.0.1:59060: EOF
+2026-08-12_22:01:04.14607 2026/08/12 22:01:04 http: TLS handshake error from 127.0.0.1:58374: EOF
+2026-08-12_22:01:06.15523 2026/08/12 22:01:06 http: TLS handshake error from 127.0.0.1:58388: EOF
+2026-08-12_22:01:08.16401 2026/08/12 22:01:08 http: TLS handshake error from 127.0.0.1:58394: EOF
+2026-08-12_22:01:10.17395 2026/08/12 22:01:10 http: TLS handshake error from 127.0.0.1:58398: EOF
+2026-08-12_22:01:12.18507 2026/08/12 22:01:12 http: TLS handshake error from 127.0.0.1:58402: EOF
+2026-08-12_22:01:14.19405 2026/08/12 22:01:14 http: TLS handshake error from 127.0.0.1:52496: EOF
+2026-08-12_22:01:16.20215 2026/08/12 22:01:16 http: TLS handshake error from 127.0.0.1:52506: EOF
+2026-08-12_22:01:18.20923 2026/08/12 22:01:18 http: TLS handshake error from 127.0.0.1:52520: EOF
+2026-08-12_22:01:20.23150 2026/08/12 22:01:20 http: TLS handshake error from 127.0.0.1:52522: EOF
+2026-08-12_22:01:22.24559 2026/08/12 22:01:22 http: TLS handshake error from 127.0.0.1:52530: EOF
+2026-08-12_22:01:24.24748 2026/08/12 22:01:24 http: TLS handshake error from 127.0.0.1:46248: EOF
+2026-08-12_22:01:26.26286 2026/08/12 22:01:26 http: TLS handshake error from 127.0.0.1:46250: EOF
+2026-08-12_22:01:28.27387 2026/08/12 22:01:28 http: TLS handshake error from 127.0.0.1:46262: EOF
+2026-08-12_22:01:30.28798 2026/08/12 22:01:30 http: TLS handshake error from 127.0.0.1:46276: EOF
+2026-08-12_22:01:32.30026 2026/08/12 22:01:32 http: TLS handshake error from 127.0.0.1:46280: EOF
+2026-08-12_22:01:34.32034 2026/08/12 22:01:34 http: TLS handshake error from 127.0.0.1:60386: EOF
+2026-08-12_22:01:36.33830 2026/08/12 22:01:36 http: TLS handshake error from 127.0.0.1:60394: EOF
+2026-08-12_22:01:37.64510 {"time":"2026-08-12T22:01:37.644668352Z","level":"INFO","msg":"[mobile-session] live task event committed","thread_id":"phone-agent","event_kind":"activity","task_state":"working","sequence":66,"recipient_count":1}
+2026-08-12_22:01:37.78860 {"time":"2026-08-12T22:01:37.788266537Z","level":"INFO","msg":"[mobile-session] message received","device_id":"local-android","message_type":"ack","input_shape":"validated_protocol_message"}
+2026-08-12_22:01:38.36061 2026/08/12 22:01:38 http: TLS handshake error from 127.0.0.1:60402: EOF
+2026-08-12_22:01:39.41053 {"time":"2026-08-12T22:01:39.410141456Z","level":"ERROR","msg":"[turnproxy] publish task event failed","kind":"reply","error":"mobile task event is invalid"}
+2026-08-12_22:01:40.14289 {"time":"2026-08-12T22:01:40.142538023Z","level":"INFO","msg":"[beeper] request","method":"GET","path":"/v1/accounts"}
+2026-08-12_22:01:40.22639 {"time":"2026-08-12T22:01:40.226139056Z","level":"INFO","msg":"[beeper] accounts listed","account_count":4}
+2026-08-12_22:01:40.22646 {"time":"2026-08-12T22:01:40.226332416Z","level":"INFO","msg":"[phone-runtime] Beeper accounts probe","account_count":4}
+2026-08-12_22:01:40.36226 2026/08/12 22:01:40 http: TLS handshake error from 127.0.0.1:60428: EOF
+2026-08-12_22:01:42.37581 2026/08/12 22:01:42 http: TLS handshake error from 127.0.0.1:60442: EOF
+2026-08-12_22:01:44.38775 2026/08/12 22:01:44 http: TLS handshake error from 127.0.0.1:35048: EOF
+2026-08-12_22:01:46.40332 2026/08/12 22:01:46 http: TLS handshake error from 127.0.0.1:35060: EOF
+2026-08-12_22:01:48.41875 2026/08/12 22:01:48 http: TLS handshake error from 127.0.0.1:35070: EOF
+2026-08-12_22:01:50.43191 2026/08/12 22:01:50 http: TLS handshake error from 127.0.0.1:35076: EOF
+2026-08-12_22:01:52.44997 2026/08/12 22:01:52 http: TLS handshake error from 127.0.0.1:39752: EOF
+2026-08-12_22:01:54.46503 2026/08/12 22:01:54 http: TLS handshake error from 127.0.0.1:39764: EOF
+2026-08-12_22:01:56.40655 {"time":"2026-08-12T22:01:56.406283636Z","level":"INFO","msg":"[beeper] request","method":"GET","path":"/v1/accounts"}
+2026-08-12_22:01:56.43324 {"time":"2026-08-12T22:01:56.432956121Z","level":"INFO","msg":"[beeper] accounts listed","account_count":4}
+2026-08-12_22:01:56.43328 {"time":"2026-08-12T22:01:56.43306334Z","level":"INFO","msg":"[phone-runtime] Beeper accounts probe","account_count":4}
+2026-08-12_22:01:56.47205 2026/08/12 22:01:56 http: TLS handshake error from 127.0.0.1:39772: EOF
+2026-08-12_22:01:58.49012 2026/08/12 22:01:58 http: TLS handshake error from 127.0.0.1:39780: EOF
+2026-08-12_22:02:00.50844 2026/08/12 22:02:00 http: TLS handshake error from 127.0.0.1:39782: EOF
+2026-08-12_22:02:02.52739 2026/08/12 22:02:02 http: TLS handshake error from 127.0.0.1:47740: EOF
+2026-08-12_22:02:04.54391 2026/08/12 22:02:04 http: TLS handshake error from 127.0.0.1:47748: EOF
+2026-08-12_22:02:06.55933 2026/08/12 22:02:06 http: TLS handshake error from 127.0.0.1:47750: EOF
+2026-08-12_22:02:08.57537 2026/08/12 22:02:08 http: TLS handshake error from 127.0.0.1:47756: EOF
+2026-08-12_22:02:10.59252 2026/08/12 22:02:10 http: TLS handshake error from 127.0.0.1:47764: EOF
+2026-08-12_22:02:12.61034 2026/08/12 22:02:12 http: TLS handshake error from 127.0.0.1:60974: EOF
+2026-08-12_22:02:14.62400 2026/08/12 22:02:14 http: TLS handshake error from 127.0.0.1:60978: EOF
+2026-08-12_22:02:16.62488 2026/08/12 22:02:16 http: TLS handshake error from 127.0.0.1:60982: EOF
+2026-08-12_22:02:18.63225 2026/08/12 22:02:18 http: TLS handshake error from 127.0.0.1:60998: EOF
+2026-08-12_22:02:20.64909 2026/08/12 22:02:20 http: TLS handshake error from 127.0.0.1:32778: EOF
+2026-08-12_22:02:22.66101 2026/08/12 22:02:22 http: TLS handshake error from 127.0.0.1:35504: EOF
+2026-08-12_22:02:24.67622 2026/08/12 22:02:24 http: TLS handshake error from 127.0.0.1:35508: EOF
+2026-08-12_22:02:26.68588 2026/08/12 22:02:26 http: TLS handshake error from 127.0.0.1:35518: EOF
+2026-08-12_22:02:28.69431 2026/08/12 22:02:28 http: TLS handshake error from 127.0.0.1:35520: EOF
+2026-08-12_22:02:30.70804 2026/08/12 22:02:30 http: TLS handshake error from 127.0.0.1:35526: EOF
+2026-08-12_22:02:32.71832 2026/08/12 22:02:32 http: TLS handshake error from 127.0.0.1:37434: EOF
+2026-08-12_22:02:34.73178 2026/08/12 22:02:34 http: TLS handshake error from 127.0.0.1:37440: EOF
+2026-08-12_22:02:36.74031 2026/08/12 22:02:36 http: TLS handshake error from 127.0.0.1:37456: EOF
+2026-08-12_22:02:38.75971 2026/08/12 22:02:38 http: TLS handshake error from 127.0.0.1:37462: EOF
+2026-08-12_22:02:40.77542 2026/08/12 22:02:40 http: TLS handshake error from 127.0.0.1:37474: EOF
+2026-08-12_22:02:42.80060 2026/08/12 22:02:42 http: TLS handshake error from 127.0.0.1:51334: EOF
+2026-08-12_22:02:44.80895 2026/08/12 22:02:44 http: TLS handshake error from 127.0.0.1:51348: EOF
+2026-08-12_22:02:46.82477 2026/08/12 22:02:46 http: TLS handshake error from 127.0.0.1:51360: EOF
+2026-08-12_22:02:48.84165 2026/08/12 22:02:48 http: TLS handshake error from 127.0.0.1:51368: EOF
+2026-08-12_22:02:50.86068 2026/08/12 22:02:50 http: TLS handshake error from 127.0.0.1:51384: EOF
+2026-08-12_22:02:52.88156 2026/08/12 22:02:52 http: TLS handshake error from 127.0.0.1:49408: EOF
+2026-08-12_22:02:54.89761 2026/08/12 22:02:54 http: TLS handshake error from 127.0.0.1:49422: EOF
+2026-08-12_22:02:56.91176 2026/08/12 22:02:56 http: TLS handshake error from 127.0.0.1:49430: EOF
+2026-08-12_22:02:58.92521 2026/08/12 22:02:58 http: TLS handshake error from 127.0.0.1:49444: EOF
+2026-08-12_22:03:00.95036 2026/08/12 22:03:00 http: TLS handshake error from 127.0.0.1:49448: EOF
+2026-08-12_22:03:02.95575 2026/08/12 22:03:02 http: TLS handshake error from 127.0.0.1:35050: EOF
+2026-08-12_22:03:04.97011 2026/08/12 22:03:04 http: TLS handshake error from 127.0.0.1:35052: EOF
+2026-08-12_22:03:06.98826 2026/08/12 22:03:06 http: TLS handshake error from 127.0.0.1:35058: EOF
+2026-08-12_22:03:09.00143 2026/08/12 22:03:09 http: TLS handshake error from 127.0.0.1:35064: EOF
+2026-08-12_22:03:10.41092 {"time":"2026-08-12T22:03:10.410319601Z","level":"INFO","msg":"[beeper] request","method":"GET","path":"/v1/accounts"}
+2026-08-12_22:03:10.45143 {"time":"2026-08-12T22:03:10.45119981Z","level":"INFO","msg":"[beeper] accounts listed","account_count":4}
+2026-08-12_22:03:10.45150 {"time":"2026-08-12T22:03:10.451366192Z","level":"INFO","msg":"[phone-runtime] Beeper accounts probe","account_count":4}
+2026-08-12_22:03:11.01893 2026/08/12 22:03:11 http: TLS handshake error from 127.0.0.1:35072: EOF
+2026-08-12_22:03:13.05006 2026/08/12 22:03:13 http: TLS handshake error from 127.0.0.1:53818: EOF
+2026-08-12_22:03:15.06446 2026/08/12 22:03:15 http: TLS handshake error from 127.0.0.1:53834: EOF
+2026-08-12_22:03:17.07940 2026/08/12 22:03:17 http: TLS handshake error from 127.0.0.1:53844: EOF
+2026-08-12_22:03:19.09677 2026/08/12 22:03:19 http: TLS handshake error from 127.0.0.1:53848: EOF
+2026-08-12_22:03:21.11193 2026/08/12 22:03:21 http: TLS handshake error from 127.0.0.1:53850: EOF
+2026-08-12_22:03:23.12683 2026/08/12 22:03:23 http: TLS handshake error from 127.0.0.1:55572: EOF
+2026-08-12_22:03:25.13982 2026/08/12 22:03:25 http: TLS handshake error from 127.0.0.1:55584: EOF
+2026-08-12_22:03:27.16062 2026/08/12 22:03:27 http: TLS handshake error from 127.0.0.1:55586: EOF
+2026-08-12_22:03:29.17555 2026/08/12 22:03:29 http: TLS handshake error from 127.0.0.1:55602: EOF
+2026-08-12_22:03:31.19240 2026/08/12 22:03:31 http: TLS handshake error from 127.0.0.1:55606: EOF
+2026-08-12_22:03:33.21142 2026/08/12 22:03:33 http: TLS handshake error from 127.0.0.1:33606: EOF
+2026-08-12_22:03:35.22402 2026/08/12 22:03:35 http: TLS handshake error from 127.0.0.1:33620: EOF
+2026-08-12_22:03:37.23639 2026/08/12 22:03:37 http: TLS handshake error from 127.0.0.1:33622: EOF
+2026-08-12_22:03:39.25734 2026/08/12 22:03:39 http: TLS handshake error from 127.0.0.1:33638: EOF
+2026-08-12_22:03:41.26986 2026/08/12 22:03:41 http: TLS handshake error from 127.0.0.1:33642: EOF
+2026-08-12_22:03:43.27677 2026/08/12 22:03:43 http: TLS handshake error from 127.0.0.1:58720: EOF
+2026-08-12_22:03:45.29364 2026/08/12 22:03:45 http: TLS handshake error from 127.0.0.1:58724: EOF
+2026-08-12_22:03:47.30849 2026/08/12 22:03:47 http: TLS handshake error from 127.0.0.1:58740: EOF
