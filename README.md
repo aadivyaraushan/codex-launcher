@@ -83,8 +83,8 @@ the packaging environment.
 | 3–7 | Plugin, gates, turn proxy, chat UI, triggers | **Mac-side done**; on-device / AVD proofs still open |
 | 8 | Delete predetermined-function pipeline | **Done** |
 | 9 | Boot persistence (`scripts/phone-boot/`) | **Code-complete**; AVD reboot + WebChat UI proof open |
-| 10 | Open-source packaging + README | **This PR** |
-| 11 | End-to-end judged proof + publish push | **Open** |
+| 10 | Open-source packaging + README | **Done** |
+| 11 | End-to-end judged proof + publish push | **Mac/judge done**; AVD/device bars + owner land still open — see `saved-results/phase11-e2e-judged-proof.md` |
 
 ## Build checks
 
