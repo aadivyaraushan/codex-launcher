@@ -1,40 +1,39 @@
 # Phase 4 — hard gates (Pixel UI)
 
 - Serial: `4B230DLAQ001Z5`
+- Tip: `worktree-phase2-tool-bridge` @ `c231b08` (GateRaised `computerName`/`projectLabel`)
+- Runtime SHA256: `05ec9929083966ab05404f1e84474137e03dfa26007d13a5c607d667cf479c74`
+- Health: `taskCapable=true`, `localPair=acked`, `beeper=connected`
+- Timestamp (UTC): `2026-08-12T23:26:51Z`
 - Verdict: **PASS**
-- Tip runtime: `c231b08` (GateRaised fills `computerName`/`projectLabel` so decision_page validates)
 
-## Setup
+## Pass criteria
 
-1. Bridge health: `beeper=connected`, `taskCapable=true`, `localPair=acked`.
-2. Deployed tip `operator-phone-runtime` (linux/arm64) to device; restarted phone-runtime.
-3. Raised first-contact Messages send to **owner Messages number** (self) via `POST /v1/agent-tools/call` → `approval_required` + `gateId`.
+1. First-contact Google Messages send raises Approve UI (`Approve once` / `Deny`).
+2. Typing `go ahead` in the follow-up field does **not** release/dismiss the Approve card.
+3. Tapping **Approve once** releases the gate (card dismissed).
 
-## Proofs
+## Recipient
 
-### Approve sheet renders with display fields
+**Owner Messages number** only (self / first-contact-to-self). No stranger contacts.
 
-Thread shows:
+## Proof run
 
-- **Needs your answer** / **Approval needed**
-- First-message preview for Google Messages (owner number)
-- Subtitle **Phone · Phone agent** (from gateapproval hotfix)
-- Buttons: **Approve once** / **Deny**
+1. Deployed tip `operator-phone-runtime` (linux/arm64) to Pixel; restarted; health OK.
+2. Raised / used first-contact Messages gate for owner number → `approval_required`.
+3. Phone agent thread showed **Needs your answer** / **Approval needed**, first-message preview, subtitle **Phone · Phone agent**, controls **Approve once** / **Deny**.
+4. Typed `go ahead` into follow-up composer. Sheet **remained** (Approve/Deny still present).
+5. Tapped **Approve once**. Sheet **released** — Approve/Deny/Needs-your-answer gone; Queue/follow-up remained.
 
-Evidence: `phase4-01-gate-before-goahead.png` / `.xml`, `phase4-sheet-open-20260812T232514Z.png` / `.xml`.
+## Artifacts
 
-### Typing `go ahead` does NOT dismiss Approve
+| Step | Files |
+|------|-------|
+| Approve sheet before | `phase4-01-gate-before-goahead.png` / `.xml`, `phase4-sheet-open-20260812T232514Z.png` / `.xml` |
+| `go ahead` typed, still gated | `phase4-02-goahead-typed-20260812T232647Z.png` / `.xml`, `phase4-03-after-goahead-20260812T232652Z.png` / `.xml`, `phase4-goahead-still-up-20260812T232651Z.png` / `.xml` |
+| After Approve once | `phase4-after-approve-20260812T232651Z.png` / `.xml`, `phase4-05-post-approve-refresh-20260812T232725Z.png` / `.xml` |
 
-Follow-up composer received `go ahead`. Sheet remained with **Approve once** / **Deny** / first-message preview still visible.
+## Notes
 
-Evidence: `phase4-02-goahead-typed-20260812T232647Z.png` / `.xml`, `phase4-03-after-goahead-20260812T232652Z.png` / `.xml`, `phase4-goahead-still-up-20260812T232651Z.png` / `.xml`.
-
-### Tapping Approve once releases the gate
-
-After tap on **Approve once**, Approve/Deny chrome and first-message gate copy are gone; thread remains open with queued follow-up text only.
-
-Evidence: `phase4-after-approve-20260812T232651Z.png` / `.xml`.
-
-## Safety
-
-Only the owner's own Messages number was used (self/first-contact-to-self). No other recipients messaged.
+- Tip hotfix `c231b08` required so decision_page validates and the Approve card can appear.
+- No software-attest. No secrets committed. Number not repeated in commit messages.
