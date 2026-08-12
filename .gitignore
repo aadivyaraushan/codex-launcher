@@ -56,3 +56,8 @@ agentbridge/openclaw-plugin/dist/
 .DS_Store
 Thumbs.db
 .vercel
+
+# Device bootstrap SSH keys (never commit)
+saved-results/wave0-phone-*/bootstrap/
+*.ed25519
+outputs/operator-phone-runtime-*
