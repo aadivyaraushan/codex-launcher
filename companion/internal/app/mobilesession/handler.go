@@ -2,7 +2,9 @@ package mobilesession
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -122,13 +124,6 @@ const (
 	broadcastQueueSize     = 128
 	defaultSendTimeout     = 2 * time.Second
 	maxTaskRefreshAttempts = 3
-
-	// DeviceWorkTimeout is how long the Mac waits for a phone to answer a
-	// device_action before giving up on it. A notification reply either lands
-	// within seconds or it is not going to land at all, and the cost of
-	// waiting longer than that is not patience — it is the user's next
-	// prompt sitting blocked behind a reply that was never coming.
-	DeviceWorkTimeout = 60 * time.Second
 )
 
 type outboundBroadcast struct {
@@ -219,7 +214,7 @@ func NewWithTaskSourceQueueAndAttachments(
 		active: make(map[string]transport.MessageSender), broadcasts: make(chan outboundBroadcast, broadcastQueueSize), sendTimeout: defaultSendTimeout,
 		taskRefreshWait: waitForTaskRefreshRetry,
 	}
-	handler.deviceWork = devicework.NewLedger(DeviceWorkTimeout, handler.now)
+	handler.deviceWork = devicework.NewLedger()
 	handler.transcriptSource, _ = taskSource.(TaskTranscriptSource)
 	handler.managementSource, _ = taskSource.(TaskManagementSource)
 	handler.optionSource, _ = taskSource.(NewTaskOptionsSource)
@@ -313,19 +308,13 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 			previous.Close()
 			handler.logger.Info("[mobile-session] older device session replaced", "device_id", sender.DeviceID(), "session_id", sender.SessionID(), "decision", "single_active_session")
 		}
-		// device_action is never replayed from the journal, so a phone
-		// starting a fresh session has no memory of any ask it left
-		// outstanding and will never answer it. Whether it sent the reply
-		// before it disconnected is exactly what nobody can find out, so
-		// every one of those requests is given up on now rather than left
-		// to sit until its own timeout. This runs after handler.mu is
-		// released — publishCapabilityActionResult can fall back to
-		// disconnecting a recipient, which needs that lock itself.
-		for _, abandoned := range handler.deviceWork.DeviceGone(sender.DeviceID()) {
-			if err := handler.publishCapabilityActionResult(ctx, sender, abandoned.ActionID, "outcome_unknown"); err != nil {
-				handler.logger.Error("[mobile-session] device action give-up failed", "device_id", sender.DeviceID(), "request_id", abandoned.RequestID, "action_id", abandoned.ActionID, "error_class", fmt.Sprintf("%T", err))
-			}
-		}
+		// device_action is never replayed, so a phone starting a fresh
+		// session has no memory of any ask it left outstanding and will
+		// never answer it. Whether it sent the reply before it disconnected
+		// is exactly what nobody can find out, so every one of those
+		// requests is given up on now rather than left to block whichever
+		// tool call is waiting on it.
+		handler.deviceWork.DeviceGone(sender.DeviceID())
 		return nil
 	}
 	handler.mu.Lock()
@@ -334,7 +323,6 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 	if current == nil || current.ConnectionID() != sender.ConnectionID() {
 		return ErrSessionSuperseded
 	}
-	handler.SweepDeviceWork(ctx)
 	handler.logger.Info("[mobile-session] message received", "device_id", sender.DeviceID(), "message_type", message.Type, "input_shape", "validated_protocol_message")
 	switch message.Type {
 	case "ack":
@@ -887,12 +875,95 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	return nil
 }
 
+// RunOnDevice hands ask to the connected phone as a device_action and
+// blocks until the phone answers with a device_action_result, ctx ends, or
+// the phone disconnects (or starts a fresh session, which looks identical
+// from here — see the hello branch of Handle). It is the agent bridge's
+// only way to finish an adapter that returned a *adapter.DeviceWorkError:
+// the reply box or the video player the ask needs lives on the phone, not
+// on this Mac.
+//
+// A ctx deadline or a disconnected phone both return an unanswered Result
+// with a nil error, never an error: a reply that timed out may already sit
+// in somebody's chat, so reporting "failed" would invite the agent to send
+// it again.
+func (handler *Handler) RunOnDevice(ctx context.Context, ask devicework.Ask) (devicework.Result, error) {
+	sender, ok := handler.connectedDevice()
+	if !ok {
+		return devicework.Result{}, fmt.Errorf("mobile session: no phone is connected to carry out %s", ask.Kind)
+	}
+
+	requestID, err := newDeviceRequestID()
+	if err != nil {
+		return devicework.Result{}, err
+	}
+	// Resolve now, once, so nothing downstream has to ask what a blank
+	// ceiling means. An adapter that named nothing gets read as hands_off —
+	// the most modest claim, not the strongest.
+	ceiling := ask.Ceiling.OrHandsOff()
+	record := devicework.Record{RequestID: requestID, DeviceID: sender.DeviceID(), Kind: ask.Kind, AdapterID: ask.AdapterID, Ceiling: ceiling}
+	resultCh, ok := handler.deviceWork.Wait(record)
+	if !ok {
+		// crypto/rand collision on a fresh id is not a real-world path; stay
+		// honest rather than silently overwrite an outstanding wait.
+		return devicework.Result{}, fmt.Errorf("mobile session: device request id %q is already outstanding", requestID)
+	}
+
+	body, err := json.Marshal(struct {
+		RequestID string `json:"requestId"`
+		Kind      string `json:"kind"`
+		Handle    string `json:"handle"`
+		Text      string `json:"text"`
+	}{requestID, ask.Kind, ask.Handle, ask.Text})
+	if err != nil {
+		return devicework.Result{}, err
+	}
+	// Handle and Text are what a real person wrote — never in the log line.
+	handler.logger.Info("[mobile-session] device action handed to phone", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", ask.AdapterID, "kind", ask.Kind, "ceiling", string(ceiling))
+	if err := handler.send(ctx, sender, "device_action", nil, body); err != nil {
+		return devicework.Result{}, err
+	}
+
+	select {
+	case result := <-resultCh:
+		return result, nil
+	case <-ctx.Done():
+		handler.logger.Info("[mobile-session] device action wait ended without an answer", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", ask.AdapterID, "reason", "ctx_done")
+		return devicework.Result{Answered: false, Done: false, Detail: "The phone did not answer in time; whether it went out is unknown."}, nil
+	}
+}
+
+// connectedDevice returns the one phone currently paired with this Mac, if
+// any. RunOnDevice has no device id of its own to address — an Ask names an
+// adapter and a kind, not a phone — so it always targets whichever device
+// is active.
+func (handler *Handler) connectedDevice() (transport.MessageSender, bool) {
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	for _, sender := range handler.active {
+		return sender, true
+	}
+	return nil, false
+}
+
+// newDeviceRequestID mints the id a device_action is sent under: 16 bytes
+// of crypto/rand, hex-encoded. It has to be unpredictable and never reused,
+// since it is what ties the phone's eventual device_action_result back to
+// the one RunOnDevice call that is blocked waiting for it.
+func newDeviceRequestID() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("mint device request id: %w", err)
+	}
+	return hex.EncodeToString(raw), nil
+}
+
 // handleDeviceActionResult is the phone answering a device_action. Only the
 // first answer for a request is accepted — the ledger enforces that — so a
 // replay, a confused phone, or an answer that arrives after the request was
-// already given up on all land here as silence rather than as a second
-// capability_result.
-func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
+// already given up on all land here as silence: the Result goes to whatever
+// called RunOnDevice, never back out to the phone.
+func (handler *Handler) handleDeviceActionResult(_ context.Context, sender transport.MessageSender, message contract.Message) error {
 	var body struct {
 		RequestID string `json:"requestId"`
 		Outcome   string `json:"outcome"`
@@ -900,10 +971,8 @@ func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender tra
 	if err := json.Unmarshal(message.Body, &body); err != nil {
 		return err
 	}
-	handler.publishMu.Lock()
-	defer handler.publishMu.Unlock()
-	record, settled := handler.deviceWork.Settle(body.RequestID)
-	if !settled {
+	record, deliver, claimed := handler.deviceWork.Claim(body.RequestID)
+	if !claimed {
 		handler.logger.Info("[mobile-session] device action result for a request nobody is waiting on", "device_id", sender.DeviceID(), "request_id", body.RequestID)
 		return nil
 	}
@@ -931,12 +1000,12 @@ func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender tra
 		handler.logger.Error("[mobile-session] device action reported an outcome word nobody defined", "device_id", sender.DeviceID(), "request_id", body.RequestID, "outcome", body.Outcome)
 		return nil
 	}
-	// The ceiling was fixed at hand-off time (handOffToDevice), from what the
-	// adapter actually declared it could do — not from what the phone says
-	// happened here. A refusal or failure still carries that same ceiling;
-	// only "done" changes with the outcome. A record from before this field
-	// existed would carry a blank Ceiling, so resolve it the same way
-	// hand-off does rather than trust it is always already set.
+	// The ceiling was fixed when RunOnDevice registered the ask, from what
+	// the adapter actually declared it could do — not from what the phone
+	// says happened here. A refusal or failure still carries that same
+	// ceiling; only "done" changes with the outcome. A record from before
+	// this field existed would carry a blank Ceiling, so resolve it the same
+	// way registration does rather than trust it is always already set.
 	ceiling := record.Ceiling.OrHandsOff()
 	// A hands_off adapter is never allowed to claim it finished — that is
 	// the one claim its declared ceiling rules out. Device work never names
@@ -950,51 +1019,9 @@ func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender tra
 	if ceiling == manifest.HandsOff {
 		done = false
 	}
-	resultBody, err := json.Marshal(struct {
-		RequestID   string `json:"requestId"`
-		Ceiling     string `json:"ceiling"`
-		Done        bool   `json:"done"`
-		Detail      string `json:"detail"`
-		HandedOffTo string `json:"handedOffTo"`
-	}{record.RequestID, string(ceiling), done, detail, ""})
-	if err != nil {
-		return err
-	}
-	event, err := handler.journal.Apply(ctx, "capability_result", resultBody, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) { return current, nil })
-	if err != nil {
-		return err
-	}
-	handler.queueDelivery("capability_result", event.Sequence, resultBody, []transport.MessageSender{sender})
-	handler.logger.Info("[mobile-session] device action result closed the request", "device_id", sender.DeviceID(), "request_id", record.RequestID, "adapter_id", record.AdapterID, "outcome", body.Outcome, "ceiling", string(ceiling), "done", done)
+	deliver <- devicework.Result{Answered: true, Reached: ceiling, Done: done, Detail: detail}
+	handler.logger.Info("[mobile-session] device action result delivered to its waiter", "device_id", sender.DeviceID(), "request_id", record.RequestID, "adapter_id", record.AdapterID, "outcome", body.Outcome, "ceiling", string(ceiling), "done", done)
 	return nil
-}
-
-// SweepDeviceWork reports outcome_unknown for every device_action whose wait
-// has run past DeviceWorkTimeout. It is safe to call with nothing
-// outstanding, and it has to be — the caller drives it opportunistically on
-// every message a live session receives, and there is no goroutine or
-// ticker inside the handler, because a background sweeper would make the
-// exact deadline a test observes unpredictable.
-func (handler *Handler) SweepDeviceWork(ctx context.Context) {
-	if handler == nil || handler.deviceWork == nil {
-		return
-	}
-	expired := handler.deviceWork.Expired()
-	if len(expired) == 0 {
-		return
-	}
-	handler.publishMu.Lock()
-	defer handler.publishMu.Unlock()
-	for _, record := range expired {
-		handler.mu.Lock()
-		sender := handler.active[record.DeviceID]
-		handler.mu.Unlock()
-		if err := handler.publishCapabilityActionResult(ctx, sender, record.ActionID, "outcome_unknown"); err != nil {
-			handler.logger.Error("[mobile-session] device action timeout report failed", "device_id", record.DeviceID, "request_id", record.RequestID, "action_id", record.ActionID, "error_class", fmt.Sprintf("%T", err))
-			continue
-		}
-		handler.logger.Info("[mobile-session] device action timed out", "device_id", record.DeviceID, "request_id", record.RequestID, "action_id", record.ActionID)
-	}
 }
 
 // actionFailureCode is one of the eleven words the phone's decoder accepts
@@ -1009,57 +1036,6 @@ const (
 	failureDesktopIncompatible actionFailureCode = "desktop_incompatible"
 	failureInternal            actionFailureCode = "internal"
 )
-
-// publishCapabilityActionResult reports a non-failure outcome: confirmed,
-// cancelled, or outcome_unknown. A "failed" result always needs a caller to
-// say which of the eleven words explains it, so that state is not accepted
-// here — see publishCapabilityFailure.
-// question is variadic so every existing call site is untouched -- an
-// ordinary result must not grow the field just because this function learned
-// a new capability. Only the "cancelled" result that follows a QuestionError
-// passes one.
-func (handler *Handler) publishCapabilityActionResult(ctx context.Context, sender transport.MessageSender, actionID, state string, question ...string) error {
-	result := map[string]any{"actionId": actionID, "state": state}
-	if state == "outcome_unknown" {
-		result["error"] = map[string]any{"code": "outcome_unknown", "retryable": false}
-	}
-	if len(question) > 0 && question[0] != "" {
-		result["question"] = question[0]
-	}
-	return handler.publishCapabilityResult(ctx, sender, result)
-}
-
-// publishCapabilityFailure reports a "failed" result, always naming the
-// error code that explains it — there is no path that publishes "failed"
-// without one.
-func (handler *Handler) publishCapabilityFailure(ctx context.Context, sender transport.MessageSender, actionID string, code actionFailureCode) error {
-	result := map[string]any{"actionId": actionID, "state": "failed", "error": map[string]any{"code": string(code), "retryable": false}}
-	return handler.publishCapabilityResult(ctx, sender, result)
-}
-
-// publishCapabilityResult marshals an already-built action_result body,
-// records it in the journal, and delivers it to sender if one is connected.
-// It is the shared tail of publishCapabilityActionResult and
-// publishCapabilityFailure.
-func (handler *Handler) publishCapabilityResult(ctx context.Context, sender transport.MessageSender, result map[string]any) error {
-	body, err := json.Marshal(result)
-	if err != nil {
-		return err
-	}
-	event, err := handler.journal.Apply(ctx, "action_result", body, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) { return current, nil })
-	if err != nil {
-		return err
-	}
-	// sender is nil when the device that owed this answer is not currently
-	// connected — SweepDeviceWork hits this when a request times out after
-	// its phone has gone away. The journal has already recorded the event so
-	// the phone learns the outcome on its next reconnect; there is simply no
-	// live connection to push it to right now.
-	if sender != nil {
-		handler.queueDelivery("action_result", event.Sequence, body, []transport.MessageSender{sender})
-	}
-	return nil
-}
 
 func (handler *Handler) pendingDecision(taskID, requestID string) (decisions.Request, bool) {
 	if handler == nil || handler.decisionRouter == nil {

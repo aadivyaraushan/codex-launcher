@@ -113,6 +113,42 @@ Delete outright:
   — wire compatibility is this designed behavior, not however a compile
   error gets resolved.
 
+### Unit 2.5 — Agent-side device hand-off (Go, TDD) — added after Unit 2 landed
+
+Unit 2 exposed a false premise in this plan's risk list: device work
+(notification replies, YouTube playback) was NOT task-path — its only
+producer was `flow` → `handOffToDevice`, both deleted. After Unit 2,
+nothing catches `adapter.DeviceWorkError`, so the `notification_reply`
+and `youtube` adapters (kept surface — "adapters are the tool surface
+now") fail opaquely through the bridge, and the mobilesession receiving
+side runs on an always-empty ledger. The behavior moves to the agent
+path, same principle as Unit 1:
+
+- `devicework.Ledger` becomes a rendezvous, not a poll target:
+  `Wait(record)` returns a result channel (refused if the request id is
+  already outstanding); settling delivers to that channel; `DeviceGone`
+  fails every waiter of that phone. `Expired` and the ledger's
+  timeout/clock die — the waiting caller owns its own deadline.
+- `mobilesession.Handler` gains `RunOnDevice(ctx, ask)`: no connected
+  phone → error without touching the ledger; otherwise register, send
+  the same `device_action` wire frame as before, and block until the
+  phone's `device_action_result`, the ctx deadline, or the phone
+  disconnecting — deadline/disconnect answer outcome-unknown, never
+  "failed" (a reply that timed out may already sit in someone's chat).
+- `handleDeviceActionResult` keeps the outcome-word mapping and the
+  hands_off done-clamp, but delivers to the waiter instead of
+  journaling `capability_result` — killing that frame's last real
+  producer (Unit 3's premise becomes true). `SweepDeviceWork`,
+  `publishCapabilityActionResult`, `publishCapabilityFailure` lose
+  their last callers and die.
+- `agentbridge`: a `DeviceWorker` dependency next to `Disconnector`;
+  `executeCall` catches `*adapter.DeviceWorkError` → `RunOnDevice`
+  under `mobilesession.DeviceWorkTimeout`; result maps onto
+  `ToolCallResult` (reached = adapter's declared ceiling, done, detail).
+  Nil DeviceWorker → `adapter_failed` naming the missing phone.
+- `phoneruntime/runtime.go` wires the handler in as the bridge's
+  DeviceWorker.
+
 ### Unit 3 — Protocol prune, both sides in lockstep (TDD on contract tests)
 
 - `protocol/schema/action.schema.json`: remove the three capability kind
@@ -172,6 +208,8 @@ Delete outright:
 - `deeplink` ADAPTER stays (it is a tool); only `runtime/deeplink/`
   (the flow builder) dies. Same distinction for `instagram`.
 - Kotlin `DeviceReplyRequest.kt` doc comments reference
-  `capability_confirm` — comments updated, behavior (device work replies)
-  is task-path and stays.
+  `capability_confirm` — comments updated; the device-work behavior
+  itself survives via Unit 2.5 (this bullet originally claimed it was
+  "task-path and stays", which Unit 2 proved false — the flow path was
+  its only producer).
 - `contacts` package stays (used beyond stage2).

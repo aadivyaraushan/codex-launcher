@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
+	"github.com/codex-launcher/codex-launcher/companion/internal/capability/devicework"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/execution"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/registry"
@@ -41,6 +42,12 @@ type GateDeps struct {
 	// undoes an adapter's credentials and consent grant. Satisfied by
 	// capability/disconnect's Service.
 	Disconnector Disconnector
+	// DeviceWorker carries an Ask to the phone and waits for its answer,
+	// for the adapters that cannot finish where they started (the reply
+	// box or player they need lives on the phone). Nil means no phone is
+	// wired in at all — every DeviceWorkError then fails the call rather
+	// than hanging it. Satisfied by mobilesession.Handler.
+	DeviceWorker DeviceWorker
 }
 
 // Disconnector is what the bridge needs to run the disconnect verb: undo an
@@ -49,6 +56,13 @@ type GateDeps struct {
 type Disconnector interface {
 	Disconnect(ctx context.Context, adapterID string) error
 	Disconnected(adapterID string) bool
+}
+
+// DeviceWorker hands an Ask to the connected phone and blocks until it
+// answers, ctx ends, or the phone leaves. Satisfied by
+// mobilesession.Handler.RunOnDevice.
+type DeviceWorker interface {
+	RunOnDevice(ctx context.Context, ask devicework.Ask) (devicework.Result, error)
 }
 
 // ApprovalNotifier tells the launcher a call stopped for the owner's OK. A
@@ -378,6 +392,10 @@ func (b *Bridge) handleDisconnectCall(w http.ResponseWriter, r *http.Request, re
 func (b *Bridge) executeCall(ctx context.Context, plan adapter.Plan, preview execution.Preview, adapterID, recipient, verb, outcome string) (ToolCallResult, error) {
 	out, err := b.runner.Execute(ctx, plan, preview.Confirmed())
 	if err != nil {
+		var work *adapter.DeviceWorkError
+		if errors.As(err, &work) {
+			return b.runOnDevice(ctx, work, preview, adapterID, recipient, verb)
+		}
 		return ToolCallResult{}, err
 	}
 	if verb != "read" && recipient != "" {
@@ -395,6 +413,48 @@ func (b *Bridge) executeCall(ctx context.Context, plan adapter.Plan, preview exe
 		Done:        out.Done,
 		HandedOffTo: out.HandedOffTo,
 		Detail:      out.Detail,
+		Preview: &PreviewSummary{
+			Headline: preview.Headline,
+			Lines:    preview.Lines,
+			Confirm:  preview.Confirm,
+		},
+	}, nil
+}
+
+// runOnDevice carries a DeviceWorkError the rest of the way: hand its Ask to
+// the phone through the wired DeviceWorker and wait for the answer inside
+// this same tool call. No phone wired in, or the phone's own error, both
+// come back as a plain error — respondCallError turns either into
+// adapter_failed. An unanswered ask is not one of those: it is a Result
+// like any other, reported OK with Done false, because the reply may
+// already be sitting in someone's chat and "failed" would invite a retry.
+func (b *Bridge) runOnDevice(ctx context.Context, work *adapter.DeviceWorkError, preview execution.Preview, adapterID, recipient, verb string) (ToolCallResult, error) {
+	if b.gate.DeviceWorker == nil {
+		return ToolCallResult{}, fmt.Errorf("agentbridge: %s needs a phone to finish %s, but none is connected", adapterID, work.Kind)
+	}
+	deviceCtx, cancel := context.WithTimeout(ctx, devicework.Timeout)
+	defer cancel()
+	result, err := b.gate.DeviceWorker.RunOnDevice(deviceCtx, devicework.Ask{
+		AdapterID: work.AdapterID,
+		Kind:      work.Kind,
+		Handle:    work.Handle,
+		Text:      work.Text,
+		Ceiling:   work.Ceiling,
+	})
+	if err != nil {
+		return ToolCallResult{}, fmt.Errorf("agentbridge: device work for %s failed: %w", adapterID, err)
+	}
+	if verb != "read" && recipient != "" {
+		if markErr := b.gate.Store.MarkRecipientMessaged(adapterID, recipient); markErr != nil {
+			b.logger.Error("[agent-bridge] mark recipient known failed", "adapter", adapterID, "verb", verb, "error", markErr.Error())
+		}
+	}
+	b.logCall(adapterID, verb, "ok")
+	return ToolCallResult{
+		OK:      true,
+		Reached: string(result.Reached),
+		Done:    result.Done,
+		Detail:  result.Detail,
 		Preview: &PreviewSummary{
 			Headline: preview.Headline,
 			Lines:    preview.Lines,

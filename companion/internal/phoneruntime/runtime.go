@@ -293,6 +293,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		Store:        gateStore,
 		Notifier:     approvals,
 		Disconnector: disconnector,
+		DeviceWorker: handler,
 		// Read fresh on every call, deliberately: an owner edit to
 		// agent-rules.md must apply to the very next send, not wait for
 		// a restart.
