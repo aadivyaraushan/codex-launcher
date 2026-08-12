@@ -105,6 +105,63 @@ func TestReplySummaryIsTruncatedToContractLimit(t *testing.T) {
 	}
 }
 
+// Wire safeDisplayString rejects unicode control characters (including
+// newlines). A pretty-printed JSON reply that keeps those runes would make
+// PublishTaskEvent return "mobile task event is invalid" and leave Operator
+// stuck on Working.
+func TestReplySummaryCollapsesNewlinesAndControlChars(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{name: "pretty json", text: "{\n  \"ok\": true\n}", want: "{ \"ok\": true }"},
+		{name: "crlf", text: "line one\r\nline two", want: "line one line two"},
+		{name: "tab", text: "left\tright", want: "left right"},
+		{name: "null byte among words", text: "keep\x00me", want: "keep me"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mapper := NewTurnMapper(testTaskID, testSessionKey)
+			mapper.Apply(ChatEventPayload{State: "delta", DeltaText: test.text, RunID: "run-1", SessionKey: testSessionKey})
+			events := mapper.Apply(ChatEventPayload{State: "final", RunID: "run-1", SessionKey: testSessionKey})
+			if len(events) != 1 {
+				t.Fatalf("final must emit exactly the reply, got %+v", events)
+			}
+			summary := events[0].Summary
+			if summary != test.want {
+				t.Fatalf("summary = %q, want %q", summary, test.want)
+			}
+			if strings.IndexFunc(summary, func(r rune) bool { return r < 0x20 }) >= 0 {
+				t.Fatalf("summary still has a control rune: %q", summary)
+			}
+		})
+	}
+}
+
+func TestErrorSummaryCollapsesNewlines(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	mapper.Apply(ChatEventPayload{State: "delta", DeltaText: "working", RunID: "run-1", SessionKey: testSessionKey})
+	events := mapper.Apply(ChatEventPayload{
+		State: "error", ErrorMessage: "provider said:\nrate limited", RunID: "run-1", SessionKey: testSessionKey,
+	})
+	if len(events) != 1 {
+		t.Fatalf("error must emit exactly the failure, got %+v", events)
+	}
+	if events[0].Summary != "provider said: rate limited" {
+		t.Fatalf("summary = %q", events[0].Summary)
+	}
+}
+
+func TestReplyOfOnlyControlCharsFallsBackToGenericSummary(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	mapper.Apply(ChatEventPayload{State: "delta", DeltaText: "\n\t\r", RunID: "run-1", SessionKey: testSessionKey})
+	events := mapper.Apply(ChatEventPayload{State: "final", RunID: "run-1", SessionKey: testSessionKey})
+	if len(events) != 1 || events[0].Summary != "Codex replied" {
+		t.Fatalf("control-only reply must still publish a safe fallback, got %+v", events)
+	}
+}
+
 // A run on a foreign session must not disturb the active run's accumulation.
 func TestForeignSessionDoesNotDisturbActiveRun(t *testing.T) {
 	mapper := NewTurnMapper(testTaskID, testSessionKey)

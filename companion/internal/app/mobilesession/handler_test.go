@@ -524,6 +524,57 @@ func TestTaskReadConvertsInvalidSourcePageToContentFreeInternalError(t *testing.
 	}
 }
 
+// A historical lastMessage that still contains newlines must not permanently
+// block snapshot refresh (Operator stuck on Working / invalid_safe_projection).
+// The reader collapses control characters so the rest of the task row still
+// reaches the phone.
+func TestRefreshTaskSnapshotRecoversFromUnsafeLastMessage(t *testing.T) {
+	task := taskstate.Task{
+		ID: "thread-1", Title: "Phone agent", ProjectLabel: "Phone agent",
+		State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix(),
+	}
+	source := taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
+		return []taskstate.Task{task}, nil
+	})
+	handler, _ := newTestHandlerWithTasks(t, source)
+
+	task.LastMessage = taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "{\n  \"ok\": true\n}"}
+	if err := handler.RefreshTaskSnapshot(context.Background()); err != nil {
+		t.Fatalf("refresh with newline lastMessage: %v", err)
+	}
+	snapshot, err := handler.journal.Snapshot(sessionNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state snapshotState
+	if err := json.Unmarshal(snapshot.Body, &state); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Tasks) != 1 || state.Tasks[0].State != string(taskstate.Working) {
+		t.Fatalf("tasks = %#v", state.Tasks)
+	}
+	if state.Tasks[0].LastMessage == nil || state.Tasks[0].LastMessage.From != "agent" ||
+		state.Tasks[0].LastMessage.Text != `{ "ok": true }` {
+		t.Fatalf("repaired lastMessage = %#v", state.Tasks[0].LastMessage)
+	}
+
+	task.LastMessage = taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "\n\t"}
+	if err := handler.RefreshTaskSnapshot(context.Background()); err != nil {
+		t.Fatalf("refresh with control-only lastMessage: %v", err)
+	}
+	snapshot, err = handler.journal.Snapshot(sessionNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var omitted snapshotState
+	if err := json.Unmarshal(snapshot.Body, &omitted); err != nil {
+		t.Fatal(err)
+	}
+	if omitted.Tasks[0].LastMessage != nil {
+		t.Fatalf("control-only lastMessage should be omitted, got %#v", omitted.Tasks[0].LastMessage)
+	}
+}
+
 func TestTaskSnapshotFailsClosedWhenCatalogFailsOrReturnsUnsafeData(t *testing.T) {
 	for _, test := range []struct {
 		name   string
