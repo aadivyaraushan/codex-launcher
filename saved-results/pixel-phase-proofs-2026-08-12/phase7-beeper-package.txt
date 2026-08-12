@@ -1,0 +1,5 @@
+package:/data/app/~~L_VvVARqL-JviuEn4xSNIg==/com.beeper.android-bM93KXYdDvVyVTY-YmJNvg==/base.apk
+package:/data/app/~~L_VvVARqL-JviuEn4xSNIg==/com.beeper.android-bM93KXYdDvVyVTY-YmJNvg==/split_config.arm64_v8a.apk
+package:/data/app/~~L_VvVARqL-JviuEn4xSNIg==/com.beeper.android-bM93KXYdDvVyVTY-YmJNvg==/split_config.en.apk
+package:/data/app/~~L_VvVARqL-JviuEn4xSNIg==/com.beeper.android-bM93KXYdDvVyVTY-YmJNvg==/split_config.es.apk
+package:/data/app/~~L_VvVARqL-JviuEn4xSNIg==/com.beeper.android-bM93KXYdDvVyVTY-YmJNvg==/split_config.xxhdpi.apk

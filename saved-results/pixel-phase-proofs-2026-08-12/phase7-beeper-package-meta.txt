@@ -1,0 +1,4 @@
+    versionCode=1744152582 minSdk=32 targetSdk=36
+    versionName=4.53.1
+    lastUpdateTime=2026-08-13 01:14:00
+      firstInstallTime=2026-08-02 23:29:38
