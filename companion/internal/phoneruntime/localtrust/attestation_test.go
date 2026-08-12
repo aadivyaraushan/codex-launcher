@@ -7,6 +7,65 @@ import (
 	"testing"
 )
 
+func validAttestPair(level SecurityLevel) (AttestExpected, AttestObserved) {
+	exp := AttestExpected{
+		PackageName:            "app.codexlauncher",
+		SigningCertSHA256:      "aa11",
+		OfferID:                "offer-1",
+		RuntimeIdentity:        "rid",
+		EphemeralPublicKey:     "epk",
+		TLSSPKI:                "pin",
+		TranscriptNonce:        "nonce",
+		PinnedRootFingerprints: map[string]struct{}{"root-avd": {}},
+	}
+	obs := AttestObserved{
+		PackageName:       "app.codexlauncher",
+		SigningCertSHA256: "aa11",
+		Challenge:         ChallengeBytes("offer-1", "rid", "epk", "pin", "nonce"),
+		Level:             level,
+		RootFingerprint:   "root-avd",
+	}
+	return exp, obs
+}
+
+func TestDefaultRejectsSoftwareLevel(t *testing.T) {
+	exp, obs := validAttestPair(SecuritySoftware)
+	if err := VerifyAttestation(exp, obs); err != ErrAttestWeakLevel {
+		t.Fatalf("default policy got %v, want %v", err, ErrAttestWeakLevel)
+	}
+}
+
+func TestAllowSoftwareAcceptsSoftwareLevel(t *testing.T) {
+	exp, obs := validAttestPair(SecuritySoftware)
+	exp.AllowSoftwareAttest = true
+	if err := VerifyAttestation(exp, obs); err != nil {
+		t.Fatalf("AVD hatch should accept software level, got %v", err)
+	}
+}
+
+func TestAllowSoftwareStillRejectsWrongApp(t *testing.T) {
+	exp, obs := validAttestPair(SecuritySoftware)
+	exp.AllowSoftwareAttest = true
+	obs.PackageName = "com.evil"
+	if err := VerifyAttestation(exp, obs); err != ErrAttestWrongApp {
+		t.Fatalf("hatch must not skip app pin, got %v want %v", err, ErrAttestWrongApp)
+	}
+}
+
+func TestTrustedEnvironmentAcceptedWithoutHatch(t *testing.T) {
+	exp, obs := validAttestPair(SecurityTrustedEnvironment)
+	if err := VerifyAttestation(exp, obs); err != nil {
+		t.Fatalf("production TEE path should stay accepted, got %v", err)
+	}
+}
+
+func TestStrongBoxAcceptedWithoutHatch(t *testing.T) {
+	exp, obs := validAttestPair(SecurityStrongBox)
+	if err := VerifyAttestation(exp, obs); err != nil {
+		t.Fatalf("production StrongBox path should stay accepted, got %v", err)
+	}
+}
+
 func TestChallengeBytesStable(t *testing.T) {
 	a := ChallengeBytes("o", "r", "e", "p", "n")
 	b := ChallengeBytes("o", "r", "e", "p", "n")

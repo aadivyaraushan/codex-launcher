@@ -1,3 +1,14 @@
 #!/bin/sh
 exec 2>&1
-exec /usr/local/bin/operator-phone-runtime -root /var/lib/operator-phone -listen 127.0.0.1:9443
+# Gateway token is a PATH only. Never pass the token value on this line.
+# OPERATOR_ALLOW_SOFTWARE_ATTEST=1 is AVD-only. Leave unset on release Pixel.
+ATTEST_ARGS=""
+case "${OPERATOR_ALLOW_SOFTWARE_ATTEST:-}" in
+  1|true|yes|on|TRUE|YES|ON) ATTEST_ARGS="-allow-software-attest" ;;
+esac
+exec /usr/local/bin/operator-phone-runtime \
+  -root /var/lib/operator-phone \
+  -listen 127.0.0.1:9443 \
+  -gateway-url ws://127.0.0.1:18789 \
+  -gateway-token-path /var/lib/operator-phone/gateway-token \
+  $ATTEST_ARGS
