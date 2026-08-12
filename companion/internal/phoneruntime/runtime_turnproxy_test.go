@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	stdruntime "runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,10 +18,27 @@ import (
 )
 
 // stubTurnSource satisfies TurnSource so tests can stand in for a connected
-// gateway without any websocket.
+// gateway without any websocket. Closing done simulates the gateway
+// dropping the connection.
 type stubTurnSource struct {
+	done chan struct{}
+	// onDone, when set, runs on every Done() query. The connect goroutine
+	// only queries Done() after installing the source, so tests can use it
+	// as an "installed" signal.
+	onDone func()
 	mu     sync.Mutex
 	closed bool
+}
+
+func newStubTurnSource() *stubTurnSource {
+	return &stubTurnSource{done: make(chan struct{})}
+}
+
+func (s *stubTurnSource) Done() <-chan struct{} {
+	if s.onDone != nil {
+		s.onDone()
+	}
+	return s.done
 }
 
 func (s *stubTurnSource) ListRecent(context.Context, int) ([]taskstate.Task, error) {
@@ -105,7 +124,7 @@ func TestOpenWithGatewayBecomesTaskCapable(t *testing.T) {
 
 	root := t.TempDir()
 	tokenPath := writeGatewayToken(t, root)
-	stub := &stubTurnSource{}
+	stub := newStubTurnSource()
 	var mu sync.Mutex
 	var seen []turnproxy.Config
 	runtime, err := Open(context.Background(), gatewayConfig(root, tokenPath), Dependencies{
@@ -159,7 +178,7 @@ func TestGatewayConnectRetriesUntilSuccess(t *testing.T) {
 
 	root := t.TempDir()
 	tokenPath := writeGatewayToken(t, root)
-	stub := &stubTurnSource{}
+	stub := newStubTurnSource()
 	var mu sync.Mutex
 	attempts := 0
 	runtime, err := Open(context.Background(), gatewayConfig(root, tokenPath), Dependencies{
@@ -187,6 +206,213 @@ func TestGatewayConnectRetriesUntilSuccess(t *testing.T) {
 	}
 }
 
+// An event published for the phone agent right after connect must land even
+// though the handler's task snapshot was seeded empty at Open (the deferred
+// source had nothing to list yet). The desktop path refreshes the snapshot
+// and retries on ErrUnknownTaskEvent (eventpump.go); the gateway path must
+// give its publisher the same guarantee or the first chat events of a run
+// are silently dropped.
+func TestGatewayPublishAfterConnectReachesTheHandler(t *testing.T) {
+	previousDelay := turnProxyRetryDelay
+	turnProxyRetryDelay = 20 * time.Millisecond
+	t.Cleanup(func() { turnProxyRetryDelay = previousDelay })
+
+	root := t.TempDir()
+	tokenPath := writeGatewayToken(t, root)
+	stub := newStubTurnSource()
+	var mu sync.Mutex
+	var seen []turnproxy.Config
+	runtime, err := Open(context.Background(), gatewayConfig(root, tokenPath), Dependencies{
+		Random: rand.Reader,
+		TurnProxyConnect: func(_ context.Context, config turnproxy.Config) (TurnSource, error) {
+			mu.Lock()
+			seen = append(seen, config)
+			mu.Unlock()
+			return stub, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer runtime.Close()
+	waitForTaskCapable(t, runtime)
+
+	mu.Lock()
+	publisher := seen[0].Publisher
+	mu.Unlock()
+	event := taskstate.MobileEvent{
+		TaskID:     "phone-agent",
+		Kind:       "activity",
+		State:      taskstate.Working,
+		Summary:    "Codex is working",
+		StartsTurn: true,
+	}
+	if err := publisher.PublishTaskEvent(context.Background(), event); err != nil {
+		t.Fatalf("an event for the phone agent's task was dropped after connect: %v", err)
+	}
+}
+
+// A dropped gateway connection must flip TaskCapable off and be redialed;
+// a runtime that stays "task capable" on a dead socket is lying to the
+// phone until the whole process restarts.
+func TestGatewayReconnectsAfterDrop(t *testing.T) {
+	previousDelay := turnProxyRetryDelay
+	turnProxyRetryDelay = 20 * time.Millisecond
+	t.Cleanup(func() { turnProxyRetryDelay = previousDelay })
+
+	root := t.TempDir()
+	tokenPath := writeGatewayToken(t, root)
+	first := newStubTurnSource()
+	second := newStubTurnSource()
+	// The redial blocks until the test has observed the incapable state, so
+	// the "TaskCapable must go false" window cannot be raced away by an
+	// instant reconnect.
+	release := make(chan struct{})
+	var mu sync.Mutex
+	attempts := 0
+	runtime, err := Open(context.Background(), gatewayConfig(root, tokenPath), Dependencies{
+		Random: rand.Reader,
+		TurnProxyConnect: func(ctx context.Context, _ turnproxy.Config) (TurnSource, error) {
+			mu.Lock()
+			attempts++
+			attempt := attempts
+			mu.Unlock()
+			if attempt == 1 {
+				return first, nil
+			}
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return second, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer runtime.Close()
+	waitForTaskCapable(t, runtime)
+
+	close(first.done)
+
+	deadline := time.Now().Add(5 * time.Second)
+	sawIncapable := false
+	for time.Now().Before(deadline) {
+		if !runtime.TaskCapable() {
+			sawIncapable = true
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !sawIncapable {
+		t.Fatal("TaskCapable stayed true on a dead gateway connection")
+	}
+	if !first.wasClosed() {
+		t.Fatal("the dropped source must be closed before redialing")
+	}
+	close(release)
+
+	waitForTaskCapable(t, runtime)
+	mu.Lock()
+	defer mu.Unlock()
+	if attempts < 2 {
+		t.Fatalf("connect attempts = %d, want a redial after the drop", attempts)
+	}
+}
+
+// A dial that resolves only after Close() has canceled it must not be
+// installed: the runtime is already torn down, so the late source has to
+// be closed instead of registered, and TaskCapable must stay false. The
+// assertions run immediately after Close returns — Close must not come
+// back while the connect goroutine can still touch the closed runtime.
+func TestCloseWhileConnectInFlightDoesNotInstallTheLateSource(t *testing.T) {
+	previousDelay := turnProxyRetryDelay
+	turnProxyRetryDelay = 20 * time.Millisecond
+	t.Cleanup(func() { turnProxyRetryDelay = previousDelay })
+
+	root := t.TempDir()
+	tokenPath := writeGatewayToken(t, root)
+	stub := newStubTurnSource()
+	entered := make(chan struct{})
+	var once sync.Once
+	runtime, err := Open(context.Background(), gatewayConfig(root, tokenPath), Dependencies{
+		Random: rand.Reader,
+		TurnProxyConnect: func(ctx context.Context, _ turnproxy.Config) (TurnSource, error) {
+			once.Do(func() { close(entered) })
+			// A dial whose transport already succeeded: cancellation arrives,
+			// but the connected source still comes back rather than an error.
+			<-ctx.Done()
+			return stub, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	<-entered
+	if err := runtime.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if !stub.wasClosed() {
+		t.Fatal("a source that connected after Close was left open — leaked socket on a closed runtime")
+	}
+	if runtime.TaskCapable() {
+		t.Fatal("TaskCapable reports true on a closed runtime")
+	}
+}
+
+// Open's own error paths must tear down like Close does: when the connect
+// goroutine installs a source and a later Open step then fails, the failed
+// Open must close that source before returning — otherwise it leaks a live
+// gateway socket (and its read goroutine) that no caller can ever reach.
+func TestOpenFailureAfterConnectClosesTheInstalledSource(t *testing.T) {
+	previousDelay := turnProxyRetryDelay
+	turnProxyRetryDelay = 20 * time.Millisecond
+	t.Cleanup(func() { turnProxyRetryDelay = previousDelay })
+
+	root := t.TempDir()
+	tokenPath := writeGatewayToken(t, root)
+	// A directory squatting on the cert path makes the cert-export step —
+	// the last of Open's early-error paths, after the connect goroutine has
+	// launched — fail deterministically.
+	if err := os.Mkdir(filepath.Join(root, "agentbridge-cert.pem"), 0o755); err != nil {
+		t.Fatalf("mkdir cert path: %v", err)
+	}
+
+	stub := newStubTurnSource()
+	installed := make(chan struct{})
+	var once sync.Once
+	stub.onDone = func() { once.Do(func() { close(installed) }) }
+	runtime, err := Open(context.Background(), gatewayConfig(root, tokenPath), Dependencies{
+		Random: rand.Reader,
+		// Open's own single Now call sits at the TLS-certificate step,
+		// between launching the connect goroutine and the failing cert
+		// export. Session-handler construction also calls Now, earlier,
+		// before the goroutine exists — so gate on the direct caller and
+		// block only Open's call until the goroutine has installed the
+		// source. That pins the interleaving under test: install first,
+		// then the Open failure.
+		Now: func() time.Time {
+			if pc, _, _, ok := stdruntime.Caller(1); ok &&
+				strings.HasSuffix(stdruntime.FuncForPC(pc).Name(), "phoneruntime.Open") {
+				<-installed
+			}
+			return time.Now()
+		},
+		TurnProxyConnect: func(context.Context, turnproxy.Config) (TurnSource, error) {
+			return stub, nil
+		},
+	})
+	if err == nil {
+		runtime.Close()
+		t.Fatal("Open must fail when the cert path is unwritable")
+	}
+	if !stub.wasClosed() {
+		t.Fatal("a source installed during a failed Open was left open — leaked socket nothing can reach")
+	}
+}
+
 func TestCloseClosesTheTurnSource(t *testing.T) {
 	previousDelay := turnProxyRetryDelay
 	turnProxyRetryDelay = 20 * time.Millisecond
@@ -194,7 +420,7 @@ func TestCloseClosesTheTurnSource(t *testing.T) {
 
 	root := t.TempDir()
 	tokenPath := writeGatewayToken(t, root)
-	stub := &stubTurnSource{}
+	stub := newStubTurnSource()
 	runtime, err := Open(context.Background(), gatewayConfig(root, tokenPath), Dependencies{
 		Random: rand.Reader,
 		TurnProxyConnect: func(context.Context, turnproxy.Config) (TurnSource, error) {

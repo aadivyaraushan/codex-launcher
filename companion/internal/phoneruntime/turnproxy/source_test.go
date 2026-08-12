@@ -48,16 +48,37 @@ type fakeGateway struct {
 	connectParams chan json.RawMessage
 	requests      chan gatewayRequest
 
-	mu   sync.Mutex
-	conn *websocket.Conn
+	mu               sync.Mutex
+	conn             *websocket.Conn
+	responsePayloads map[string]any
+}
+
+// respondWith makes the fake reply to future requests of the given method
+// with this payload instead of the default empty object.
+func (gateway *fakeGateway) respondWith(method string, payload any) {
+	gateway.mu.Lock()
+	defer gateway.mu.Unlock()
+	gateway.responsePayloads[method] = payload
+}
+
+// closeConn drops the websocket from the server side, the way a crashed or
+// restarted gateway process would.
+func (gateway *fakeGateway) closeConn() {
+	gateway.mu.Lock()
+	conn := gateway.conn
+	gateway.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close(websocket.StatusGoingAway, "gateway restarting")
+	}
 }
 
 func newFakeGateway(t *testing.T, rejectAuth bool) *fakeGateway {
 	gateway := &fakeGateway{
-		t:             t,
-		rejectAuth:    rejectAuth,
-		connectParams: make(chan json.RawMessage, 1),
-		requests:      make(chan gatewayRequest, 16),
+		t:                t,
+		rejectAuth:       rejectAuth,
+		connectParams:    make(chan json.RawMessage, 1),
+		requests:         make(chan gatewayRequest, 16),
+		responsePayloads: make(map[string]any),
 	}
 	gateway.server = httptest.NewServer(http.HandlerFunc(gateway.handle))
 	t.Cleanup(gateway.server.Close)
@@ -109,7 +130,13 @@ func (gateway *fakeGateway) handle(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		gateway.requests <- gatewayRequest{ID: frame.ID, Method: frame.Method, Params: frame.Params}
-		gateway.write(ctx, wireFrame{Type: "res", ID: frame.ID, OK: true, Payload: map[string]any{}})
+		gateway.mu.Lock()
+		payload, hasPayload := gateway.responsePayloads[frame.Method]
+		gateway.mu.Unlock()
+		if !hasPayload {
+			payload = map[string]any{}
+		}
+		gateway.write(ctx, wireFrame{Type: "res", ID: frame.ID, OK: true, Payload: payload})
 	}
 }
 
@@ -296,6 +323,55 @@ func TestStartTurnForwardsChatSendAndStreamsReply(t *testing.T) {
 	reply := publisher.next(t)
 	if reply.Kind != "reply" || reply.State != taskstate.IdleAfterReply || reply.Summary != "Hi there" {
 		t.Fatalf("second event = %+v, want the assembled reply", reply)
+	}
+}
+
+// The protocol doc marks the chat.send ack shape as unknown: the gateway
+// may assign its own runId rather than echoing the idempotencyKey. When the
+// ack carries one, it is the id the stream will use, so it must win.
+func TestStartTurnPrefersServerAssignedRunID(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+	gateway.respondWith("chat.send", map[string]any{"runId": "srv-run-9"})
+
+	result, err := source.StartExistingTurn(context.Background(), testTaskID, "hello agent")
+	if err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	if result.TurnID != "srv-run-9" {
+		t.Fatalf("TurnID = %q, want the server-assigned runId srv-run-9", result.TurnID)
+	}
+	gateway.nextRequest(t)
+
+	// The active turn tracked from the stream must be the same id the
+	// caller was handed, or the launcher cannot match "the turn I started"
+	// to "the turn that is running".
+	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "working on it", RunID: "srv-run-9", SessionKey: testSessionKey, Seq: 1})
+	publisher.next(t)
+	task, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask: %v", err)
+	}
+	if task.ActiveTurnID != result.TurnID {
+		t.Fatalf("ActiveTurnID = %q, want the started turn %q", task.ActiveTurnID, result.TurnID)
+	}
+}
+
+// A gateway that drops the socket must be observable: Done unblocks so the
+// runtime can clear task-capable state and dial again.
+func TestDoneClosesWhenGatewayDrops(t *testing.T) {
+	source, gateway, _ := connectedSource(t)
+
+	select {
+	case <-source.Done():
+		t.Fatal("Done must stay open while the connection is alive")
+	default:
+	}
+
+	gateway.closeConn()
+	select {
+	case <-source.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("Done never closed after the gateway dropped the socket")
 	}
 }
 

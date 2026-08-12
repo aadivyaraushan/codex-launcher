@@ -38,6 +38,11 @@ type runState struct {
 	text string
 }
 
+// finishedRunsLimit bounds how many terminated run ids the mapper
+// remembers, FIFO, so a long-lived session's memory does not grow without
+// bound.
+const finishedRunsLimit = 128
+
 // TurnMapper converts one gateway session's chat events into MobileEvents
 // for one task. It accumulates reply text per run and remembers which runs
 // have already opened with a Working event. It is meant to be driven by a
@@ -46,12 +51,38 @@ type TurnMapper struct {
 	taskID     string
 	sessionKey string
 	runs       map[string]*runState
+	// finishedRuns and finishedOrder remember run ids that already reached
+	// a terminal event, so a redelivered duplicate final or a late/reordered
+	// delta for that run does not fabricate a fresh event. Bounded FIFO at
+	// finishedRunsLimit entries.
+	finishedRuns  map[string]struct{}
+	finishedOrder []string
 }
 
 // NewTurnMapper builds a mapper for one task pinned to one gateway session.
 // Payloads for any other session are ignored by Apply.
 func NewTurnMapper(taskID, sessionKey string) *TurnMapper {
-	return &TurnMapper{taskID: taskID, sessionKey: sessionKey, runs: make(map[string]*runState)}
+	return &TurnMapper{
+		taskID:       taskID,
+		sessionKey:   sessionKey,
+		runs:         make(map[string]*runState),
+		finishedRuns: make(map[string]struct{}),
+	}
+}
+
+// rememberFinished records runID as terminated, evicting the oldest entry
+// once the bound is exceeded.
+func (m *TurnMapper) rememberFinished(runID string) {
+	if _, exists := m.finishedRuns[runID]; exists {
+		return
+	}
+	if len(m.finishedOrder) >= finishedRunsLimit {
+		oldest := m.finishedOrder[0]
+		m.finishedOrder = m.finishedOrder[1:]
+		delete(m.finishedRuns, oldest)
+	}
+	m.finishedRuns[runID] = struct{}{}
+	m.finishedOrder = append(m.finishedOrder, runID)
 }
 
 // Apply folds one gateway event into the mapper's run state and returns the
@@ -64,6 +95,9 @@ func (m *TurnMapper) Apply(payload ChatEventPayload) []taskstate.MobileEvent {
 	switch payload.State {
 	case "delta", "final", "error", "aborted":
 	default:
+		return nil
+	}
+	if _, finished := m.finishedRuns[payload.RunID]; finished {
 		return nil
 	}
 
@@ -109,6 +143,7 @@ func (m *TurnMapper) Apply(payload ChatEventPayload) []taskstate.MobileEvent {
 			Summary: truncate(summary),
 		})
 		delete(m.runs, payload.RunID)
+		m.rememberFinished(payload.RunID)
 	case "error":
 		summary := payload.ErrorMessage
 		if summary == "" {
@@ -121,6 +156,7 @@ func (m *TurnMapper) Apply(payload ChatEventPayload) []taskstate.MobileEvent {
 			Summary: truncate(summary),
 		})
 		delete(m.runs, payload.RunID)
+		m.rememberFinished(payload.RunID)
 	case "aborted":
 		events = append(events, taskstate.MobileEvent{
 			TaskID:  m.taskID,
@@ -129,6 +165,7 @@ func (m *TurnMapper) Apply(payload ChatEventPayload) []taskstate.MobileEvent {
 			Summary: "Codex was interrupted",
 		})
 		delete(m.runs, payload.RunID)
+		m.rememberFinished(payload.RunID)
 	}
 
 	return events

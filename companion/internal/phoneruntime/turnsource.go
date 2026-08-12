@@ -19,11 +19,31 @@ type TurnSource interface {
 	mobilesession.TaskSource
 	mobilesession.ExistingTaskSource
 	io.Closer
+	// Done returns a channel that closes when the underlying gateway
+	// connection drops, so the runtime can notice and redial.
+	Done() <-chan struct{}
 }
 
 // errTurnSourceNotConnected is returned by every deferredTurnSource method
 // except ListRecent while no gateway connection has been made yet.
 var errTurnSourceNotConnected = errors.New("phone agent gateway not connected yet")
+
+// phoneAgentProjectLabel backfills Task.ProjectLabel when a TurnSource
+// implementation leaves it empty (the phone agent's task has no project of
+// its own). The mobile snapshot contract requires every task to carry a
+// non-empty label (internal/mobileapi/contract/validation.go
+// safeDisplayString) or the whole snapshot is rejected, so deferredTurnSource
+// — the one place every TurnSource's tasks pass through on their way to the
+// handler — guarantees it rather than trusting each implementation to set it.
+const phoneAgentProjectLabel = "Phone agent"
+
+// withProjectLabel returns a copy of task with a non-empty ProjectLabel.
+func withProjectLabel(task taskstate.Task) taskstate.Task {
+	if task.ProjectLabel == "" {
+		task.ProjectLabel = phoneAgentProjectLabel
+	}
+	return task
+}
 
 // deferredTurnSource is the TurnSource handed to the mobile session handler
 // at Open, before the gateway websocket exists. The handler is built once
@@ -48,6 +68,17 @@ func (deferred *deferredTurnSource) set(source TurnSource) {
 	deferred.inner = source
 }
 
+// clear removes the current inner TurnSource (if any) and returns it, so the
+// caller can Close it once outside the lock. After clear, connected() is
+// false again until the next set().
+func (deferred *deferredTurnSource) clear() TurnSource {
+	deferred.mu.Lock()
+	defer deferred.mu.Unlock()
+	old := deferred.inner
+	deferred.inner = nil
+	return old
+}
+
 func (deferred *deferredTurnSource) connected() bool {
 	deferred.mu.Lock()
 	defer deferred.mu.Unlock()
@@ -67,7 +98,15 @@ func (deferred *deferredTurnSource) ListRecent(ctx context.Context, limit int) (
 	if inner == nil {
 		return []taskstate.Task{}, nil
 	}
-	return inner.ListRecent(ctx, limit)
+	tasks, err := inner.ListRecent(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	normalized := make([]taskstate.Task, len(tasks))
+	for i, task := range tasks {
+		normalized[i] = withProjectLabel(task)
+	}
+	return normalized, nil
 }
 
 func (deferred *deferredTurnSource) CurrentTask(ctx context.Context, taskID string) (taskstate.Task, error) {
@@ -75,7 +114,11 @@ func (deferred *deferredTurnSource) CurrentTask(ctx context.Context, taskID stri
 	if inner == nil {
 		return taskstate.Task{}, errTurnSourceNotConnected
 	}
-	return inner.CurrentTask(ctx, taskID)
+	task, err := inner.CurrentTask(ctx, taskID)
+	if err != nil {
+		return taskstate.Task{}, err
+	}
+	return withProjectLabel(task), nil
 }
 
 func (deferred *deferredTurnSource) StartExistingTurn(ctx context.Context, taskID, prompt string) (taskadapter.ExistingTaskResult, error) {

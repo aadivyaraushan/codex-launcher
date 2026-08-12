@@ -153,10 +153,32 @@ func (source *Source) StartExistingTurn(ctx context.Context, taskID, prompt stri
 		Message:        prompt,
 		IdempotencyKey: idempotencyKey,
 	}
-	if _, err := source.client.request(ctx, "chat.send", params); err != nil {
+	payload, err := source.client.request(ctx, "chat.send", params)
+	if err != nil {
 		return taskadapter.ExistingTaskResult{}, err
 	}
-	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID, TurnID: idempotencyKey}, nil
+	turnID := idempotencyKey
+	if serverRunID := serverAssignedRunID(payload); serverRunID != "" {
+		turnID = serverRunID
+	}
+	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID, TurnID: turnID}, nil
+}
+
+// serverAssignedRunID extracts a non-empty "runId" string field from a
+// chat.send ack payload, or "" if the payload carries none. The protocol
+// doc marks this ack shape as unknown, so a missing or malformed field is
+// not an error — the caller falls back to the idempotency key it generated.
+func serverAssignedRunID(payload json.RawMessage) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	var body struct {
+		RunID string `json:"runId"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil {
+		return ""
+	}
+	return body.RunID
 }
 
 // RedirectExistingTurn sends sessions.steer, which the gateway treats as
@@ -215,6 +237,14 @@ func (source *Source) snapshot() taskstate.Task {
 		UpdatedAtUnix: source.updatedAt,
 		Source:        taskstate.SourceAppServer,
 	}
+}
+
+// Done returns a channel that closes when the underlying gateway connection
+// drops — the reader goroutine's readLoop exiting, whether from a clean
+// Close or the socket dying underneath it. The runtime selects on it to
+// notice a dead connection and redial.
+func (source *Source) Done() <-chan struct{} {
+	return source.client.done
 }
 
 // Close stops the reader goroutine and closes the gateway connection.

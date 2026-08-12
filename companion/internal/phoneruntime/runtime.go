@@ -24,6 +24,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
 	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
 	capabilityruntime "github.com/codex-launcher/codex-launcher/companion/internal/capability/runtime"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 	"github.com/codex-launcher/codex-launcher/companion/internal/decisions"
 	"github.com/codex-launcher/codex-launcher/companion/internal/durablestore"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
@@ -50,6 +51,16 @@ const turnProxySessionKey = "agent:main:main"
 // failed gateway dial and the next attempt. A package var so tests can
 // shrink it instead of waiting out a real 5 seconds.
 var turnProxyRetryDelay = 5 * time.Second
+
+// turnProxyPublishAttempts and turnProxyPublishRefreshDelay mirror the
+// desktop event pump's retry semantics (internal/app/eventpump.go
+// maxTaskEventPublishAttempts / taskCatalogRefreshDelay): a task event for a
+// task the handler's snapshot doesn't know about yet gets one snapshot
+// refresh and a short wait before being retried.
+const (
+	turnProxyPublishAttempts     = 3
+	turnProxyPublishRefreshDelay = 50 * time.Millisecond
+)
 
 var (
 	ErrInvalidConfig      = errors.New("phone runtime configuration is invalid")
@@ -145,6 +156,11 @@ type Runtime struct {
 	// turnProxyCancel stops the connect-retry goroutine; Close calls it.
 	// Nil when no gateway is configured, so there is nothing to stop.
 	turnProxyCancel context.CancelFunc
+	// turnProxyDone closes when the connect-retry goroutine returns, so
+	// Close can wait for it to fully exit before closing the store out
+	// from under it. Nil alongside turnProxyCancel when no gateway is
+	// configured.
+	turnProxyDone chan struct{}
 }
 
 func (config Config) validate() error {
@@ -287,6 +303,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	handler.EnableCapabilities(flow)
 
 	var turnProxyCancel context.CancelFunc
+	var turnProxyDone chan struct{}
 	if turnSource != nil {
 		connect := dependencies.TurnProxyConnect
 		if connect == nil {
@@ -294,22 +311,22 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		}
 		var connectCtx context.Context
 		connectCtx, turnProxyCancel = context.WithCancel(context.Background())
-		go runTurnProxyConnect(connectCtx, connect, config.GatewayURL, config.GatewayTokenPath, turnSource, handler, logger)
+		turnProxyDone = make(chan struct{})
+		go func() {
+			defer close(turnProxyDone)
+			runTurnProxyConnect(connectCtx, connect, config.GatewayURL, config.GatewayTokenPath, turnSource, handler, logger)
+		}()
 	}
 
 	mobileServer, err := transport.NewServer(pairingService, handler.Handle, logger)
 	if err != nil {
-		if turnProxyCancel != nil {
-			turnProxyCancel()
-		}
+		stopTurnProxyConnect(turnProxyCancel, turnProxyDone, turnSource, logger)
 		_ = store.Close()
 		return nil, err
 	}
 	certificate, err := pairingService.TLSCertificate(now())
 	if err != nil {
-		if turnProxyCancel != nil {
-			turnProxyCancel()
-		}
+		stopTurnProxyConnect(turnProxyCancel, turnProxyDone, turnSource, logger)
 		_ = store.Close()
 		return nil, err
 	}
@@ -319,9 +336,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	// the runtime is currently serving, not a stale cert from a prior run.
 	bridgeCertPath := filepath.Join(config.Root, "agentbridge-cert.pem")
 	if err := writeAgentBridgeCert(bridgeCertPath, certificate); err != nil {
-		if turnProxyCancel != nil {
-			turnProxyCancel()
-		}
+		stopTurnProxyConnect(turnProxyCancel, turnProxyDone, turnSource, logger)
 		_ = store.Close()
 		return nil, err
 	}
@@ -346,6 +361,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		bridgeCertPath:  bridgeCertPath,
 		turnSource:      turnSource,
 		turnProxyCancel: turnProxyCancel,
+		turnProxyDone:   turnProxyDone,
 		operatorPin: localtrust.ExpectedOperator{
 			PackageName: "app.codexlauncher",
 			// Release (frozen owner) APK signer. Debug builds use c613e660… — accept both below.
@@ -368,22 +384,102 @@ func connectTurnProxy(ctx context.Context, cfg turnproxy.Config) (TurnSource, er
 	return turnproxy.Connect(ctx, cfg)
 }
 
-// runTurnProxyConnect dials the gateway and retries until it succeeds or
-// ctx is canceled (by Runtime.Close). The token is read fresh from disk on
-// every attempt rather than once up front, so rotating the file without
-// restarting the runtime still works the next time it is read — and a
-// token file that is briefly missing or unreadable is just another
-// retryable failure, not a fatal one.
-func runTurnProxyConnect(ctx context.Context, connect func(context.Context, turnproxy.Config) (TurnSource, error), gatewayURL, tokenPath string, deferred *deferredTurnSource, publisher turnproxy.EventPublisher, logger *slog.Logger) {
+// gatewayTaskEventHandler is the subset of *mobilesession.Handler that
+// gatewayPublisher and runTurnProxyConnect need. It exists so tests could
+// substitute a stub, though production always hands in the real handler.
+type gatewayTaskEventHandler interface {
+	PublishTaskEvent(context.Context, taskstate.MobileEvent) error
+	RefreshTaskSnapshot(context.Context) error
+}
+
+// gatewayPublisher adapts the mobile session handler to turnproxy's
+// EventPublisher, mirroring the desktop event pump's retry semantics
+// (internal/app/eventpump.go publishTaskEvent): the handler's task snapshot
+// can lag the gateway's turn-proxy task by a beat (freshly connected, or
+// mid reconnect), so ErrUnknownTaskEvent gets one snapshot refresh and a
+// short wait before the event is retried, rather than being dropped.
+type gatewayPublisher struct {
+	handler gatewayTaskEventHandler
+	logger  *slog.Logger
+}
+
+func (publisher *gatewayPublisher) PublishTaskEvent(ctx context.Context, event taskstate.MobileEvent) error {
+	var lastErr error
+	for attempt := 1; attempt <= turnProxyPublishAttempts; attempt++ {
+		lastErr = publisher.handler.PublishTaskEvent(ctx, event)
+		if lastErr == nil {
+			return nil
+		}
+		if errors.Is(lastErr, mobilesession.ErrTaskEventAuthorizationRevoked) {
+			return lastErr
+		}
+		if errors.Is(lastErr, mobilesession.ErrUnknownTaskEvent) && attempt < turnProxyPublishAttempts {
+			if refreshErr := publisher.handler.RefreshTaskSnapshot(ctx); refreshErr != nil {
+				return fmt.Errorf("phone runtime: refresh task snapshot: %w", refreshErr)
+			}
+			publisher.logger.Info("[phone-runtime] turn proxy task catalog refreshed", "thread_id", event.TaskID, "attempt", attempt)
+			if !waitOrCanceled(ctx, turnProxyPublishRefreshDelay) {
+				return ctx.Err()
+			}
+			continue
+		}
+		return lastErr
+	}
+	return lastErr
+}
+
+// runTurnProxyConnect owns the gateway connection for the runtime's
+// lifetime: it dials with retry, hands the connected source to deferred,
+// and — since a gateway connection can drop at any time (the process
+// restarting, the network dropping) — redials for as long as ctx stays
+// alive rather than returning after the first successful connect.
+func runTurnProxyConnect(ctx context.Context, connect func(context.Context, turnproxy.Config) (TurnSource, error), gatewayURL, tokenPath string, deferred *deferredTurnSource, handler gatewayTaskEventHandler, logger *slog.Logger) {
+	publisher := &gatewayPublisher{handler: handler, logger: logger}
+	for {
+		source, ok := dialTurnProxyWithRetry(ctx, connect, gatewayURL, tokenPath, publisher, logger)
+		if !ok {
+			return
+		}
+		deferred.set(source)
+		logger.Info("[phone-runtime] turn proxy connected")
+		if err := handler.RefreshTaskSnapshot(ctx); err != nil {
+			logger.Error("[phone-runtime] turn proxy post-connect snapshot refresh failed", "error", err.Error())
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-source.Done():
+			// Clear and close before looping back to redial — the runtime
+			// must never report TaskCapable on a socket that is already
+			// dead, and the old connection must be fully released before a
+			// new one takes its place.
+			if old := deferred.clear(); old != nil {
+				if err := old.Close(); err != nil {
+					logger.Error("[phone-runtime] turn proxy close after drop failed", "error", err.Error())
+				}
+			}
+			logger.Info("[phone-runtime] turn proxy connection dropped, reconnecting")
+		}
+	}
+}
+
+// dialTurnProxyWithRetry dials the gateway and retries until it succeeds or
+// ctx is canceled, returning (nil, false) in the latter case. The token is
+// read fresh from disk on every attempt rather than once up front, so
+// rotating the file without restarting the runtime still works the next
+// time it is read — and a token file that is briefly missing or unreadable
+// is just another retryable failure, not a fatal one.
+func dialTurnProxyWithRetry(ctx context.Context, connect func(context.Context, turnproxy.Config) (TurnSource, error), gatewayURL, tokenPath string, publisher turnproxy.EventPublisher, logger *slog.Logger) (TurnSource, bool) {
 	for {
 		if ctx.Err() != nil {
-			return
+			return nil, false
 		}
 		raw, err := os.ReadFile(tokenPath)
 		if err != nil {
 			logger.Error("[phone-runtime] turn proxy token unreadable", "error", err.Error())
 			if !waitOrCanceled(ctx, turnProxyRetryDelay) {
-				return
+				return nil, false
 			}
 			continue
 		}
@@ -399,13 +495,41 @@ func runTurnProxyConnect(ctx context.Context, connect func(context.Context, turn
 		if err != nil {
 			logger.Error("[phone-runtime] turn proxy connect failed", "error", err.Error())
 			if !waitOrCanceled(ctx, turnProxyRetryDelay) {
-				return
+				return nil, false
 			}
 			continue
 		}
-		deferred.set(source)
-		logger.Info("[phone-runtime] turn proxy connected")
+		if ctx.Err() != nil {
+			// The dial can resolve successfully after Close already
+			// canceled ctx — the source must not be handed back for
+			// installation into a runtime that is tearing down.
+			if closeErr := source.Close(); closeErr != nil {
+				logger.Error("[phone-runtime] turn proxy close of late connect failed", "error", closeErr.Error())
+			}
+			return nil, false
+		}
+		return source, true
+	}
+}
+
+// stopTurnProxyConnect cancels the connect-retry goroutine, waits for it to
+// actually exit, so a caller closing the store next never races the
+// goroutine still using it, and then closes whatever source the goroutine
+// installed — so every teardown path (Close and Open's error paths) releases
+// the socket identically. A nil cancel means no gateway was configured —
+// there is nothing to stop, and this must not block or panic in that case.
+func stopTurnProxyConnect(cancel context.CancelFunc, done chan struct{}, source *deferredTurnSource, logger *slog.Logger) {
+	if cancel == nil {
 		return
+	}
+	cancel()
+	if done != nil {
+		<-done
+	}
+	if source != nil {
+		if err := source.Close(); err != nil {
+			logger.Error("[phone-runtime] turn proxy close failed", "error", err.Error())
+		}
 	}
 }
 
@@ -475,14 +599,7 @@ func (runtime *Runtime) Close() error {
 	if runtime == nil || runtime.store == nil {
 		return nil
 	}
-	if runtime.turnProxyCancel != nil {
-		runtime.turnProxyCancel()
-	}
-	if runtime.turnSource != nil {
-		if err := runtime.turnSource.Close(); err != nil {
-			runtime.logger.Error("[phone-runtime] turn proxy close failed", "error", err.Error())
-		}
-	}
+	stopTurnProxyConnect(runtime.turnProxyCancel, runtime.turnProxyDone, runtime.turnSource, runtime.logger)
 	return runtime.store.Close()
 }
 
