@@ -254,6 +254,11 @@ func TestListDescribesEveryRegisteredAdapter(t *testing.T) {
 	if preview, ok := verbs["send"]; !ok || !preview {
 		t.Fatalf("send verb: present=%v requiresPreview=%v, want present with preview", ok, preview)
 	}
+	// Every adapter's tool offers disconnect — the agent-side revoke — and a
+	// revoke always stops for the owner, so it previews.
+	if preview, ok := verbs["disconnect"]; !ok || !preview {
+		t.Fatalf("disconnect verb: present=%v requiresPreview=%v, want present with preview", ok, preview)
+	}
 
 	// The invented input schema must name the intent fields and pin the
 	// verb to what this adapter actually offers.
@@ -271,8 +276,8 @@ func TestListDescribesEveryRegisteredAdapter(t *testing.T) {
 		t.Fatalf("verb property not an object: %#v", props["verb"])
 	}
 	enum, ok := verbProp["enum"].([]any)
-	if !ok || len(enum) != 2 {
-		t.Fatalf("verb enum = %#v, want the adapter's two verbs", verbProp["enum"])
+	if !ok || len(enum) != 3 {
+		t.Fatalf("verb enum = %#v, want the adapter's two verbs plus disconnect", verbProp["enum"])
 	}
 }
 

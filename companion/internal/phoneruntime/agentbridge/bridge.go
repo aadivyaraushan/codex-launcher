@@ -37,6 +37,18 @@ type GateDeps struct {
 	// allow list for autonomous sends. Nil means the allow list is empty —
 	// nobody is allow-listed.
 	AllowListed func(recipient string) bool
+	// Disconnector runs an approved disconnect — the agent-side revoke that
+	// undoes an adapter's credentials and consent grant. Satisfied by
+	// capability/disconnect's Service.
+	Disconnector Disconnector
+}
+
+// Disconnector is what the bridge needs to run the disconnect verb: undo an
+// adapter's credentials and consent grant, and report whether that has
+// already happened for a given adapter id.
+type Disconnector interface {
+	Disconnect(ctx context.Context, adapterID string) error
+	Disconnected(adapterID string) bool
 }
 
 // ApprovalNotifier tells the launcher a call stopped for the owner's OK. A
@@ -141,9 +153,14 @@ func (b *Bridge) handleList(w http.ResponseWriter, _ *http.Request) {
 // agent plans against. The manifest carries no parameter schema of its
 // own, so InputSchema is invented here from the one intent shape every
 // adapter accepts.
+//
+// disconnect is appended to every tool's verbs and enum here rather than
+// coming from the manifest: it is a bridge-level verb, not a manifest verb —
+// it has no plan, so manifest.ParseVerb never sees it, and every adapter
+// gets one whether or not its manifest declares a revoke verb of its own.
 func describeTool(m manifest.Manifest) ToolDescriptor {
-	verbs := make([]VerbDescriptor, 0, len(m.Verbs))
-	verbNames := make([]any, 0, len(m.Verbs))
+	verbs := make([]VerbDescriptor, 0, len(m.Verbs)+1)
+	verbNames := make([]any, 0, len(m.Verbs)+1)
 	for _, v := range m.Verbs {
 		verbs = append(verbs, VerbDescriptor{Name: string(v), RequiresPreview: v.RequiresPreview()})
 		verbNames = append(verbNames, string(v))
@@ -155,6 +172,9 @@ func describeTool(m manifest.Manifest) ToolDescriptor {
 		}
 		description += string(v)
 	}
+	description += ", disconnect (undo this app's credentials and consent)"
+	verbs = append(verbs, VerbDescriptor{Name: "disconnect", RequiresPreview: true})
+	verbNames = append(verbNames, "disconnect")
 	return ToolDescriptor{
 		Name:        m.ID,
 		Description: description,
@@ -196,6 +216,13 @@ func (b *Bridge) handleCall(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		b.logCall(req.Adapter, req.Verb, "bad_request")
 		writeJSON(w, http.StatusBadRequest, ToolCallResult{OK: false, Error: &CallError{Code: "bad_request", Message: "body is not valid JSON"}})
+		return
+	}
+
+	// disconnect is bridge-level, not a manifest verb: it has no plan, so it
+	// never reaches ParseVerb or Resolve/Preview.
+	if req.Verb == "disconnect" {
+		b.handleDisconnectCall(w, r, req)
 		return
 	}
 
@@ -283,6 +310,67 @@ func (b *Bridge) handleCall(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// handleDisconnectCall handles the disconnect verb: not a manifest verb, so
+// it never reaches ParseVerb, Resolve, or Preview — a disconnect has no
+// plan, only an adapter id whose credentials and consent grant get undone.
+// It is one of the four hard gates (KindRevoke) and always stops for the
+// owner's approval, regardless of the allow list.
+func (b *Bridge) handleDisconnectCall(w http.ResponseWriter, r *http.Request, req ToolCallRequest) {
+	if b.gate.Disconnector == nil {
+		// Misconfiguration — no disconnector wired — fails closed rather
+		// than silently no-op'ing a revoke.
+		b.logCall(req.Adapter, req.Verb, "adapter_failed")
+		writeJSON(w, http.StatusBadGateway, ToolCallResult{OK: false, Error: &CallError{Code: "adapter_failed", Message: "disconnect is not wired"}})
+		return
+	}
+
+	if b.gate.Disconnector.Disconnected(req.Adapter) {
+		// Idempotent repeat: the connection is already undone, so there is
+		// nothing left to approve.
+		b.logCall(req.Adapter, req.Verb, "ok")
+		writeJSON(w, http.StatusOK, ToolCallResult{OK: true, Done: true, Detail: "already disconnected"})
+		return
+	}
+
+	if _, err := b.runner.Describe(req.Adapter); err != nil {
+		b.respondCallError(w, req.Adapter, req.Verb, err)
+		return
+	}
+
+	decision, err := b.gate.Policy.Evaluate(gates.CallFacts{
+		Adapter: req.Adapter,
+		Verb:    "disconnect",
+		TurnKey: req.TurnKey,
+		Revoke:  true,
+	})
+	if err != nil {
+		b.respondCallError(w, req.Adapter, req.Verb, err)
+		return
+	}
+
+	// Revoke is always gated, so decision.Allow is always false here, but
+	// this mirrors the gated branch in handleCall rather than assuming it.
+	gate := *decision.Gate
+	preview := execution.Preview{adapter.Preview{
+		Headline: "Disconnect " + req.Adapter,
+		Confirm:  "Disconnect",
+	}}
+	previewSummary := PreviewSummary{Headline: preview.Headline, Lines: preview.Lines, Confirm: preview.Confirm}
+	b.pendingMu.Lock()
+	b.pending[gate.ID] = pendingCall{preview: preview, adapterID: req.Adapter, verb: "disconnect"}
+	b.pendingMu.Unlock()
+	if b.gate.Notifier != nil {
+		b.gate.Notifier.GateRaised(gate, previewSummary)
+	}
+	b.logGateEvent(req.Adapter, req.Verb, "gated", gate.ID)
+	writeJSON(w, http.StatusOK, ToolCallResult{
+		OK:      false,
+		GateID:  gate.ID,
+		Preview: &previewSummary,
+		Error:   &CallError{Code: "approval_required", Message: gateMessage(gate.Kind)},
+	})
+}
+
 // executeCall runs plan to completion and marks its recipient known on
 // success. It is the one place that actually calls the adapter, shared by
 // the direct-allow path in handleCall and by ApproveGate, so both produce
@@ -353,6 +441,21 @@ func (b *Bridge) ApproveGate(ctx context.Context, gateID string) (ToolCallResult
 		// The policy released a gate this bridge never stored a call for —
 		// a bug in this package, not a caller error.
 		return ToolCallResult{}, fmt.Errorf("agentbridge: gate %q approved but has no pending call", gateID)
+	}
+	if call.verb == "disconnect" {
+		// A disconnect has no plan to execute — it runs the disconnector
+		// directly and never touches MarkRecipientMessaged, since there is
+		// no recipient.
+		if err := b.gate.Disconnector.Disconnect(ctx, call.adapterID); err != nil {
+			return ToolCallResult{}, err
+		}
+		b.logCall(call.adapterID, call.verb, "approved")
+		return ToolCallResult{
+			OK:      true,
+			Reached: "completes",
+			Done:    true,
+			Preview: &PreviewSummary{Headline: call.preview.Headline, Lines: call.preview.Lines, Confirm: call.preview.Confirm},
+		}, nil
 	}
 	return b.executeCall(ctx, call.plan, call.preview, call.adapterID, call.recipient, call.verb, "approved")
 }
