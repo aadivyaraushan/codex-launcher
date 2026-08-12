@@ -1,8 +1,8 @@
 # Phase 4 — Hard gates (Pixel on-device)
 
-**Timestamp (UTC):** 2026-08-12T22:16:03Z → 2026-08-12T22:19:25Z  
+**Timestamp (UTC):** 2026-08-12T22:16Z initial attempts; tip alias retest 2026-08-12T23:10Z  
 **Serial:** `4B230DLAQ001Z5`  
-**Result:** **BLOCKED**
+**Result:** **PARTIAL / UI BLOCKED**
 
 ## Pass criteria (from `saved-results/phase4-hard-gates.md`)
 
@@ -10,18 +10,33 @@
 - Known contact ungated (if testable without harm)
 - Typing “go ahead” does **not** release a hard gate; only Approve does
 
-## What was attempted
+## Tip progress (after PR #10 recipient aliases)
 
-1. OpenClaw CLI agent turn (account `ssdear@gmail.com`) instructed to call `discord` send to a synthetic never-contacted handle and stop on `approval_required`.
-2. Direct bridge `POST /v1/agent-tools/call` for `messages` and `discord` send with synthetic handles (no Approve tapped).
+Direct bridge `POST /v1/agent-tools/call` on tip runtime now returns **`approval_required`** for Messages send when `to` / `recipient` / `handle` is set to a never-contacted number (see `phase4-alias-retest-tip.txt`). Example:
 
-## Observed
+- `messages` + `to=+15551230999` → `error.code=approval_required`, `gateId=gate-…`, preview “Send a Google Messages message…”.
 
-- Agent final line (UI preview): **`GATE_UNAVAILABLE`** / later home preview also showed **`BLOCKED_NO_SELF_TARGET`** from a concurrent turn.
-- Screenshots: `phase4-ui-20260812T221603Z-*.png` (home stayed **Replied** until single-line reply landed); `phase4-after-bridge-20260812T221925Z.png` quotes **`Agent: BLOCKED_NO_SELF_TARGET`**.
-- Bridge calls returned `adapter_failed` / `beeper message: recipient must not be empty` for both `messages` and `discord` (see `phase4-bridge-gate-call.txt`, `phase4-bridge-gate-call2.txt`). Gate never raised → **no Approve sheet** to exercise “go ahead”.
-- Home **Send** control remains `enabled=false` (no `new_task_options` selection), so composer cannot drive a gated turn from UI either.
+Earlier the same shape failed with `recipient must not be empty` before aliases landed.
 
-## Blocker
+Discord synthetic handle still fails at resolve (`capability needs clarification`) — no gate.
 
-Messaging adapters (`messages`/`discord`) fail resolve/preview with empty Beeper recipient before the first-contact gate runs; UI Approve sheet therefore unreachable on this device right now.
+## UI Approve sheet
+
+Still **not** captured end-to-end:
+
+- Bridge-raised gates from the proof scripts did not auto-surface an Approve sheet in Operator Home/task UI.
+- No safe self/known Messages or Discord target was identifiable (`NO_SELF_TARGET` / `BLOCKED_NO_SELF_TARGET` from earlier agent turns).
+- Overnight rule: do **not** Approve a send to a random/stranger number just to force the sheet.
+
+Therefore “go ahead must not release / Approve must” was **not** exercised on-device.
+
+## Artifacts
+
+- `phase4-alias-retest-tip.txt` — tip bridge `approval_required` for Messages aliases
+- `phase4-bridge-gate-call*.txt` — pre-tip empty-recipient failures
+- `phase4-*-*.png` — home/task during earlier attempts (no Approve sheet)
+- `phase4-find-self.json` / `phase4-agent-ask-*.log.answer.txt`
+
+## Next unblock
+
+Owner-provided self chat handle (Messages note-to-self or Discord self-DM), then: agent/UI send → Approve sheet → type `go ahead` (must not release) → tap Approve (must release).

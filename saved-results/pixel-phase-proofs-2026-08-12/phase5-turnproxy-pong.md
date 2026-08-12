@@ -62,3 +62,17 @@ Phase 6+ on-device proofs on the same tip (interrupt / steer / longer turns), st
 The `Could not send` failures logged `action-journal … decision=block_send_storage_unavailable` while the write gate was **STANDALONE**. Tip APK from `7339a42` alone still hits that; the successful turn used an APK with `ActionRecordStore` falling back to `withStandaloneWrite`. Landed on tip as **`cbd0ee1`**.
 
 Additional overnight artifacts: `phase5-after-reply-20260812T230351Z.*`, `phase5-stream-20260812T230244Z-1.*` (You:), `phase5-stream-20260812T230351Z-14.*` (pong), `phase5-send-logs-redacted.txt`.
+
+## Re-proof after tip deploy (same night, GST)
+
+Second UI pass after runtime sha `3e4e70c9…` + `installDebug` + operator-tools plugin sync:
+
+| Step | Evidence |
+|---|---|
+| Typed prompt | `phase5-04-typed.png` / `phase5-typed-pong.png` — composer `Reply with exactly: pong` |
+| After Send | `phase5-05-after-send.png` — Home/task shows `You: Reply with exactly: pong` then `Replied` |
+| Agent reply | `phase5-pong-reply.png` — `Agent: pong` / `Replied pong` |
+| Health | `taskCapable=true`, `localPair=acked` (no software-attest) |
+
+Note: Compose a11y still reports Send `clickable=false` while the control is visually active and the existing-turn path accepts the tap (semantics quirk; functional Send confirmed by the accepted turn).
+
