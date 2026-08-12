@@ -281,6 +281,65 @@ func TestListDescribesEveryRegisteredAdapter(t *testing.T) {
 	}
 }
 
+func TestListMessagingSchemaNamesRecipientAliases(t *testing.T) {
+	server, _ := bridgeWith(t,
+		newFake("discord", manifest.Read, manifest.Send),
+		newFake("messages", manifest.Read, manifest.Send),
+		newFake("instagram", manifest.Read, manifest.Send),
+		newFake("gcal.event", manifest.Read),
+	)
+
+	resp, raw := do(t, http.MethodGet, server.URL+"/v1/agent-tools/list", testToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, raw)
+	}
+	var result agentbridge.ToolListResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatalf("list body not JSON: %v; body: %s", err, raw)
+	}
+	byName := map[string]agentbridge.ToolDescriptor{}
+	for _, tool := range result.Tools {
+		byName[tool.Name] = tool
+	}
+	for _, name := range []string{"discord", "messages", "instagram"} {
+		tool, ok := byName[name]
+		if !ok {
+			t.Fatalf("%s missing from list: %s", name, raw)
+		}
+		props, ok := tool.InputSchema["properties"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s InputSchema.properties missing: %#v", name, tool.InputSchema)
+		}
+		for _, field := range []string{"subject", "handle", "to", "recipient", "chat_id"} {
+			prop, ok := props[field].(map[string]any)
+			if !ok {
+				t.Fatalf("%s schema missing %q: %#v", name, field, props)
+			}
+			desc, _ := prop["description"].(string)
+			if desc == "" {
+				t.Fatalf("%s %s description empty", name, field)
+			}
+		}
+		subject, _ := props["subject"].(map[string]any)
+		desc, _ := subject["description"].(string)
+		if !strings.Contains(strings.ToLower(desc), "contact") && !strings.Contains(strings.ToLower(desc), "person") && !strings.Contains(strings.ToLower(desc), "who") {
+			t.Fatalf("%s subject description %q does not tell the model who to send to", name, desc)
+		}
+	}
+
+	gcal, ok := byName["gcal.event"]
+	if !ok {
+		t.Fatalf("gcal.event missing from list: %s", raw)
+	}
+	gcalProps, ok := gcal.InputSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("gcal.event InputSchema.properties missing: %#v", gcal.InputSchema)
+	}
+	if _, has := gcalProps["to"]; has {
+		t.Fatalf("non-messaging tool gcal.event must not advertise send aliases: %#v", gcalProps)
+	}
+}
+
 // ---- call ---------------------------------------------------------------
 
 func TestCallDrivesResolvePreviewExecuteInOrder(t *testing.T) {

@@ -190,7 +190,7 @@ func NewWithTaskSourceQueueAndAttachments(
 	if now == nil {
 		now = time.Now
 	}
-	tasks, err := loadSnapshotTasks(ctx, taskSource, promptQueue)
+	tasks, err := loadSnapshotTasks(ctx, taskSource, promptQueue, logger)
 	if err != nil {
 		logger.Error("[mobile-session] task snapshot unavailable", "branch_reason", "unsafe_or_unavailable_catalog", "error_class", fmt.Sprintf("%T", err))
 		return nil, err
@@ -550,7 +550,7 @@ func (handler *Handler) refreshTaskSnapshot(ctx context.Context, provisionalTask
 	if handler.taskSource == nil {
 		return handler.journal.Snapshot(handler.now())
 	}
-	tasks, err := loadSnapshotTasks(ctx, handler.taskSource, handler.promptQueue)
+	tasks, err := loadSnapshotTasks(ctx, handler.taskSource, handler.promptQueue, handler.logger)
 	if err != nil {
 		handler.logger.Error("[mobile-session] task refresh failed", "branch_reason", "catalog_unavailable", "error_class", fmt.Sprintf("%T", err))
 		return eventjournal.Snapshot{}, err
@@ -1946,7 +1946,7 @@ func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCap
 	return body
 }
 
-func loadSnapshotTasks(ctx context.Context, source TaskSource, queue *promptqueue.Queue) ([]snapshotTask, error) {
+func loadSnapshotTasks(ctx context.Context, source TaskSource, queue *promptqueue.Queue, logger *slog.Logger) ([]snapshotTask, error) {
 	if source == nil {
 		return []snapshotTask{}, nil
 	}
@@ -1977,10 +1977,20 @@ func loadSnapshotTasks(ctx context.Context, source TaskSource, queue *promptqueu
 			LastActivityAt: time.Unix(task.UpdatedAtUnix, 0).UTC().Format(time.RFC3339),
 		}
 		if task.LastMessage != (taskstate.LastMessage{}) {
-			entry.LastMessage = &struct {
-				From string `json:"from"`
-				Text string `json:"text"`
-			}{From: task.LastMessage.From, Text: task.LastMessage.Text}
+			safe := taskstate.SafeLastMessage(task.LastMessage)
+			if safe == (taskstate.LastMessage{}) {
+				if logger != nil {
+					logger.Info("[mobile-session] omitted unsafe lastMessage", "task_id", task.ID, "branch_reason", "invalid_safe_projection")
+				}
+			} else {
+				if safe.Text != task.LastMessage.Text && logger != nil {
+					logger.Info("[mobile-session] repaired unsafe lastMessage", "task_id", task.ID, "branch_reason", "invalid_safe_projection")
+				}
+				entry.LastMessage = &struct {
+					From string `json:"from"`
+					Text string `json:"text"`
+				}{From: safe.From, Text: safe.Text}
+			}
 		}
 		projected = append(projected, entry)
 	}

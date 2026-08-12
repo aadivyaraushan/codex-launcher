@@ -1,0 +1,11 @@
+{
+  "note": "a pretty-printed JSON reply (newlines) must collapse to a single-line summary; otherwise PublishTaskEvent fails safeDisplayString and the phone stays on Working",
+  "events": [
+    {"state": "delta", "deltaText": "{\n  \"ok\": true\n}", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 1},
+    {"state": "final", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 2}
+  ],
+  "want": [
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "{ \"ok\": true }", "startsTurn": false}
+  ]
+}

@@ -42,12 +42,15 @@ type ToolListResult struct {
 // ToolCallRequest is the body of POST /v1/agent-tools/call — an intent in
 // wire form.
 type ToolCallRequest struct {
-	Adapter string            `json:"adapter"`
-	Verb    string            `json:"verb"`
-	Subject string            `json:"subject,omitempty"`
-	Handle  string            `json:"handle,omitempty"`
-	Body    string            `json:"body,omitempty"`
-	Fields  map[string]string `json:"fields,omitempty"`
+	Adapter   string            `json:"adapter"`
+	Verb      string            `json:"verb"`
+	Subject   string            `json:"subject,omitempty"`
+	Handle    string            `json:"handle,omitempty"`
+	To        string            `json:"to,omitempty"`
+	Recipient string            `json:"recipient,omitempty"`
+	ChatID    string            `json:"chat_id,omitempty"`
+	Body      string            `json:"body,omitempty"`
+	Fields    map[string]string `json:"fields,omitempty"`
 	// TurnKey identifies the agent turn this call belongs to, so the gate
 	// policy can tell a read-then-send within one turn (exfiltration risk)
 	// from the same sequence spread across turns.

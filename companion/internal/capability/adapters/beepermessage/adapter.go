@@ -140,9 +140,12 @@ func (a *Adapter) Describe() manifest.Manifest {
 }
 
 func (a *Adapter) Resolve(ctx context.Context, in adapter.Intent) (adapter.Plan, error) {
+	recipient, recipientSource := recipientFromIntent(in)
 	a.logger.Info("[beeper-message] resolve",
 		"adapter_id", a.spec.ID, "network", a.spec.Network, "verb", in.Verb,
-		"subject_length", len(in.Subject), "body_length", len(in.Body),
+		"subject_length", len(in.Subject), "handle_length", len(in.Handle),
+		"body_length", len(in.Body), "recipient_length", len(recipient),
+		"recipient_source", recipientSource,
 		"operation", strings.TrimSpace(in.Fields["operation"]))
 	if a.api == nil {
 		return adapter.Plan{}, ErrNotConnected
@@ -160,15 +163,15 @@ func (a *Adapter) Resolve(ctx context.Context, in adapter.Intent) (adapter.Plan,
 }
 
 func (a *Adapter) resolveRead(ctx context.Context, in adapter.Intent) (adapter.Plan, error) {
-	subject := strings.TrimSpace(in.Subject)
+	recipient, _ := recipientFromIntent(in)
 	body := strings.TrimSpace(in.Body)
 	switch {
-	case subject == "" && body != "":
+	case recipient == "" && body != "":
 		return a.resolveSearchRead(ctx, body)
-	case subject == "":
+	case recipient == "":
 		return a.resolveUnreadScan(ctx)
 	default:
-		return a.resolveNamedRead(ctx, subject)
+		return a.resolveNamedRead(ctx, recipient)
 	}
 }
 
@@ -296,10 +299,15 @@ func (a *Adapter) collectUnreadChats(ctx context.Context) ([]beeper.Chat, error)
 }
 
 func (a *Adapter) resolveSend(ctx context.Context, in adapter.Intent) (adapter.Plan, error) {
-	recipient := strings.TrimSpace(in.Subject)
+	recipient, source := recipientFromIntent(in)
 	if recipient == "" {
+		a.logger.Info("[beeper-message] send refused: no recipient",
+			"adapter_id", a.spec.ID, "network", a.spec.Network)
 		return adapter.Plan{}, ErrNoRecipient
 	}
+	a.logger.Info("[beeper-message] send recipient resolved",
+		"adapter_id", a.spec.ID, "network", a.spec.Network,
+		"recipient_source", source, "recipient_length", len(recipient))
 	message := strings.TrimSpace(in.Body)
 	if message == "" {
 		return adapter.Plan{}, ErrEmptyMessage
@@ -411,10 +419,15 @@ func (a *Adapter) resolveManage(ctx context.Context, in adapter.Intent) (adapter
 			Question: fmt.Sprintf("I don't recognize the messaging operation %q.", operation),
 		}
 	}
-	recipient := strings.TrimSpace(in.Subject)
+	recipient, source := recipientFromIntent(in)
 	if recipient == "" {
+		a.logger.Info("[beeper-message] manage refused: no recipient",
+			"adapter_id", a.spec.ID, "operation", operation)
 		return adapter.Plan{}, ErrNoRecipient
 	}
+	a.logger.Info("[beeper-message] manage recipient resolved",
+		"adapter_id", a.spec.ID, "operation", operation,
+		"recipient_source", source, "recipient_length", len(recipient))
 	chat, err := a.resolveNetworkChat(ctx, recipient)
 	if err != nil {
 		return adapter.Plan{}, err
@@ -574,6 +587,23 @@ func (a *Adapter) searchNetwork(ctx context.Context, recipient string) ([]beeper
 	return matches, nil
 }
 
+// recipientFromIntent returns the person or chat to act on, and which
+// intent field it came from. Empty means fail closed.
+func recipientFromIntent(in adapter.Intent) (string, string) {
+	if s := strings.TrimSpace(in.Subject); s != "" {
+		return s, "subject"
+	}
+	if s := strings.TrimSpace(in.Handle); s != "" {
+		return s, "handle"
+	}
+	for _, key := range []string{"to", "recipient", "chat_id"} {
+		if s := strings.TrimSpace(in.Fields[key]); s != "" {
+			return s, "fields." + key
+		}
+	}
+	return "", ""
+}
+
 func exactlyOne(matches []beeper.Chat, network, recipient string) (beeper.Chat, error) {
 	if len(matches) == 0 {
 		return beeper.Chat{}, &adapter.ClarificationError{Question: fmt.Sprintf("I couldn't find a %s conversation matching %s. Which conversation did you mean?", network, recipient)}
@@ -632,7 +662,7 @@ func (a *Adapter) Preview(_ context.Context, plan adapter.Plan) (adapter.Preview
 		return adapter.Preview{Plan: plan, Headline: headline, Lines: lines, Confirm: "Got it"}, nil
 	case "reply":
 		return adapter.Preview{
-			Plan: plan,
+			Plan:     plan,
 			Headline: fmt.Sprintf("Reply on %s to %s", plan.Details["network"], plan.Details["conversation"]),
 			Lines: []string{
 				"Network: " + plan.Details["network"],

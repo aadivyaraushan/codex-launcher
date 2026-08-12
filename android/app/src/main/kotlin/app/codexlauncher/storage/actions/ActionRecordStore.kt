@@ -171,7 +171,10 @@ class ActionRecordStore internal constructor(
 
     private suspend fun pruneExpired() {
         if (writeGate != null) {
-            writeGate.withPairedWrite { pruneExpiredUnguarded() }
+            when (val paired = writeGate.withPairedWrite { pruneExpiredUnguarded() }) {
+                is LocalStateWriteResult.Completed -> Unit
+                LocalStateWriteResult.Blocked -> writeGate.withStandaloneWrite { pruneExpiredUnguarded() }
+            }
         } else {
             pruneExpiredUnguarded()
         }
@@ -199,10 +202,14 @@ class ActionRecordStore internal constructor(
     }
 
     private suspend fun guardedWrite(block: suspend () -> Boolean): Boolean =
-        when (val result = writeGate?.withPairedWrite(block)) {
+        when (val paired = writeGate?.withPairedWrite(block)) {
             null -> block()
-            is LocalStateWriteResult.Completed -> result.value
-            LocalStateWriteResult.Blocked -> false
+            is LocalStateWriteResult.Completed -> paired.value
+            LocalStateWriteResult.Blocked ->
+                when (val standalone = writeGate.withStandaloneWrite(block)) {
+                    is LocalStateWriteResult.Completed -> standalone.value
+                    LocalStateWriteResult.Blocked -> false
+                }
         }
 
     private fun readState(preferences: Preferences): ActionRecordReadState =

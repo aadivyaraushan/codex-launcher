@@ -14,6 +14,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
+	"github.com/codex-launcher/codex-launcher/companion/internal/codex/tasktranscript"
 )
 
 // --- fake gateway ---
@@ -578,6 +579,58 @@ func TestCurrentTaskRemembersWhoSpokeLast(t *testing.T) {
 	}
 }
 
+// A pretty-printed agent reply must land in lastMessage without control
+// characters, or the next snapshot refresh fails invalid_safe_projection
+// and Operator stays on Working.
+func TestCurrentTaskSanitizesMultilineAgentReply(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+
+	result, err := source.StartExistingTurn(context.Background(), testTaskID, "print json")
+	if err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+
+	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "{\n  \"ok\": true\n}", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 1})
+	working := publisher.next(t)
+	if working.Kind != "activity" {
+		t.Fatalf("first event = %#v, want working activity", working)
+	}
+
+	gateway.sendChat(ChatEventPayload{State: "final", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 2})
+	reply := publisher.next(t)
+	if reply.Kind != "reply" || reply.Summary != "{ \"ok\": true }" {
+		t.Fatalf("published reply = %#v", reply)
+	}
+
+	replied, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask after reply: %v", err)
+	}
+	want := taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "{ \"ok\": true }"}
+	if replied.LastMessage != want {
+		t.Fatalf("last message = %#v, want %#v", replied.LastMessage, want)
+	}
+}
+
+func TestCurrentTaskSanitizesMultilineUserPrompt(t *testing.T) {
+	source, gateway, _ := connectedSource(t)
+
+	if _, err := source.StartExistingTurn(context.Background(), testTaskID, "line one\nline two"); err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+
+	sent, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask after send: %v", err)
+	}
+	want := taskstate.LastMessage{From: taskstate.SpeakerUser, Text: "line one line two"}
+	if sent.LastMessage != want {
+		t.Fatalf("last message after send = %#v, want %#v", sent.LastMessage, want)
+	}
+}
+
 func TestCurrentTaskTracksRunState(t *testing.T) {
 	source, gateway, publisher := connectedSource(t)
 
@@ -613,5 +666,77 @@ func TestCurrentTaskTracksRunState(t *testing.T) {
 	}
 	if idle.CanRedirect {
 		t.Fatal("an idle task has no turn to steer")
+	}
+}
+
+func TestReadTranscriptReturnsUserAndAgentLinesFromThisSession(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+
+	page, err := source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("empty ReadTranscript: %v", err)
+	}
+	if page.TaskID != testTaskID || page.Entries == nil {
+		t.Fatalf("empty page = %+v, want task %q with a non-nil entries slice", page, testTaskID)
+	}
+	if len(page.Entries) != 0 {
+		t.Fatalf("fresh source entries = %d, want none", len(page.Entries))
+	}
+
+	result, err := source.StartExistingTurn(context.Background(), testTaskID, "Say only: pong")
+	if err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "pong", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 1})
+	gateway.sendChat(ChatEventPayload{State: "final", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 2})
+	publisher.next(t)
+	publisher.next(t)
+
+	page, err = source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("ReadTranscript after turn: %v", err)
+	}
+	if len(page.Entries) != 2 {
+		t.Fatalf("entries = %d, want user then agent", len(page.Entries))
+	}
+	if page.Entries[0].Kind != tasktranscript.KindUser || page.Entries[0].Text != "Say only: pong" {
+		t.Fatalf("first entry = %+v, want the owner's prompt", page.Entries[0])
+	}
+	if page.Entries[1].Kind != tasktranscript.KindAgent || page.Entries[1].Text != "pong" {
+		t.Fatalf("second entry = %+v, want the agent reply", page.Entries[1])
+	}
+	if page.Entries[0].ID == "" || page.Entries[0].TurnID == "" || page.Entries[1].ID == "" || page.Entries[1].TurnID == "" {
+		t.Fatal("every transcript line needs an id and turnId for the mobile contract")
+	}
+
+	if _, err := source.ReadTranscript(context.Background(), "some-other-task", tasktranscript.PageOptions{TaskID: "some-other-task", Limit: 32}); err == nil {
+		t.Fatal("ReadTranscript must refuse a task this source does not speak for")
+	}
+}
+
+func TestReadTranscriptIncludesTheSeededLastMessage(t *testing.T) {
+	gateway := newFakeGateway(t, false)
+	seed := taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "Archived 41 conversations."}
+	source, err := Connect(context.Background(), Config{
+		URL:                gateway.url(),
+		Token:              "test-token",
+		TaskID:             testTaskID,
+		SessionKey:         testSessionKey,
+		Publisher:          newChannelPublisher(),
+		Logger:             slog.New(slog.DiscardHandler),
+		InitialLastMessage: seed,
+	})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(func() { source.Close() })
+
+	page, err := source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("ReadTranscript: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Kind != tasktranscript.KindAgent || page.Entries[0].Text != seed.Text {
+		t.Fatalf("seeded page = %+v, want the last known agent line", page.Entries)
 	}
 }

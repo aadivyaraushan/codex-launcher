@@ -140,6 +140,54 @@ func TestSendToStrangerStopsForApproval(t *testing.T) {
 	}
 }
 
+func TestAliasFirstContactStopsForApproval(t *testing.T) {
+	cases := []struct {
+		name string
+		req  agentbridge.ToolCallRequest
+	}{
+		{"fields.to", agentbridge.ToolCallRequest{Fields: map[string]string{"to": "+15550009999"}}},
+		{"top-level to", agentbridge.ToolCallRequest{To: "+15550009999"}},
+		{"handle only", agentbridge.ToolCallRequest{Handle: "+15550009999"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newGateStore()
+			messages := newFake("discord", manifest.Send)
+			server, _, n := gatedBridge(t, store, messages)
+			req := tc.req
+			req.Adapter = "discord"
+			req.Verb = "send"
+			req.Body = "hi"
+			req.TurnKey = "turn-1"
+			resp, result := callResult(t, server, req)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want 200", resp.StatusCode)
+			}
+			if result.OK || result.Error == nil || result.Error.Code != "approval_required" {
+				t.Fatalf("%s first-contact must gate, got %+v", tc.name, result)
+			}
+			if result.GateID == "" {
+				t.Fatal("a gated call must carry the gate id the owner will approve or deny")
+			}
+			if result.Preview == nil || result.Preview.Headline == "" {
+				t.Fatalf("a gated call must echo the preview the owner will be shown, got %+v", result.Preview)
+			}
+			if got := executes(messages); got != 0 {
+				t.Fatalf("adapter executed %d times before approval, want 0", got)
+			}
+			if len(n.gates) != 1 || n.gates[0].Recipient != "+15550009999" {
+				t.Fatalf("gate must key the aliased recipient, got %+v", n.gates)
+			}
+			if known, _ := store.KnownRecipient("discord", "+15550009999"); known {
+				t.Fatal("a gated, unexecuted send must not mark the recipient known")
+			}
+			if known, _ := store.KnownRecipient("discord", ""); known {
+				t.Fatal("must not key first-contact history on an empty recipient")
+			}
+		})
+	}
+}
+
 func TestApproveExecutesTheStoredCallExactlyOnce(t *testing.T) {
 	store := newGateStore()
 	messages := newFake("beeper.message", manifest.Send)

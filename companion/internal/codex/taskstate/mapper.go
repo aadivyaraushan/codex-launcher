@@ -142,10 +142,10 @@ func MapAppServerThread(raw json.RawMessage) (Task, error) {
 		title = thread.Preview
 	}
 	lastMessage := LastMessage{}
-	if preview := safeDisplay(thread.Preview, "", 512); preview != "" {
+	if preview := SafeDisplay(thread.Preview, "", 512); preview != "" {
 		lastMessage = LastMessage{From: SpeakerPlain, Text: preview}
 	}
-	return Task{ID: thread.ID, Title: safeDisplay(title, "Codex task", 256), ProjectLabel: safeDisplay(projectLabel(thread.CWD), "Project", 128), ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", UpdatedAtUnix: thread.UpdatedAt, Source: SourceAppServer,
+	return Task{ID: thread.ID, Title: SafeDisplay(title, "Codex task", 256), ProjectLabel: SafeDisplay(projectLabel(thread.CWD), "Project", 128), ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", UpdatedAtUnix: thread.UpdatedAt, Source: SourceAppServer,
 		State: Map(Signals{ThreadID: thread.ID, RuntimeStatus: thread.Status.Type, ActiveFlags: thread.Status.ActiveFlags, LastTurnStatus: lastTurnStatus}), LastMessage: lastMessage}, nil
 }
 
@@ -205,7 +205,7 @@ func MapDesktopConversationState(raw json.RawMessage) (Task, error) {
 		}
 	}
 	state := Map(Signals{ThreadID: conversationState.ID, RuntimeStatus: conversationState.RuntimeStatus.Type, ActiveFlags: conversationState.RuntimeStatus.ActiveFlags, LastTurnStatus: lastTurnStatus, PendingRequestKind: pendingKind, PendingRequestID: pendingID})
-	return Task{ID: conversationState.ID, Title: "Codex task", ProjectLabel: safeDisplay(projectLabel(conversationState.CWD), "Project", 128), State: state, ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", Source: SourceDesktop}, nil
+	return Task{ID: conversationState.ID, Title: "Codex task", ProjectLabel: SafeDisplay(projectLabel(conversationState.CWD), "Project", 128), State: state, ActiveTurnID: activeTurnID, CanRedirect: activeTurnID != "", Source: SourceDesktop}, nil
 }
 
 func projectLabel(cwd string) string {
@@ -220,7 +220,10 @@ func bounded(value string, maximum int) string {
 	return string(runes[:maximum])
 }
 
-func safeDisplay(value, fallback string, maximum int) string {
+// SafeDisplay collapses control characters (newlines, tabs, NULs) to spaces
+// and trims to maximum runes so the result can pass the mobile contract's
+// safeDisplayString check. Empty-after-scrub uses fallback.
+func SafeDisplay(value, fallback string, maximum int) string {
 	value = strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
 			return ' '
@@ -232,6 +235,20 @@ func safeDisplay(value, fallback string, maximum int) string {
 		value = fallback
 	}
 	return bounded(value, maximum)
+}
+
+// SafeLastMessage returns a lastMessage whose text can be projected onto
+// the wire, or the zero value if nothing displayable remains (omit the
+// field rather than fail the whole snapshot).
+func SafeLastMessage(message LastMessage) LastMessage {
+	if message == (LastMessage{}) {
+		return LastMessage{}
+	}
+	text := SafeDisplay(message.Text, "", 512)
+	if text == "" {
+		return LastMessage{}
+	}
+	return LastMessage{From: message.From, Text: text}
 }
 
 func MapItem(item Item) Activity {
