@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/beeperwatch"
 )
@@ -70,6 +71,43 @@ func Prompt(msg beeperwatch.Message, rules string) string {
 			"Rules for what you may do on your own:\n%s\n",
 		msg.SenderName, msg.ChatID, msg.Timestamp, msg.Text, rules,
 	)
+}
+
+// Allowed reports whether recipient is on the rules file's allow list: the
+// section under a markdown heading whose text contains "allow list",
+// running until the next heading. Entries are one per line, an optional
+// "-" or "*" bullet stripped, matched case-insensitively against recipient
+// with both sides trimmed. A rules file with no allow list section, or an
+// empty one, allows nobody — the default rules' promise that nothing sends
+// automatically until the owner adds someone.
+func Allowed(rules, recipient string) bool {
+	want := strings.TrimSpace(recipient)
+	inSection := false
+	for _, line := range strings.Split(rules, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			inSection = strings.Contains(strings.ToLower(trimmed), "allow list")
+			continue
+		}
+		if !inSection || trimmed == "" || strings.HasPrefix(trimmed, "(") {
+			continue
+		}
+		entry := trimmed
+		switch {
+		case strings.HasPrefix(entry, "- "):
+			entry = entry[len("- "):]
+		case strings.HasPrefix(entry, "* "):
+			entry = entry[len("* "):]
+		case strings.HasPrefix(entry, "-"):
+			entry = entry[len("-"):]
+		case strings.HasPrefix(entry, "*"):
+			entry = entry[len("*"):]
+		}
+		if strings.EqualFold(strings.TrimSpace(entry), want) {
+			return true
+		}
+	}
+	return false
 }
 
 // Preview is the short line the Home task list shows for a triggered turn,

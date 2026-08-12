@@ -89,6 +89,27 @@ recipient and bridge.go passed `AllowListed: false` hardcoded, so
 trigger turns start from attacker-controlled message text. Enforcement is
 the next unit after this slice's commit.
 
+### Follow-up unit: allow list enforced in code (2026-08-12)
+
+The flagged gap is closed. The gates policy has a new gate kind,
+`unlisted_send`: a send to a recipient the agent has messaged before still
+stops for the owner's approval unless that recipient is on the allow list
+in `agent-rules.md`. Precedence: revoke → irreversible → exfiltration →
+first-contact → unlisted-send. The bridge asks a new `GateDeps.AllowListed`
+callback (nil = nobody is allow-listed); the runtime wires it to
+`agenttrigger.Allowed`, which parses the "## Allow list" section of the
+rules file (bullets stripped, case-insensitive trimmed match, the
+"(empty …)" placeholder and a missing section mean nobody). The rules file
+is re-read on every check, so owner edits apply without a restart.
+
+Evidence: fresh `go test -count=1 -race ./companion/internal/phoneruntime/...`
+→ 132 passed; full companion suite 1818 passed with only the 3 pre-existing
+Mac-only TestBrokered* failures (`mkdir /data`). New tests:
+`TestKnownRecipientOffTheAllowListIsGated` (policy),
+`TestKnownButUnlistedRecipientSendIsGated` (bridge, end to end over HTTP),
+and three `Allowed` parser tests including the placeholder-never-matches
+case.
+
 Still open for Phase 7: live proof (test account DMs the owner's Instagram;
 agent wakes and acts per rules) — needs the phone and a running gateway;
 watcher Loader is nil in production wiring for now (entries-only coverage).

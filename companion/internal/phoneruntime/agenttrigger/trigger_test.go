@@ -82,6 +82,43 @@ func TestPromptCarriesTheMessageAndTheRules(t *testing.T) {
 	}
 }
 
+func TestDefaultRulesAllowNobody(t *testing.T) {
+	root := t.TempDir()
+	rules, err := EnsureRules(root)
+	if err != nil {
+		t.Fatalf("EnsureRules: %v", err)
+	}
+	for _, recipient := range []string{"Maya", "+15550000001", "empty"} {
+		if Allowed(rules, recipient) {
+			t.Fatalf("the default (empty) allow list must not allow %q", recipient)
+		}
+	}
+}
+
+func TestAllowedMatchesAllowListEntries(t *testing.T) {
+	rules := "# Agent rules\n\nSome prose about the allow list here.\n\n" +
+		"## Allow list\n\n- Maya\nrick@example.com\n* +15550000001\n\n" +
+		"## Something else\n\nBob\n"
+
+	for _, recipient := range []string{"Maya", "maya", "  MAYA  ", "rick@example.com", "+15550000001"} {
+		if !Allowed(rules, recipient) {
+			t.Fatalf("%q is on the allow list and must be allowed", recipient)
+		}
+	}
+	// Bob sits under a later heading, outside the allow list section.
+	for _, recipient := range []string{"Bob", "Rick", "allow list"} {
+		if Allowed(rules, recipient) {
+			t.Fatalf("%q is not on the allow list and must not be allowed", recipient)
+		}
+	}
+}
+
+func TestAllowedWithNoAllowListSectionAllowsNobody(t *testing.T) {
+	if Allowed("# My rules\nReply to Maya immediately.\n", "Maya") {
+		t.Fatal("a rules file with no allow list section must allow nobody")
+	}
+}
+
 func TestPreviewNamesTheSender(t *testing.T) {
 	preview := Preview(beeperwatch.Message{SenderName: "Maya", Text: "hi"})
 	if preview != "New message from Maya" {

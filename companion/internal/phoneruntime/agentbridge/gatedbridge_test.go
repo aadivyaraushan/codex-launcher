@@ -71,6 +71,9 @@ func gatedBridge(t *testing.T, store *gateStore, adapters ...*fake) (*httptest.S
 		}),
 		Store:    store,
 		Notifier: n,
+		AllowListed: func(recipient string) bool {
+			return recipient == "+15550000001"
+		},
 	})
 	server := httptest.NewServer(b.Handler())
 	t.Cleanup(server.Close)
@@ -213,6 +216,34 @@ func TestKnownRecipientSendExecutesWithoutGate(t *testing.T) {
 	}
 	if len(n.gates) != 0 {
 		t.Fatalf("no gate should reach the launcher, got %+v", n.gates)
+	}
+}
+
+// Being a known recipient is not enough for an autonomous send: the rules
+// file promises sends only to the allow list, and trigger turns start from
+// attacker-controlled message text.
+func TestKnownButUnlistedRecipientSendIsGated(t *testing.T) {
+	store := newGateStore()
+	if err := store.MarkRecipientMessaged("beeper.message", "+15550009999"); err != nil {
+		t.Fatal(err)
+	}
+	messages := newFake("beeper.message", manifest.Send)
+	server, _, n := gatedBridge(t, store, messages)
+
+	resp, result := callResult(t, server, agentbridge.ToolCallRequest{
+		Adapter: "beeper.message", Verb: "send", Handle: "+15550009999", Body: "hi", TurnKey: "turn-1",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if result.OK || result.Error == nil || result.Error.Code != "approval_required" {
+		t.Fatalf("send to a known but unlisted recipient must stop for approval, got %+v", result)
+	}
+	if got := executes(messages); got != 0 {
+		t.Fatalf("adapter executed %d times before approval, want 0", got)
+	}
+	if len(n.gates) != 1 || n.gates[0].Kind != gates.KindUnlistedSend {
+		t.Fatalf("raised gate must be an unlisted-send gate, got %+v", n.gates)
 	}
 }
 

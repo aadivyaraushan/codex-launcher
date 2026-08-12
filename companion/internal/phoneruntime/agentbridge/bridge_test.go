@@ -54,6 +54,9 @@ func testGateDeps() agentbridge.GateDeps {
 			return "gate-" + string(rune('0'+serial))
 		}),
 		Store: store,
+		// Everyone is allow-listed here for the same reason everyone is
+		// pre-known: these tests exercise resolve/preview/execute, not gating.
+		AllowListed: func(string) bool { return true },
 	}
 }
 

@@ -108,6 +108,8 @@ func gateKindPhrase(kind gates.Kind) string {
 		return "Irreversible action"
 	case gates.KindExfiltration:
 		return "Sending after reading another adapter this turn"
+	case gates.KindUnlistedSend:
+		return "Sending to someone not on the allow list"
 	default:
 		return "This call"
 	}

@@ -33,6 +33,10 @@ type GateDeps struct {
 	Policy   *gates.Policy
 	Store    gates.Store
 	Notifier ApprovalNotifier
+	// AllowListed reports whether recipient is on the owner's rules-file
+	// allow list for autonomous sends. Nil means the allow list is empty —
+	// nobody is allow-listed.
+	AllowListed func(recipient string) bool
 }
 
 // ApprovalNotifier tells the launcher a call stopped for the owner's OK. A
@@ -241,7 +245,7 @@ func (b *Bridge) handleCall(w http.ResponseWriter, r *http.Request) {
 		Recipient:    recipient,
 		TurnKey:      req.TurnKey,
 		Irreversible: false,
-		AllowListed:  false,
+		AllowListed:  b.gate.AllowListed != nil && b.gate.AllowListed(recipient),
 		Revoke:       false,
 	})
 	if err != nil {
@@ -324,6 +328,8 @@ func gateMessage(kind gates.Kind) string {
 		return "this irreversible action needs owner approval"
 	case gates.KindExfiltration:
 		return "sending after reading another adapter this turn needs owner approval"
+	case gates.KindUnlistedSend:
+		return "sending to someone not on the allow list needs owner approval"
 	default:
 		return "this call needs owner approval"
 	}

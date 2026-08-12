@@ -77,7 +77,7 @@ func TestFirstMessageToNewRecipientIsGated(t *testing.T) {
 	}
 }
 
-func TestKnownRecipientPassesUngated(t *testing.T) {
+func TestAllowListedKnownRecipientPassesUngated(t *testing.T) {
 	store := newFakeStore()
 	if err := store.MarkRecipientMessaged("instagram", "maya"); err != nil {
 		t.Fatal(err)
@@ -85,12 +85,38 @@ func TestKnownRecipientPassesUngated(t *testing.T) {
 	policy := newTestPolicy(store)
 	decision, err := policy.Evaluate(CallFacts{
 		Adapter: "instagram", Verb: "send", Recipient: "maya", TurnKey: "turn-1",
+		AllowListed: true,
 	})
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
 	if !decision.Allow || decision.Gate != nil {
-		t.Fatalf("send to an already-messaged recipient must pass, got %+v", decision)
+		t.Fatalf("send to a known, allow-listed recipient must pass, got %+v", decision)
+	}
+}
+
+// The rules file's core promise: autonomous sends only to allow-listed
+// people. Being a known recipient is not enough on its own — trigger turns
+// start from attacker-controlled message text, so anything off the allow
+// list stops for the owner.
+func TestKnownRecipientOffTheAllowListIsGated(t *testing.T) {
+	store := newFakeStore()
+	if err := store.MarkRecipientMessaged("instagram", "maya"); err != nil {
+		t.Fatal(err)
+	}
+	policy := newTestPolicy(store)
+	decision, err := policy.Evaluate(CallFacts{
+		Adapter: "instagram", Verb: "send", Recipient: "maya", TurnKey: "turn-1",
+		AllowListed: false,
+	})
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if decision.Allow || decision.Gate == nil {
+		t.Fatalf("send to a recipient off the allow list must stop for the owner's OK, got %+v", decision)
+	}
+	if decision.Gate.Kind != KindUnlistedSend {
+		t.Fatalf("gate kind = %q, want %q", decision.Gate.Kind, KindUnlistedSend)
 	}
 }
 
@@ -194,6 +220,7 @@ func TestSendAfterReadingOnlyOwnAdapterPasses(t *testing.T) {
 	}
 	decision, err := policy.Evaluate(CallFacts{
 		Adapter: "instagram", Verb: "send", Recipient: "maya", TurnKey: "turn-1",
+		AllowListed: true,
 	})
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
@@ -215,6 +242,7 @@ func TestCrossAdapterReadInDifferentTurnDoesNotGate(t *testing.T) {
 	}
 	decision, err := policy.Evaluate(CallFacts{
 		Adapter: "instagram", Verb: "send", Recipient: "maya", TurnKey: "turn-2",
+		AllowListed: true,
 	})
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)

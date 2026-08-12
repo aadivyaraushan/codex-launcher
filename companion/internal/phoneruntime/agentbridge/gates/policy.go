@@ -21,6 +21,10 @@ const (
 	// KindExfiltration gates an outbound call in a turn that already read
 	// from a different adapter — the prompt-injection path.
 	KindExfiltration Kind = "exfiltration"
+	// KindUnlistedSend gates a send to a known recipient who isn't on the
+	// rules-file allow list — the rules file's core promise is that
+	// autonomous sends only ever reach allow-listed people.
+	KindUnlistedSend Kind = "unlisted_send"
 )
 
 // CallFacts describes one tool-bridge call the policy must judge.
@@ -120,6 +124,8 @@ func (p *Policy) Evaluate(facts CallFacts) (Decision, error) {
 			}
 			if !known {
 				kind, gated = KindFirstContact, true
+			} else if !facts.AllowListed {
+				kind, gated = KindUnlistedSend, true
 			}
 		}
 	}

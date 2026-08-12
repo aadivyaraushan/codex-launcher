@@ -316,6 +316,16 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 			Policy:   gates.New(gateStore, newGateIDFunc(logger)),
 			Store:    gateStore,
 			Notifier: approvals,
+			// Read fresh on every call, deliberately: an owner edit to
+			// agent-rules.md must apply to the very next send, not wait for
+			// a restart.
+			AllowListed: func(recipient string) bool {
+				rules, err := agenttrigger.EnsureRules(config.Root)
+				if err != nil {
+					return false
+				}
+				return agenttrigger.Allowed(rules, recipient)
+			},
 		})
 		approvals.releaser = bridge
 	}
