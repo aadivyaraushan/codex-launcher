@@ -56,3 +56,9 @@ Raw stream dumps (`phase5-stream-*`, `phase5-retry-*`) kept for audit; prefer th
 ## Next step
 
 Phase 6+ on-device proofs on the same tip (interrupt / steer / longer turns), still without software-attest on this Pixel. Optional: prune bulk `phase5-stream-*` once PR #8 reviewers only need the curated pass/fail set.
+
+## Correction / tip follow-up
+
+The `Could not send` failures logged `action-journal … decision=block_send_storage_unavailable` while the write gate was **STANDALONE**. Tip APK from `7339a42` alone still hits that; the successful turn used an APK with `ActionRecordStore` falling back to `withStandaloneWrite`. Landed on tip as **`cbd0ee1`**.
+
+Additional overnight artifacts: `phase5-after-reply-20260812T230351Z.*`, `phase5-stream-20260812T230244Z-1.*` (You:), `phase5-stream-20260812T230351Z-14.*` (pong), `phase5-send-logs-redacted.txt`.
