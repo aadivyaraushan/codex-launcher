@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
@@ -187,56 +188,69 @@ func describeTool(m manifest.Manifest) ToolDescriptor {
 		description += string(v)
 	}
 	description += ", disconnect (undo this app's credentials and consent)"
+	verbs = append(verbs, VerbDescriptor{Name: "disconnect", RequiresPreview: true})
+	verbNames = append(verbNames, "disconnect")
+	properties := map[string]any{
+		"verb": map[string]any{
+			"type":        "string",
+			"description": "Which verb to invoke on " + m.ID + ".",
+			"enum":        verbNames,
+		},
+		"subject": map[string]any{
+			"type":        "string",
+			"description": "Unresolved subject (a contact name, a place, a track title).",
+		},
+		"handle": map[string]any{
+			"type":        "string",
+			"description": "Device-resolved handle (phone number, place id, URI).",
+		},
+		"body": map[string]any{
+			"type":        "string",
+			"description": "Free-text body for the verb, when it takes one.",
+		},
+		"fields": map[string]any{
+			"type":                 "object",
+			"additionalProperties": map[string]any{"type": "string"},
+			"description":          "Any additional named fields the verb needs.",
+		},
+	}
 	switch m.ID {
 	case "discord", "messages", "instagram":
 		description += ". For send, set subject to the person, phone number, or chat (handle, to, recipient, and chat_id are aliases)"
+		properties["subject"] = map[string]any{
+			"type":        "string",
+			"description": "Who or what this call is about. For send: the contact name, phone number, or chat. Prefer this field.",
+		}
+		properties["handle"] = map[string]any{
+			"type":        "string",
+			"description": "Same as subject when you already have a phone number, chat id, or other resolved identity.",
+		}
+		properties["to"] = map[string]any{
+			"type":        "string",
+			"description": "Alias for subject: the person or chat to send to.",
+		}
+		properties["recipient"] = map[string]any{
+			"type":        "string",
+			"description": "Alias for subject: the person or chat to send to.",
+		}
+		properties["chat_id"] = map[string]any{
+			"type":        "string",
+			"description": "Alias for subject: the person or chat to send to. This is a name or handle, not a raw Beeper id.",
+		}
+		properties["body"] = map[string]any{
+			"type":        "string",
+			"description": "Free-text body for the verb, when it takes one. For send: the message text.",
+		}
 	}
-	verbs = append(verbs, VerbDescriptor{Name: "disconnect", RequiresPreview: true})
-	verbNames = append(verbNames, "disconnect")
 	return ToolDescriptor{
 		Name:        m.ID,
 		Description: description,
 		Verbs:       verbs,
 		Ceiling:     string(m.Ceiling),
 		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"verb": map[string]any{
-					"type":        "string",
-					"description": "Which verb to invoke on " + m.ID + ".",
-					"enum":        verbNames,
-				},
-				"subject": map[string]any{
-					"type":        "string",
-					"description": "Who or what this call is about. For send: the contact name, phone number, or chat. Prefer this field.",
-				},
-				"handle": map[string]any{
-					"type":        "string",
-					"description": "Same as subject when you already have a phone number, chat id, or other resolved identity.",
-				},
-				"to": map[string]any{
-					"type":        "string",
-					"description": "Alias for subject: the person or chat to send to.",
-				},
-				"recipient": map[string]any{
-					"type":        "string",
-					"description": "Alias for subject: the person or chat to send to.",
-				},
-				"chat_id": map[string]any{
-					"type":        "string",
-					"description": "Alias for subject: the person or chat to send to.",
-				},
-				"body": map[string]any{
-					"type":        "string",
-					"description": "Free-text body for the verb, when it takes one. For send: the message text.",
-				},
-				"fields": map[string]any{
-					"type":                 "object",
-					"additionalProperties": map[string]any{"type": "string"},
-					"description":          "Any additional named fields the verb needs.",
-				},
-			},
-			"required": []any{"verb"},
+			"type":       "object",
+			"properties": properties,
+			"required":   []any{"verb"},
 		},
 	}
 }
@@ -262,6 +276,8 @@ func (b *Bridge) handleCall(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, ToolCallResult{OK: false, Error: &CallError{Code: "bad_request", Message: "unknown verb"}})
 		return
 	}
+
+	fillRecipientAliases(&req)
 
 	intent := adapter.Intent{
 		AdapterID: req.Adapter,
@@ -550,6 +566,30 @@ func (b *Bridge) DenyGate(gateID string) error {
 		b.logGateEvent(call.adapterID, call.verb, "denied", gateID)
 	}
 	return nil
+}
+
+// fillRecipientAliases copies handle / fields.to / fields.recipient /
+// fields.chat_id onto subject when subject is empty, so Resolve and the
+// first-contact gate key the same person.
+func fillRecipientAliases(req *ToolCallRequest) {
+	req.Subject = strings.TrimSpace(req.Subject)
+	req.Handle = strings.TrimSpace(req.Handle)
+	if req.Subject != "" {
+		return
+	}
+	if req.Handle != "" {
+		req.Subject = req.Handle
+		return
+	}
+	if req.Fields == nil {
+		return
+	}
+	for _, key := range []string{"to", "recipient", "chat_id"} {
+		if s := strings.TrimSpace(req.Fields[key]); s != "" {
+			req.Subject = s
+			return
+		}
+	}
 }
 
 // logGateEvent records a gate lifecycle line — adapter, verb, outcome, and

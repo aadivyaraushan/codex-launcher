@@ -48,17 +48,26 @@ function buildOneAgentTool(descriptor: ToolDescriptor): Omit<AgentToolDefinition
   const verbNames = descriptor.verbs.map((verb) => verb.name);
   const verbSchema = Type.Union(verbNames.map((name) => Type.Literal(name)));
   const recipientField = (text: string) => Type.Optional(Type.String({ description: text }));
+  const messaging = messagingAdapters.has(descriptor.name);
 
-  const parameters = Type.Object({
-    verb: verbSchema,
-    subject: recipientField("Who to message: contact name, phone number, or chat. Prefer this field for send."),
-    handle: recipientField("Same as subject when you already have a phone number or chat id."),
-    to: recipientField("Alias for subject: the person or chat to send to."),
-    recipient: recipientField("Alias for subject: the person or chat to send to."),
-    chat_id: recipientField("Alias for subject: the person or chat to send to."),
-    body: Type.Optional(Type.String({ description: "Message text for send, or search text for read." })),
-    fields: Type.Optional(Type.Record(Type.String(), Type.String())),
-  });
+  const parameters = messaging
+    ? Type.Object({
+        verb: verbSchema,
+        subject: recipientField("Who to message: contact name, phone number, or chat. Prefer this field for send."),
+        handle: recipientField("Same as subject when you already have a phone number or chat id."),
+        to: recipientField("Alias for subject: the person or chat to send to."),
+        recipient: recipientField("Alias for subject: the person or chat to send to."),
+        chat_id: recipientField("Alias for subject: the person or chat to send to. This is a name or handle, not a raw Beeper id."),
+        body: Type.Optional(Type.String({ description: "Message text for send, or search text for read." })),
+        fields: Type.Optional(Type.Record(Type.String(), Type.String())),
+      })
+    : Type.Object({
+        verb: verbSchema,
+        subject: Type.Optional(Type.String()),
+        handle: Type.Optional(Type.String()),
+        body: Type.Optional(Type.String()),
+        fields: Type.Optional(Type.Record(Type.String(), Type.String())),
+      });
 
   return { name: descriptor.name, description, parameters };
 }

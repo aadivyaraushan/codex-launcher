@@ -58,8 +58,11 @@ test("messaging tool schema names recipient aliases so the model can fill them",
       assert.ok(props[field], `${tool.name} schema missing ${field}`);
     }
     assert.match(String(props.subject.description), /contact|person|recipient|who/i);
-    assert.match(tool.description, /Approve|recipient|Beeper/i);
+    assert.match(tool.description, /Approve/);
   }
+  const notes = buildAgentTools(fixtureDescriptors)[1];
+  const notesProps = JSON.parse(JSON.stringify(notes.parameters)).properties;
+  assert.equal(notesProps.to, undefined, "non-messaging tools must not advertise send aliases");
 });
 
 test("buildAgentTools maps descriptors honestly", () => {

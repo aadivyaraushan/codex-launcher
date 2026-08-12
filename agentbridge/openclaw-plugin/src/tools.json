@@ -748,7 +748,7 @@
           },
           "chat_id": {
             "type": "string",
-            "description": "Alias for subject: the person or chat to send to."
+            "description": "Alias for subject: the person or chat to send to. This is a name or handle, not a raw Beeper id."
           }
         },
         "required": [
@@ -1605,7 +1605,7 @@
           },
           "chat_id": {
             "type": "string",
-            "description": "Alias for subject: the person or chat to send to."
+            "description": "Alias for subject: the person or chat to send to. This is a name or handle, not a raw Beeper id."
           }
         },
         "required": [
@@ -1902,7 +1902,7 @@
           },
           "chat_id": {
             "type": "string",
-            "description": "Alias for subject: the person or chat to send to."
+            "description": "Alias for subject: the person or chat to send to. This is a name or handle, not a raw Beeper id."
           }
         },
         "required": [

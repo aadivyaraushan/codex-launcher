@@ -54,6 +54,8 @@ Do **not** message strangers. Use a chat with yourself or one known contact you 
 
 Hard gates are not weakened: empty recipient still fails closed; first-contact still requires Approve.
 
+Follow-up after an independent judge (PASS-WITH-WARNINGS): alias fields and send-oriented descriptions are limited to discord/messages/instagram; other tools keep the generic subject/handle schema. `handleCall` copies handle/fields aliases onto `subject` before Resolve and the gate, so first-contact history is not keyed on an empty string. `TestFieldsAliasFirstContactStopsForApproval` checks `fields.to` raises `approval_required` and does not Execute.
+
 ## Sibling sites checked
 
 Searched `strings.TrimSpace(in.Subject)` under `companion/internal/capability/adapters/`. Slack, Teams, Outlook, notification-reply, maps, etc. still read only `subject`. Left them: they are not the Beeper Discord/Messages send path. The plugin now copies `handle`/`to`/`recipient`/`chat_id` onto `subject` for every tool, so those adapters get the model-side aliases without a behavior change to their Resolve. Instagram Beeper send shares `beepermessage` and is covered.

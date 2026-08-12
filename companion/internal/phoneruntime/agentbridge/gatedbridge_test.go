@@ -140,6 +140,35 @@ func TestSendToStrangerStopsForApproval(t *testing.T) {
 	}
 }
 
+func TestFieldsAliasFirstContactStopsForApproval(t *testing.T) {
+	store := newGateStore()
+	messages := newFake("discord", manifest.Send)
+	server, _, n := gatedBridge(t, store, messages)
+
+	resp, result := callResult(t, server, agentbridge.ToolCallRequest{
+		Adapter: "discord", Verb: "send", Body: "hi", TurnKey: "turn-1",
+		Fields: map[string]string{"to": "+15550009999"},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if result.OK || result.Error == nil || result.Error.Code != "approval_required" {
+		t.Fatalf("fields.to first-contact must gate, got %+v", result)
+	}
+	if got := executes(messages); got != 0 {
+		t.Fatalf("adapter executed %d times before approval, want 0", got)
+	}
+	if len(n.gates) != 1 || n.gates[0].Recipient != "+15550009999" {
+		t.Fatalf("gate must key the aliased recipient, got %+v", n.gates)
+	}
+	if known, _ := store.KnownRecipient("discord", "+15550009999"); known {
+		t.Fatal("a gated, unexecuted send must not mark the recipient known")
+	}
+	if known, _ := store.KnownRecipient("discord", ""); known {
+		t.Fatal("must not key first-contact history on an empty recipient")
+	}
+}
+
 func TestApproveExecutesTheStoredCallExactlyOnce(t *testing.T) {
 	store := newGateStore()
 	messages := newFake("beeper.message", manifest.Send)

@@ -285,6 +285,7 @@ func TestListMessagingSchemaNamesRecipientAliases(t *testing.T) {
 	server, _ := bridgeWith(t,
 		newFake("discord", manifest.Read, manifest.Send),
 		newFake("messages", manifest.Read, manifest.Send),
+		newFake("gcal.event", manifest.Read),
 	)
 
 	resp, raw := do(t, http.MethodGet, server.URL+"/v1/agent-tools/list", testToken, "")
@@ -323,6 +324,18 @@ func TestListMessagingSchemaNamesRecipientAliases(t *testing.T) {
 		if !strings.Contains(strings.ToLower(desc), "contact") && !strings.Contains(strings.ToLower(desc), "person") && !strings.Contains(strings.ToLower(desc), "who") {
 			t.Fatalf("%s subject description %q does not tell the model who to send to", name, desc)
 		}
+	}
+
+	gcal, ok := byName["gcal.event"]
+	if !ok {
+		t.Fatalf("gcal.event missing from list: %s", raw)
+	}
+	gcalProps, ok := gcal.InputSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("gcal.event InputSchema.properties missing: %#v", gcal.InputSchema)
+	}
+	if _, has := gcalProps["to"]; has {
+		t.Fatalf("non-messaging tool gcal.event must not advertise send aliases: %#v", gcalProps)
 	}
 }
 
