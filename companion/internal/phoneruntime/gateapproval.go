@@ -64,12 +64,18 @@ func newGateApprovals(logger *slog.Logger, now func() time.Time, sink decisionSi
 // the phone about it — a phone told about a sheet that was never
 // registered would have no way to ever resolve it.
 func (approvals *gateApprovals) GateRaised(gate gates.Gate, preview agentbridge.PreviewSummary) {
+	// computerName/projectLabel are required non-empty display fields on the
+	// decision_page wire (contract.validateDecisionPage). Without them the
+	// phone's decision_read gets a page that fails outbound validation and
+	// the Approve card never appears — exactly the Phase 4 on-device miss.
 	request := decisions.Request{
 		ID:               gate.ID,
 		ThreadID:         agentGateThreadID,
 		TurnID:           gate.ID,
 		ItemID:           gate.ID,
 		Kind:             decisions.KindPermissions,
+		ComputerName:     "Phone",
+		ProjectLabel:     "Phone agent",
 		Reason:           gateReason(gate.Kind, preview),
 		AllowedDecisions: []decisions.Decision{decisions.DecisionAcceptOnce, decisions.DecisionDecline},
 		ExpiresAt:        approvals.now().Add(gateApprovalTTL),
