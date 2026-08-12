@@ -4,6 +4,10 @@
 **For:** OpenClaw phone-agent pivot — public-facing packaging and README.  
 **Branch:** `cursor/phase10-packaging-readme-ac95` (from `cursor/phase9-boot-persistence-9b54`)  
 **Base for PR:** `worktree-phase2-tool-bridge`  
+**PR:** https://github.com/aadivyaraushan/codex-launcher/pull/4  
+**Commits:** `de910f1` (packaging) + follow-up with verification evidence  
+**Deliverable judge:** **PASS-WITH-WARNINGS** → warnings addressed in follow-up  
+  (evidence placeholders, plugin start-here README, handoff AVD wording)  
 **Plan source:** standing decisions in `planning/handoff-2026-08-12.md` (master plan file may be absent remotely)
 
 ## Result
@@ -20,6 +24,7 @@ optional Codex computer lane. Secrets stay as path references only.
 | `README.md` | Rewrote for phone-agent pivot; honest phase 1–11 status table |
 | `.gitignore` | Added sqlite/db, agentbridge token/cert name patterns, secrets dirs, `.worktrees/`, plugin `dist/` / `node_modules` |
 | `docs/setup/phone-agent.md` | New short on-phone setup pointing at phone-boot + plugin |
+| `agentbridge/openclaw-plugin/README.md` | Thin plugin entry (paths-only config + `npm test`) |
 | `CONTRIBUTING.md` | Thin contributor loop + same build checks |
 | `planning/handoff-2026-08-12.md` | Phase 10 marked done; next = Phase 11 + AVD proofs |
 
@@ -55,9 +60,9 @@ that surface into the public README.
 
 | Check | Result |
 |---|---|
-| `go test -count=1 -p 1 ./companion/...` | (recorded after run) |
-| `bash scripts/phone-boot/test/run-tests.sh` | (recorded after run) |
-| Android unit tests | not required if Android sources untouched |
+| `go test -count=1 -p 1 ./companion/...` | **PASS** — 110 packages (100 ok + 10 no-test), 0 FAIL |
+| `bash scripts/phone-boot/test/run-tests.sh` | **PASS** (`RESULT: OK`) |
+| Android unit tests | not re-run (Android sources untouched) |
 | AVD UI proofs | not run / not claimed |
 
 ## Money
