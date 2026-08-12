@@ -1,6 +1,7 @@
 #!/bin/sh
 exec 2>&1
 # Gateway token is a PATH only. Never pass the token value on this line.
+# Beeper token is never a flag; runtime loads it from BEEPER_ACCESS_TOKEN or account.db.
 # OPERATOR_ALLOW_SOFTWARE_ATTEST=1 is AVD-only. Leave unset on release Pixel.
 ATTEST_ARGS=""
 case "${OPERATOR_ALLOW_SOFTWARE_ATTEST:-}" in
@@ -11,4 +12,5 @@ exec /usr/local/bin/operator-phone-runtime \
   -listen 127.0.0.1:9443 \
   -gateway-url ws://127.0.0.1:18789 \
   -gateway-token-path /var/lib/operator-phone/gateway-token \
+  -beeper-base-url http://127.0.0.1:23373 \
   $ATTEST_ARGS

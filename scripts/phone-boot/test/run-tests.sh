@@ -61,6 +61,7 @@ require_contains "$ROOT/services/phone-runtime/run" "-root /var/lib/operator-pho
 require_contains "$ROOT/services/phone-runtime/run" "127.0.0.1:9443" || true
 require_contains "$ROOT/services/phone-runtime/run" "-gateway-url ws://127.0.0.1:18789" || true
 require_contains "$ROOT/services/phone-runtime/run" "-gateway-token-path /var/lib/operator-phone/gateway-token" || true
+require_contains "$ROOT/services/phone-runtime/run" "-beeper-base-url http://127.0.0.1:23373" || true
 require_contains "$ROOT/services/phone-runtime/run" "OPERATOR_ALLOW_SOFTWARE_ATTEST" || true
 if grep -qE -- '-allow-software-attest' "$ROOT/services/phone-runtime/run" && ! grep -q 'OPERATOR_ALLOW_SOFTWARE_ATTEST' "$ROOT/services/phone-runtime/run"; then
   fail "phone-runtime/run must not hardcode -allow-software-attest without the AVD env gate"
