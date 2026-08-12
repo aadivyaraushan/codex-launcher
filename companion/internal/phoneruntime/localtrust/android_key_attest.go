@@ -63,23 +63,37 @@ func LoadGoogleAttestationRoots() (*x509.CertPool, map[string]struct{}, error) {
 	return pool, fps, nil
 }
 
-func VerifyAndroidKeyAttestationChain(derChain [][]byte, roots *x509.CertPool) (*x509.Certificate, string, error) {
+func VerifyAndroidKeyAttestationChain(derChain [][]byte, roots *x509.CertPool, policy AttestPolicy) (*x509.Certificate, string, error) {
+	leaf, fp, err := verifyChainAgainstRoots(derChain, roots)
+	if err == nil {
+		return leaf, fp, nil
+	}
+	if !policy.AllowSoftwareAttest {
+		return nil, "", err
+	}
+	leaf, fp, err2 := verifyChainUsingLastAsRoot(derChain)
+	if err2 != nil {
+		return nil, "", fmt.Errorf("%w (emulator trust path: %v)", err, err2)
+	}
+	return leaf, fp, nil
+}
+
+func parseDERChain(derChain [][]byte) ([]*x509.Certificate, error) {
 	if len(derChain) == 0 {
-		return nil, "", fmt.Errorf("%w: empty chain", ErrAttestChain)
+		return nil, fmt.Errorf("%w: empty chain", ErrAttestChain)
 	}
 	certs := make([]*x509.Certificate, 0, len(derChain))
 	for i, der := range derChain {
 		cert, err := x509.ParseCertificate(der)
 		if err != nil {
-			return nil, "", fmt.Errorf("%w: cert[%d]: %v", ErrAttestChain, i, err)
+			return nil, fmt.Errorf("%w: cert[%d]: %v", ErrAttestChain, i, err)
 		}
 		certs = append(certs, cert)
 	}
-	leaf := certs[0]
-	intermediates := x509.NewCertPool()
-	for _, cert := range certs[1:] {
-		intermediates.AddCert(cert)
-	}
+	return certs, nil
+}
+
+func verifyLeaf(leaf *x509.Certificate, roots, intermediates *x509.CertPool) (*x509.Certificate, string, error) {
 	opts := x509.VerifyOptions{
 		Roots:         roots,
 		Intermediates: intermediates,
@@ -95,6 +109,39 @@ func VerifyAndroidKeyAttestationChain(derChain [][]byte, roots *x509.CertPool) (
 	root := chains[0][len(chains[0])-1]
 	sum := sha256.Sum256(root.Raw)
 	return leaf, strings.ToLower(hex.EncodeToString(sum[:])), nil
+}
+
+func verifyChainAgainstRoots(derChain [][]byte, roots *x509.CertPool) (*x509.Certificate, string, error) {
+	certs, err := parseDERChain(derChain)
+	if err != nil {
+		return nil, "", err
+	}
+	intermediates := x509.NewCertPool()
+	for _, cert := range certs[1:] {
+		intermediates.AddCert(cert)
+	}
+	return verifyLeaf(certs[0], roots, intermediates)
+}
+
+// verifyChainUsingLastAsRoot is the AVD path: emulator software keys are not
+// signed by Google's hardware attestation roots, so the last certificate in
+// the presented chain is treated as the trust anchor. The chain must still
+// verify to that anchor; this is not a skip of x509.
+func verifyChainUsingLastAsRoot(derChain [][]byte) (*x509.Certificate, string, error) {
+	certs, err := parseDERChain(derChain)
+	if err != nil {
+		return nil, "", err
+	}
+	anchor := certs[len(certs)-1]
+	pool := x509.NewCertPool()
+	pool.AddCert(anchor)
+	intermediates := x509.NewCertPool()
+	if len(certs) > 2 {
+		for _, cert := range certs[1 : len(certs)-1] {
+			intermediates.AddCert(cert)
+		}
+	}
+	return verifyLeaf(certs[0], pool, intermediates)
 }
 
 func ParseAndroidKeyAttestation(leaf *x509.Certificate) (ParsedAndroidAttestation, error) {

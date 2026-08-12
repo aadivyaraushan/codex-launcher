@@ -15,7 +15,32 @@ Mac SSH session.
 | Repair job | Termux JobScheduler id **7301** (15 min period, persisted) |
 
 Token/cert values are never written by these scripts — only paths such as
-`/var/lib/operator-phone/agentbridge-token`.
+`/var/lib/operator-phone/agentbridge-token` and
+`/var/lib/operator-phone/gateway-token`.
+
+The phone-runtime service now also passes `-gateway-url ws://127.0.0.1:18789`
+and `-gateway-token-path /var/lib/operator-phone/gateway-token` so turn-proxy
+can become task-capable without hand-editing config. The token file must
+already exist on disk; the run script never contains the token value.
+
+## AVD software attestation (local-pair only)
+
+Pixel-like emulators cannot produce a Google-rooted Android Key Attestation
+chain (software Keystore). Production default stays fail-closed.
+
+To unblock **AVD** local-pair proofs only:
+
+```sh
+export OPERATOR_ALLOW_SOFTWARE_ATTEST=1
+```
+
+in the environment that starts `phone-runtime/run` (or pass
+`-allow-software-attest` to `operator-phone-runtime`). That accepts software
+security level and, when the Google root path cannot be built, verifies the
+presented chain against its last certificate as a trust anchor.
+
+**Never enable this on a release Pixel build.** Leave the env unset and do
+not pass the flag. See `saved-results/avd-software-attest.md`.
 
 ## Prerequisites
 

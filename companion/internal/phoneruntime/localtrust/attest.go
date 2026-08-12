@@ -19,9 +19,9 @@ var (
 type SecurityLevel string
 
 const (
-	SecuritySoftware            SecurityLevel = "software"
-	SecurityTrustedEnvironment  SecurityLevel = "trusted_environment"
-	SecurityStrongBox           SecurityLevel = "strongbox"
+	SecuritySoftware           SecurityLevel = "software"
+	SecurityTrustedEnvironment SecurityLevel = "trusted_environment"
+	SecurityStrongBox          SecurityLevel = "strongbox"
 )
 
 type AttestExpected struct {
@@ -33,6 +33,17 @@ type AttestExpected struct {
 	TLSSPKI                string
 	TranscriptNonce        string
 	PinnedRootFingerprints map[string]struct{}
+	// AllowSoftwareAttest is the AVD/emulator hatch. The zero value is the
+	// production Pixel policy: software Keystore attestations are rejected.
+	AllowSoftwareAttest bool
+}
+
+// AttestPolicy controls chain verification. The zero value is fail-closed:
+// the leaf must chain to an embedded Google hardware attestation root.
+type AttestPolicy struct {
+	// AllowSoftwareAttest accepts an emulator software-CA chain when the
+	// Google-root path cannot be built. Never enable on release Pixel builds.
+	AllowSoftwareAttest bool
 }
 
 type AttestObserved struct {
@@ -73,7 +84,7 @@ func VerifyAttestation(expected AttestExpected, observed AttestObserved) error {
 	if !bytes.Equal(observed.Challenge, want) {
 		return ErrAttestWrongChallenge
 	}
-	if observed.Level == SecuritySoftware {
+	if observed.Level == SecuritySoftware && !expected.AllowSoftwareAttest {
 		return ErrAttestWeakLevel
 	}
 	return nil

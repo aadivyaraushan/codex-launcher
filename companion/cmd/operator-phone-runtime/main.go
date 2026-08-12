@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -21,25 +23,76 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
+type runtimeCLI struct {
+	Root                string
+	Listen              string
+	Name                string
+	GatewayURL          string
+	GatewayTokenPath    string
+	AllowSoftwareAttest bool
+}
+
+func envFlagOn(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseRuntimeCLI(args []string, output io.Writer) (runtimeCLI, error) {
+	fs := flag.NewFlagSet("operator-phone-runtime", flag.ContinueOnError)
+	if output != nil {
+		fs.SetOutput(output)
+	}
+	root := fs.String("root", "", "no-backup state root for phone-runtime identities and session store")
+	listen := fs.String("listen", phoneruntime.ListenAddress, "fixed loopback listen address")
+	name := fs.String("name", "Operator phone", "display name shown in the mobile session")
+	gatewayURL := fs.String("gateway-url", "", "OpenClaw gateway websocket URL; requires -gateway-token-path (path only, never the token value)")
+	gatewayTokenPath := fs.String("gateway-token-path", "", "path to the OpenClaw gateway bearer token file (never the token itself)")
+	allowSoftware := fs.Bool("allow-software-attest", false, "AVD-only: accept software Keystore attestation and emulator cert chains; never enable on release Pixel builds")
+	if err := fs.Parse(args); err != nil {
+		return runtimeCLI{}, err
+	}
+	cli := runtimeCLI{
+		Root:                *root,
+		Listen:              *listen,
+		Name:                *name,
+		GatewayURL:          strings.TrimSpace(*gatewayURL),
+		GatewayTokenPath:    strings.TrimSpace(*gatewayTokenPath),
+		AllowSoftwareAttest: *allowSoftware,
+	}
+	if envFlagOn(os.Getenv("OPERATOR_ALLOW_SOFTWARE_ATTEST")) {
+		cli.AllowSoftwareAttest = true
+	}
+	return cli, nil
+}
+
 func run(args []string) int {
 	if len(args) > 0 && args[0] == "pair-android" {
 		return runPairAndroid(args[1:])
 	}
-	fs := flag.NewFlagSet("operator-phone-runtime", flag.ContinueOnError)
-	root := fs.String("root", "", "no-backup state root for phone-runtime identities and session store")
-	listen := fs.String("listen", phoneruntime.ListenAddress, "fixed loopback listen address")
-	name := fs.String("name", "Operator phone", "display name shown in the mobile session")
-	if err := fs.Parse(args); err != nil {
+	cli, err := parseRuntimeCLI(args, os.Stderr)
+	if err != nil {
 		return 2
 	}
-	if *root == "" {
+	if cli.Root == "" {
 		fmt.Fprintln(os.Stderr, "operator-phone-runtime: -root is required")
 		return 2
 	}
-	absRoot, err := filepath.Abs(*root)
+	absRoot, err := filepath.Abs(cli.Root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "operator-phone-runtime: resolve root: %v\n", err)
 		return 1
+	}
+	tokenPath := cli.GatewayTokenPath
+	if tokenPath != "" {
+		tokenPath, err = filepath.Abs(tokenPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "operator-phone-runtime: resolve gateway token path: %v\n", err)
+			return 1
+		}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -47,9 +100,12 @@ func run(args []string) int {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	runtime, err := phoneruntime.Open(ctx, phoneruntime.Config{
-		Root:          absRoot,
-		DisplayName:   *name,
-		ListenAddress: *listen,
+		Root:                absRoot,
+		DisplayName:         cli.Name,
+		ListenAddress:       cli.Listen,
+		GatewayURL:          cli.GatewayURL,
+		GatewayTokenPath:    tokenPath,
+		AllowSoftwareAttest: cli.AllowSoftwareAttest,
 	}, phoneruntime.Dependencies{Random: rand.Reader, Logger: logger})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "operator-phone-runtime: open: %v\n", err)

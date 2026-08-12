@@ -81,6 +81,10 @@ type Config struct {
 	// (Mac dev, and most existing tests); setting only one is not.
 	GatewayURL       string
 	GatewayTokenPath string
+	// AllowSoftwareAttest is the AVD-only local-pair hatch. Production
+	// Pixel builds must leave this false: software Keystore attestations
+	// and non-Google roots are rejected.
+	AllowSoftwareAttest bool
 	// BeeperBaseURL is the Beeper Client API base URL the runtime watches
 	// for inbound messages to trigger the agent on. Empty means no
 	// watcher — the default. The watcher's bearer token is never carried
@@ -116,18 +120,18 @@ type Health struct {
 }
 
 type Runtime struct {
-	config    Config
-	logger    *slog.Logger
-	now       func() time.Time
-	store     io.Closer
-	pairing   *pairing.Service
-	mobile    *transport.Server
-	inventory capabilityruntime.Inventory
-	mu        sync.Mutex
-	process   string
-	boundAddr string
-	certificate  tls.Certificate
-	handler      *mobilesession.Handler
+	config      Config
+	logger      *slog.Logger
+	now         func() time.Time
+	store       io.Closer
+	pairing     *pairing.Service
+	mobile      *transport.Server
+	inventory   capabilityruntime.Inventory
+	mu          sync.Mutex
+	process     string
+	boundAddr   string
+	certificate tls.Certificate
+	handler     *mobilesession.Handler
 	// Callers: CreateLocalPairOffer / ReleasePendingViaAttestation; Android LocalPairHandshake.
 	// Affected API: pendingSessionOffer for /v1/pair enrollment after attest.
 	// Attest JSON adds sessionSecret,hostPublicKey,tlsPublicKey,host,port,protocol.
@@ -402,7 +406,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	}
 	rt.brokerReady = loadBrokerReady(config.Root)
 	rt.beeperAccounts = beeperAccounts
-	logger.Info("[phone-runtime] opened", "mode", "standalone_phone", "root", config.Root, "listen", config.ListenAddress, "registered_count", len(inventory.Registered), "task_capable", false, "local_pair_acked", rt.localPairAcked, "broker_ready_count", len(rt.brokerReady), "beeper_probe", beeperAccounts != nil, "gateway_configured", turnSource != nil)
+	logger.Info("[phone-runtime] opened", "mode", "standalone_phone", "root", config.Root, "listen", config.ListenAddress, "registered_count", len(inventory.Registered), "task_capable", false, "local_pair_acked", rt.localPairAcked, "broker_ready_count", len(rt.brokerReady), "beeper_probe", beeperAccounts != nil, "gateway_configured", turnSource != nil, "allow_software_attest", config.AllowSoftwareAttest)
 	return rt, nil
 }
 
@@ -791,17 +795,21 @@ func (runtime *Runtime) ReleasePendingViaAttestation(req localPairAttestRequest)
 		}
 		chain = append(chain, raw)
 	}
+	runtime.logger.Info("[phone-runtime] local-pair attest received", "offer_id", offer.Public.OfferID, "chain_len", len(chain), "allow_software_attest", runtime.config.AllowSoftwareAttest)
 	roots, rootFPs, err := localtrust.LoadGoogleAttestationRoots()
 	if err != nil {
 		return empty, err
 	}
-	leaf, rootFP, err := localtrust.VerifyAndroidKeyAttestationChain(chain, roots)
+	leaf, rootFP, err := localtrust.VerifyAndroidKeyAttestationChain(chain, roots, localtrust.AttestPolicy{AllowSoftwareAttest: runtime.config.AllowSoftwareAttest})
 	if err != nil {
-		runtime.logger.Info("[phone-runtime] local-pair attest rejected", "reason", "chain", "error", err.Error())
+		runtime.logger.Info("[phone-runtime] local-pair attest rejected", "reason", "chain", "error", err.Error(), "allow_software_attest", runtime.config.AllowSoftwareAttest)
 		return empty, err
 	}
 	if _, ok := rootFPs[rootFP]; !ok {
-		return empty, fmt.Errorf("%w: root not pinned", localtrust.ErrAttestUntrustedRoot)
+		if !runtime.config.AllowSoftwareAttest {
+			return empty, fmt.Errorf("%w: root not pinned", localtrust.ErrAttestUntrustedRoot)
+		}
+		runtime.logger.Info("[phone-runtime] local-pair attest using emulator root", "root_fp", rootFP, "offer_id", offer.Public.OfferID)
 	}
 	parsed, err := localtrust.ParseAndroidKeyAttestation(leaf)
 	if err != nil {
@@ -856,6 +864,7 @@ func (runtime *Runtime) ReleasePendingViaAttestation(req localPairAttestRequest)
 		TLSSPKI:                offer.Public.TLSSPKI,
 		TranscriptNonce:        req.Nonce,
 		PinnedRootFingerprints: map[string]struct{}{rootFP: {}},
+		AllowSoftwareAttest:    runtime.config.AllowSoftwareAttest,
 	}
 	if !bytesEqual(parsed.Challenge, wantChallenge) {
 		obs.Challenge = parsed.Challenge
