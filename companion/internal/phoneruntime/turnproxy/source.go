@@ -86,7 +86,7 @@ func Connect(ctx context.Context, cfg Config) (*Source, error) {
 		mapper:      NewTurnMapper(cfg.TaskID, cfg.SessionKey),
 		state:       taskstate.IdleAfterReply,
 		updatedAt:   time.Now().Unix(),
-		lastMessage: cfg.InitialLastMessage,
+		lastMessage: taskstate.SafeLastMessage(cfg.InitialLastMessage),
 	}
 	client, err := connectClient(ctx, cfg.URL, cfg.Token, logger, source.handleEvent)
 	if err != nil {
@@ -116,9 +116,10 @@ func (source *Source) handleEvent(event string, payload json.RawMessage) {
 	source.applyRunStateLocked(chatPayload)
 	for _, mobileEvent := range mobileEvents {
 		if mobileEvent.Kind == "reply" {
-			source.lastMessage = taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: mobileEvent.Summary}
+			source.lastMessage = taskstate.SafeLastMessage(taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: mobileEvent.Summary})
 		}
 	}
+	source.logger.Info("[turnproxy] applied chat event", "gateway_state", chatPayload.State, "run_id", chatPayload.RunID, "emitted", len(mobileEvents), "task_state", string(source.state))
 	source.mu.Unlock()
 
 	for _, mobileEvent := range mobileEvents {
@@ -189,7 +190,7 @@ func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastM
 		turnID = serverRunID
 	}
 	source.mu.Lock()
-	source.lastMessage = lastMessage
+	source.lastMessage = taskstate.SafeLastMessage(lastMessage)
 	source.mu.Unlock()
 	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID, TurnID: turnID}, nil
 }
@@ -223,7 +224,7 @@ func (source *Source) RedirectExistingTurn(ctx context.Context, taskID, prompt s
 		return taskadapter.ExistingTaskResult{}, err
 	}
 	source.mu.Lock()
-	source.lastMessage = taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt}
+	source.lastMessage = taskstate.SafeLastMessage(taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt})
 	source.mu.Unlock()
 	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID}, nil
 }
@@ -269,7 +270,7 @@ func (source *Source) snapshot() taskstate.Task {
 		CanRedirect:   source.state == taskstate.Working,
 		UpdatedAtUnix: source.updatedAt,
 		Source:        taskstate.SourceAppServer,
-		LastMessage:   source.lastMessage,
+		LastMessage:   taskstate.SafeLastMessage(source.lastMessage),
 	}
 }
 

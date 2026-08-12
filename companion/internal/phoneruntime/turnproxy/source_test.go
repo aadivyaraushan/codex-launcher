@@ -578,6 +578,58 @@ func TestCurrentTaskRemembersWhoSpokeLast(t *testing.T) {
 	}
 }
 
+// A pretty-printed agent reply must land in lastMessage without control
+// characters, or the next snapshot refresh fails invalid_safe_projection
+// and Operator stays on Working.
+func TestCurrentTaskSanitizesMultilineAgentReply(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+
+	result, err := source.StartExistingTurn(context.Background(), testTaskID, "print json")
+	if err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+
+	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "{\n  \"ok\": true\n}", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 1})
+	working := publisher.next(t)
+	if working.Kind != "activity" {
+		t.Fatalf("first event = %#v, want working activity", working)
+	}
+
+	gateway.sendChat(ChatEventPayload{State: "final", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 2})
+	reply := publisher.next(t)
+	if reply.Kind != "reply" || reply.Summary != "{ \"ok\": true }" {
+		t.Fatalf("published reply = %#v", reply)
+	}
+
+	replied, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask after reply: %v", err)
+	}
+	want := taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "{ \"ok\": true }"}
+	if replied.LastMessage != want {
+		t.Fatalf("last message = %#v, want %#v", replied.LastMessage, want)
+	}
+}
+
+func TestCurrentTaskSanitizesMultilineUserPrompt(t *testing.T) {
+	source, gateway, _ := connectedSource(t)
+
+	if _, err := source.StartExistingTurn(context.Background(), testTaskID, "line one\nline two"); err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+
+	sent, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask after send: %v", err)
+	}
+	want := taskstate.LastMessage{From: taskstate.SpeakerUser, Text: "line one line two"}
+	if sent.LastMessage != want {
+		t.Fatalf("last message after send = %#v, want %#v", sent.LastMessage, want)
+	}
+}
+
 func TestCurrentTaskTracksRunState(t *testing.T) {
 	source, gateway, publisher := connectedSource(t)
 

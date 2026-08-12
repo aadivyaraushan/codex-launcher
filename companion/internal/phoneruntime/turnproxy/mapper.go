@@ -5,7 +5,6 @@ package turnproxy
 
 import (
 	"encoding/json"
-	"unicode/utf8"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 )
@@ -29,8 +28,8 @@ type ChatEventPayload struct {
 
 // summaryLimit matches the mobile contract's cap on display strings
 // (internal/mobileapi/contract/validation.go safeDisplayString): a longer
-// summary would fail validation and the whole event would be dropped, so it
-// must arrive already trimmed.
+// or control-character summary would fail validation and the whole event
+// would be dropped, so it must arrive already trimmed and scrubbed.
 const summaryLimit = 512
 
 // runState is the reply text accumulated so far for one in-flight run.
@@ -129,31 +128,26 @@ func (m *TurnMapper) Apply(payload ChatEventPayload) []taskstate.MobileEvent {
 			run.text += payload.DeltaText
 		}
 	case "final":
-		summary := run.text
+		// Collapse newlines/control chars before publish: safeDisplayString
+		// rejects them and a dropped reply leaves Operator stuck on Working.
+		summary := taskstate.SafeDisplay(run.text, "", summaryLimit)
 		if summary == "" {
-			summary = fallbackMessageText(payload.Message)
-		}
-		if summary == "" {
-			summary = "Codex replied"
+			summary = taskstate.SafeDisplay(fallbackMessageText(payload.Message), "Codex replied", summaryLimit)
 		}
 		events = append(events, taskstate.MobileEvent{
 			TaskID:  m.taskID,
 			Kind:    "reply",
 			State:   taskstate.IdleAfterReply,
-			Summary: truncate(summary),
+			Summary: summary,
 		})
 		delete(m.runs, payload.RunID)
 		m.rememberFinished(payload.RunID)
 	case "error":
-		summary := payload.ErrorMessage
-		if summary == "" {
-			summary = "Codex hit an error"
-		}
 		events = append(events, taskstate.MobileEvent{
 			TaskID:  m.taskID,
 			Kind:    "failure",
 			State:   taskstate.Failed,
-			Summary: truncate(summary),
+			Summary: taskstate.SafeDisplay(payload.ErrorMessage, "Codex hit an error", summaryLimit),
 		})
 		delete(m.runs, payload.RunID)
 		m.rememberFinished(payload.RunID)
@@ -182,13 +176,4 @@ func fallbackMessageText(message json.RawMessage) string {
 		return ""
 	}
 	return text
-}
-
-// truncate keeps the front of value up to summaryLimit runes.
-func truncate(value string) string {
-	if utf8.RuneCountInString(value) <= summaryLimit {
-		return value
-	}
-	runes := []rune(value)
-	return string(runes[:summaryLimit])
 }

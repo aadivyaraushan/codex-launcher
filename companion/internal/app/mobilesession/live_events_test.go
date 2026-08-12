@@ -51,6 +51,57 @@ func TestPublishTaskEventCommitsSnapshotStateBeforeBroadcast(t *testing.T) {
 	}
 }
 
+// The wire contract still rejects a raw newline in summary. Turnproxy must
+// scrub before publish; this test locks that an unsanitized reply cannot
+// commit and leave the task on Working.
+func TestPublishTaskEventRejectsNewlineSummary(t *testing.T) {
+	handler, _ := newTestHandlerWithTasks(t, taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
+		return []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "uf-u", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()}}, nil
+	}))
+	err := handler.PublishTaskEvent(context.Background(), taskstate.MobileEvent{
+		TaskID: "thread-1", Kind: "reply", State: taskstate.IdleAfterReply, Summary: "{\n  \"ok\": true\n}",
+	})
+	if !errors.Is(err, ErrInvalidTaskEvent) {
+		t.Fatalf("newline summary error = %v, want %v", err, ErrInvalidTaskEvent)
+	}
+	snapshot, err := handler.journal.Snapshot(sessionNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state snapshotState
+	if json.Unmarshal(snapshot.Body, &state) != nil || len(state.Tasks) != 1 || state.Tasks[0].State != string(taskstate.Working) {
+		t.Fatalf("invalid reply must not leave Working: %#v", state.Tasks)
+	}
+}
+
+func TestPublishTaskEventAcceptsScrubbedMultilineReply(t *testing.T) {
+	handler, sender := newTestHandlerWithTasks(t, taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
+		return []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "uf-u", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()}}, nil
+	}))
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello-scrubbed","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 1)
+	if err := handler.PublishTaskEvent(context.Background(), taskstate.MobileEvent{
+		TaskID: "thread-1", Kind: "reply", State: taskstate.IdleAfterReply, Summary: `{ "ok": true }`,
+	}); err != nil {
+		t.Fatalf("scrubbed multiline reply must publish: %v", err)
+	}
+	awaitSentMessage(t, sender.sent)
+	snapshot, err := handler.journal.Snapshot(sessionNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state snapshotState
+	if err := json.Unmarshal(snapshot.Body, &state); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Tasks) != 1 || state.Tasks[0].State != string(taskstate.IdleAfterReply) {
+		t.Fatalf("scrubbed reply must leave Working, got %#v", state.Tasks)
+	}
+}
+
 func TestPublishTaskEventRejectsRevokedAuthorizationBeforeJournalCommit(t *testing.T) {
 	handler, _ := newTestHandlerWithTasks(t, taskSourceFunc(func(context.Context, int) ([]taskstate.Task, error) {
 		return []taskstate.Task{{ID: "thread-1", Title: "Task", ProjectLabel: "uf-u", State: taskstate.Working, UpdatedAtUnix: sessionNow.Unix()}}, nil
