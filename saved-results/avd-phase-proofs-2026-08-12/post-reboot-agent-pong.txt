@@ -1,0 +1,1115 @@
+{
+  "runId": "6cca215e-343f-4cd4-a9a7-a433775c2a6c",
+  "status": "ok",
+  "summary": "completed",
+  "result": {
+    "payloads": [
+      {
+        "text": "pong",
+        "mediaUrl": null
+      }
+    ],
+    "meta": {
+      "durationMs": 6502,
+      "agentMeta": {
+        "sessionId": "0fbc1817-7748-4590-b419-61bf0a3715f5",
+        "sessionFile": "/root/.openclaw/agents/main/sessions/0fbc1817-7748-4590-b419-61bf0a3715f5.jsonl",
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "contextTokens": 272000,
+        "agentHarnessId": "openclaw",
+        "usage": {
+          "input": 572,
+          "output": 35,
+          "cacheRead": 22912,
+          "reasoningTokens": 28,
+          "total": 23519
+        },
+        "lastCallUsage": {
+          "input": 572,
+          "output": 35,
+          "cacheRead": 22912,
+          "cacheWrite": 0,
+          "reasoningTokens": 28,
+          "total": 23519
+        },
+        "promptTokens": 23484,
+        "contextBudgetStatus": {
+          "schemaVersion": 1,
+          "source": "pre-prompt-estimate",
+          "updatedAt": 1786570230536,
+          "provider": "openai",
+          "model": "gpt-5.5",
+          "route": "fits",
+          "shouldCompact": false,
+          "estimatedPromptTokens": 10763,
+          "contextTokenBudget": 272000,
+          "promptBudgetBeforeReserve": 252000,
+          "reserveTokens": 20000,
+          "effectiveReserveTokens": 20000,
+          "remainingPromptBudgetTokens": 241237,
+          "overflowTokens": 0,
+          "toolResultReducibleChars": 0,
+          "messageCount": 11,
+          "unwindowedMessageCount": 11,
+          "sessionId": "0fbc1817-7748-4590-b419-61bf0a3715f5"
+        }
+      },
+      "aborted": false,
+      "systemPromptReport": {
+        "source": "run",
+        "generatedAt": 1786570230465,
+        "sessionId": "0fbc1817-7748-4590-b419-61bf0a3715f5",
+        "sessionKey": "agent:main:main",
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "workspaceDir": "/root/.openclaw/workspace",
+        "bootstrapMaxChars": 20000,
+        "bootstrapTotalMaxChars": 60000,
+        "bootstrapTruncation": {
+          "warningMode": "always",
+          "warningShown": false,
+          "truncatedFiles": 0,
+          "nearLimitFiles": 0,
+          "totalNearLimit": false
+        },
+        "sandbox": {
+          "mode": "off",
+          "sandboxed": false
+        },
+        "systemPrompt": {
+          "chars": 34567,
+          "hash": "c9fdf9a907d7b066ebe4356cd76febf7c9afee543a0801648911162199fe2579",
+          "projectContextChars": 13438,
+          "nonProjectContextChars": 21129
+        },
+        "injectedWorkspaceFiles": [
+          {
+            "name": "AGENTS.md",
+            "path": "/root/.openclaw/workspace/AGENTS.md",
+            "missing": false,
+            "rawChars": 7195,
+            "injectedChars": 7195,
+            "truncated": false
+          },
+          {
+            "name": "SOUL.md",
+            "path": "/root/.openclaw/workspace/SOUL.md",
+            "missing": false,
+            "rawChars": 1509,
+            "injectedChars": 1509,
+            "truncated": false
+          },
+          {
+            "name": "TOOLS.md",
+            "path": "/root/.openclaw/workspace/TOOLS.md",
+            "missing": false,
+            "rawChars": 866,
+            "injectedChars": 866,
+            "truncated": false
+          },
+          {
+            "name": "IDENTITY.md",
+            "path": "/root/.openclaw/workspace/IDENTITY.md",
+            "missing": false,
+            "rawChars": 1275,
+            "injectedChars": 1275,
+            "truncated": false
+          },
+          {
+            "name": "USER.md",
+            "path": "/root/.openclaw/workspace/USER.md",
+            "missing": false,
+            "rawChars": 534,
+            "injectedChars": 534,
+            "truncated": false
+          },
+          {
+            "name": "HEARTBEAT.md",
+            "path": "/root/.openclaw/workspace/HEARTBEAT.md",
+            "missing": false,
+            "rawChars": 243,
+            "injectedChars": 243,
+            "truncated": false
+          },
+          {
+            "name": "BOOTSTRAP.md",
+            "path": "/root/.openclaw/workspace/BOOTSTRAP.md",
+            "missing": false,
+            "rawChars": 1668,
+            "injectedChars": 1668,
+            "truncated": false
+          }
+        ],
+        "skills": {
+          "promptChars": 4544,
+          "hash": "ab394be52c9776fbdd97dbb9396202e59023d1622d1c5d2d40b4dbd905b4f6f4",
+          "entries": [
+            {
+              "name": "clawhub",
+              "blockChars": 331
+            },
+            {
+              "name": "diagram-maker",
+              "blockChars": 304
+            },
+            {
+              "name": "healthcheck",
+              "blockChars": 316
+            },
+            {
+              "name": "meme-maker",
+              "blockChars": 289
+            },
+            {
+              "name": "node-connect",
+              "blockChars": 319
+            },
+            {
+              "name": "node-inspect-debugger",
+              "blockChars": 315
+            },
+            {
+              "name": "notion",
+              "blockChars": 310
+            },
+            {
+              "name": "python-debugpy",
+              "blockChars": 303
+            },
+            {
+              "name": "skill-creator",
+              "blockChars": 297
+            },
+            {
+              "name": "spike",
+              "blockChars": 289
+            },
+            {
+              "name": "taskflow",
+              "blockChars": 319
+            },
+            {
+              "name": "taskflow-inbox-triage",
+              "blockChars": 329
+            },
+            {
+              "name": "weather",
+              "blockChars": 327
+            }
+          ]
+        },
+        "tools": {
+          "listChars": 0,
+          "schemaChars": 45679,
+          "entries": [
+            {
+              "name": "read",
+              "summaryChars": 303,
+              "summaryHash": "b15dd29794ef5562ddee30a6282387ee7b40b9806c10ae2616daf75514ddc1f6",
+              "schemaChars": 304,
+              "schemaHash": "134f19bcabe3e29d63c5cebb38f1d2556759fd08adad6bc90a4b4d3cd1fb8441",
+              "propertiesCount": 3
+            },
+            {
+              "name": "edit",
+              "summaryChars": 326,
+              "summaryHash": "c498a85576e187d069e8e8ea4f70f81bddd57829600d385ef61c4359fd634c9e",
+              "schemaChars": 834,
+              "schemaHash": "457e8bb9f800b21be76c4fd8c0e3078bf07ee9bf93ac82f39944c171bd8f6d84",
+              "propertiesCount": 2
+            },
+            {
+              "name": "write",
+              "summaryChars": 127,
+              "summaryHash": "cdb1c46027b22d1f1b923b47bfe297821d9fe589a9f9d92994961948060a4d89",
+              "schemaChars": 225,
+              "schemaHash": "e98a2484f667cf7c22d76ca103bf2022bf9113dc63fe38b899e71c328cb1e833",
+              "propertiesCount": 2
+            },
+            {
+              "name": "apply_patch",
+              "summaryChars": 132,
+              "summaryHash": "432bf38688a4f011d2b765a441ac07e1fdfa9faf2051679adee04abcd9332d93",
+              "schemaChars": 153,
+              "schemaHash": "05521268363ff4f191472c90d69ef08a503ba9acf1d2febc50b3ee68db32ab65",
+              "propertiesCount": 1
+            },
+            {
+              "name": "exec",
+              "summaryChars": 446,
+              "summaryHash": "369f5e5e195c647ab1e3cfad282e6d25488d4b9fe269f1157e273a546ca80295",
+              "schemaChars": 1391,
+              "schemaHash": "790f7a4b6f29b48fd5a795aef1202c9280c460ceed28079560fe37d238c5d97e",
+              "propertiesCount": 12
+            },
+            {
+              "name": "process",
+              "summaryChars": 362,
+              "summaryHash": "21d78afb643a24f211fe9aa86c748f165ca82f1dc21bbaf6e3e6d6d4d4411d86",
+              "schemaChars": 1074,
+              "schemaHash": "a2d30a25569f409d7e8539844c89a088044535388b24031d014577b96ed27c5c",
+              "propertiesCount": 12
+            },
+            {
+              "name": "message",
+              "summaryChars": 60,
+              "summaryHash": "76c05ee1f105661df34669c4e3b9b095dc597e625633abb3fae8f88b9d684681",
+              "schemaChars": 1793,
+              "schemaHash": "f3a5be2b9ddfec2a9933b822796fb4aa384716f713f54338f48acfe9768548e1",
+              "propertiesCount": 27
+            },
+            {
+              "name": "tts",
+              "summaryChars": 217,
+              "summaryHash": "652c1970c199d82b61061a40be2adddfc7e5634df5d896d776a8a0047c8a6b75",
+              "schemaChars": 264,
+              "schemaHash": "e40695f92ef72d913ee5eb13ef738a15d6f33ae3af3ec609975c45991ef99a78",
+              "propertiesCount": 3
+            },
+            {
+              "name": "image_generate",
+              "summaryChars": 468,
+              "summaryHash": "d093313d17509b72795516c6ad7c92a9f1e8c7943239d570fd81347dc2557424",
+              "schemaChars": 2302,
+              "schemaHash": "72c0dd8f7fa93bd4fb30954832ca63e58ab3c98201b2fa7568918e6d5d86c8b1",
+              "propertiesCount": 16
+            },
+            {
+              "name": "music_generate",
+              "summaryChars": 524,
+              "summaryHash": "67e4d3d73cbc844f2cc2ffb16cbbe3a6d4a58ec88a8cbe0bd0106515b6fec638",
+              "schemaChars": 1015,
+              "schemaHash": "e03b05b5176641e4edd24ddba66653b5f808eae6ab53c48c4c0d8cbe429bb577",
+              "propertiesCount": 10
+            },
+            {
+              "name": "video_generate",
+              "summaryChars": 307,
+              "summaryHash": "59fd08c3f2947e0394c7d1aae5219763bf201537bef536228c6c4fd63724e415",
+              "schemaChars": 2101,
+              "schemaHash": "9fc6a79909b1e0c852387b57a424fd85ca6309bf8c63f7f5605760f15a0fa488",
+              "propertiesCount": 18
+            },
+            {
+              "name": "agents_list",
+              "summaryChars": 63,
+              "summaryHash": "a7afb8adbaf98833df68160db0677ec2a6bc30b1b96f3592392c9df59e310c65",
+              "schemaChars": 76,
+              "schemaHash": "ff1b2d8857c8e4a2cd87b566a798c5d1cd937fe8a13363e59a51231b4b328939",
+              "propertiesCount": 0
+            },
+            {
+              "name": "get_goal",
+              "summaryChars": 71,
+              "summaryHash": "58dea7906d9e17e5f89a75fea24597ee068d8a56af824370dc27f8501374d6e3",
+              "schemaChars": 76,
+              "schemaHash": "ff1b2d8857c8e4a2cd87b566a798c5d1cd937fe8a13363e59a51231b4b328939",
+              "propertiesCount": 0
+            },
+            {
+              "name": "create_goal",
+              "summaryChars": 155,
+              "summaryHash": "f01e3a63d673a410ba55213ce6bd3fa2b0d2279e8e780c18aa0cb5aa991b29b3",
+              "schemaChars": 267,
+              "schemaHash": "27ee794432736471bd76390e236cc7d7e98f8469a02656e7a27109041eea0f8c",
+              "propertiesCount": 2
+            },
+            {
+              "name": "update_goal",
+              "summaryChars": 212,
+              "summaryHash": "285201690e5f2456b4cdcd252ff391709b84d69538df61bad694d3c0cfc19958",
+              "schemaChars": 207,
+              "schemaHash": "c37894492eedfad02f1e7fe1488900765bfe547f3b3f34cefbab4f7f57441c2c",
+              "propertiesCount": 2
+            },
+            {
+              "name": "skill_workshop",
+              "summaryChars": 171,
+              "summaryHash": "577c1d2b8f56bf3e9dd5e00463bbce8b8bf4cf201da9b21b588dcaa3bc6ed8cf",
+              "schemaChars": 2298,
+              "schemaHash": "a15f720240f6f8fed5b136844a6868388a4c35170b419a89c570bc560dc27090",
+              "propertiesCount": 13
+            },
+            {
+              "name": "update_plan",
+              "summaryChars": 163,
+              "summaryHash": "ea18cc44224e849c68cdf0a4839c295c1b20daf2699e2fc2be4c4e1552327455",
+              "schemaChars": 489,
+              "schemaHash": "50cb08b8a29e72637eb6720e6f5f3786783824537574f05ee9ae7a5f4ecacc4b",
+              "propertiesCount": 2
+            },
+            {
+              "name": "sessions_list",
+              "summaryChars": 150,
+              "summaryHash": "6991b34a692cbbecc50302184503776bf8d7317b336d649fcd9373beab5473dc",
+              "schemaChars": 465,
+              "schemaHash": "89e377fd8694a3b81a5d72a0e9536e1770a127aff3ee539cef01c5af01e59129",
+              "propertiesCount": 10
+            },
+            {
+              "name": "sessions_history",
+              "summaryChars": 149,
+              "summaryHash": "09b418c8da696b361c021f66705dab0215a613f6c18a9722767f6129907e0dcd",
+              "schemaChars": 202,
+              "schemaHash": "7c48bf270e608aa5c167ec15d571b536c626aed56e88d6e760fcf0802bb75cc4",
+              "propertiesCount": 4
+            },
+            {
+              "name": "sessions_send",
+              "summaryChars": 282,
+              "summaryHash": "061e9ef3487676bb2a4fd4c0336bd973aaab5eea0725e7443c4cb17518cd1e78",
+              "schemaChars": 275,
+              "schemaHash": "f1fbaa412fe6b6aee102234c87c5aa140f39c9086f9bae6e1e9691309a602ffb",
+              "propertiesCount": 5
+            },
+            {
+              "name": "sessions_spawn",
+              "summaryChars": 578,
+              "summaryHash": "c75061234ba01a4eb29ca223c1c63a44935e9e555ef2ca280722ba9e844db86d",
+              "schemaChars": 1151,
+              "schemaHash": "9a91c7668463da8a66386260ce2ae97e7efe3bb93b9b6f03ac85102c354457e1",
+              "propertiesCount": 15
+            },
+            {
+              "name": "sessions_yield",
+              "summaryChars": 79,
+              "summaryHash": "f3782fc41c1522657e1d3494f486a2df998fed38a6b89dcf7f6934fb41424320",
+              "schemaChars": 60,
+              "schemaHash": "b1c4c753820bc3096d85ef7a266a14c9fbe12450536db58076b75bb61d14dbbb",
+              "propertiesCount": 1
+            },
+            {
+              "name": "subagents",
+              "summaryChars": 132,
+              "summaryHash": "1c2ffd38549c0444b118d43736fc4b875ea1aaabc446bbf8bc1fc4ee9180cca4",
+              "schemaChars": 122,
+              "schemaHash": "c4a241d2c3d46ba7985abfce4d3fcd63298ce81f89d49183c8f3d584c48d0c33",
+              "propertiesCount": 2
+            },
+            {
+              "name": "session_status",
+              "summaryChars": 278,
+              "summaryHash": "71177e543dc6235bad4b1a26761995681dcec27ab58dcb4f4f8a7fc9a7b2b5aa",
+              "schemaChars": 89,
+              "schemaHash": "d2995f3d69d126e98ac93eec3c2a9fe5556925bd7979a8e4b6b5a2bf62d329dd",
+              "propertiesCount": 2
+            },
+            {
+              "name": "web_search",
+              "summaryChars": 65,
+              "summaryHash": "b38e9b3c079beaa988d3c576303660b91a55c2e72f56351da04160529173273f",
+              "schemaChars": 991,
+              "schemaHash": "3879e368875d824b14e0e683f81408824e9a2a5850fa2f8514a68caebda54d18",
+              "propertiesCount": 12
+            },
+            {
+              "name": "web_fetch",
+              "summaryChars": 93,
+              "summaryHash": "8875afbb51bd63673e5e6836ca31eeda73914a464862665cd73b346e28d28fd5",
+              "schemaChars": 317,
+              "schemaHash": "d2d8ad58a1b84d849dd16142282aff6c5606f7b0e3d08405e1b740a6a79e6bcc",
+              "propertiesCount": 3
+            },
+            {
+              "name": "image",
+              "summaryChars": 169,
+              "summaryHash": "a46820ca8952445d3663a8908bfa5d3adddff5b53d18b9d8e9eed8f9e593b494",
+              "schemaChars": 350,
+              "schemaHash": "49bb766071c935edca8c2d0df47fc2109bbffe3d4ba32d0b19fe90ec873736ce",
+              "propertiesCount": 6
+            },
+            {
+              "name": "pdf",
+              "summaryChars": 159,
+              "summaryHash": "9f323da0ccbf37f01fff7374ae5cba64b4c05b5f0fc9d982aee7c64040cc61d5",
+              "schemaChars": 448,
+              "schemaHash": "9e8e5acf6d543d3bf39ef65c5cad5326013243efbc32a78aeff5a86edc3947ed",
+              "propertiesCount": 7
+            },
+            {
+              "name": "memory_search",
+              "summaryChars": 605,
+              "summaryHash": "0f918d28864d3682ae77731f149273997c84773592a466b18c7cd0121b599a05",
+              "schemaChars": 250,
+              "schemaHash": "088cd2a3d3a47b251429ff7c56844cdedd1c45c3af0fa8bfaf7aa795766976bf",
+              "propertiesCount": 4
+            },
+            {
+              "name": "memory_get",
+              "summaryChars": 239,
+              "summaryHash": "bff1141a3da31a345c550337417efc9ace4da2909004606c727c59ca1a294495",
+              "schemaChars": 241,
+              "schemaHash": "78f5d58460a82f9104deebad2f1873a8cde05d1ce7328b3ba4da6e994653e70a",
+              "propertiesCount": 4
+            },
+            {
+              "name": "airbnb",
+              "summaryChars": 76,
+              "summaryHash": "4db4f87c98e9d72bb562b9b2ebdce9a4573a595db3065f9b6d57389b0c17193b",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "alltrails",
+              "summaryChars": 79,
+              "summaryHash": "71bc24f7ec1b7ce69659ef287e44cf647f86cb2eb2e9f46ac5a656ec58c0a22c",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "american",
+              "summaryChars": 78,
+              "summaryHash": "7e0cd86db4448097fb986ce8b376e6ed639cf78912ea2bb14a806bf43d5d5a34",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "applemusic",
+              "summaryChars": 109,
+              "summaryHash": "3b0c23aa1af6bac37a87de562918d30c3cb0fbb5402e719c3b0168f87b48e2f7",
+              "schemaChars": 351,
+              "schemaHash": "7a44b2282ee34484a9a000d2e4f23b813ff785d30df5b7273f837a6a0218fa04",
+              "propertiesCount": 5
+            },
+            {
+              "name": "asana",
+              "summaryChars": 98,
+              "summaryHash": "e47f7deb68b08b17e306f6eb203ef344bbc58c25fed0af1752245852f88f1808",
+              "schemaChars": 318,
+              "schemaHash": "5719cd31d8fca1b27991ecbe37625925abab96b3f3566b0af5be7bf860195ffa",
+              "propertiesCount": 5
+            },
+            {
+              "name": "audible",
+              "summaryChars": 83,
+              "summaryHash": "342d222f0f8829c7914e056af582111a014f5e7cde6164a8a75e2dbce518985e",
+              "schemaChars": 350,
+              "schemaHash": "3f58fd8e2fd800a51a28b49375b660fb465b44558933933be9bcb1cb9e5b9ed7",
+              "propertiesCount": 5
+            },
+            {
+              "name": "booking",
+              "summaryChars": 77,
+              "summaryHash": "41e15483c8ededce52a40d6e168cf6f78b0267741d74ec35b77199a0f323c1c5",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "cashapp",
+              "summaryChars": 80,
+              "summaryHash": "55f4074111bd6eb755c15bbdabc9ae49792d325626fbe506927a31409474f75d",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "chatgpt",
+              "summaryChars": 80,
+              "summaryHash": "2e713d0c795ebc5d076cd9aafcc79ab5ef4167f2404f126aa39de2d898f402a8",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "chipotle",
+              "summaryChars": 101,
+              "summaryHash": "0d90bdc8b4c9069d1ff50fe805f0e21b6656bbd94164da2cd5cfd5e601f46726",
+              "schemaChars": 318,
+              "schemaHash": "3116d47c718882b9aa448682fc4aed5e6fe541a8ac8ec5cfc25f42e4754a46c3",
+              "propertiesCount": 5
+            },
+            {
+              "name": "chromecast",
+              "summaryChars": 80,
+              "summaryHash": "058aa46534e1dc4a3a8db64ba70ed808797cec0226736f2aecd466ad736ec3c1",
+              "schemaChars": 317,
+              "schemaHash": "9c041940a930a92329e829355f4da30eef5c8ab3043549188fd1f1dbfe56d070",
+              "propertiesCount": 5
+            },
+            {
+              "name": "citymapper",
+              "summaryChars": 80,
+              "summaryHash": "0b16948af998094776423fa2bd7ac86e8fcb6595428f54e47c88f40d57b4ea58",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "claude",
+              "summaryChars": 79,
+              "summaryHash": "33361cd9c7f6f0932a7db359674db657c946ba8e7cae5f0b7451094409f0bff4",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "creditkarma",
+              "summaryChars": 81,
+              "summaryHash": "f4924e3db771b69bbe2c48d936014ea4ec19680e7b97884492e8719230571d9e",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "delta",
+              "summaryChars": 75,
+              "summaryHash": "3a5b3506bcbe5893fb5f40f9bb850d715308a9e861b851fb312d208cc79ea65b",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "discord",
+              "summaryChars": 136,
+              "summaryHash": "79de870b1c51225dabf3b06eda17898640f2052fece1343cf3ad1e1da90dad57",
+              "schemaChars": 420,
+              "schemaHash": "3d5601c89f3f5f245586438c7e3ec57113ffb3b2e1b82dcafa71c623f23017c7",
+              "propertiesCount": 5
+            },
+            {
+              "name": "doordash",
+              "summaryChars": 107,
+              "summaryHash": "291444abf076648f156503a3dc5586f335642ad5bdace5179b182d5866724b57",
+              "schemaChars": 351,
+              "schemaHash": "e6dd4938cf105e71a86d82424a1e4bdcd32b0bc3ce2a13093f277449832b52a4",
+              "propertiesCount": 5
+            },
+            {
+              "name": "dropbox",
+              "summaryChars": 77,
+              "summaryHash": "3eee44e436e0b4457247afeb73a0b6a7b060a0a2416ce6b35c9e2b94e5a2e908",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "duolingo",
+              "summaryChars": 78,
+              "summaryHash": "bb87fc6ff8968feffcb1ecac09f58039d43dd946620813efddbc9d60537dcdd5",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "ebay",
+              "summaryChars": 74,
+              "summaryHash": "c2362b36705d47ebaf51f03b60808ff3bc26628bf1c1d336fb915173c9435062",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "evernote",
+              "summaryChars": 101,
+              "summaryHash": "369e4f33edf551364e2d0f48e5abdf6de48b11b3bbd068c18c97affa39b91f4c",
+              "schemaChars": 318,
+              "schemaHash": "5719cd31d8fca1b27991ecbe37625925abab96b3f3566b0af5be7bf860195ffa",
+              "propertiesCount": 5
+            },
+            {
+              "name": "expedia",
+              "summaryChars": 77,
+              "summaryHash": "a37564bffd3d5b564ffe2f03197da8a177d63f39edf719bffd3ee5bdfb392094",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "facebook",
+              "summaryChars": 81,
+              "summaryHash": "c22c65ef7b23e4f845bd69a255fa96ca74dfacdaa34b06078e135ab64b6818c0",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "fitbit",
+              "summaryChars": 76,
+              "summaryHash": "f7c9b1601c35f5e3cf686ddfa1e1de0a56db5f099bcc63075a010df4be634230",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "goodreads",
+              "summaryChars": 79,
+              "summaryHash": "c83d9bba22e41b912fa2be0c74ed395a8ebc5ac3ba8f742cc421d9a174534b34",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "googledocs",
+              "summaryChars": 103,
+              "summaryHash": "ff2e8a10db631664135939391edc02d1d724e098427aaad60098ae3bacafc0ac",
+              "schemaChars": 318,
+              "schemaHash": "5719cd31d8fca1b27991ecbe37625925abab96b3f3566b0af5be7bf860195ffa",
+              "propertiesCount": 5
+            },
+            {
+              "name": "googlekeep",
+              "summaryChars": 103,
+              "summaryHash": "eb416d9f101ae92300615aae6c66ff266f95c7379f27ebfd10fa9f1d670263a8",
+              "schemaChars": 318,
+              "schemaHash": "5719cd31d8fca1b27991ecbe37625925abab96b3f3566b0af5be7bf860195ffa",
+              "propertiesCount": 5
+            },
+            {
+              "name": "googlemaps",
+              "summaryChars": 109,
+              "summaryHash": "45515ccc54688895b09c9d8280071807723b92d6f3dd1cf7b05b0e46f100b1aa",
+              "schemaChars": 351,
+              "schemaHash": "73929bf98698ccfce1db7771aff5c7cdac89b6e39a978c157f1d8076ed317176",
+              "propertiesCount": 5
+            },
+            {
+              "name": "googlephotos",
+              "summaryChars": 111,
+              "summaryHash": "3531dd8fc346240f97c4bed559e48f42a5cc326ed4c53c4f879c006b80ed6948",
+              "schemaChars": 351,
+              "schemaHash": "73929bf98698ccfce1db7771aff5c7cdac89b6e39a978c157f1d8076ed317176",
+              "propertiesCount": 5
+            },
+            {
+              "name": "googlesheets",
+              "summaryChars": 105,
+              "summaryHash": "02c13973b6dd1209d8bbee7a1d1bbd40d076ee78460f961b30d272880a3ae488",
+              "schemaChars": 318,
+              "schemaHash": "5719cd31d8fca1b27991ecbe37625925abab96b3f3566b0af5be7bf860195ffa",
+              "propertiesCount": 5
+            },
+            {
+              "name": "googleslides",
+              "summaryChars": 105,
+              "summaryHash": "f93a562304e4bc709def7caa01112841180acf376c5b62397cc031a38bdd2815",
+              "schemaChars": 318,
+              "schemaHash": "5719cd31d8fca1b27991ecbe37625925abab96b3f3566b0af5be7bf860195ffa",
+              "propertiesCount": 5
+            },
+            {
+              "name": "grok",
+              "summaryChars": 77,
+              "summaryHash": "f3faa40d668c2386a2719344fe874aed3c01b69702fe2955c0efcf2fab603464",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "grubhub",
+              "summaryChars": 106,
+              "summaryHash": "5c7853896be744cc600a0191635e9e858ae56a76e2b143cbe3b74b4e81a7907a",
+              "schemaChars": 351,
+              "schemaHash": "e6dd4938cf105e71a86d82424a1e4bdcd32b0bc3ce2a13093f277449832b52a4",
+              "propertiesCount": 5
+            },
+            {
+              "name": "instagram",
+              "summaryChars": 138,
+              "summaryHash": "7ba894bf38a7d855b137b0833ccdb546d9abff87f5e85203990eebd643ba043a",
+              "schemaChars": 420,
+              "schemaHash": "3d5601c89f3f5f245586438c7e3ec57113ffb3b2e1b82dcafa71c623f23017c7",
+              "propertiesCount": 5
+            },
+            {
+              "name": "kayak",
+              "summaryChars": 75,
+              "summaryHash": "a351026ec5c2a25d8b8441758bdf29348a2dcd2b2204cc30d8bb67a9de4e71cb",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "kindle",
+              "summaryChars": 76,
+              "summaryHash": "f3ee695e73e5b86eb546ad6310462151bdf60793c2e894ec0c7b2e546ca291cd",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "linkedin",
+              "summaryChars": 81,
+              "summaryHash": "c4df912f4ba2969b393d81892e213e31d97307a1badf2334bc7bda4342ad2512",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "lyft",
+              "summaryChars": 74,
+              "summaryHash": "380ac36b49a5d5c0cd5c12f869fc068bdca67f74ba1a2942a15535da7979b7c8",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "maps",
+              "summaryChars": 74,
+              "summaryHash": "df693a785b63780c04ccaf3afd9da553419a3b364ec0ac74cbd84311c101f8b8",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "messages",
+              "summaryChars": 137,
+              "summaryHash": "d96224c48a82fc743e96ec28953ef7eb2dbf30ec21fbdad67c353932dbc9ad2b",
+              "schemaChars": 420,
+              "schemaHash": "3d5601c89f3f5f245586438c7e3ec57113ffb3b2e1b82dcafa71c623f23017c7",
+              "propertiesCount": 5
+            },
+            {
+              "name": "messenger",
+              "summaryChars": 82,
+              "summaryHash": "40f28a6f615ca631e0a932b12894fffbc1d0b15285f9b44577509e573faa12a1",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "mstodo",
+              "summaryChars": 99,
+              "summaryHash": "66e2414a5e416dbe3e0d9f13b434a5ca5d22f0ec20eb86f3856bda54832318d9",
+              "schemaChars": 318,
+              "schemaHash": "5719cd31d8fca1b27991ecbe37625925abab96b3f3566b0af5be7bf860195ffa",
+              "propertiesCount": 5
+            },
+            {
+              "name": "netflix",
+              "summaryChars": 106,
+              "summaryHash": "a611cb17956317ffe6b91b74aae83645f23ea95c765a25b63b6de41eed4a2900",
+              "schemaChars": 351,
+              "schemaHash": "7a44b2282ee34484a9a000d2e4f23b813ff785d30df5b7273f837a6a0218fa04",
+              "propertiesCount": 5
+            },
+            {
+              "name": "nike",
+              "summaryChars": 74,
+              "summaryHash": "11c0ee26cd2f7878e57fcf4243108be614c7d457059e56a18a8be0dfe7fb834a",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "notification_reply",
+              "summaryChars": 109,
+              "summaryHash": "775422fa90b96465526e8de9f21166e0af49acd2be3ad8dd9b3ac1e7cfe1a36a",
+              "schemaChars": 317,
+              "schemaHash": "ade725c96140a432e8f4aa89dec2c0d582795059bd33d08ac9025c30cfa9952f",
+              "propertiesCount": 5
+            },
+            {
+              "name": "opentable",
+              "summaryChars": 79,
+              "summaryHash": "3e080f032bbe873bf9276d09f7b13ff7cb45a3bdcb395ca43dc0ced577853f91",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "pandora",
+              "summaryChars": 83,
+              "summaryHash": "af7d08c2a9bfd9cb09070342c5cb0d6cc97bf5722d1fc21745649af4f7e85fd9",
+              "schemaChars": 350,
+              "schemaHash": "d0f699b890ac0a1c1123363a0c16c3b280824f5c7a557da6839543da82a633ff",
+              "propertiesCount": 5
+            },
+            {
+              "name": "pinterest",
+              "summaryChars": 82,
+              "summaryHash": "ed4c9678dc68ace6d674dc35a92b17c283149a9306ec1f99f836a50845a4b482",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "pocketcasts",
+              "summaryChars": 87,
+              "summaryHash": "28402265f1318f945c9c2d4da96682dca0b25f9efe9cc764cb207aa9aa41c9e3",
+              "schemaChars": 350,
+              "schemaHash": "d0f699b890ac0a1c1123363a0c16c3b280824f5c7a557da6839543da82a633ff",
+              "propertiesCount": 5
+            },
+            {
+              "name": "priceline",
+              "summaryChars": 79,
+              "summaryHash": "953681a05191febe93bac1b345b4a73a0a6553d0efe2bfe96f0459ec6f64f28e",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "resy",
+              "summaryChars": 74,
+              "summaryHash": "a8e77351e005d8931351609af6f73fc49258728770d7f7119401a7e8c8d7dbd4",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "sephora",
+              "summaryChars": 77,
+              "summaryHash": "f6658d78ca0e60475ac9866bca35959872c3c39d925eb91160ab6a48636cebc6",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "shazam",
+              "summaryChars": 76,
+              "summaryHash": "547f84b1a3aa3df5759430cf7b76c620c8580097deafc5726b74aaea95e52a53",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "signal",
+              "summaryChars": 79,
+              "summaryHash": "94ce769dd3647fa7c8566684fea04c80ae9a4e8b8bbb6baceb953b42f552ad5d",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "soundcloud",
+              "summaryChars": 86,
+              "summaryHash": "507e759202319498ebd57394a04fd03a4f519ecb879d8c80a1f35ff6d79a9ff2",
+              "schemaChars": 350,
+              "schemaHash": "d0f699b890ac0a1c1123363a0c16c3b280824f5c7a557da6839543da82a633ff",
+              "propertiesCount": 5
+            },
+            {
+              "name": "southwest",
+              "summaryChars": 79,
+              "summaryHash": "20194199d364023af75a9fcaebad5b3148eb09452136c8cfaf02dc4c9f4d4204",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "spotify",
+              "summaryChars": 106,
+              "summaryHash": "9d969050bc9b786c9b175fa7505b2422d5c07dc1b39c4709d369c84cb8a99ba1",
+              "schemaChars": 351,
+              "schemaHash": "7a44b2282ee34484a9a000d2e4f23b813ff785d30df5b7273f837a6a0218fa04",
+              "propertiesCount": 5
+            },
+            {
+              "name": "starbucks",
+              "summaryChars": 102,
+              "summaryHash": "07438c76a4e9cf7bed4d7a8d71b17e3fee093ab427aeab09fc983095afe59b79",
+              "schemaChars": 318,
+              "schemaHash": "3116d47c718882b9aa448682fc4aed5e6fe541a8ac8ec5cfc25f42e4754a46c3",
+              "propertiesCount": 5
+            },
+            {
+              "name": "stubhub",
+              "summaryChars": 77,
+              "summaryHash": "765f50a8add3cc0bea85caec21f436f97ec3fad92f54cd38e2b35766f2fbb808",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "target",
+              "summaryChars": 76,
+              "summaryHash": "b4d3fc2f184988a874bed0d35e09cd7a164a9824d256c14e99efa2bd2942cbc2",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "taskrabbit",
+              "summaryChars": 83,
+              "summaryHash": "be13dd7494ce90ad939041932eddde65d3646eda9afb3c0dcb928024c94761d5",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "teams",
+              "summaryChars": 78,
+              "summaryHash": "db5cfb6d5dadbab460ec126be59048809aac896016cf5b0eb1a9c1a6a24d3087",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "threads",
+              "summaryChars": 80,
+              "summaryHash": "8ffdff82aae6d2137b4a53fd2f0ea63db5d3ad227c3fea1ca0e792e642481d55",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "thumbtack",
+              "summaryChars": 82,
+              "summaryHash": "ba48a87a3dc037f1fc7530535f55aa8d49d27b16432ca109ce1acdfc8426c9d4",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "tiktok",
+              "summaryChars": 79,
+              "summaryHash": "98dbdd63b365d9e2871d24305a088f554dafa04f1c67f8e975f21c1d5818bbe4",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "trello",
+              "summaryChars": 99,
+              "summaryHash": "7eaf2c55b3283bf52ef6fbb377d14b2e0a2f7baa2dea9326b4e69942cdd39c02",
+              "schemaChars": 318,
+              "schemaHash": "5719cd31d8fca1b27991ecbe37625925abab96b3f3566b0af5be7bf860195ffa",
+              "propertiesCount": 5
+            },
+            {
+              "name": "tripadvisor",
+              "summaryChars": 81,
+              "summaryHash": "1db719c35846c7b76abd2a6a94d75f0e7d354726a771f4fba788b72bc20e2926",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "turbotax",
+              "summaryChars": 78,
+              "summaryHash": "f98bb22af3bad74a4192e5af47903015b6985cd7d913f10530fa469b26c0b09c",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "uber",
+              "summaryChars": 74,
+              "summaryHash": "9da78a6967041a64918cc8378242c25a8cce40f58a8f8033834596f4b6c39468",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "ubereats",
+              "summaryChars": 78,
+              "summaryHash": "3f3fce37d6887946b020419729e7a5cb79a90d4dac10c24d7ea0540480456511",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "united",
+              "summaryChars": 76,
+              "summaryHash": "fb1cf1416cdb04f8f85c18b33419b469237d6d242ff94065349f5d6ba0765f98",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "venmo",
+              "summaryChars": 78,
+              "summaryHash": "b61882d2852224c5da01e368b3dd39c1a41f982ffb577dd95539d7a432fdaa65",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "viator",
+              "summaryChars": 76,
+              "summaryHash": "dc016dd927d7bfc699ca45a73fd94c983651babc2747767b871c41539b623816",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "walmart",
+              "summaryChars": 77,
+              "summaryHash": "7dd43d451d5eed4ba9b89beaf056614b064b193dd2d78c08934962ef828b3e5e",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "wayfair",
+              "summaryChars": 77,
+              "summaryHash": "199f29eb4632ae130f299d2c10ac2a590798a9eee26a3595be056d0eb27e5f5e",
+              "schemaChars": 317,
+              "schemaHash": "218ebeffa03d2c1a9a726fcc7823029b244157d4a3338930d7c51ed105c9e66c",
+              "propertiesCount": 5
+            },
+            {
+              "name": "whatsapp",
+              "summaryChars": 81,
+              "summaryHash": "a52f57bf20123109228b45231ed8a7c5fdd9a57738ec9227dd25e7fb017e72a9",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            },
+            {
+              "name": "youtube",
+              "summaryChars": 83,
+              "summaryHash": "a43c040363f9f1d3fb328799657a75aa58123c83ee136743894b002b021e51aa",
+              "schemaChars": 350,
+              "schemaHash": "d0f699b890ac0a1c1123363a0c16c3b280824f5c7a557da6839543da82a633ff",
+              "propertiesCount": 5
+            },
+            {
+              "name": "youtubemusic",
+              "summaryChars": 88,
+              "summaryHash": "8a64e32e7d5b40e2b9889977bd9c4eb0a67cc04e5b341246867a2c6bab313eba",
+              "schemaChars": 350,
+              "schemaHash": "d0f699b890ac0a1c1123363a0c16c3b280824f5c7a557da6839543da82a633ff",
+              "propertiesCount": 5
+            },
+            {
+              "name": "zelle",
+              "summaryChars": 78,
+              "summaryHash": "2c48e1439ae4f8afcb3cd77d4b5685f3e066f79e6292ee0fdfe7333e4da8a544",
+              "schemaChars": 320,
+              "schemaHash": "38869b49cc65b29b3be97ad16e082f83d8d4116b2d3d9a44dfa6e9240746cdbe",
+              "propertiesCount": 5
+            }
+          ]
+        },
+        "currentTurn": {
+          "promptChars": 24,
+          "runtimeContextChars": 0
+        }
+      },
+      "finalPromptText": "Reply with exactly: pong",
+      "finalAssistantVisibleText": "pong",
+      "finalAssistantRawText": "pong",
+      "replayInvalid": false,
+      "livenessState": "working",
+      "stopReason": "stop",
+      "executionTrace": {
+        "winnerProvider": "openai",
+        "winnerModel": "gpt-5.5",
+        "attempts": [
+          {
+            "provider": "openai",
+            "model": "gpt-5.5",
+            "result": "success",
+            "stage": "assistant"
+          }
+        ],
+        "fallbackUsed": false,
+        "runner": "embedded"
+      },
+      "requestShaping": {
+        "authMode": "auth-profile",
+        "thinking": "off"
+      },
+      "completion": {
+        "stopReason": "stop",
+        "finishReason": "stop"
+      }
+    }
+  }
+}
