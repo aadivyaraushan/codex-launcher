@@ -4,7 +4,7 @@
 **For:** OpenClaw phone-agent pivot — fresh cumulative judge of Phases 1–10 tip + suites.  
 **Branch:** `cursor/phase11-e2e-judged-proof-a240` (from `cursor/phase10-packaging-readme-ac95` @ `c8606f5`)  
 **Base for PR:** `worktree-phase2-tool-bridge` @ `459fc8f`  
-**Tip judged:** `8b1834c` (Phase 11 evidence + judge follow-up on `cursor/phase11-e2e-judged-proof-a240`; stacks on phase10 tip `c8606f5`)  
+**Tip judged:** branch tip of `cursor/phase11-e2e-judged-proof-a240` (evidence starts at `42344ae`; stacks on phase10 tip `c8606f5`)  
 **Master plan file:** `planning/openclaw-phone-agent-plan.md` **absent** in this checkout — checklist derived from `planning/handoff-2026-08-12.md`, `planning/phase8-delete-pipeline-plan.md`, `planning/phase9-boot-persistence-plan.md`, README status table, and `saved-results/phase2`…`phase10-*`.  
 **Money:** no OpenClaw / paid API calls (account `ssdear@gmail.com` unused).  
 **AVD:** none in this environment (`adb` / `emulator` not on PATH; no AVD package). Device bars **not claimed**.  
