@@ -1,28 +1,40 @@
 # Phase 4 — hard gates (Pixel UI)
 
 - Serial: `4B230DLAQ001Z5`
-- Verdict: **blocked**
+- Verdict: **PASS**
+- Tip runtime: `c231b08` (GateRaised fills `computerName`/`projectLabel` so decision_page validates)
 
-## Attempt
+## Setup
 
-1. Preflight: bridge `/v1/health` `beeper=connected`, `taskCapable=true`, `localPair=acked`; `gate_known_recipients` count = 0 (any real send would be first-contact).
-2. Agent CLI asked to SEND `phase4-gate-probe` to **myself only** via messages/discord.
-3. Runtime logs: discord/messages `send` → `adapter_failed` (subject unresolved / no self conversation).
-4. Agent visible outcomes on Phone agent row: `GATE_UNAVAILABLE` then `BLOCKED_NO_SELF_TARGET`.
-5. Read-only follow-up: `NO_SELF_TARGET`.
-6. Direct `POST /v1/agent-tools/call` with a synthetic nonexistent subject failed at Beeper resolve (`capability needs clarification`) — **gate never raised** because preview did not succeed.
+1. Bridge health: `beeper=connected`, `taskCapable=true`, `localPair=acked`.
+2. Deployed tip `operator-phone-runtime` (linux/arm64) to device; restarted phone-runtime.
+3. Raised first-contact Messages send to **owner Messages number** (self) via `POST /v1/agent-tools/call` → `approval_required` + `gateId`.
 
-## Safety stop
+## Proofs
 
-Per overnight instructions: do **not** message strangers. No safe self/known test recipient was identifiable from messages/discord reads, so the Approve-sheet UI proof was not forced.
+### Approve sheet renders with display fields
 
-## Artifacts
+Thread shows:
 
-- `phase4-gate-ui-*.png` / xml — home during attempt (no Approve sheet)
-- `phase4-find-self.json` — `NO_SELF_TARGET`
-- `phase4-agent-ask-*.log.answer.txt` — `GATE_UNAVAILABLE`
-- Runtime excerpts (ids only): `[agent-bridge] call adapter=messages|discord verb=send outcome=adapter_failed`
+- **Needs your answer** / **Approval needed**
+- First-message preview for Google Messages (owner number)
+- Subtitle **Phone · Phone agent** (from gateapproval hotfix)
+- Buttons: **Approve once** / **Deny**
 
-## Next unblock
+Evidence: `phase4-01-gate-before-goahead.png` / `.xml`, `phase4-sheet-open-20260812T232514Z.png` / `.xml`.
 
-Identify a durable self chat handle (Messages note-to-self or Discord self-DM) offline with the owner, then re-run: send → Approve sheet → type `go ahead` (must not release) → tap Approve (must release).
+### Typing `go ahead` does NOT dismiss Approve
+
+Follow-up composer received `go ahead`. Sheet remained with **Approve once** / **Deny** / first-message preview still visible.
+
+Evidence: `phase4-02-goahead-typed-20260812T232647Z.png` / `.xml`, `phase4-03-after-goahead-20260812T232652Z.png` / `.xml`, `phase4-goahead-still-up-20260812T232651Z.png` / `.xml`.
+
+### Tapping Approve once releases the gate
+
+After tap on **Approve once**, Approve/Deny chrome and first-message gate copy are gone; thread remains open with queued follow-up text only.
+
+Evidence: `phase4-after-approve-20260812T232651Z.png` / `.xml`.
+
+## Safety
+
+Only the owner's own Messages number was used (self/first-contact-to-self). No other recipients messaged.
