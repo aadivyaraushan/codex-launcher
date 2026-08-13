@@ -279,9 +279,19 @@ func TestNormalizeAgentEventAcceptsOpenClawNestedAndTopLevelShapes(t *testing.T)
 			want: AgentEventPayload{RunID: "run-1", Stream: "codex_app_server.item", ItemType: "reasoning", DataType: "reasoning", Data: AgentEventData{Text: "Checking"}},
 		},
 		{
-			name: "assistant data text and delta",
+			name: "assistant reply tokens are empty after normalize",
 			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Checking","delta":"Checking"}}`,
-			want: AgentEventPayload{RunID: "run-1", SessionKey: "agent:main:main", Stream: "assistant", Data: AgentEventData{Text: "Checking", Delta: "Checking"}},
+			want: AgentEventPayload{RunID: "run-1", SessionKey: "agent:main:main", Stream: "assistant", Data: AgentEventData{}},
+		},
+		{
+			name: "commandExecution keeps the command string",
+			raw:  `{"runId":"run-1","stream":"codex_app_server.item","data":{"type":"commandExecution","item":{"type":"commandExecution","command":"ls"}}}`,
+			want: AgentEventPayload{RunID: "run-1", Stream: "codex_app_server.item", ItemType: "commandExecution", DataType: "commandExecution", Command: "ls"},
+		},
+		{
+			name: "preamble title is progress text",
+			raw:  `{"runId":"run-1","stream":"item","data":{"item":{"type":"preamble","title":"Considering the request"}}}`,
+			want: AgentEventPayload{RunID: "run-1", Stream: "item", ItemType: "preamble", Data: AgentEventData{Text: "Considering the request"}},
 		},
 	}
 	for _, test := range tests {
@@ -298,6 +308,9 @@ func TestNormalizeAgentEventAcceptsOpenClawNestedAndTopLevelShapes(t *testing.T)
 			}
 			if test.want.DataType != "" && got.DataType != test.want.DataType {
 				t.Fatalf("data type = %q, want %q", got.DataType, test.want.DataType)
+			}
+			if got.Command != test.want.Command {
+				t.Fatalf("command = %q, want %q", got.Command, test.want.Command)
 			}
 			if got.Data.Text != test.want.Data.Text || got.Data.Delta != test.want.Data.Delta {
 				t.Fatalf("data = %+v, want %+v", got.Data, test.want.Data)
@@ -367,21 +380,6 @@ func TestPixelItemStreamsFillReasoningFromSummaryNotContent(t *testing.T) {
 			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Done.","content":[{"type":"thinking","text":"Checking the calendar"},{"type":"text","text":"Done."}]}}`,
 			want: "Checking the calendar",
 		},
-		{
-			name: "assistant data text and delta without thinking content",
-			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Checking","delta":"Checking"}}`,
-			want: "Checking",
-		},
-		{
-			name: "item analysis title Reasoning from 2026.7.1-2 projector",
-			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"item","data":{"itemId":"rsn-1","phase":"start","kind":"analysis","title":"Reasoning","status":"running"}}`,
-			want: "Reasoning",
-		},
-		{
-			name: "codex_app_server.item type only from 2026.7.1-2 projector",
-			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"codex_app_server.item","data":{"phase":"started","itemId":"rsn-1","type":"reasoning"}}`,
-			want: "Reasoning",
-		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -437,58 +435,147 @@ func TestStartRunEmitsWorkingBeforeAnyChatDelta(t *testing.T) {
 	}
 }
 
-func TestAssistantDataTextAndDeltaBecomeReasoningWhileInFlight(t *testing.T) {
+func TestTitleOnlyReasoningDoesNotEmitWorkingOrFallbackText(t *testing.T) {
+	tests := []string{
+		`{"runId":"run-1","sessionKey":"agent:main:main","stream":"item","data":{"itemId":"rsn-1","phase":"start","kind":"analysis","title":"Reasoning","status":"running"}}`,
+		`{"runId":"run-1","sessionKey":"agent:main:main","stream":"codex_app_server.item","data":{"phase":"started","itemId":"rsn-1","type":"reasoning"}}`,
+	}
+	for _, raw := range tests {
+		payload, ok := NormalizeAgentEvent(json.RawMessage(raw))
+		if !ok {
+			t.Fatalf("NormalizeAgentEvent returned false for %s", raw)
+		}
+		if payload.ItemType != "reasoning" {
+			t.Fatalf("item type = %q, want reasoning so logs can say item_type=reasoning", payload.ItemType)
+		}
+		if payload.Data.Text != "" || payload.Data.Delta != "" {
+			t.Fatalf("title-only data = %+v, want empty (no Reasoning fallback)", payload.Data)
+		}
+		if !payload.carriesReasoning() {
+			t.Fatal("title-only reasoning must still carry the reasoning enum so drop_reason is no_text, not not_reasoning")
+		}
+		mapper := NewTurnMapper(testTaskID, testSessionKey)
+		mapper.StartRun("run-1")
+		if events := mapper.ApplyAgent(payload); len(events) != 0 {
+			t.Fatalf("ApplyAgent = %+v, want no KindReasoning Working from a title-only item", events)
+		}
+		if got := mapper.ReasoningDisplay("run-1"); got != "" {
+			t.Fatalf("ReasoningDisplay = %q, want empty", got)
+		}
+	}
+}
+
+func TestAssistantReplyTokensAreNotChainOfThought(t *testing.T) {
 	payload, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Checking","delta":"Checking"}}`))
 	if !ok {
 		t.Fatal("NormalizeAgentEvent returned false")
 	}
-	if payload.Data.Text != "Checking" || payload.Data.Delta != "Checking" {
-		t.Fatalf("normalized assistant data = %+v, want text and delta", payload.Data)
+	if payload.Data.Text != "" || payload.Data.Delta != "" {
+		t.Fatalf("normalized assistant reply data = %+v, want empty after normalize", payload.Data)
+	}
+	if payload.carriesReasoning() {
+		t.Fatal("assistant reply tokens must drop as not_reasoning")
 	}
 
 	mapper := NewTurnMapper(testTaskID, testSessionKey)
 	mapper.StartRun("run-1")
-	first := mapper.ApplyAgent(payload)
-	if len(first) != 1 || first[0].Summary != "Checking" || first[0].StartsTurn {
-		t.Fatalf("assistant text = %+v, want live reasoning after StartRun", first)
+	if events := mapper.ApplyAgent(payload); len(events) != 0 {
+		t.Fatalf("ApplyAgent = %+v, want no reasoning from assistant reply tokens", events)
 	}
-
-	delta, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"delta":" the calendar"}}`))
-	if !ok {
-		t.Fatal("NormalizeAgentEvent returned false for delta")
-	}
-	second := mapper.ApplyAgent(delta)
-	if len(second) != 1 || second[0].Summary != "Checking the calendar" {
-		t.Fatalf("assistant delta = %+v, want appended reasoning", second)
-	}
-	if mapper.ReasoningDisplay("run-1") != "Checking the calendar" {
-		t.Fatalf("ReasoningDisplay = %q", mapper.ReasoningDisplay("run-1"))
+	if got := mapper.ReasoningDisplay("run-1"); got != "" {
+		t.Fatalf("ReasoningDisplay = %q, want empty", got)
 	}
 }
 
-func TestItemPlaceholderDoesNotOverwriteLiveReasoning(t *testing.T) {
+func TestItemSummaryBecomesReasoningAndTitleOnlyDoesNotOverwriteIt(t *testing.T) {
 	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	mapper.StartRun("run-1")
+
 	title, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"item","data":{"kind":"analysis","title":"Reasoning"}}`))
 	if !ok {
 		t.Fatal("NormalizeAgentEvent returned false")
 	}
-	if events := mapper.ApplyAgent(title); len(events) != 1 || events[0].Summary != "Reasoning" {
-		t.Fatalf("title = %+v, want placeholder Reasoning", events)
+	if events := mapper.ApplyAgent(title); len(events) != 0 {
+		t.Fatalf("title-only = %+v, want no Working", events)
 	}
 
-	live, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"delta":"Checking the calendar"}}`))
+	summary, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"item","data":{"item":{"type":"reasoning","summary":["Checking the calendar"],"content":["hidden chain of thought"]}}}`))
 	if !ok {
 		t.Fatal("NormalizeAgentEvent returned false")
 	}
-	if events := mapper.ApplyAgent(live); len(events) != 1 || events[0].Summary != "Checking the calendar" {
-		t.Fatalf("assistant delta over title = %+v", events)
+	if strings.Contains(summary.Data.Text, "hidden") {
+		t.Fatal("hidden CoT leaked into normalized data")
+	}
+	events := mapper.ApplyAgent(summary)
+	if len(events) != 1 || events[0].Summary != "Checking the calendar" || events[0].StartsTurn {
+		t.Fatalf("summary = %+v, want updating Working from the real summary", events)
+	}
+	if mapper.ReasoningDisplay("run-1") != "Checking the calendar" {
+		t.Fatalf("ReasoningDisplay = %q", mapper.ReasoningDisplay("run-1"))
 	}
 
 	if events := mapper.ApplyAgent(title); len(events) != 0 {
-		t.Fatalf("replayed placeholder = %+v, want it to keep live reasoning", events)
+		t.Fatalf("replayed title-only = %+v, want it to keep the summary", events)
 	}
 	if mapper.ReasoningDisplay("run-1") != "Checking the calendar" {
-		t.Fatalf("ReasoningDisplay = %q, want live tokens kept", mapper.ReasoningDisplay("run-1"))
+		t.Fatalf("title-only replay overwrote live summary: %q", mapper.ReasoningDisplay("run-1"))
+	}
+}
+
+func TestPreambleAndCommandAreProgressNotReasoning(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	started := mapper.StartRun("run-1")
+	if len(started) != 1 || started[0].Summary != genericWorkingSummary {
+		t.Fatalf("StartRun = %+v", started)
+	}
+
+	preamble, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"item","data":{"item":{"type":"preamble","title":"Considering the request"}}}`))
+	if !ok {
+		t.Fatal("NormalizeAgentEvent returned false")
+	}
+	if preamble.carriesReasoning() || !preamble.carriesProgress() {
+		t.Fatalf("preamble carriesReasoning=%v carriesProgress=%v", preamble.carriesReasoning(), preamble.carriesProgress())
+	}
+	if events := mapper.ApplyAgent(preamble); len(events) != 0 {
+		t.Fatalf("ApplyAgent preamble = %+v, want no KindReasoning", events)
+	}
+	progress := mapper.ApplyProgress(preamble)
+	if len(progress) != 1 || progress[0].StartsTurn || progress[0].Summary != "Considering the request" {
+		t.Fatalf("ApplyProgress preamble = %+v, want updating Working", progress)
+	}
+
+	command, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"codex_app_server.item","data":{"type":"commandExecution","item":{"type":"commandExecution","command":"ls"}}}`))
+	if !ok {
+		t.Fatal("NormalizeAgentEvent returned false")
+	}
+	if command.carriesReasoning() || !command.carriesProgress() {
+		t.Fatalf("command carriesReasoning=%v carriesProgress=%v", command.carriesReasoning(), command.carriesProgress())
+	}
+	if events := mapper.ApplyAgent(command); len(events) != 0 {
+		t.Fatalf("ApplyAgent command = %+v, want no KindReasoning", events)
+	}
+	running := mapper.ApplyProgress(command)
+	if len(running) != 1 || running[0].StartsTurn || running[0].Summary != "ls" {
+		t.Fatalf("ApplyProgress command = %+v, want Working from the command text", running)
+	}
+	if mapper.ReasoningDisplay("run-1") != "" {
+		t.Fatalf("ReasoningDisplay = %q, want empty for progress items", mapper.ReasoningDisplay("run-1"))
+	}
+}
+
+func TestAliasRunFinishesBothIDs(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	mapper.StartRun("idem")
+	mapper.AliasRun("idem", "srv")
+	reply := mapper.Apply(ChatEventPayload{State: "final", RunID: "srv", SessionKey: testSessionKey, Message: json.RawMessage(`"pong"`)})
+	if len(reply) != 1 || reply[0].Kind != "reply" {
+		t.Fatalf("final = %+v, want reply", reply)
+	}
+	if mapper.KnowsRun("idem") || mapper.KnowsRun("srv") {
+		t.Fatal("both the idempotency key and the server run id must be forgotten")
+	}
+	if !mapper.Finished("idem") || !mapper.Finished("srv") {
+		t.Fatal("both ids must be marked finished")
 	}
 }
 
@@ -502,16 +589,16 @@ func TestAssistantReplyAndNonReasoningItemsDoNotBecomeReasoning(t *testing.T) {
 			raw:  `{"runId":"run-1","stream":"item","data":{"item":{"type":"agentMessage","text":"Done."}}}`,
 		},
 		{
-			name: "codex_app_server.item command",
-			raw:  `{"runId":"run-1","stream":"codex_app_server.item","data":{"type":"commandExecution","item":{"type":"commandExecution","command":"ls"}}}`,
-		},
-		{
 			name: "lifecycle",
 			raw:  `{"runId":"run-1","stream":"lifecycle","data":{"phase":"start"}}`,
 		},
 		{
 			name: "item compaction analysis",
 			raw:  `{"runId":"run-1","stream":"item","data":{"kind":"analysis","title":"Context compaction","phase":"start"}}`,
+		},
+		{
+			name: "assistant reply tokens",
+			raw:  `{"runId":"run-1","stream":"assistant","data":{"text":"pong","delta":"pong"}}`,
 		},
 	}
 	for _, test := range tests {

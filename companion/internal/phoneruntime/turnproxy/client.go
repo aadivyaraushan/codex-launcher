@@ -191,40 +191,59 @@ func (client *gatewayClient) deliver(frame gatewayFrame) {
 // request sends a req frame and waits for its matching res, the connection
 // closing, or ctx expiring — whichever comes first.
 func (client *gatewayClient) request(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	id, respCh, err := client.sendRequest(ctx, method, params)
+	if err != nil {
+		return nil, err
+	}
+	defer client.forgetPending(id)
+	return waitRequest(ctx, client.done, method, respCh)
+}
+
+// sendRequest writes a req frame and returns the response channel. The
+// caller must wait on that channel (or abandon it); sendChat uses this so
+// it can publish Working before the gateway acks a serialized chat.send.
+func (client *gatewayClient) sendRequest(ctx context.Context, method string, params any) (string, chan gatewayFrame, error) {
 	id := newRequestID()
 	respCh := make(chan gatewayFrame, 1)
 	client.pendingMu.Lock()
 	client.pending[id] = respCh
 	client.pendingMu.Unlock()
-	defer func() {
-		client.pendingMu.Lock()
-		delete(client.pending, id)
-		client.pendingMu.Unlock()
-	}()
 
 	body, err := json.Marshal(params)
 	if err != nil {
-		return nil, fmt.Errorf("turnproxy: encode %s params: %w", method, err)
+		client.forgetPending(id)
+		return "", nil, fmt.Errorf("turnproxy: encode %s params: %w", method, err)
 	}
 	data, err := json.Marshal(gatewayFrame{Type: "req", ID: id, Method: method, Params: body})
 	if err != nil {
-		return nil, fmt.Errorf("turnproxy: encode %s frame: %w", method, err)
+		client.forgetPending(id)
+		return "", nil, fmt.Errorf("turnproxy: encode %s frame: %w", method, err)
 	}
 
 	client.writeMu.Lock()
 	writeErr := client.conn.Write(ctx, websocket.MessageText, data)
 	client.writeMu.Unlock()
 	if writeErr != nil {
-		return nil, fmt.Errorf("turnproxy: send %s: %w", method, writeErr)
+		client.forgetPending(id)
+		return "", nil, fmt.Errorf("turnproxy: send %s: %w", method, writeErr)
 	}
+	return id, respCh, nil
+}
 
+func (client *gatewayClient) forgetPending(id string) {
+	client.pendingMu.Lock()
+	delete(client.pending, id)
+	client.pendingMu.Unlock()
+}
+
+func waitRequest(ctx context.Context, done <-chan struct{}, method string, respCh <-chan gatewayFrame) (json.RawMessage, error) {
 	select {
 	case frame := <-respCh:
 		if !frame.OK {
 			return nil, fmt.Errorf("turnproxy: %s refused: %s", method, errMessage(frame.Error))
 		}
 		return frame.Payload, nil
-	case <-client.done:
+	case <-done:
 		return nil, fmt.Errorf("turnproxy: gateway connection closed while awaiting %s", method)
 	case <-ctx.Done():
 		return nil, ctx.Err()

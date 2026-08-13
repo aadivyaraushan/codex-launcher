@@ -29,9 +29,10 @@ type ChatEventPayload struct {
 
 // AgentEventPayload is one "agent" event from the gateway. Live reasoning
 // arrives as stream:"thinking" on newer gateways, and on OpenClaw 2026.7.1-2
-// as item / codex_app_server.item (nested item.type=reasoning summary) or
-// assistant data.text / data.delta (and thinking/reasoning content parts).
-// SessionKey may be omitted or nested under payload. ItemType and DataType
+// as item / codex_app_server.item summaries. Assistant data.text / data.delta
+// without a thinking/reasoning content type are reply tokens, not CoT — Pixel
+// UXPROBE-0813A dropped those with empty Data after normalize. Preamble and
+// commandExecution items are progress, not reasoning. ItemType and DataType
 // are enum tokens for logs; they are never thinking text.
 type AgentEventPayload struct {
 	RunID      string         `json:"runId"`
@@ -39,6 +40,7 @@ type AgentEventPayload struct {
 	Stream     string         `json:"stream"`
 	ItemType   string         `json:"-"`
 	DataType   string         `json:"-"`
+	Command    string         `json:"-"`
 	Data       AgentEventData `json:"data"`
 }
 
@@ -59,10 +61,11 @@ const genericWorkingSummary = "Codex is working"
 // runState is the reply and reasoning text accumulated so far for one
 // in-flight run.
 type runState struct {
-	text      string
-	reasoning string
-	lastReply string
-	started   bool
+	text         string
+	reasoning    string
+	lastReply    string
+	lastProgress string
+	started      bool
 }
 
 // finishedRunsLimit bounds how many terminated run ids the mapper
@@ -156,11 +159,26 @@ func (payload AgentEventPayload) carriesReasoning() bool {
 	}
 }
 
+func (payload AgentEventPayload) carriesProgress() bool {
+	switch payload.Stream {
+	case "item", "codex_app_server.item":
+		return isProgressToken(payload.ItemType) || isProgressToken(payload.DataType)
+	default:
+		return false
+	}
+}
+
 func isReasoningToken(value string) bool {
 	return value == "reasoning" || value == "thinking"
 }
 
-const reasoningFallbackSummary = "Reasoning"
+func isProgressToken(value string) bool {
+	return value == "preamble" || isCommandToken(value)
+}
+
+func isCommandToken(value string) bool {
+	return value == "command" || value == "commandExecution"
+}
 
 func isItemReasoning(envelope, inner, item agentEnvelope) bool {
 	if isReasoningToken(item.Type) || isReasoningToken(item.Kind) || isReasoningToken(inner.Type) || isReasoningToken(inner.Kind) || isReasoningToken(envelope.Type) || isReasoningToken(envelope.Kind) {
@@ -212,16 +230,9 @@ func (m *TurnMapper) applyReasoning(run *runState, text, delta string) (taskstat
 	previous := taskstate.SafeDisplay(run.reasoning, "", summaryLimit)
 	switch {
 	case text != "":
-		if text == reasoningFallbackSummary && run.reasoning != "" && run.reasoning != reasoningFallbackSummary {
-			return taskstate.MobileEvent{}, false
-		}
 		run.reasoning = text
 	case delta != "":
-		if run.reasoning == "" || run.reasoning == reasoningFallbackSummary {
-			run.reasoning = delta
-		} else {
-			run.reasoning += delta
-		}
+		run.reasoning += delta
 	default:
 		return taskstate.MobileEvent{}, false
 	}
@@ -254,7 +265,7 @@ func (m *TurnMapper) ReplyDisplay(runID string) string {
 }
 
 // StartRun records runID as in-flight and emits the first StartsTurn Working
-// event so Operator can show activity as soon as chat.send is accepted.
+// event so Operator can show activity before chat.send is acked.
 func (m *TurnMapper) StartRun(runID string) []taskstate.MobileEvent {
 	if runID == "" {
 		return nil
@@ -267,6 +278,70 @@ func (m *TurnMapper) StartRun(runID string) []taskstate.MobileEvent {
 		return nil
 	}
 	return []taskstate.MobileEvent{m.workingEvent(run, genericWorkingSummary)}
+}
+
+// AliasRun makes to share in-flight state with from so a server-assigned
+// runId still matches the turn that StartRun opened under the idempotency key.
+func (m *TurnMapper) AliasRun(from, to string) {
+	if from == "" || to == "" || from == to {
+		return
+	}
+	run, exists := m.runs[from]
+	if !exists {
+		return
+	}
+	m.runs[to] = run
+}
+
+// forgetRun drops runID and every alias that shares its in-flight state, so a
+// final on the server-assigned id cannot leave the idempotency key live.
+func (m *TurnMapper) forgetRun(runID string) {
+	if runID == "" {
+		return
+	}
+	run, exists := m.runs[runID]
+	if exists {
+		for id, other := range m.runs {
+			if other == run {
+				delete(m.runs, id)
+				m.rememberFinished(id)
+			}
+		}
+	}
+	m.rememberFinished(runID)
+}
+
+func (m *TurnMapper) acceptsProgress(payload AgentEventPayload) bool {
+	if payload.RunID == "" || !payload.carriesProgress() {
+		return false
+	}
+	if payload.SessionKey == "" || payload.SessionKey == m.sessionKey {
+		return true
+	}
+	return m.KnowsRun(payload.RunID)
+}
+
+// ApplyProgress folds preamble/command item events into Working summaries
+// so the thread can show live tool progress during a long think window.
+func (m *TurnMapper) ApplyProgress(payload AgentEventPayload) []taskstate.MobileEvent {
+	if !m.acceptsProgress(payload) {
+		return nil
+	}
+	if _, finished := m.finishedRuns[payload.RunID]; finished {
+		return nil
+	}
+	run := m.runFor(payload.RunID)
+	summary := ""
+	if isCommandToken(payload.ItemType) || isCommandToken(payload.DataType) {
+		summary = taskstate.SafeDisplay(payload.Command, "Running a command", summaryLimit)
+	} else {
+		summary = taskstate.SafeDisplay(payload.Data.Text, "Agent response in progress", summaryLimit)
+	}
+	if summary == "" || summary == run.lastProgress {
+		return nil
+	}
+	run.lastProgress = summary
+	return []taskstate.MobileEvent{m.workingEvent(run, summary)}
 }
 
 // ApplyAgent folds one gateway agent event into the mapper's run state.
@@ -352,8 +427,7 @@ func (m *TurnMapper) Apply(payload ChatEventPayload) []taskstate.MobileEvent {
 			State:   taskstate.IdleAfterReply,
 			Summary: summary,
 		})
-		delete(m.runs, payload.RunID)
-		m.rememberFinished(payload.RunID)
+		m.forgetRun(payload.RunID)
 	case "error":
 		events = append(events, taskstate.MobileEvent{
 			TaskID:  m.taskID,
@@ -361,8 +435,7 @@ func (m *TurnMapper) Apply(payload ChatEventPayload) []taskstate.MobileEvent {
 			State:   taskstate.Failed,
 			Summary: taskstate.SafeDisplay(payload.ErrorMessage, "Codex hit an error", summaryLimit),
 		})
-		delete(m.runs, payload.RunID)
-		m.rememberFinished(payload.RunID)
+		m.forgetRun(payload.RunID)
 	case "aborted":
 		events = append(events, taskstate.MobileEvent{
 			TaskID:  m.taskID,
@@ -370,8 +443,7 @@ func (m *TurnMapper) Apply(payload ChatEventPayload) []taskstate.MobileEvent {
 			State:   taskstate.Interrupted,
 			Summary: "Codex was interrupted",
 		})
-		delete(m.runs, payload.RunID)
-		m.rememberFinished(payload.RunID)
+		m.forgetRun(payload.RunID)
 	}
 
 	return events
@@ -470,6 +542,7 @@ type agentEnvelope struct {
 	Text       string          `json:"text"`
 	Delta      string          `json:"delta"`
 	Thinking   string          `json:"thinking"`
+	Command    string          `json:"command"`
 	Summary    json.RawMessage `json:"summary"`
 	Item       json.RawMessage `json:"item"`
 	Content    json.RawMessage `json:"content"`
@@ -527,8 +600,9 @@ func decodeAgentEvent(raw json.RawMessage, depth int) (AgentEventPayload, bool) 
 	if itemType == "" {
 		itemType = contentType
 	}
+	command := firstNonEmpty(item.Command, inner.Command, envelope.Command)
 
-	if stream == "" && text == "" && delta == "" && envelope.RunID == "" && envelope.SessionKey == "" {
+	if stream == "" && text == "" && delta == "" && command == "" && envelope.RunID == "" && envelope.SessionKey == "" {
 		return AgentEventPayload{}, false
 	}
 	return AgentEventPayload{
@@ -537,6 +611,7 @@ func decodeAgentEvent(raw json.RawMessage, depth int) (AgentEventPayload, bool) 
 		Stream:     stream,
 		ItemType:   itemType,
 		DataType:   dataType,
+		Command:    command,
 		Data:       AgentEventData{Text: text, Delta: delta},
 	}, true
 }
@@ -544,14 +619,20 @@ func decodeAgentEvent(raw json.RawMessage, depth int) (AgentEventPayload, bool) 
 func reasoningFromEnvelope(stream string, envelope, inner, item agentEnvelope) (text, delta, contentType string) {
 	switch stream {
 	case "item", "codex_app_server.item":
-		if !isItemReasoning(envelope, inner, item) {
-			return "", "", firstEnumToken(item.Type, inner.Type, envelope.Type, inner.Kind)
+		if isItemReasoning(envelope, inner, item) {
+			text = firstNonEmpty(extractSummary(item.Summary), extractSummary(inner.Summary), extractSummary(envelope.Summary))
+			return text, "", "reasoning"
 		}
-		text = firstNonEmpty(extractSummary(item.Summary), extractSummary(inner.Summary), extractSummary(envelope.Summary))
-		if text == "" {
-			text = reasoningFallbackSummary
+		itemType := firstEnumToken(item.Type, inner.Type, envelope.Type, inner.Kind, item.Kind, envelope.Kind)
+		if itemType == "preamble" {
+			title := firstNonEmpty(item.Title, inner.Title, envelope.Title)
+			if title == "Reasoning" {
+				title = ""
+			}
+			text = firstNonEmpty(extractSummary(item.Summary), extractSummary(inner.Summary), item.Text, inner.Text, envelope.Text, title)
+			return text, "", "preamble"
 		}
-		return text, "", "reasoning"
+		return "", "", itemType
 	case "assistant":
 		text, contentType = firstThinkingContent(envelope.Content, inner.Content, item.Content)
 		if text == "" {
@@ -560,17 +641,7 @@ func reasoningFromEnvelope(stream string, envelope, inner, item agentEnvelope) (
 				contentType = "thinking"
 			}
 		}
-		if text == "" && contentType == "" {
-			// OpenClaw 2026.7.1-2 often never emits stream=thinking; live
-			// tokens arrive as assistant data.text / data.delta while the
-			// run is in flight.
-			text = firstNonEmpty(envelope.Text, inner.Text)
-			delta = firstNonEmpty(envelope.Delta, inner.Delta)
-			if text != "" || delta != "" {
-				contentType = "thinking"
-			}
-		}
-		return text, delta, contentType
+		return text, "", contentType
 	default:
 		// stream:"thinking" and the older top-level type:"thinking" shape.
 		text = firstNonEmpty(envelope.Text, envelope.Thinking, inner.Text, inner.Thinking, extractSummary(item.Summary), extractSummary(inner.Summary), extractSummary(envelope.Summary))

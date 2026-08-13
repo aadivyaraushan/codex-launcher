@@ -8,7 +8,7 @@ What this is for: Pixel proof of PR #15 still showed no live reasoning. This rec
 
 Turnproxy now treats OpenClaw 2026.7.1-2 `item` and `codex_app_server.item` reasoning summaries (and assistant `thinking`/`reasoning` content parts) the same as `stream:"thinking"`: one updating `KindReasoning` row and a changing Working summary. `stream:"thinking"` still works for newer gateways. Unmatched run ids still do not attach to inbound Phone agent.
 
-On 2026.7.1-2 the Codex projector often emits `item` as `{kind:"analysis", title:"Reasoning"}` and `codex_app_server.item` as `{phase, itemId, type:"reasoning"}` with no nested summary. Those still open a Reasoning row (display text `Reasoning`) during the pre-delta wait; a later nested summary replaces that text. Hidden CoT `content` is never read.
+On 2026.7.1-2 the Codex projector often emits `item` as `{kind:"analysis", title:"Reasoning"}` and `codex_app_server.item` as `{phase, itemId, type:"reasoning"}` with no nested summary. Pixel UXPROBE-0813A showed that a `"Reasoning"` fallback is wrong: Chrome Working is enough until a later nested **summary** exists. Hidden CoT `content` is never read. Current contract: `saved-results/instant-working-stream-tokens.md`.
 
 ## Why PR #15 still looked empty on Pixel
 

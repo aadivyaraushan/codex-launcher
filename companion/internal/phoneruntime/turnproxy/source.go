@@ -209,7 +209,9 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 		source.logAgentEvent(event, agentPayload.Stream, "", sessionKeyPresent, false, "missing_run_id", 0, "", agentPayload.ItemType, agentPayload.DataType, 0)
 		return
 	}
-	if !agentPayload.carriesReasoning() {
+	reasoning := agentPayload.carriesReasoning()
+	progress := agentPayload.carriesProgress()
+	if !reasoning && !progress {
 		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, "not_reasoning", 0, "", agentPayload.ItemType, agentPayload.DataType, 0)
 		return
 	}
@@ -222,34 +224,56 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 		return
 	}
 	agentPayload.SessionKey = conv.sessionKey
-	mobileEvents := conv.mapper.ApplyAgent(agentPayload)
+	var mobileEvents []taskstate.MobileEvent
+	displayRunes := 0
+	if reasoning {
+		mobileEvents = conv.mapper.ApplyAgent(agentPayload)
+		reasoningText := conv.mapper.ReasoningDisplay(agentPayload.RunID)
+		if reasoningText != "" {
+			conv.upsertTranscript(tasktranscript.KindReasoning, reasoningText, agentPayload.RunID)
+		}
+		displayRunes = utf8.RuneCountInString(reasoningText)
+		if len(mobileEvents) == 0 {
+			if conv.mapper.Finished(agentPayload.RunID) {
+				dropReason = "finished_run"
+			} else if reasoningText == "" {
+				dropReason = "no_text"
+			} else {
+				dropReason = "unchanged"
+			}
+		}
+	} else {
+		mobileEvents = conv.mapper.ApplyProgress(agentPayload)
+		if isCommandToken(agentPayload.ItemType) || isCommandToken(agentPayload.DataType) {
+			conv.upsertCommand(agentPayload.Command, agentPayload.RunID)
+			displayRunes = utf8.RuneCountInString(agentPayload.Command)
+		} else {
+			activity := taskstate.SafeDisplay(agentPayload.Data.Text, "Agent response in progress", summaryLimit)
+			if activity != "" {
+				conv.upsertTranscript(tasktranscript.KindActivity, activity, agentPayload.RunID)
+			}
+			displayRunes = utf8.RuneCountInString(activity)
+		}
+		if len(mobileEvents) == 0 {
+			if conv.mapper.Finished(agentPayload.RunID) {
+				dropReason = "finished_run"
+			} else {
+				dropReason = "unchanged"
+			}
+		}
+	}
 	if len(mobileEvents) > 0 {
 		conv.state = taskstate.Working
 		conv.activeTurnID = agentPayload.RunID
 		conv.updatedAt = time.Now().Unix()
-	}
-	reasoning := conv.mapper.ReasoningDisplay(agentPayload.RunID)
-	if reasoning != "" {
-		conv.upsertTranscript(tasktranscript.KindReasoning, reasoning, agentPayload.RunID)
+		dropReason = ""
 	}
 	taskID := conv.taskID
 	emitted := len(mobileEvents)
 	applied := emitted > 0
-	if !applied {
-		if conv.mapper.Finished(agentPayload.RunID) {
-			dropReason = "finished_run"
-		} else if reasoning == "" {
-			dropReason = "no_text"
-		} else {
-			dropReason = "unchanged"
-		}
-	} else {
-		dropReason = ""
-	}
-	reasoningRunes := utf8.RuneCountInString(reasoning)
 	source.mu.Unlock()
 
-	source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, applied, dropReason, emitted, taskID, agentPayload.ItemType, agentPayload.DataType, reasoningRunes)
+	source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, applied, dropReason, emitted, taskID, agentPayload.ItemType, agentPayload.DataType, displayRunes)
 	source.publish(mobileEvents)
 }
 
@@ -387,10 +411,6 @@ func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastM
 		return taskadapter.ExistingTaskResult{}, err
 	}
 	idempotencyKey := newIdempotencyKey()
-	source.mu.Lock()
-	conv.pendingRunID = idempotencyKey
-	conv.sentRunID = idempotencyKey
-	source.mu.Unlock()
 	params := chatSendParams{
 		SessionKey:     conv.sessionKey,
 		Message:        prompt,
@@ -399,33 +419,86 @@ func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastM
 	if requestThinking {
 		params.Thinking = userThinkingLevel
 	}
-	payload, err := source.client.request(ctx, "chat.send", params)
+
+	source.mu.Lock()
+	conv.pendingRunID = idempotencyKey
+	conv.sentRunID = idempotencyKey
+	conv.lastMessage = taskstate.SafeLastMessage(lastMessage)
+	conv.appendTranscript(kindFromSpeaker(lastMessage.From), lastMessage.Text, idempotencyKey)
+	conv.state = taskstate.Working
+	conv.activeTurnID = idempotencyKey
+	conv.updatedAt = time.Now().Unix()
+	working := conv.mapper.StartRun(idempotencyKey)
+	taskID, sessionKey := conv.taskID, conv.sessionKey
+	source.mu.Unlock()
+	source.publish(working)
+	source.logger.Info("[turnproxy] turn started", "task_id", taskID, "session_key", sessionKey, "turn_id", idempotencyKey, "thinking", requestThinking)
+
+	reqID, respCh, err := source.client.sendRequest(ctx, "chat.send", params)
 	if err != nil {
+		source.abandonChatSend(conv, idempotencyKey)
+		return taskadapter.ExistingTaskResult{}, err
+	}
+	go source.finishChatSend(reqID, respCh, conv, idempotencyKey, requestThinking)
+	return taskadapter.ExistingTaskResult{ThreadID: taskID, TurnID: idempotencyKey}, nil
+}
+
+func (source *Source) abandonChatSend(conv *conversation, idempotencyKey string) {
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	if conv.pendingRunID != idempotencyKey {
+		return
+	}
+	conv.pendingRunID = ""
+	conv.sentRunID = ""
+	conv.activeTurnID = ""
+	conv.state = taskstate.IdleAfterReply
+}
+
+func (source *Source) finishChatSend(reqID string, respCh chan gatewayFrame, conv *conversation, idempotencyKey string, requestThinking bool) {
+	defer source.client.forgetPending(reqID)
+	payload, err := waitRequest(context.Background(), source.client.done, "chat.send", respCh)
+	if err != nil {
+		source.logger.Info("[turnproxy] chat.send failed", "task_id", conv.taskID, "turn_id", idempotencyKey, "error", err.Error())
 		source.mu.Lock()
 		if conv.pendingRunID == idempotencyKey {
+			conv.state = taskstate.Failed
+			conv.activeTurnID = ""
 			conv.pendingRunID = ""
 			conv.sentRunID = ""
+			failure := []taskstate.MobileEvent{{
+				TaskID:  conv.taskID,
+				Kind:    "failure",
+				State:   taskstate.Failed,
+				Summary: "Codex hit an error",
+			}}
+			source.mu.Unlock()
+			source.publish(failure)
+			return
 		}
 		source.mu.Unlock()
-		return taskadapter.ExistingTaskResult{}, err
+		return
 	}
 	turnID := idempotencyKey
 	if serverRunID := serverAssignedRunID(payload); serverRunID != "" {
 		turnID = serverRunID
 	}
 	source.mu.Lock()
-	conv.pendingRunID = turnID
-	conv.sentRunID = turnID
-	conv.lastMessage = taskstate.SafeLastMessage(lastMessage)
-	conv.appendTranscript(kindFromSpeaker(lastMessage.From), lastMessage.Text, turnID)
-	conv.state = taskstate.Working
-	conv.activeTurnID = turnID
-	conv.updatedAt = time.Now().Unix()
-	working := conv.mapper.StartRun(turnID)
+	if conv.pendingRunID == idempotencyKey || conv.pendingRunID == turnID {
+		conv.pendingRunID = turnID
+		conv.sentRunID = turnID
+		if conv.activeTurnID == idempotencyKey || conv.activeTurnID == "" {
+			conv.activeTurnID = turnID
+		}
+		if turnID != idempotencyKey {
+			conv.mapper.AliasRun(idempotencyKey, turnID)
+			conv.retargetTurn(idempotencyKey, turnID)
+		}
+	}
+	taskID := conv.taskID
+	sessionKey := conv.sessionKey
 	source.mu.Unlock()
-	source.logger.Info("[turnproxy] chat.send accepted", "task_id", conv.taskID, "session_key", conv.sessionKey, "turn_id", turnID, "thinking", requestThinking)
-	source.publish(working)
-	return taskadapter.ExistingTaskResult{ThreadID: conv.taskID, TurnID: turnID}, nil
+	source.logger.Info("[turnproxy] chat.send accepted", "task_id", taskID, "session_key", sessionKey, "turn_id", turnID, "thinking", requestThinking)
 }
 
 func (source *Source) conversationForSendLocked(taskID, prompt string) (*conversation, error) {
@@ -669,6 +742,45 @@ func (source *Source) Close() error {
 		return nil
 	}
 	return source.client.Close()
+}
+
+func (conv *conversation) retargetTurn(from, to string) {
+	if from == "" || to == "" || from == to {
+		return
+	}
+	for index := range conv.entries {
+		if conv.entries[index].TurnID == from {
+			conv.entries[index].TurnID = to
+		}
+	}
+}
+
+func (conv *conversation) upsertCommand(command, turnID string) {
+	command = boundTranscriptText(taskstate.SafeDisplay(command, "", tasktranscript.MaxEntryRunes))
+	if command == "" {
+		return
+	}
+	if !validTranscriptID(turnID) {
+		turnID = fmt.Sprintf("turn-%d", conv.nextEntry+1)
+	}
+	for index := len(conv.entries) - 1; index >= 0; index-- {
+		entry := conv.entries[index]
+		if entry.TurnID == turnID && entry.Kind == tasktranscript.KindCommand && entry.Command == command {
+			return
+		}
+	}
+	conv.nextEntry++
+	entryID := fmt.Sprintf("entry-%d", conv.nextEntry)
+	conv.entries = append(conv.entries, tasktranscript.Entry{
+		ID:      entryID,
+		TurnID:  turnID,
+		Kind:    tasktranscript.KindCommand,
+		Command: command,
+		Status:  "inProgress",
+	})
+	if len(conv.entries) > tasktranscript.MaxPageEntries {
+		conv.entries = conv.entries[len(conv.entries)-tasktranscript.MaxPageEntries:]
+	}
 }
 
 func (conv *conversation) upsertTranscript(kind tasktranscript.Kind, text, turnID string) {
