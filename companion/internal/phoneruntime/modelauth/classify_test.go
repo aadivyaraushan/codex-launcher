@@ -45,6 +45,63 @@ func TestClassifyOauthWinsOverPending(t *testing.T) {
 	}
 }
 
+func TestParseStoreJSONMapDropsSecretsAndKeepsIdTypeProvider(t *testing.T) {
+	raw := []byte(`{
+		"version": 1,
+		"profiles": {
+			"openai:default": {
+				"type": "oauth",
+				"provider": "openai",
+				"access": "sk-secret-should-drop",
+				"refresh": "rt-secret-should-drop"
+			},
+			"anthropic:default": {
+				"type": "oauth",
+				"provider": "anthropic",
+				"access": "sk-anthropic-secret"
+			},
+			"openai:manual": {
+				"type": "api_key",
+				"provider": "openai",
+				"key": "sk-other-secret"
+			}
+		}
+	}`)
+	profiles, err := ParseStoreJSON(raw)
+	if err != nil {
+		t.Fatalf("ParseStoreJSON: %v", err)
+	}
+	openai := OpenAIProfiles(profiles)
+	if len(openai) != 2 {
+		t.Fatalf("openai profiles = %+v, want 2", openai)
+	}
+	byID := map[string]Profile{}
+	for _, profile := range openai {
+		byID[profile.ID] = profile
+	}
+	if byID["openai:default"] != (Profile{ID: "openai:default", Type: "oauth", Provider: "openai"}) {
+		t.Fatalf("oauth profile = %+v", byID["openai:default"])
+	}
+	if byID["openai:manual"] != (Profile{ID: "openai:manual", Type: "api_key", Provider: "openai"}) {
+		t.Fatalf("api_key profile = %+v", byID["openai:manual"])
+	}
+	if Classify(openai, false) != OauthReady {
+		t.Fatalf("Classify openai store = %q, want oauth_ready", Classify(openai, false))
+	}
+}
+
+func TestOpenAIProfilesIgnoresAnthropicOAuth(t *testing.T) {
+	got := OpenAIProfiles([]Profile{
+		{ID: "anthropic:default", Type: "oauth", Provider: "anthropic"},
+	})
+	if len(got) != 0 {
+		t.Fatalf("OpenAIProfiles = %+v, want empty", got)
+	}
+	if Classify(got, false) != Missing {
+		t.Fatalf("anthropic oauth must not lift ChatGPT gate, got %q", Classify(got, false))
+	}
+}
+
 func TestParseAuthListJSONKeepsOnlyIdTypeProvider(t *testing.T) {
 	raw := []byte(`{
 		"agentId": "main",

@@ -190,17 +190,20 @@ type Runtime struct {
 	// BeeperBaseURL configured, or no access token was available).
 	beeperWatchDone chan struct{}
 	// ChatGPT OAuth (BYO subscription) — list/start never return tokens.
-	listModelAuth       func(context.Context) ([]modelauth.Profile, error)
-	startModelAuth      func(context.Context) (device.Prompt, error)
-	setAuthOrder        func(context.Context, []string) error
-	restartGateway      func(context.Context) error
-	modelAuthPending    bool
-	pendingModelAuth    device.Prompt
-	authOrderApplied    bool
-	preferOrderInFlight bool
-	lastModelAuth       string
-	closed              bool
-	modelAuthListLogged bool
+	listModelAuth            func(context.Context) ([]modelauth.Profile, error)
+	startModelAuth           func(context.Context) (device.Prompt, error)
+	setAuthOrder             func(context.Context, []string) error
+	restartGateway           func(context.Context) error
+	modelAuthPending         bool
+	pendingModelAuth         device.Prompt
+	authOrderApplied         bool
+	preferOrderInFlight      bool
+	lastModelAuth            string
+	closed                   bool
+	modelAuthListLogged      bool
+	modelAuthRefreshInFlight bool
+	modelAuthSawOAuth        bool
+	modelAuthRefreshGen      int
 }
 
 func (config Config) validate() error {

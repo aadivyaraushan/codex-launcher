@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/modelauth"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/modelauth/cli"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/modelauth/device"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/modelauth/store"
 )
 
 func (runtime *Runtime) wireModelAuth(hooks ModelAuthHooks) {
@@ -22,54 +24,148 @@ func (runtime *Runtime) wireModelAuth(hooks ModelAuthHooks) {
 		runtime.startModelAuth = runtime.startOpenClawDeviceLogin
 		runtime.setAuthOrder = cli.SetOpenAIAuthOrder
 		runtime.restartGateway = cli.RestartGateway
+		runtime.lastModelAuth = string(modelauth.Missing)
+		if profiles, err := store.Read(); err == nil {
+			runtime.logger.Info("[model-auth] seeded from disk store", "profile_count", len(profiles), "decision", "cache_from_store")
+			runtime.applyModelAuthList(profiles, nil)
+		} else if !errors.Is(err, store.ErrNotFound) {
+			runtime.logger.Info("[model-auth] disk store unreadable", "error", device.Redact(err.Error()), "decision", "keep_cache")
+		}
+		runtime.kickModelAuthRefresh()
 		return
 	}
 	runtime.listModelAuth = hooks.List
 	runtime.startModelAuth = hooks.StartLogin
 	runtime.setAuthOrder = hooks.SetAuthOrder
 	runtime.restartGateway = hooks.RestartGateway
+	runtime.lastModelAuth = string(modelauth.Missing)
+	runtime.kickModelAuthRefresh()
 }
 
 func (runtime *Runtime) modelAuthStatus() string {
 	if runtime == nil {
 		return string(modelauth.Missing)
 	}
+	runtime.kickModelAuthRefresh()
 	runtime.mu.Lock()
+	status := runtime.lastModelAuth
 	pending := runtime.modelAuthPending
+	runtime.mu.Unlock()
+	if status == "" {
+		status = string(modelauth.Missing)
+	}
+	if pending && status != string(modelauth.OauthReady) {
+		return string(modelauth.Pending)
+	}
+	return status
+}
+
+func (runtime *Runtime) kickModelAuthRefresh() {
+	if runtime == nil {
+		return
+	}
+	runtime.mu.Lock()
+	if runtime.closed || runtime.modelAuthRefreshInFlight || runtime.listModelAuth == nil {
+		runtime.mu.Unlock()
+		return
+	}
+	runtime.modelAuthRefreshInFlight = true
 	list := runtime.listModelAuth
 	runtime.mu.Unlock()
+	go runtime.refreshModelAuth(list)
+}
+
+func (runtime *Runtime) refreshModelAuth(list func(context.Context) ([]modelauth.Profile, error)) {
+	defer func() {
+		runtime.mu.Lock()
+		runtime.modelAuthRefreshInFlight = false
+		runtime.mu.Unlock()
+	}()
+	if list == nil {
+		return
+	}
+	runtime.mu.Lock()
+	closed := runtime.closed
+	runtime.mu.Unlock()
+	if closed {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	type outcome struct {
+		profiles []modelauth.Profile
+		err      error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		profiles, err := list(ctx)
+		done <- outcome{profiles: profiles, err: err}
+	}()
 	var profiles []modelauth.Profile
-	if list != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		got, err := list(ctx)
+	var err error
+	select {
+	case out := <-done:
+		profiles, err = out.profiles, out.err
+	case <-ctx.Done():
+		err = ctx.Err()
+		runtime.logger.Info("[model-auth] list hung; further refresh is disk-only", "decision", "store_only")
+		runtime.applyModelAuthList(nil, err)
+		runtime.mu.Lock()
+		runtime.modelAuthRefreshGen++
+		runtime.listModelAuth = runtime.storeOnlyModelAuth
+		runtime.mu.Unlock()
 		cancel()
-		if err != nil {
-			runtime.mu.Lock()
-			firstListErr := !runtime.modelAuthListLogged
-			runtime.modelAuthListLogged = true
-			runtime.mu.Unlock()
-			if firstListErr {
-				runtime.logger.Info("[model-auth] list failed", "error", device.Redact(err.Error()), "decision", "missing_or_pending")
-			}
-		} else {
-			profiles = got
+		return
+	}
+	cancel()
+	runtime.applyModelAuthList(profiles, err)
+}
+
+func (runtime *Runtime) storeOnlyModelAuth(context.Context) ([]modelauth.Profile, error) {
+	return store.Read()
+}
+
+func (runtime *Runtime) applyModelAuthList(profiles []modelauth.Profile, err error) {
+	if runtime == nil {
+		return
+	}
+	runtime.mu.Lock()
+	pending := runtime.modelAuthPending
+	runtime.mu.Unlock()
+	if err != nil {
+		runtime.mu.Lock()
+		firstListErr := !runtime.modelAuthListLogged
+		runtime.modelAuthListLogged = true
+		keepReady := runtime.modelAuthSawOAuth || runtime.lastModelAuth == string(modelauth.OauthReady)
+		if keepReady {
+			runtime.lastModelAuth = string(modelauth.OauthReady)
 		}
+		status := runtime.lastModelAuth
+		if status == "" {
+			status = string(modelauth.Missing)
+		}
+		runtime.mu.Unlock()
+		if firstListErr {
+			runtime.logger.Info("[model-auth] list failed", "error", device.Redact(err.Error()), "decision", "keep_cache", "status", status)
+		}
+		return
 	}
 	status := modelauth.Classify(profiles, pending)
-	if status == modelauth.OauthReady {
-		runtime.mu.Lock()
-		runtime.modelAuthPending = false
-		runtime.mu.Unlock()
-		runtime.kickPreferOAuth()
-	}
 	runtime.mu.Lock()
 	changed := runtime.lastModelAuth != string(status)
 	runtime.lastModelAuth = string(status)
+	if status == modelauth.OauthReady {
+		runtime.modelAuthSawOAuth = true
+		runtime.modelAuthPending = false
+	} else {
+		runtime.modelAuthSawOAuth = false
+	}
 	runtime.mu.Unlock()
 	if changed {
-		runtime.logger.Info("[model-auth] health", "status", string(status), "profile_count", len(profiles), "pending", pending)
+		runtime.logger.Info("[model-auth] health", "status", string(status), "profile_count", len(profiles), "pending", pending, "decision", "cache_updated")
 	}
-	return string(status)
+	if status == modelauth.OauthReady {
+		runtime.kickPreferOAuth()
+	}
 }
 
 func (runtime *Runtime) kickPreferOAuth() {
@@ -158,10 +254,8 @@ func (runtime *Runtime) preferOAuthAfterLogin() {
 			time.Sleep(200 * time.Millisecond)
 			continue
 		}
+		runtime.applyModelAuthList(profiles, nil)
 		ids := modelauth.PreferOrder(profiles)
-		runtime.mu.Lock()
-		runtime.modelAuthPending = false
-		runtime.mu.Unlock()
 		if applied {
 			runtime.logger.Info("[model-auth] oauth ready; order already applied", "decision", "skip_restart", "oauth_first", len(ids) > 0)
 			return

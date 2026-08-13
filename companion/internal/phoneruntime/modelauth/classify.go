@@ -19,6 +19,51 @@ type Profile struct {
 	Provider string `json:"provider"`
 }
 
+func ParseStoreJSON(raw []byte) ([]Profile, error) {
+	var mapped struct {
+		Profiles map[string]json.RawMessage `json:"profiles"`
+	}
+	if err := json.Unmarshal(raw, &mapped); err == nil && mapped.Profiles != nil {
+		out := make([]Profile, 0, len(mapped.Profiles))
+		for id, item := range mapped.Profiles {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			var row struct {
+				Type     string `json:"type"`
+				Provider string `json:"provider"`
+			}
+			if json.Unmarshal(item, &row) != nil {
+				continue
+			}
+			out = append(out, Profile{
+				ID:       id,
+				Type:     strings.TrimSpace(row.Type),
+				Provider: strings.TrimSpace(row.Provider),
+			})
+		}
+		return out, nil
+	}
+	return ParseAuthListJSON(raw)
+}
+
+func OpenAIProfiles(profiles []Profile) []Profile {
+	out := make([]Profile, 0, len(profiles))
+	for _, profile := range profiles {
+		if IsOpenAIProfile(profile) {
+			out = append(out, profile)
+		}
+	}
+	return out
+}
+
+func IsOpenAIProfile(profile Profile) bool {
+	provider := strings.ToLower(strings.TrimSpace(profile.Provider))
+	id := strings.ToLower(strings.TrimSpace(profile.ID))
+	return strings.HasPrefix(provider, "openai") || strings.HasPrefix(id, "openai")
+}
+
 func Classify(profiles []Profile, loginPending bool) Status {
 	if hasOAuth(profiles) {
 		return OauthReady

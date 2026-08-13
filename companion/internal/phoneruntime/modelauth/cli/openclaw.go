@@ -3,12 +3,14 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/modelauth"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/modelauth/device"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/modelauth/store"
 )
 
 type RunFunc func(ctx context.Context, name string, args ...string) ([]byte, error)
@@ -23,7 +25,20 @@ func RunOpenClaw(ctx context.Context, name string, args ...string) ([]byte, erro
 }
 
 func ListOpenAI(ctx context.Context) ([]modelauth.Profile, error) {
-	return ListOpenAIWith(ctx, RunOpenClaw)
+	return listOpenAI(ctx, store.Read, RunOpenClaw)
+}
+
+func listOpenAI(ctx context.Context, read func() ([]modelauth.Profile, error), run RunFunc) ([]modelauth.Profile, error) {
+	if read != nil {
+		profiles, err := read()
+		if err == nil {
+			return profiles, nil
+		}
+		if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+	}
+	return ListOpenAIWith(ctx, run)
 }
 
 func ListOpenAIWith(ctx context.Context, run RunFunc) ([]modelauth.Profile, error) {
