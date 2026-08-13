@@ -40,7 +40,7 @@ This cloud run (2026-08-13), after wiring live recording/uploading:
 
 ## Independent judge
 
-First review: **pass-with-nits** — follow-up had lost `"…"` while busy. That nit is now fixed: home and follow-up share `PromptDictationMicIcon`, and Home receives live `recording`/`uploading` from `homeDictationTap`.
+Second review (after live recording/uploading): **pass**. No must-fix. Busy feedback is `"…"`, which the follow-up allowed.
 
 ## Sibling search
 
