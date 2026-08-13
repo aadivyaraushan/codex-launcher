@@ -60,6 +60,7 @@ func (runtime *Runtime) modelAuthStatus() string {
 		runtime.mu.Lock()
 		runtime.modelAuthPending = false
 		runtime.mu.Unlock()
+		runtime.kickPreferOAuth()
 	}
 	runtime.mu.Lock()
 	changed := runtime.lastModelAuth != string(status)
@@ -69,6 +70,20 @@ func (runtime *Runtime) modelAuthStatus() string {
 		runtime.logger.Info("[model-auth] health", "status", string(status), "profile_count", len(profiles), "pending", pending)
 	}
 	return string(status)
+}
+
+func (runtime *Runtime) kickPreferOAuth() {
+	if runtime == nil {
+		return
+	}
+	runtime.mu.Lock()
+	if runtime.closed || runtime.authOrderApplied || runtime.preferOrderInFlight {
+		runtime.mu.Unlock()
+		return
+	}
+	runtime.preferOrderInFlight = true
+	runtime.mu.Unlock()
+	go runtime.preferOAuthAfterLogin()
 }
 
 func (runtime *Runtime) StartModelAuth(ctx context.Context) (device.Prompt, error) {
@@ -102,7 +117,7 @@ func (runtime *Runtime) StartModelAuth(ctx context.Context) (device.Prompt, erro
 	runtime.pendingModelAuth = prompt
 	runtime.mu.Unlock()
 	runtime.logger.Info("[model-auth] device code ready", "decision", "return_prompt", "user_code_len", len(prompt.UserCode), "verification_host", "auth.openai.com")
-	go runtime.preferOAuthAfterLogin()
+	runtime.kickPreferOAuth()
 	return prompt, nil
 }
 
@@ -110,6 +125,13 @@ func (runtime *Runtime) preferOAuthAfterLogin() {
 	if runtime == nil {
 		return
 	}
+	defer func() {
+		runtime.mu.Lock()
+		if !runtime.authOrderApplied {
+			runtime.preferOrderInFlight = false
+		}
+		runtime.mu.Unlock()
+	}()
 	for attempt := 0; attempt < 25; attempt++ {
 		runtime.mu.Lock()
 		if runtime.closed {
@@ -207,7 +229,7 @@ func (runtime *Runtime) startOpenClawDeviceLogin(ctx context.Context) (device.Pr
 			return
 		}
 		runtime.logger.Info("[model-auth] device login process succeeded", "decision", "process_ok")
-		runtime.preferOAuthAfterLogin()
+		runtime.kickPreferOAuth()
 	}()
 	return prompt, nil
 }

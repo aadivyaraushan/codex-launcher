@@ -208,6 +208,44 @@ func TestModelAuthStartPrefersOauthOrderAfterReady(t *testing.T) {
 	}
 }
 
+func TestHealthOauthReadyPrefersOrderWithoutStart(t *testing.T) {
+	var order []string
+	var restarted bool
+	rt := openModelAuthRuntime(t, phoneruntime.ModelAuthHooks{
+		List: func(context.Context) ([]modelauth.Profile, error) {
+			return []modelauth.Profile{
+				{ID: "openai:manual", Type: "api_key", Provider: "openai"},
+				{ID: "openai:default", Type: "oauth", Provider: "openai"},
+			}, nil
+		},
+		SetAuthOrder: func(_ context.Context, ids []string) error {
+			order = append([]string(nil), ids...)
+			return nil
+		},
+		RestartGateway: func(context.Context) error {
+			restarted = true
+			return nil
+		},
+	})
+	defer rt.Close()
+	if rt.Health().ModelAuth != "oauth_ready" {
+		t.Fatalf("ModelAuth = %q, want oauth_ready", rt.Health().ModelAuth)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(order) > 0 && restarted {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(order) == 0 || order[0] != "openai:default" {
+		t.Fatalf("auth order = %v, want oauth id first after health saw oauth_ready", order)
+	}
+	if !restarted {
+		t.Fatal("gateway was not restarted when oauth was already present")
+	}
+}
+
 func openModelAuthRuntime(t *testing.T, hooks phoneruntime.ModelAuthHooks) *phoneruntime.Runtime {
 	t.Helper()
 	rt, err := phoneruntime.Open(context.Background(), phoneruntime.Config{

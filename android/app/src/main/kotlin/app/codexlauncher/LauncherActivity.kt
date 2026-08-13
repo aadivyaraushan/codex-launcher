@@ -534,7 +534,7 @@ class LauncherActivity : ComponentActivity() {
                         LauncherDestination.APPEARANCE -> LauncherDestination.APPS
                         LauncherDestination.PROJECT -> LauncherDestination.HOME
                         LauncherDestination.PAIRING -> LauncherDestination.HOME
-                        LauncherDestination.MODEL_AUTH -> LauncherDestination.HOME
+                        LauncherDestination.MODEL_AUTH -> LauncherDestination.APPS
                         LauncherDestination.TASK -> {
                             sessionViewModel.clearAttachments()
                             sessionViewModel.closeTask()

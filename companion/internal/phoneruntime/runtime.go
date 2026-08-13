@@ -197,6 +197,7 @@ type Runtime struct {
 	modelAuthPending    bool
 	pendingModelAuth    device.Prompt
 	authOrderApplied    bool
+	preferOrderInFlight bool
 	lastModelAuth       string
 	closed              bool
 	modelAuthListLogged bool
