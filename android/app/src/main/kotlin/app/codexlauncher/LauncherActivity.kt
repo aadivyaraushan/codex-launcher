@@ -1,7 +1,6 @@
 package app.codexlauncher
 
 import android.Manifest
-import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.os.Build
 import android.content.Intent
@@ -102,10 +101,10 @@ import app.codexlauncher.task.transcript.TaskScreen
 import app.codexlauncher.task.transcript.TranscriptDetail
 import app.codexlauncher.task.transcript.TranscriptDetailScreen
 import app.codexlauncher.task.composer.DraftComposerViewModel
-import app.codexlauncher.task.control.PromptDictationContract
 import app.codexlauncher.task.control.PromptDictationResult
 import app.codexlauncher.task.control.homeDictationMessage
 import app.codexlauncher.task.control.mergePromptDictation
+import app.codexlauncher.task.control.rememberPromptDictationTap
 import app.codexlauncher.task.attachments.AttachmentDocumentReader
 import app.codexlauncher.task.attachments.AttachmentSelection
 import androidx.activity.result.PickVisualMediaRequest
@@ -181,27 +180,7 @@ class LauncherActivity : ComponentActivity() {
             var attachmentMessage by remember { mutableStateOf<String?>(null) }
             var homeDictationMessage by remember { mutableStateOf<String?>(null) }
             var stoppedConversations by remember { mutableStateOf(emptyList<ThreadKey>()) }
-            val homeDictationLauncher =
-                rememberLauncherForActivityResult(PromptDictationContract("Speak your prompt")) { result ->
-                    val applied =
-                        if (result is PromptDictationResult.Recognized) {
-                            draftComposerViewModel.applyDictation { currentText ->
-                                mergePromptDictation(currentText, result.text)
-                            }
-                        } else {
-                            draftComposerViewModel.cancelDictation()
-                            false
-                        }
-                    homeDictationMessage = homeDictationMessage(result, recognizedApplied = applied)
-                    AppLog.info(
-                        feature = "dictation",
-                        message = "home speech activity result handled",
-                        fields = mapOf(
-                            "result_kind" to result::class.simpleName.orEmpty(),
-                            "output_shape" to if (applied) "draft_and_message" else "message_only",
-                        ),
-                    )
-                }
+            val homeDictationTap = rememberPromptDictationTap()
             val attachmentReader = remember { AttachmentDocumentReader(contentResolver) }
             val acceptPickedAttachment: (Uri?) -> Unit = { uri ->
                 if (uri != null) {
@@ -715,31 +694,30 @@ class LauncherActivity : ComponentActivity() {
                                 }
                             },
                             onDictate = onDictate@{
-                                if (!draftComposerViewModel.beginDictation()) {
-                                    homeDictationMessage = "Dictation wasn’t started because the draft isn’t editable"
-                                    return@onDictate
+                                if (!homeDictationTap.state.recording && !homeDictationTap.state.uploading) {
+                                    if (!draftComposerViewModel.beginDictation()) {
+                                        homeDictationMessage = "Dictation wasn’t started because the draft isn’t editable"
+                                        return@onDictate
+                                    }
                                 }
-                                try {
-                                    homeDictationLauncher.launch(Unit)
-                                } catch (error: ActivityNotFoundException) {
-                                    draftComposerViewModel.cancelDictation()
-                                    homeDictationMessage =
-                                        homeDictationMessage(PromptDictationResult.Unavailable, recognizedApplied = false)
-                                    AppLog.error(
+                                homeDictationTap.request { result ->
+                                    val applied =
+                                        if (result is PromptDictationResult.Recognized) {
+                                            draftComposerViewModel.applyDictation { currentText ->
+                                                mergePromptDictation(currentText, result.text)
+                                            }
+                                        } else {
+                                            draftComposerViewModel.cancelDictation()
+                                            false
+                                        }
+                                    homeDictationMessage = homeDictationMessage(result, recognizedApplied = applied)
+                                    AppLog.info(
                                         feature = "dictation",
-                                        message = "home speech activity unavailable",
-                                        error = error,
-                                        fields = mapOf("decision" to "keep_composer_text"),
-                                    )
-                                } catch (error: SecurityException) {
-                                    draftComposerViewModel.cancelDictation()
-                                    homeDictationMessage =
-                                        homeDictationMessage(PromptDictationResult.Unavailable, recognizedApplied = false)
-                                    AppLog.error(
-                                        feature = "dictation",
-                                        message = "home speech activity rejected",
-                                        error = error,
-                                        fields = mapOf("decision" to "keep_composer_text"),
+                                        message = "home dictation result handled",
+                                        fields = mapOf(
+                                            "result_kind" to result::class.simpleName.orEmpty(),
+                                            "output_shape" to if (applied) "draft_and_message" else "message_only",
+                                        ),
                                     )
                                 }
                             },

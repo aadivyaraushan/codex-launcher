@@ -151,14 +151,22 @@ class TaskScreenTest {
         compose.onNodeWithText("Dictation canceled").assertIsDisplayed()
         compose.onNodeWithContentDescription("Follow-up message").assertTextContains("Typed words spoken words")
 
-        nextResult = PromptDictationResult.Unavailable
+        nextResult = PromptDictationResult.Unavailable()
         compose.onNodeWithContentDescription("Dictate follow-up").performClick()
-        compose.onNodeWithText("Speech recognition isn’t installed").assertIsDisplayed()
+        compose.onNodeWithText("Speech recognition isn’t available").assertIsDisplayed()
 
-        nextResult = PromptDictationResult.Failed
+        nextResult = PromptDictationResult.Unavailable.PermissionDenied
+        compose.onNodeWithContentDescription("Dictate follow-up").performClick()
+        compose.onNodeWithText("Microphone permission is required").assertIsDisplayed()
+
+        nextResult = PromptDictationResult.Failed()
         compose.onNodeWithContentDescription("Dictate follow-up").performClick()
         compose.onNodeWithText("Couldn’t understand speech").assertIsDisplayed()
         compose.onNodeWithContentDescription("Follow-up message").assertTextContains("Typed words spoken words")
+
+        nextResult = PromptDictationResult.Failed.Network
+        compose.onNodeWithContentDescription("Dictate follow-up").performClick()
+        compose.onNodeWithText("Couldn’t reach speech recognition").assertIsDisplayed()
     }
 
     @Test

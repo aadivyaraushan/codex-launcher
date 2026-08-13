@@ -8,6 +8,7 @@ work/
 **/build/
 android/local.properties
 local.properties
+**/deepgram_api_key
 .idea/
 *.iml
 .kotlin/

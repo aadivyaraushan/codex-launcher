@@ -19,12 +19,20 @@ class PromptDictationTest {
             homeDictationMessage(PromptDictationResult.Cancelled, recognizedApplied = false),
         )
         assertEquals(
-            "Speech recognition isn’t installed",
-            homeDictationMessage(PromptDictationResult.Unavailable, recognizedApplied = false),
+            "Speech recognition isn’t available",
+            homeDictationMessage(PromptDictationResult.Unavailable(), recognizedApplied = false),
+        )
+        assertEquals(
+            "Microphone permission is required",
+            homeDictationMessage(PromptDictationResult.Unavailable.PermissionDenied, recognizedApplied = false),
+        )
+        assertEquals(
+            "Couldn’t reach speech recognition",
+            homeDictationMessage(PromptDictationResult.Failed.Network, recognizedApplied = false),
         )
         assertEquals(
             "Couldn’t understand speech",
-            homeDictationMessage(PromptDictationResult.Failed, recognizedApplied = false),
+            homeDictationMessage(PromptDictationResult.Failed.EmptyTranscript, recognizedApplied = false),
         )
     }
 
