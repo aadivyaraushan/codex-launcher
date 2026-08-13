@@ -3,9 +3,11 @@ package turnproxy
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,8 +24,21 @@ type EventPublisher interface {
 	PublishTaskEvent(context.Context, taskstate.MobileEvent) error
 }
 
-// Config configures one Source: which gateway to dial, which task and
-// gateway session it speaks for, and where its MobileEvents go.
+const (
+	// HomeComposeTaskID is the virtual inbox Home Send targets. It is never
+	// a real OpenClaw session: StartExistingTurn on this id allocates a new
+	// phone-chat task and a new agent:main:phone-* session so each Home
+	// prompt is a fresh conversation. Beeper/inbound keeps Config.TaskID
+	// (phone-agent) and Config.SessionKey (agent:main:main).
+	HomeComposeTaskID = "phone-home"
+	thinkingEventsCap = "thinking-events"
+	homeChatPrefix    = "phone-chat-"
+	homeSessionPrefix = "agent:main:phone-"
+	userThinkingLevel = "high"
+)
+
+// Config configures one Source: which gateway to dial, which inbound task
+// and gateway session Beeper uses, and where MobileEvents go.
 type Config struct {
 	URL        string
 	Token      string
@@ -38,18 +53,24 @@ type Config struct {
 }
 
 // Source is a TaskSource/ExistingTaskSource (internal/app/mobilesession)
-// backed by one OpenClaw Gateway session pinned to a single phone-agent
-// task. It reuses TurnMapper to turn that session's "chat" events into
-// MobileEvents.
+// backed by one OpenClaw Gateway connection. The inbound phone-agent
+// session is pinned for Beeper; Home compose allocates extra tasks.
 type Source struct {
 	cfg    Config
 	client *gatewayClient
 	logger *slog.Logger
 
-	// mu guards mapper and the derived state below. handleEvent (driven by
-	// the client's reader goroutine) is the only writer; CurrentTask and
-	// ListRecent are readers.
-	mu           sync.Mutex
+	// mu guards conversations. handleEvent (the client's reader goroutine)
+	// is the only writer of run state; CurrentTask and ListRecent are readers.
+	mu            sync.Mutex
+	conversations map[string]*conversation
+	bySession     map[string]*conversation
+}
+
+type conversation struct {
+	taskID       string
+	sessionKey   string
+	title        string
 	mapper       *TurnMapper
 	state        taskstate.State
 	activeTurnID string
@@ -63,6 +84,7 @@ type chatSendParams struct {
 	SessionKey     string `json:"sessionKey"`
 	Message        string `json:"message"`
 	IdempotencyKey string `json:"idempotencyKey"`
+	Thinking       string `json:"thinking,omitempty"`
 }
 
 type steerParams struct {
@@ -85,17 +107,16 @@ func Connect(ctx context.Context, cfg Config) (*Source, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	source := &Source{
-		cfg:         cfg,
-		logger:      logger,
-		mapper:      NewTurnMapper(cfg.TaskID, cfg.SessionKey),
-		state:       taskstate.IdleAfterReply,
-		updatedAt:   time.Now().Unix(),
-		lastMessage: taskstate.SafeLastMessage(cfg.InitialLastMessage),
-		entries:     []tasktranscript.Entry{},
-	}
+	inbound := newConversation(cfg.TaskID, cfg.SessionKey, "Phone agent")
+	inbound.lastMessage = taskstate.SafeLastMessage(cfg.InitialLastMessage)
 	if cfg.InitialLastMessage.Text != "" {
-		source.appendTranscriptLocked(kindFromSpeaker(cfg.InitialLastMessage.From), cfg.InitialLastMessage.Text, "seed")
+		inbound.appendTranscript(kindFromSpeaker(cfg.InitialLastMessage.From), cfg.InitialLastMessage.Text, "seed")
+	}
+	source := &Source{
+		cfg:           cfg,
+		logger:        logger,
+		conversations: map[string]*conversation{cfg.TaskID: inbound},
+		bySession:     map[string]*conversation{cfg.SessionKey: inbound},
 	}
 	client, err := connectClient(ctx, cfg.URL, cfg.Token, logger, source.handleEvent)
 	if err != nil {
@@ -105,36 +126,96 @@ func Connect(ctx context.Context, cfg Config) (*Source, error) {
 	return source, nil
 }
 
-// handleEvent runs on the client's reader goroutine for every "event"
-// frame; it ignores everything but "chat".
-func (source *Source) handleEvent(event string, payload json.RawMessage) {
-	if event != "chat" {
-		return
+func newConversation(taskID, sessionKey, title string) *conversation {
+	return &conversation{
+		taskID:      taskID,
+		sessionKey:  sessionKey,
+		title:       title,
+		mapper:      NewTurnMapper(taskID, sessionKey),
+		state:       taskstate.IdleAfterReply,
+		updatedAt:   time.Now().Unix(),
+		lastMessage: taskstate.LastMessage{},
+		entries:     []tasktranscript.Entry{},
 	}
+}
+
+// handleEvent runs on the client's reader goroutine for every "event"
+// frame. Chat replies and agent thinking for known sessions are applied;
+// everything else is ignored.
+func (source *Source) handleEvent(event string, payload json.RawMessage) {
+	switch event {
+	case "chat":
+		source.handleChatEvent(payload)
+	case "agent":
+		source.handleAgentEvent(payload)
+	}
+}
+
+func (source *Source) handleChatEvent(payload json.RawMessage) {
 	var chatPayload ChatEventPayload
 	if err := json.Unmarshal(payload, &chatPayload); err != nil {
 		source.logger.Warn("[turnproxy] dropped unparsable chat event")
 		return
 	}
-	if chatPayload.SessionKey != source.cfg.SessionKey {
+
+	source.mu.Lock()
+	conv := source.bySession[chatPayload.SessionKey]
+	if conv == nil {
+		source.mu.Unlock()
+		return
+	}
+	mobileEvents := conv.mapper.Apply(chatPayload)
+	conv.applyRunState(chatPayload.State, chatPayload.RunID)
+	if reasoning := conv.mapper.ReasoningDisplay(chatPayload.RunID); reasoning != "" {
+		conv.upsertReasoning(reasoning, chatPayload.RunID)
+	}
+	for _, mobileEvent := range mobileEvents {
+		switch mobileEvent.Kind {
+		case "reply":
+			conv.lastMessage = taskstate.SafeLastMessage(taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: mobileEvent.Summary})
+			conv.appendTranscript(tasktranscript.KindAgent, mobileEvent.Summary, chatPayload.RunID)
+		case "failure", "interrupted":
+			conv.appendTranscript(tasktranscript.KindActivity, mobileEvent.Summary, chatPayload.RunID)
+		}
+	}
+	source.logger.Info("[turnproxy] applied chat event", "gateway_state", chatPayload.State, "run_id", chatPayload.RunID, "emitted", len(mobileEvents), "task_state", string(conv.state), "task_id", conv.taskID)
+	source.mu.Unlock()
+
+	source.publish(mobileEvents)
+}
+
+func (source *Source) handleAgentEvent(payload json.RawMessage) {
+	var agentPayload AgentEventPayload
+	if err := json.Unmarshal(payload, &agentPayload); err != nil {
+		source.logger.Warn("[turnproxy] dropped unparsable agent event")
+		return
+	}
+	if agentPayload.Stream != "thinking" {
 		return
 	}
 
 	source.mu.Lock()
-	mobileEvents := source.mapper.Apply(chatPayload)
-	source.applyRunStateLocked(chatPayload)
-	for _, mobileEvent := range mobileEvents {
-		switch mobileEvent.Kind {
-		case "reply":
-			source.lastMessage = taskstate.SafeLastMessage(taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: mobileEvent.Summary})
-			source.appendTranscriptLocked(tasktranscript.KindAgent, mobileEvent.Summary, chatPayload.RunID)
-		case "failure", "interrupted":
-			source.appendTranscriptLocked(tasktranscript.KindActivity, mobileEvent.Summary, chatPayload.RunID)
-		}
+	conv := source.bySession[agentPayload.SessionKey]
+	if conv == nil {
+		source.mu.Unlock()
+		return
 	}
-	source.logger.Info("[turnproxy] applied chat event", "gateway_state", chatPayload.State, "run_id", chatPayload.RunID, "emitted", len(mobileEvents), "task_state", string(source.state))
+	mobileEvents := conv.mapper.ApplyAgent(agentPayload)
+	if len(mobileEvents) > 0 {
+		conv.state = taskstate.Working
+		conv.activeTurnID = agentPayload.RunID
+		conv.updatedAt = time.Now().Unix()
+	}
+	if reasoning := conv.mapper.ReasoningDisplay(agentPayload.RunID); reasoning != "" {
+		conv.upsertReasoning(reasoning, agentPayload.RunID)
+	}
+	source.logger.Info("[turnproxy] applied thinking event", "run_id", agentPayload.RunID, "emitted", len(mobileEvents), "reasoning_runes", utf8.RuneCountInString(conv.mapper.ReasoningDisplay(agentPayload.RunID)), "task_id", conv.taskID)
 	source.mu.Unlock()
 
+	source.publish(mobileEvents)
+}
+
+func (source *Source) publish(mobileEvents []taskstate.MobileEvent) {
 	for _, mobileEvent := range mobileEvents {
 		if err := source.cfg.Publisher.PublishTaskEvent(context.Background(), mobileEvent); err != nil {
 			source.logger.Error("[turnproxy] publish task event failed", "kind", mobileEvent.Kind, "error", err.Error())
@@ -142,34 +223,31 @@ func (source *Source) handleEvent(event string, payload json.RawMessage) {
 	}
 }
 
-// applyRunStateLocked tracks the task's current State and ActiveTurnID from
-// the raw chat event, independent of which MobileEvents the mapper
-// produced for it. Caller holds source.mu.
-func (source *Source) applyRunStateLocked(chatPayload ChatEventPayload) {
-	switch chatPayload.State {
+func (conv *conversation) applyRunState(state, runID string) {
+	switch state {
 	case "delta":
-		source.state = taskstate.Working
-		source.activeTurnID = chatPayload.RunID
+		conv.state = taskstate.Working
+		conv.activeTurnID = runID
 	case "final":
-		source.state = taskstate.IdleAfterReply
-		source.activeTurnID = ""
+		conv.state = taskstate.IdleAfterReply
+		conv.activeTurnID = ""
 	case "error":
-		source.state = taskstate.Failed
-		source.activeTurnID = ""
+		conv.state = taskstate.Failed
+		conv.activeTurnID = ""
 	case "aborted":
-		source.state = taskstate.Interrupted
-		source.activeTurnID = ""
+		conv.state = taskstate.Interrupted
+		conv.activeTurnID = ""
 	default:
 		return
 	}
-	source.updatedAt = time.Now().Unix()
+	conv.updatedAt = time.Now().Unix()
 }
 
-// StartExistingTurn sends chat.send for the phone agent's own task and
-// returns once the gateway acknowledges the request; the reply itself
-// streams back later as "chat" events.
+// StartExistingTurn sends chat.send. The inbound phone-agent task continues
+// that session. HomeComposeTaskID allocates a new phone-chat task/session
+// so Home compose does not append to the inbound transcript.
 func (source *Source) StartExistingTurn(ctx context.Context, taskID, prompt string) (taskadapter.ExistingTaskResult, error) {
-	return source.sendChat(ctx, taskID, prompt, taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt})
+	return source.sendChat(ctx, taskID, prompt, taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt}, true)
 }
 
 // StartTriggeredTurn sends chat.send the same way StartExistingTurn does,
@@ -178,21 +256,27 @@ func (source *Source) StartExistingTurn(ctx context.Context, taskID, prompt stri
 // speakerless line) instead of the trigger prompt itself, since the prompt
 // is never something the owner said.
 func (source *Source) StartTriggeredTurn(ctx context.Context, taskID, prompt, preview string) (taskadapter.ExistingTaskResult, error) {
-	return source.sendChat(ctx, taskID, prompt, taskstate.LastMessage{From: taskstate.SpeakerPlain, Text: preview})
+	return source.sendChat(ctx, taskID, prompt, taskstate.LastMessage{From: taskstate.SpeakerPlain, Text: preview}, false)
 }
 
 // sendChat is the shared chat.send path StartExistingTurn and
 // StartTriggeredTurn both use; only the LastMessage they stamp afterward
-// differs.
-func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastMessage taskstate.LastMessage) (taskadapter.ExistingTaskResult, error) {
-	if taskID != source.cfg.TaskID {
-		return taskadapter.ExistingTaskResult{}, fmt.Errorf("turnproxy: unknown task %q", taskID)
+// and whether thinking is requested differ.
+func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastMessage taskstate.LastMessage, requestThinking bool) (taskadapter.ExistingTaskResult, error) {
+	source.mu.Lock()
+	conv, err := source.conversationForSendLocked(taskID, prompt)
+	source.mu.Unlock()
+	if err != nil {
+		return taskadapter.ExistingTaskResult{}, err
 	}
 	idempotencyKey := newIdempotencyKey()
 	params := chatSendParams{
-		SessionKey:     source.cfg.SessionKey,
+		SessionKey:     conv.sessionKey,
 		Message:        prompt,
 		IdempotencyKey: idempotencyKey,
+	}
+	if requestThinking {
+		params.Thinking = userThinkingLevel
 	}
 	payload, err := source.client.request(ctx, "chat.send", params)
 	if err != nil {
@@ -203,10 +287,44 @@ func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastM
 		turnID = serverRunID
 	}
 	source.mu.Lock()
-	source.lastMessage = taskstate.SafeLastMessage(lastMessage)
-	source.appendTranscriptLocked(kindFromSpeaker(lastMessage.From), lastMessage.Text, turnID)
+	conv.lastMessage = taskstate.SafeLastMessage(lastMessage)
+	conv.appendTranscript(kindFromSpeaker(lastMessage.From), lastMessage.Text, turnID)
+	conv.updatedAt = time.Now().Unix()
 	source.mu.Unlock()
-	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID, TurnID: turnID}, nil
+	source.logger.Info("[turnproxy] chat.send accepted", "task_id", conv.taskID, "session_key", conv.sessionKey, "turn_id", turnID, "thinking", requestThinking)
+	return taskadapter.ExistingTaskResult{ThreadID: conv.taskID, TurnID: turnID}, nil
+}
+
+func (source *Source) conversationForSendLocked(taskID, prompt string) (*conversation, error) {
+	if taskID == HomeComposeTaskID {
+		conv := source.allocateHomeChatLocked(prompt)
+		source.logger.Info("[turnproxy] allocated home conversation", "task_id", conv.taskID, "session_key", conv.sessionKey)
+		return conv, nil
+	}
+	conv := source.conversations[taskID]
+	if conv == nil {
+		return nil, fmt.Errorf("turnproxy: unknown task %q", taskID)
+	}
+	return conv, nil
+}
+
+func (source *Source) allocateHomeChatLocked(prompt string) *conversation {
+	taskID, sessionKey := newHomeConversationIDs()
+	title := taskstate.SafeDisplay(prompt, "Phone chat", 256)
+	conv := newConversation(taskID, sessionKey, title)
+	source.conversations[taskID] = conv
+	source.bySession[sessionKey] = conv
+	return conv
+}
+
+func newHomeConversationIDs() (taskID, sessionKey string) {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+		return homeChatPrefix + suffix, homeSessionPrefix + suffix
+	}
+	suffix := hex.EncodeToString(buf)
+	return homeChatPrefix + suffix, homeSessionPrefix + suffix
 }
 
 // serverAssignedRunID extracts a non-empty "runId" string field from a
@@ -230,51 +348,112 @@ func serverAssignedRunID(payload json.RawMessage) string {
 // chat.send with interruptIfActive: true. Its session field is "key", not
 // "sessionKey" — the gateway validates that strictly.
 func (source *Source) RedirectExistingTurn(ctx context.Context, taskID, prompt string) (taskadapter.ExistingTaskResult, error) {
-	if taskID != source.cfg.TaskID {
+	source.mu.Lock()
+	conv := source.conversations[taskID]
+	source.mu.Unlock()
+	if conv == nil {
 		return taskadapter.ExistingTaskResult{}, fmt.Errorf("turnproxy: unknown task %q", taskID)
 	}
-	params := steerParams{Key: source.cfg.SessionKey, Message: prompt}
+	params := steerParams{Key: conv.sessionKey, Message: prompt}
 	if _, err := source.client.request(ctx, "sessions.steer", params); err != nil {
 		return taskadapter.ExistingTaskResult{}, err
 	}
 	source.mu.Lock()
-	source.lastMessage = taskstate.SafeLastMessage(taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt})
-	source.appendTranscriptLocked(tasktranscript.KindUser, prompt, "steer")
+	conv.lastMessage = taskstate.SafeLastMessage(taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt})
+	conv.appendTranscript(tasktranscript.KindUser, prompt, "steer")
 	source.mu.Unlock()
-	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID}, nil
+	return taskadapter.ExistingTaskResult{ThreadID: conv.taskID}, nil
 }
 
 // InterruptExistingTurn sends chat.abort for the session's active run.
 func (source *Source) InterruptExistingTurn(ctx context.Context, taskID string) (taskadapter.ExistingTaskResult, error) {
-	if taskID != source.cfg.TaskID {
+	source.mu.Lock()
+	conv := source.conversations[taskID]
+	source.mu.Unlock()
+	if conv == nil {
 		return taskadapter.ExistingTaskResult{}, fmt.Errorf("turnproxy: unknown task %q", taskID)
 	}
-	params := abortParams{SessionKey: source.cfg.SessionKey}
+	params := abortParams{SessionKey: conv.sessionKey}
 	if _, err := source.client.request(ctx, "chat.abort", params); err != nil {
 		return taskadapter.ExistingTaskResult{}, err
 	}
-	return taskadapter.ExistingTaskResult{ThreadID: source.cfg.TaskID}, nil
+	return taskadapter.ExistingTaskResult{ThreadID: conv.taskID}, nil
 }
 
-// CurrentTask returns the phone agent's one task, refusing any other id.
+// CurrentTask returns a known phone conversation, or the virtual Home
+// compose inbox used only as a start_turn target.
 func (source *Source) CurrentTask(ctx context.Context, taskID string) (taskstate.Task, error) {
-	if taskID != source.cfg.TaskID {
+	if taskID == HomeComposeTaskID {
+		return source.composeInbox(), nil
+	}
+	source.mu.Lock()
+	conv := source.conversations[taskID]
+	source.mu.Unlock()
+	if conv == nil {
 		return taskstate.Task{}, fmt.Errorf("turnproxy: unknown task %q", taskID)
 	}
-	return source.snapshot(), nil
+	return conv.snapshot(), nil
 }
 
-// ListRecent always returns the single phone-agent task this Source speaks
-// for; limit is accepted for interface compatibility and otherwise unused.
+func (source *Source) composeInbox() taskstate.Task {
+	return taskstate.Task{
+		ID:            HomeComposeTaskID,
+		Title:         "New chat",
+		State:         taskstate.IdleAfterReply,
+		UpdatedAtUnix: time.Now().Unix(),
+		Source:        taskstate.SourceAppServer,
+	}
+}
+
+// ListRecent returns the inbound phone-agent task plus recent Home chats.
+// The compose inbox is not listed — it is only a send target.
 func (source *Source) ListRecent(ctx context.Context, limit int) ([]taskstate.Task, error) {
-	return []taskstate.Task{source.snapshot()}, nil
+	if limit < 1 {
+		limit = taskstate.MaxHomeTasks
+	}
+	if limit > taskstate.MaxHomeTasks {
+		limit = taskstate.MaxHomeTasks
+	}
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	inbound := source.conversations[source.cfg.TaskID]
+	chats := make([]*conversation, 0, len(source.conversations))
+	for id, conv := range source.conversations {
+		if id == source.cfg.TaskID {
+			continue
+		}
+		chats = append(chats, conv)
+	}
+	sort.Slice(chats, func(i, j int) bool {
+		if chats[i].updatedAt == chats[j].updatedAt {
+			return chats[i].taskID > chats[j].taskID
+		}
+		return chats[i].updatedAt > chats[j].updatedAt
+	})
+	tasks := make([]taskstate.Task, 0, limit)
+	for _, conv := range chats {
+		if len(tasks) >= limit-1 && inbound != nil {
+			break
+		}
+		if len(tasks) >= limit {
+			break
+		}
+		tasks = append(tasks, conv.snapshot())
+	}
+	if inbound != nil && len(tasks) < limit {
+		tasks = append(tasks, inbound.snapshot())
+	}
+	return tasks, nil
 }
 
-// ReadTranscript returns the last known user/agent lines this Source has
-// seen in this connection (seeded last message, prompts sent, replies
-// streamed). It is not a full gateway history.
+// ReadTranscript returns the last known user/agent/reasoning lines this
+// Source has seen in this connection (seeded last message, prompts sent,
+// replies streamed). It is not a full gateway history.
 func (source *Source) ReadTranscript(_ context.Context, taskID string, options tasktranscript.PageOptions) (tasktranscript.Page, error) {
-	if taskID != source.cfg.TaskID || options.TaskID != "" && options.TaskID != source.cfg.TaskID {
+	if options.TaskID != "" && options.TaskID != taskID {
+		return tasktranscript.Page{}, tasktranscript.ErrTaskMismatch
+	}
+	if taskID == HomeComposeTaskID {
 		return tasktranscript.Page{}, tasktranscript.ErrTaskMismatch
 	}
 	if options.Limit < 1 || options.Limit > tasktranscript.MaxPageEntries {
@@ -285,7 +464,12 @@ func (source *Source) ReadTranscript(_ context.Context, taskID string, options t
 	}
 
 	source.mu.Lock()
-	entries := append([]tasktranscript.Entry(nil), source.entries...)
+	conv := source.conversations[taskID]
+	if conv == nil {
+		source.mu.Unlock()
+		return tasktranscript.Page{}, tasktranscript.ErrTaskMismatch
+	}
+	entries := append([]tasktranscript.Entry(nil), conv.entries...)
 	source.mu.Unlock()
 
 	end := len(entries)
@@ -306,7 +490,7 @@ func (source *Source) ReadTranscript(_ context.Context, taskID string, options t
 		start = 0
 	}
 	page := tasktranscript.Page{
-		TaskID:    source.cfg.TaskID,
+		TaskID:    taskID,
 		Entries:   append([]tasktranscript.Entry(nil), entries[start:end]...),
 		Truncated: false,
 	}
@@ -320,22 +504,20 @@ func (source *Source) ReadTranscript(_ context.Context, taskID string, options t
 	return page, nil
 }
 
-func (source *Source) snapshot() taskstate.Task {
-	source.mu.Lock()
-	defer source.mu.Unlock()
+func (conv *conversation) snapshot() taskstate.Task {
 	activeTurnID := ""
-	if source.state == taskstate.Working {
-		activeTurnID = source.activeTurnID
+	if conv.state == taskstate.Working {
+		activeTurnID = conv.activeTurnID
 	}
 	return taskstate.Task{
-		ID:            source.cfg.TaskID,
-		Title:         "Phone agent",
-		State:         source.state,
+		ID:            conv.taskID,
+		Title:         conv.title,
+		State:         conv.state,
 		ActiveTurnID:  activeTurnID,
-		CanRedirect:   source.state == taskstate.Working,
-		UpdatedAtUnix: source.updatedAt,
+		CanRedirect:   conv.state == taskstate.Working,
+		UpdatedAtUnix: conv.updatedAt,
 		Source:        taskstate.SourceAppServer,
-		LastMessage:   taskstate.SafeLastMessage(source.lastMessage),
+		LastMessage:   taskstate.SafeLastMessage(conv.lastMessage),
 	}
 }
 
@@ -356,24 +538,42 @@ func (source *Source) Close() error {
 	return source.client.Close()
 }
 
-func (source *Source) appendTranscriptLocked(kind tasktranscript.Kind, text, turnID string) {
+func (conv *conversation) upsertReasoning(text, turnID string) {
 	text = boundTranscriptText(text)
 	if text == "" {
 		return
 	}
-	source.nextEntry++
-	entryID := fmt.Sprintf("entry-%d", source.nextEntry)
 	if !validTranscriptID(turnID) {
-		turnID = fmt.Sprintf("turn-%d", source.nextEntry)
+		turnID = fmt.Sprintf("turn-%d", conv.nextEntry+1)
 	}
-	source.entries = append(source.entries, tasktranscript.Entry{
+	for index := len(conv.entries) - 1; index >= 0; index-- {
+		entry := conv.entries[index]
+		if entry.TurnID == turnID && entry.Kind == tasktranscript.KindReasoning {
+			conv.entries[index].Text = text
+			return
+		}
+	}
+	conv.appendTranscript(tasktranscript.KindReasoning, text, turnID)
+}
+
+func (conv *conversation) appendTranscript(kind tasktranscript.Kind, text, turnID string) {
+	text = boundTranscriptText(text)
+	if text == "" {
+		return
+	}
+	conv.nextEntry++
+	entryID := fmt.Sprintf("entry-%d", conv.nextEntry)
+	if !validTranscriptID(turnID) {
+		turnID = fmt.Sprintf("turn-%d", conv.nextEntry)
+	}
+	conv.entries = append(conv.entries, tasktranscript.Entry{
 		ID:     entryID,
 		TurnID: turnID,
 		Kind:   kind,
 		Text:   text,
 	})
-	if len(source.entries) > tasktranscript.MaxPageEntries {
-		source.entries = source.entries[len(source.entries)-tasktranscript.MaxPageEntries:]
+	if len(conv.entries) > tasktranscript.MaxPageEntries {
+		conv.entries = conv.entries[len(conv.entries)-tasktranscript.MaxPageEntries:]
 	}
 }
 

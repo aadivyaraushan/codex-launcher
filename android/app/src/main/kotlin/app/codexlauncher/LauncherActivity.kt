@@ -469,6 +469,9 @@ class LauncherActivity : ComponentActivity() {
                 if (destination == LauncherDestination.PROJECT && sessionUiState.connection.phase != ConnectionPhase.ONLINE) {
                     destination = LauncherDestination.HOME
                 }
+                if (destination == LauncherDestination.HOME && sessionUiState.transcript != null) {
+                    destination = LauncherDestination.TASK
+                }
                 if (destination == LauncherDestination.TASK &&
                     (sessionUiState.connection.phase != ConnectionPhase.ONLINE || sessionUiState.transcript == null)
                 ) {

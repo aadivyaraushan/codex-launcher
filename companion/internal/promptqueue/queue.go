@@ -422,8 +422,11 @@ func validActionPayload(kind, prompt string) bool {
 	}
 }
 
-func validResult(result Result, threadID string) bool {
-	return validID(result.Code) && validID(result.ThreadID) && (threadID == "" || result.ThreadID == threadID) && validID(result.TurnID)
+func validResult(result Result, _ string) bool {
+	// Thread id on the result may differ from the queued row: new tasks learn
+	// the created id here, and Home compose starts against a virtual inbox
+	// then returns the new chat id.
+	return validID(result.Code) && validID(result.ThreadID) && validID(result.TurnID)
 }
 
 func validOptionalID(value string) bool { return value == "" || validID(value) }

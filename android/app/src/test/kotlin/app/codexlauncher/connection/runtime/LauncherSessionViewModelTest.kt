@@ -170,7 +170,7 @@ class LauncherSessionViewModelTest {
     }
 
     @Test
-    fun homePromptWithoutSelectionStartsAnExistingPhoneAgentTurn() = runBlocking {
+    fun homePromptWithoutSelectionOpensANewPhoneChat() = runBlocking {
         lateinit var observer: SessionObserver
         val connection = FakeSessionConnection()
         var draftClears = 0
@@ -186,28 +186,35 @@ class LauncherSessionViewModelTest {
             )
         viewModel.connect(pairedComputer())
         observer.onReady(connection, ByteArray(32))
-        observer.onMessage(welcome(capabilities = listOf("set_project", "desktop_tasks")))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "desktop_tasks", "task_transcripts")))
         observer.onMessage(snapshotWithPhoneAgent(1))
 
         val pending = async {
             viewModel.submitHomePrompt("Say only: pong", null, DraftVersion(1, 4))
         }
         val encoded = kotlinx.coroutines.withTimeoutOrNull(2_000) { connection.awaitType("action") }
-        assertTrue("home send must start an existing phone-agent turn", encoded != null)
+        assertTrue("home send must start a phone-home compose turn", encoded != null)
         val action = ProtocolCodec.decodeText(encoded!!)
         assertEquals("start_turn", action.body.getValue("kind").jsonPrimitive.content)
-        assertEquals("phone-agent", action.body.getValue("taskId").jsonPrimitive.content)
+        assertEquals("phone-home", action.body.getValue("taskId").jsonPrimitive.content)
         assertEquals("Say only: pong", action.body.getValue("text").jsonPrimitive.content)
-        assertTrue("existing-turn must not carry a new-task projectId", action.body["projectId"] == null)
+        assertTrue("home compose must not carry a new-task projectId", action.body["projectId"] == null)
 
         val actionId = action.body.getValue("actionId").jsonPrimitive.content
         observer.onMessage(
             decode(
-                """{"version":{"major":1,"minor":0},"messageId":"result-2","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed","resultCode":"accepted"}}""",
+                """{"version":{"major":1,"minor":0},"messageId":"result-2","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed","resultCode":"accepted","forkTaskId":"phone-chat-abc"}}""",
             ),
         )
         pending.await()
         assertEquals(1, draftClears)
+        observer.onMessage(snapshotWithPhoneAgentAndChat(3, "phone-chat-abc", "Say only: pong"))
+        assertEquals("phone-chat-abc", viewModel.state.value.transcript?.taskId)
+        val read =
+            connection.sent
+                .map(ProtocolCodec::decodeText)
+                .last { it.type.wireName == "task_read" }
+        assertEquals("phone-chat-abc", read.body.getValue("taskId").jsonPrimitive.content)
     }
 
     @Test
@@ -2202,6 +2209,11 @@ class LauncherSessionViewModelTest {
     private fun snapshotWithPhoneAgent(sequence: Long): ProtocolMessage =
         decode(
             """{"version":{"major":1,"minor":0},"messageId":"snapshot-$sequence","sender":"companion","type":"snapshot","seq":$sequence,"body":{"baseSeq":$sequence,"computerName":"Operator","projects":[],"tasks":[{"taskId":"phone-agent","title":"Phone agent","projectLabel":"Phone agent","state":"idle_after_reply","lastActivityAt":"2026-07-13T10:02:00Z"}]}}""",
+        )
+
+    private fun snapshotWithPhoneAgentAndChat(sequence: Long, chatId: String, title: String): ProtocolMessage =
+        decode(
+            """{"version":{"major":1,"minor":0},"messageId":"snapshot-$sequence","sender":"companion","type":"snapshot","seq":$sequence,"body":{"baseSeq":$sequence,"computerName":"Operator","projects":[],"tasks":[{"taskId":"$chatId","title":"$title","projectLabel":"Phone agent","state":"working","lastActivityAt":"2026-07-13T10:03:00Z"},{"taskId":"phone-agent","title":"Phone agent","projectLabel":"Phone agent","state":"idle_after_reply","lastActivityAt":"2026-07-13T10:02:00Z"}]}}""",
         )
 
     private fun localRuntimePairedComputer() =

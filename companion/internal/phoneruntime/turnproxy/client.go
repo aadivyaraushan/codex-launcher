@@ -47,6 +47,7 @@ type connectParams struct {
 	Client      connectClientInfo `json:"client"`
 	Role        string            `json:"role"`
 	Scopes      []string          `json:"scopes"`
+	Caps        []string          `json:"caps,omitempty"`
 	Auth        connectAuth       `json:"auth"`
 }
 
@@ -112,6 +113,7 @@ func connectClient(ctx context.Context, url, token string, logger *slog.Logger, 
 		Client:      connectClientInfo{ID: "gateway-client", Version: "dev", Platform: "go", Mode: "backend"},
 		Role:        "operator",
 		Scopes:      []string{"operator.read", "operator.write"},
+		Caps:        []string{thinkingEventsCap},
 		Auth:        connectAuth{Token: token},
 	}
 	if _, err := client.request(ctx, "connect", params); err != nil {

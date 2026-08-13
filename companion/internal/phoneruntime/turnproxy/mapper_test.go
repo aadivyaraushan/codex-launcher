@@ -174,3 +174,76 @@ func TestForeignSessionDoesNotDisturbActiveRun(t *testing.T) {
 		t.Fatalf("active run must assemble only its own deltas, got %+v", events)
 	}
 }
+
+func TestThinkingAgentEventsEmitUpdatingWorkingSummariesBeforeReply(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	first := mapper.ApplyAgent(AgentEventPayload{
+		Stream: "thinking", RunID: "run-1", SessionKey: testSessionKey,
+		Data: AgentEventData{Text: "Checking the calendar", Delta: "Checking the calendar"},
+	})
+	if len(first) != 1 || first[0].Kind != "activity" || first[0].State != taskstate.Working || !first[0].StartsTurn {
+		t.Fatalf("first thinking event = %+v, want a turn-starting Working activity", first)
+	}
+	if first[0].Summary != "Checking the calendar" {
+		t.Fatalf("first thinking summary = %q, want the safe reasoning text", first[0].Summary)
+	}
+
+	second := mapper.ApplyAgent(AgentEventPayload{
+		Stream: "thinking", RunID: "run-1", SessionKey: testSessionKey,
+		Data: AgentEventData{Text: "Checking the calendar then drafting", Delta: " then drafting"},
+	})
+	if len(second) != 1 || second[0].Kind != "activity" || second[0].State != taskstate.Working || second[0].StartsTurn {
+		t.Fatalf("later thinking event = %+v, want Working without StartsTurn", second)
+	}
+	if second[0].Summary == first[0].Summary {
+		t.Fatal("later thinking summary must change so eventpump does not drop it")
+	}
+	if second[0].Summary != "Checking the calendar then drafting" {
+		t.Fatalf("later thinking summary = %q", second[0].Summary)
+	}
+
+	reply := mapper.Apply(ChatEventPayload{State: "final", RunID: "run-1", SessionKey: testSessionKey, Message: json.RawMessage(`"pong"`)})
+	if len(reply) != 1 || reply[0].Kind != "reply" || reply[0].Summary != "pong" {
+		t.Fatalf("final after thinking = %+v, want the reply", reply)
+	}
+}
+
+func TestThinkingAgentEventsFromOtherSessionsAreIgnored(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	if events := mapper.ApplyAgent(AgentEventPayload{
+		Stream: "thinking", RunID: "run-z", SessionKey: "agent:other:main",
+		Data: AgentEventData{Text: "secret chain of thought"},
+	}); len(events) != 0 {
+		t.Fatalf("foreign thinking emitted %+v", events)
+	}
+}
+
+func TestThinkingSummaryCollapsesNewlinesAndControlChars(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	events := mapper.ApplyAgent(AgentEventPayload{
+		Stream: "thinking", RunID: "run-1", SessionKey: testSessionKey,
+		Data: AgentEventData{Text: "line one\nline two\tkeep"},
+	})
+	if len(events) != 1 {
+		t.Fatalf("thinking must emit Working, got %+v", events)
+	}
+	if events[0].Summary != "line one line two keep" {
+		t.Fatalf("summary = %q", events[0].Summary)
+	}
+	if strings.IndexFunc(events[0].Summary, func(r rune) bool { return r < 0x20 }) >= 0 {
+		t.Fatalf("summary still has a control rune: %q", events[0].Summary)
+	}
+}
+
+func TestChatMessageThinkingContentUpdatesWorkingBeforeReply(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	message := json.RawMessage(`{"content":[{"type":"thinking","text":"Need a shorter path"},{"type":"text","text":"Done."}]}`)
+	working := mapper.Apply(ChatEventPayload{State: "delta", RunID: "run-1", SessionKey: testSessionKey, Message: message})
+	if len(working) != 1 || working[0].Kind != "activity" || !working[0].StartsTurn || working[0].Summary != "Need a shorter path" {
+		t.Fatalf("chat thinking delta = %+v, want turn-starting Working with reasoning", working)
+	}
+	reply := mapper.Apply(ChatEventPayload{State: "final", RunID: "run-1", SessionKey: testSessionKey, Message: message})
+	if len(reply) != 1 || reply[0].Kind != "reply" || reply[0].Summary != "Done." {
+		t.Fatalf("final with thinking+text = %+v, want reply from text content", reply)
+	}
+}

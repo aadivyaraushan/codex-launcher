@@ -139,7 +139,11 @@ fun TaskControls(
                         } else {
                             val outcome = if (mode == ExistingTaskSendMode.REDIRECT) onRedirect(submitted) else onQueueFollowUp(submitted)
                             message = outcome.message()
-                            if (outcome in setOf(ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued, ExistingTaskControlOutcome.Redirected)) updateText("")
+                            if (outcome in setOf(ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued, ExistingTaskControlOutcome.Redirected) ||
+                                outcome is ExistingTaskControlOutcome.Opened
+                            ) {
+                                updateText("")
+                            }
                         }
                         sending = false
                     }
@@ -204,6 +208,7 @@ fun TaskControls(
 private fun ExistingTaskControlOutcome.message(): String =
     when (this) {
         ExistingTaskControlOutcome.Accepted -> "Follow-up sent"
+        is ExistingTaskControlOutcome.Opened -> "Opened a new chat"
         ExistingTaskControlOutcome.Queued -> "Follow-up queued"
         ExistingTaskControlOutcome.Redirected -> "Current turn redirected"
         ExistingTaskControlOutcome.Interrupted -> "Stop confirmed"

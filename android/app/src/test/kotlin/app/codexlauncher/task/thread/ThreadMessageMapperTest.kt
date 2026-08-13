@@ -234,6 +234,12 @@ class ThreadMessageMapperTest {
         assertEquals(ThreadMessage.Activity(id = "e1", line = "Read notes.txt"), activity)
     }
 
+    @Test
+    fun reasoningEntriesRenderAsActivitySoTheAssemblerDoesNotDropThem() {
+        val reasoning = ThreadMessageMapper.fromTranscript(entry(TranscriptEntryKind.REASONING, text = "Checking the calendar"))
+        assertEquals(ThreadMessage.Activity(id = "e1", line = "Checking the calendar"), reasoning)
+    }
+
     // ── Home rows quote the last message ──
 
     @Test

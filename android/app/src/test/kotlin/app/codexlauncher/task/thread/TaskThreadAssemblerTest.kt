@@ -47,7 +47,7 @@ class TaskThreadAssemblerTest {
     )
 
     @Test
-    fun transcriptRowsKeepTheirOrderAndRowlessKindsAreSkipped() {
+    fun transcriptRowsKeepTheirOrderIncludingReasoning() {
         val state = TaskThreadAssembler.assemble(
             transcript(
                 entry("e1", TranscriptEntryKind.USER, text = "send it"),
@@ -57,10 +57,11 @@ class TaskThreadAssemblerTest {
             ),
             DecisionUiState(),
         )
-        assertEquals(listOf("e1", "e3", "e4"), state.messages.map { it.id })
+        assertEquals(listOf("e1", "e2", "e3", "e4"), state.messages.map { it.id })
         assertTrue(state.messages[0] is ThreadMessage.User)
-        assertTrue(state.messages[1] is ThreadMessage.Agent)
-        assertTrue(state.messages[2] is ThreadMessage.Activity)
+        assertTrue(state.messages[1] is ThreadMessage.Activity)
+        assertTrue(state.messages[2] is ThreadMessage.Agent)
+        assertTrue(state.messages[3] is ThreadMessage.Activity)
     }
 
     @Test

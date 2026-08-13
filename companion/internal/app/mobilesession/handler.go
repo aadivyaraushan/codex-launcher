@@ -692,6 +692,22 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 			outcome, code, resultCode := handler.startExistingTask(ctx, sender.DeviceID(), action.ActionID, action.TaskID, action.Text, action.AttachmentIDs, false)
 			applyExistingTaskOutcome(result, outcome, code, resultCode)
 			refreshTasks = outcome == existingTaskAccepted && resultCode != "queued"
+			if refreshTasks && handler.promptQueue != nil {
+				if confirmed, confirmedErr := handler.promptQueue.Entry(ctx, action.ActionID); confirmedErr == nil && confirmed.Result.ThreadID != "" && confirmed.Result.ThreadID != action.TaskID {
+					result["forkTaskId"] = confirmed.Result.ThreadID
+					projectLabel := handler.projectDisplayName(action.ProjectID)
+					if action.ProjectID == "" {
+						projectLabel = "Phone agent"
+					}
+					task := snapshotTask{
+						TaskID: confirmed.Result.ThreadID, Title: provisionalTaskTitle(action.Text), ProjectLabel: projectLabel,
+						State: string(taskstate.Working), ActiveTurnID: confirmed.Result.TurnID, CanRedirect: true,
+						QueueState: string(promptqueue.QueueEmpty), LastActivityAt: handler.now().UTC().Format(time.RFC3339),
+					}
+					provisionalTask = &task
+					handler.logger.Info("[mobile-session] existing turn opened a new task", "compose_id", action.TaskID, "task_id", task.TaskID, "turn_id", task.ActiveTurnID)
+				}
+			}
 			break
 		}
 		outcome, code := handler.startNewTask(ctx, sender.DeviceID(), action.ActionID, action.ProjectID, action.Text, action.ModelID, action.ReasoningID, action.PermissionModeID, action.AttachmentIDs)

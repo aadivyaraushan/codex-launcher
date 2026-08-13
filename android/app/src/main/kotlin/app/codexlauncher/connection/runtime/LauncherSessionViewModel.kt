@@ -24,6 +24,7 @@ import app.codexlauncher.storage.connection.lastseen.shouldRecordSuccessfulConne
 import app.codexlauncher.task.summary.TaskEventReducer
 import app.codexlauncher.task.summary.TaskQueueState
 import app.codexlauncher.task.summary.PHONE_AGENT_TASK_ID
+import app.codexlauncher.task.summary.PHONE_HOME_COMPOSE_TASK_ID
 import app.codexlauncher.task.management.TaskAction
 import app.codexlauncher.task.management.TaskActionBridge
 import app.codexlauncher.task.management.TaskActionOutcome
@@ -434,22 +435,28 @@ class LauncherSessionViewModel(
             if (phoneAgent != null && mutableState.value.taskControlsAvailable) {
                 AppLog.info(
                     feature = "home-prompt",
-                    message = "home prompt sent as existing phone-agent turn",
+                    message = "home prompt sent as a new phone chat",
                     fields =
                         mapOf(
-                            "task_id" to phoneAgent.id,
+                            "task_id" to PHONE_HOME_COMPOSE_TASK_ID,
                             "prompt_length" to prompt.length,
-                            "decision" to "start_existing_turn",
+                            "decision" to "start_home_compose",
                         ),
                 )
-                val outcome = queueTaskFollowUp(phoneAgent.id, prompt)
+                val outcome = queueTaskFollowUp(PHONE_HOME_COMPOSE_TASK_ID, prompt)
                 AppLog.info(
                     feature = "home-prompt",
-                    message = "existing phone-agent turn finished",
-                    fields = mapOf("outcome" to outcome.toString(), "task_id" to phoneAgent.id),
+                    message = "home compose turn finished",
+                    fields = mapOf("outcome" to outcome.toString()),
                 )
+                if (outcome is ExistingTaskControlOutcome.Opened) {
+                    pendingForkTaskId = outcome.taskId
+                    openPendingForkIfAvailable()
+                }
                 when (outcome) {
-                    ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued -> {
+                    ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued,
+                    is ExistingTaskControlOutcome.Opened,
+                    -> {
                         if (!clearConfirmedDraft(draftVersion)) {
                             mutableState.value =
                                 mutableState.value.copy(
@@ -522,7 +529,8 @@ class LauncherSessionViewModel(
     private fun finishExistingTaskAttachments(ids: List<String>, outcome: ExistingTaskControlOutcome) {
         when (outcome) {
             ExistingTaskControlOutcome.Accepted, ExistingTaskControlOutcome.Queued,
-            ExistingTaskControlOutcome.Redirected, ExistingTaskControlOutcome.NeedsReview -> attachmentUploader.consume(ids)
+            ExistingTaskControlOutcome.Redirected, ExistingTaskControlOutcome.NeedsReview,
+            is ExistingTaskControlOutcome.Opened -> attachmentUploader.consume(ids)
             is ExistingTaskControlOutcome.Failed -> attachmentUploader.retryAfterActionFailure(ids)
             ExistingTaskControlOutcome.Interrupted, ExistingTaskControlOutcome.Invalid,
             ExistingTaskControlOutcome.Unavailable -> Unit

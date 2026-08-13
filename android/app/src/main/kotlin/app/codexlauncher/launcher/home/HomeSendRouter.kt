@@ -13,8 +13,9 @@ enum class HomeSendDecision {
 /**
  * Home Send routing after the predetermined-function pipeline is gone:
  * every prompt is a task. Prefer an online Mac with a project; otherwise the
- * phone-runtime's persistent phone-agent task; otherwise a ready standalone
- * runtime's new-task path; otherwise ask the owner to link one.
+ * phone-runtime (presence is still the inbound phone-agent row; compose uses
+ * the virtual phone-home inbox so each send is a new chat); otherwise a ready
+ * standalone runtime's new-task path; otherwise ask the owner to link one.
  */
 object HomeSendRouter {
     fun decide(

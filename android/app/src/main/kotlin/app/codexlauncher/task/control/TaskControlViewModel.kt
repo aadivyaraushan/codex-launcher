@@ -49,6 +49,9 @@ enum class ExistingTaskSendMode {
 sealed interface ExistingTaskControlOutcome {
     data object Accepted : ExistingTaskControlOutcome
 
+    /** Confirmed start that opened a different thread than the one we sent to. */
+    data class Opened(val taskId: String) : ExistingTaskControlOutcome
+
     data object Queued : ExistingTaskControlOutcome
 
     data object Redirected : ExistingTaskControlOutcome
@@ -151,7 +154,14 @@ class TaskControlViewModel(
                         val requiresSnapshot = code != ActionResultCode.QUEUED
                         onTerminalStored(actionId, result.sequence, requiresSnapshot, false)
                         when (code) {
-                            ActionResultCode.ACCEPTED -> ExistingTaskControlOutcome.Accepted
+                            ActionResultCode.ACCEPTED -> {
+                                val openedId = result.forkTaskId
+                                if (!openedId.isNullOrBlank() && openedId != taskId) {
+                                    ExistingTaskControlOutcome.Opened(openedId)
+                                } else {
+                                    ExistingTaskControlOutcome.Accepted
+                                }
+                            }
                             ActionResultCode.QUEUED -> ExistingTaskControlOutcome.Queued
                             ActionResultCode.REDIRECTED -> ExistingTaskControlOutcome.Redirected
                             ActionResultCode.INTERRUPTED -> ExistingTaskControlOutcome.Interrupted
@@ -250,6 +260,7 @@ class TaskControlViewModel(
                     state = state,
                     errorCode = message.body["error"]?.jsonObject?.get("code")?.jsonPrimitive?.content,
                     resultCode = message.body["resultCode"]?.jsonPrimitive?.content,
+                    forkTaskId = message.body["forkTaskId"]?.jsonPrimitive?.content,
                 ),
             )
         }
@@ -462,6 +473,7 @@ class TaskControlViewModel(
         val state: String,
         val errorCode: String?,
         val resultCode: String? = null,
+        val forkTaskId: String? = null,
     )
 
     private companion object {

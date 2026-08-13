@@ -107,6 +107,26 @@ func TestNewTaskQueueUsesAStableQueueKeyAndAcceptsTheCreatedThread(t *testing.T)
 	}
 }
 
+func TestExistingStartCanConfirmANewThreadID(t *testing.T) {
+	store := NewMemoryStore()
+	queue := New(store, nil)
+	entry := Entry{ActionID: "home-1", QueueKey: "phone-home", ThreadID: "phone-home", Prompt: "plan tonight", CreatedAt: queueNow}
+	if err := queue.Enqueue(context.Background(), entry); err != nil {
+		t.Fatal(err)
+	}
+	want := Result{Code: "accepted", ThreadID: "phone-chat-abc", TurnID: "turn-started"}
+	got, err := queue.DispatchNext(context.Background(), "phone-home", func(context.Context, Entry) (Result, error) {
+		return want, nil
+	}, nil, queueNow)
+	if err != nil || got != want {
+		t.Fatalf("home compose dispatch = %#v, %v", got, err)
+	}
+	stored, err := store.Entry(context.Background(), "home-1")
+	if err != nil || stored.Result != want {
+		t.Fatalf("stored result = %#v, %v", stored.Result, err)
+	}
+}
+
 func TestPreparedWriteFailureIsSafeToRetryWithoutSending(t *testing.T) {
 	store := NewMemoryStore()
 	queue := New(store, nil)

@@ -240,6 +240,29 @@ class TaskControlViewModelTest {
     }
 
     @Test
+    fun `accepted start_turn with forkTaskId opens the new thread`() = runBlocking {
+        val journal = ExistingControlJournal()
+        val controls =
+            TaskControlViewModel(
+                sendAction = { _, beforeBoundary ->
+                    assertTrue(beforeBoundary())
+                    ActionSendResult.SENT_UNKNOWN
+                },
+                journal = journal,
+                clearConfirmedDraft = { true },
+                nextActionId = { "home-1" },
+            )
+        val pending = async { controls.sendToTask("phone-home", "plan tonight", ExistingTaskSendMode.QUEUE) }
+        yield()
+        controls.accept(
+            ProtocolCodec.decodeText(
+                """{"version":{"major":1,"minor":0},"messageId":"result-home-1","sender":"companion","type":"action_result","seq":10,"body":{"actionId":"home-1","state":"confirmed","resultCode":"accepted","forkTaskId":"phone-chat-abc"}}""",
+            ),
+        )
+        assertEquals(ExistingTaskControlOutcome.Opened("phone-chat-abc"), pending.await())
+    }
+
+    @Test
     fun `double tap cannot send two existing task controls`() = runBlocking {
         val boundary = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()

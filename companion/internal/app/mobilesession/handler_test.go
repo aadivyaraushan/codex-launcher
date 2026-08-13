@@ -310,7 +310,7 @@ func TestColdHelloIncludesOnlyTypedSafeTaskSummaries(t *testing.T) {
 		return []taskstate.Task{{
 			ID: "thread-1", Title: "Build launcher", ProjectLabel: "uf-u", State: taskstate.Working,
 			UpdatedAtUnix: sessionNow.Add(-time.Minute).Unix(), Source: taskstate.SourceDesktop,
-			LastMessage:   taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "Tests pass — writing up the diff now."},
+			LastMessage: taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: "Tests pass — writing up the diff now."},
 		}}, nil
 	}))
 
@@ -922,6 +922,35 @@ func TestNewTaskOptionResolutionFailsClosedOnAnUnmappedPermissionMode(t *testing
 	_, _, ok := resolveNewTaskOptions(catalog, "public-model", "high", "future-write")
 	if ok {
 		t.Fatal("unmapped permission mode was accepted")
+	}
+}
+
+func TestHomeComposeStartTurnReturnsForkTaskIdAndProvisionalSnapshot(t *testing.T) {
+	source := &existingTaskSource{
+		task:          taskstate.Task{ID: "phone-home", Title: "New chat", ProjectLabel: "Phone agent", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()},
+		startThreadID: "phone-chat-abc",
+	}
+	store := promptqueue.NewMemoryStore()
+	handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 4)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"home","sender":"phone","type":"action","body":{"actionId":"home-action","kind":"start_turn","taskId":"phone-home","text":"plan tonight"}}`)
+	if err := handler.Handle(context.Background(), sender, action); err != nil {
+		t.Fatal(err)
+	}
+	result := awaitSentMessage(t, sender.sent)
+	if result.Type != "action_result" || !bytes.Contains(result.Body, []byte(`"state":"confirmed"`)) || !bytes.Contains(result.Body, []byte(`"resultCode":"accepted"`)) || !bytes.Contains(result.Body, []byte(`"forkTaskId":"phone-chat-abc"`)) {
+		t.Fatalf("home compose result = %s, calls = %#v", result.Body, source.calls)
+	}
+	if !slices.Equal(source.calls, []string{"start:plan tonight"}) {
+		t.Fatalf("calls = %#v, want the compose prompt sent once", source.calls)
+	}
+	snapshot := awaitSentMessage(t, sender.sent)
+	if snapshot.Type != "snapshot" || !bytes.Contains(snapshot.Body, []byte(`"taskId":"phone-chat-abc"`)) {
+		t.Fatalf("home compose snapshot = %s, want the new chat in the task list", snapshot.Body)
 	}
 }
 
@@ -1680,11 +1709,12 @@ type newTaskSource struct {
 }
 
 type existingTaskSource struct {
-	task        taskstate.Task
-	calls       []string
-	attachments []taskadapter.AttachmentInput
-	err         error
-	started     chan struct{}
+	task          taskstate.Task
+	calls         []string
+	attachments   []taskadapter.AttachmentInput
+	err           error
+	started       chan struct{}
+	startThreadID string
 }
 
 type recoveryTaskSource struct {
@@ -1786,7 +1816,11 @@ func (source *existingTaskSource) StartExistingTurn(_ context.Context, _ string,
 	source.task.State = taskstate.Working
 	source.task.ActiveTurnID = "turn-started"
 	source.task.CanRedirect = true
-	return taskadapter.ExistingTaskResult{ThreadID: source.task.ID, TurnID: "turn-started"}, nil
+	threadID := source.task.ID
+	if source.startThreadID != "" {
+		threadID = source.startThreadID
+	}
+	return taskadapter.ExistingTaskResult{ThreadID: threadID, TurnID: "turn-started"}, nil
 }
 
 func (source *existingTaskSource) StartExistingTurnWithAttachments(ctx context.Context, taskID, text string, values []taskadapter.AttachmentInput) (taskadapter.ExistingTaskResult, error) {
