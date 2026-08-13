@@ -55,7 +55,7 @@ OpenClaw CLI shapes checked from current OpenClaw docs/source (`docs/cli/models.
 
 After PR #18, `GET /v1/health` called `openclaw models auth list` on the handler. Under Termux/proot that CLI hung (~2 min) and ignore-cancel, then health fail-closed to `modelAuth=missing` even when ChatGPT OAuth was already on disk. Operator showed the sign-in wall.
 
-Fix (branch `cursor/model-auth-health-cache-ad3f`):
+Fix (branch `cursor/model-auth-health-cache-ad3f`, PR https://github.com/aadivyaraushan/codex-launcher/pull/19):
 
 1. **Inputs** — OpenClaw on-disk store (`openclaw-agent.sqlite` `auth_profile_store`, else `auth-profiles.json`); CLI list only if no store files; in-flight device-code flag.
 2. **Outputs** — cached `modelAuth` (`missing` until first successful list, `oauth_ready` sticky across later list failures, `pending` while device-code is in flight). No tokens in health or logs.
