@@ -57,4 +57,4 @@ go test ./companion/internal/phoneruntime/turnproxy/ -count=1
 
 Covered: Working visible before `chat.send` ack (home compose held); title-only items do not create KindReasoning (`drop_reason=no_text`); assistant reply tokens `not_reasoning` with empty Data; preamble/command map to KindActivity/KindCommand; item summary still becomes KindReasoning; chat deltas still update KindAgent before final.
 
-PR: https://github.com/aadivyaraushan/codex-launcher/pull/21 (into `worktree-phase2-tool-bridge`).
+PR: https://github.com/aadivyaraushan/codex-launcher/pull/21 (into `worktree-phase2-tool-bridge`). Independent judge signed off against the Pixel outcomes (Working before ack, no title-only KindReasoning, assistant `not_reasoning`, live preamble/command, summary-only KindReasoning, matching tests). Software-attest untouched.
