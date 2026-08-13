@@ -1,0 +1,23 @@
+←
+Phone agent
+Task transcript
+···
+pong
+pong
+inbound_pending
+New message from +OWNER
+New message from +OWNER
+Codex replied
+Incoming message from +OWNERcontained: <url> No reply or other action ...(len165)
+Incoming carrier notice from +OWNER: “Unable to send message — Message...(len174)
+New message from +OWNER
+New message from +OWNER
+Codex replied
+New message from +OWNER
+Codex replied
+Incoming carrier notice from +OWNER: “Unable to send message — Message...(len349)
+Incoming carrier notice from +OWNER: “Unable to send message — Message...(len175)
+Send a follow-up…
+Attach
+Send follow-up
+Mic

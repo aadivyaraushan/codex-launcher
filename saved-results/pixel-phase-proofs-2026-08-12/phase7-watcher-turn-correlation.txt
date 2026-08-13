@@ -1,0 +1,22 @@
+# Phase 7 watcher → StartTriggeredTurn correlation (no bodies/tokens)
+# Device 4B230DLAQ001Z5  UTC 2026-08-13  GST=UTC+4
+#
+# Watcher: [beeperwatch] connected and subscribed at 2026-08-13T00:31:44Z
+# (production Loader is nil; events that inlined entries still Notify)
+#
+# Pair 1
+#   Beeper self-chat inbound isSender=false  ts=2026-08-13T00:46:36.019Z
+#   gateway chat.send                        ts=2026-08-13T00:46:39.459Z  runId=082f29e5…  1345ms
+#
+# Pair 2 (this session; native SMS marker then carrier bounce)
+#   Beeper outbound isSender=true has_marker ts=2026-08-13T00:54:39.881Z  text_len=27
+#   Beeper inbound  isSender=false unread    ts=2026-08-13T00:54:43.014Z  text_len=61
+#   gateway chat.send                        ts=2026-08-13T00:54:44.320Z  runId=9fc247a9…  51ms
+#
+# Operator Phone-agent thread (redacted): 5x "New message from +OWNER", 3x "Codex replied"
+# Preview string matches companion/internal/phoneruntime/agenttrigger/trigger.go Preview()
+#
+# Native Google Messages to own MSISDN is carrier-blocked
+# ("Free Msg: Unable to send message - Message Blocking is active").
+# Those bounce notices are real inbound Beeper messages and did trigger the agent.
+# createDM/chats/start to own MSISDN still fails; unused this pass (existing self chat).
