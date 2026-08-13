@@ -4,7 +4,8 @@ Date: 2026-08-13
 
 What this is for: Pixel Continue-with-ChatGPT failed because `127.0.0.1:9443` was not listening. `operator-phone-runtime` logged `runtime.Health()` three times (Mode, Process, ListenAddress) before `Serve()`. Health used to wait on hung `openclaw models auth list`, and still waits on a Beeper accounts probe (3s timeout).
 
-Branch: `cursor/listen-before-health-60db` into `worktree-phase2-tool-bridge` (tip ~9fb9db5, after PR #19 health cache).
+Branch: `cursor/listen-before-health-60db`  
+PR: https://github.com/aadivyaraushan/codex-launcher/pull/20 into `worktree-phase2-tool-bridge` (tip ~9fb9db5, after PR #19 health cache).
 
 ## Result
 
@@ -23,13 +24,19 @@ The process binds `:9443` without waiting on OpenClaw auth. The serve-starting l
 
 Do **not** set `OPERATOR_ALLOW_SOFTWARE_ATTEST` on a physical Pixel.
 
+## Tests run (this session)
+
+Red: `TestMainSourceDoesNotCallHealth` failed on the old `main.go` (`Health()` ×3 before `Serve()`).
+
+Green:
+
 ```
-go test -count=1 ./companion/cmd/operator-phone-runtime ./companion/internal/phoneruntime
-go test -race -count=1 ./companion/cmd/operator-phone-runtime ./companion/internal/phoneruntime
+go test -count=1 -timeout 120s ./companion/cmd/operator-phone-runtime ./companion/internal/phoneruntime/...
+go test -race -count=1 -timeout 90s ./companion/cmd/operator-phone-runtime ./companion/internal/phoneruntime ./companion/internal/phoneruntime/modelauth/...
 go vet ./companion/cmd/operator-phone-runtime ./companion/internal/phoneruntime
 ```
 
-`TestMainSourceDoesNotCallHealth` fails if `main.go` grows a `.Health()` call. `TestServeBindsBeforeHealthWork` fails if `Serve()` waits on Health/model-auth before bind.
+All passed. `OPERATOR_ALLOW_SOFTWARE_ATTEST` was not changed.
 
 ## Sibling search
 
