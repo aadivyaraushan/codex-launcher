@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -14,6 +15,26 @@ val releaseSigningConfigured = releaseSigningValues.all { !it.isNullOrBlank() }
 if (releaseSigningValues.any { !it.isNullOrBlank() } && !releaseSigningConfigured) {
     throw GradleException("Android release signing requires all CODEX_LAUNCHER signing variables")
 }
+
+fun localProperty(name: String): String {
+    val file = rootProject.file("local.properties")
+    if (!file.isFile) return ""
+    val properties = Properties()
+    file.inputStream().use(properties::load)
+    return properties.getProperty(name).orEmpty()
+}
+
+fun quotedJavaString(value: String): String =
+    buildString {
+        append('"')
+        value.forEach { ch ->
+            when (ch) {
+                '\\', '"' -> append('\\').append(ch)
+                else -> append(ch)
+            }
+        }
+        append('"')
+    }
 
 android {
     namespace = "app.codexlauncher"
@@ -35,6 +56,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     signingConfigs {
@@ -49,9 +71,15 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            // Debug-only: operator puts DEEPGRAM_API_KEY in gitignored android/local.properties.
+            // Release APKs always compile an empty field so the key cannot ship.
+            buildConfigField("String", "DEEPGRAM_API_KEY", quotedJavaString(localProperty("DEEPGRAM_API_KEY")))
+        }
         getByName("release") {
             signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
+            buildConfigField("String", "DEEPGRAM_API_KEY", quotedJavaString(""))
         }
     }
 

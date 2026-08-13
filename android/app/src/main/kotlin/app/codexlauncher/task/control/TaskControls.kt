@@ -169,11 +169,11 @@ fun TaskControls(
                     when (result) {
                         is PromptDictationResult.Recognized -> {
                             updateText(mergePromptDictation(text, result.text))
-                            message = "Dictation added"
+                            message = homeDictationMessage(result, recognizedApplied = true)
                         }
-                        PromptDictationResult.Cancelled -> message = "Dictation canceled"
-                        PromptDictationResult.Unavailable -> message = "Speech recognition isn’t installed"
-                        PromptDictationResult.Failed -> message = "Couldn’t understand speech"
+                        PromptDictationResult.Cancelled -> message = homeDictationMessage(result, recognizedApplied = false)
+                        is PromptDictationResult.Unavailable -> message = homeDictationMessage(result, recognizedApplied = false)
+                        is PromptDictationResult.Failed -> message = homeDictationMessage(result, recognizedApplied = false)
                     }
                 },
             )
