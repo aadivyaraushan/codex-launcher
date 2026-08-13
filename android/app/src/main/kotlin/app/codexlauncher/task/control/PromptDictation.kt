@@ -6,8 +6,10 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedIconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -199,7 +201,10 @@ internal fun PromptDictationButton(
             }
         },
     ) {
-        Text(if (tap.state.recording || tap.state.uploading) "…" else "Mic")
+        Icon(
+            imageVector = Icons.Filled.Mic,
+            contentDescription = null,
+        )
     }
 }
 

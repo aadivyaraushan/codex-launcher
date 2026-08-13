@@ -2,6 +2,7 @@ package app.codexlauncher.launcher.home
 
 import android.view.WindowInsets
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -224,6 +225,8 @@ class HomeScreenTest {
             }
         }
 
+        compose.onNodeWithText("⌁").assertDoesNotExist()
+        compose.onNodeWithText("Mic").assertDoesNotExist()
         compose.onNodeWithContentDescription("Dictate prompt").assertIsEnabled().performClick()
         assertEquals(1, dictationStarts)
 

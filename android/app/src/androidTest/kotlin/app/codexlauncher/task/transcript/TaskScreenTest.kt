@@ -139,7 +139,8 @@ class TaskScreenTest {
             }
         }
 
-        compose.onNodeWithText("Mic").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Dictate follow-up").assertIsDisplayed()
+        compose.onNodeWithText("Mic").assertDoesNotExist()
         compose.onNodeWithText("⌁").assertDoesNotExist()
         compose.onNodeWithText("Voice").assertDoesNotExist()
         compose.onNodeWithContentDescription("Follow-up message").performTextInput("Typed words")
