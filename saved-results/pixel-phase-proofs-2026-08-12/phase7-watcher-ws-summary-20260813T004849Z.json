@@ -1,0 +1,20 @@
+{
+  "chat_sha": "0f78a72c0d8f",
+  "counts": {
+    "socket_open": 1,
+    "ready": 1,
+    "subscribe_sent": 1,
+    "subscriptions.updated": 1,
+    "message.upserted": 5,
+    "chat.upserted": 1
+  },
+  "upserted_n": 5,
+  "outbound_isSender_true": 3,
+  "inbound_isSender_false": 2,
+  "entries_always_present": true,
+  "marker": "phase7-watch-004849-resend",
+  "path": "POST /v1/chats/start with accountID=gmessages user.phoneNumber=+OWNER then POST .../messages",
+  "inbound_kind": "carrier Free Msg Message Blocking notice (isSender=false)",
+  "operator_ui": "Phone agent transcript shows New message from +OWNER_LOCAL + agent replies about carrier notice",
+  "result": "watcher-driven StartTriggeredTurn PROVEN"
+}

@@ -1,9 +1,9 @@
 # Phase 7 — Beeper (Pixel on-device) FULL
 
-**Timestamp (UTC):** 2026-08-12T23:33:11Z → 2026-08-13T00:41:15Z  
-**Local (Asia/Dubai):** overnight gate pass ~03:33 GST; post-reboot FULL ~04:31–04:40 GST  
+**Timestamp (UTC):** 2026-08-12T23:33:11Z → 2026-08-13T00:49:35Z  
+**Local (Asia/Dubai):** overnight gate ~03:33 GST; watcher→agent proof ~04:47–04:49 GST  
 **Serial:** `4B230DLAQ001Z5` only  
-**Result:** **PASS** (FULL)
+**Result:** **PASS** (FULL) — includes watcher-driven inbound → agent
 
 ## Scope claimed
 
@@ -12,24 +12,28 @@
 3. Operator-tools messaging path through Beeper-backed **Google Messages** (prior Deny + post-reboot self raise→Approve UI).
 4. **Tip runtime** with `-beeper-base-url http://127.0.0.1:23373` deployed after unlock (no software-attest).
 5. **beeperwatch** log proof: `Beeper watcher starting` + `connected and subscribed`.
-6. **Self number → agent UI:** `POST /v1/agent-tools/call` messages send to owner self `+OWNER` raised `approval_required` and surfaced in Operator **Phone agent** UI (“Needs your answer” / “Approve once” / “First message to this recipient: Send a Google Messages message to +OWNER”). Approve once tapped.
+6. **Self number → agent UI (tool raise):** prior `POST /v1/agent-tools/call` messages send raised `approval_required` (“Needs your answer” / Approve once).
+7. **Watcher-driven inbound → agent (NOW PROVEN):** Beeper Desktop API `POST /v1/chats/start` with `{accountID:"gmessages", user:{phoneNumber:"+OWNER"}}` opened the existing self Google Messages chat; `POST /v1/chats/{id}/messages` self-send produced:
+   - WS `message.upserted` with inline `entries` (`isSender=true` outbound — filtered by watcher)
+   - WS `message.upserted` with `isSender=false` carrier “Message Blocking is active” notice
+   - Operator **Phone agent** transcript previews **`New message from +OWNER_LOCAL`** and agent replies summarizing the carrier notice (allow list empty → no autonomous send)
 
 ## Not claimed
 
-- Pure Beeper-watcher `StartTriggeredTurn` / “New message from …” loopback from a carrier self-SMS echo (Beeper `createDM`/`chats/start` to own MSISDN fails with Node-API CREATE_CHAT_FAILED; outbound self-send did not produce a watcher INFO trigger in this window).
-- Discord first-contact send UI this pass.
-- Committing Beeper inbox / Messages thread screenshots (PII).
+- Clean carrier self-SMS delivery (Mint Mobile returns “Message Blocking is active” for self loopback). The inbound that proved the path was that carrier notice, not a free-form human SMS body.
+- Discord/Instagram self-DM via `chats/start` (`UNSUPPORTED_IDENTIFIER` / hungryserv createThread failures).
+- Committing Beeper/Messages inbox screenshots (PII) — Operator UI XML/txt are redacted to `+OWNER` / `+OWNER_LOCAL`.
 
 ## Evidence
 
 | Slice | Files |
 |------|--------|
-| Health | `bridge-health-phase7.json`, `bridge-health-phase9-fullreboot-final.json` |
-| Watcher | `phase7-beeperwatch-after-deploy.txt` |
-| Tip deploy | `/tmp/op-deploy-phase7/deploy.sh` + runit `-beeper-base-url` |
-| Accounts (redacted) | `phase7-beeper-accounts-summary.json` |
-| Self → agent UI | `phase7-inbound-raise-*.txt`, `phase7-inbound-home-*.xml/.png`, `phase7-inbound-after-Needs_your_answer-*.xml/.png` (number redacted to `+OWNER` in XML) |
-| Prior Deny path | `phase7-thread-open-*`, `phase7-approve-sheet-before-deny-*`, `phase7-after-owner-deny-*` |
+| Health | `bridge-health-phase7-watcher-pass.json` (also prior `bridge-health-phase7*.json`) |
+| Watcher subscribed | `phase7-beeperwatch-after-deploy.txt` |
+| WS metadata sniff | `phase7-watcher-ws-sniff-20260813T004849Z.jsonl`, `phase7-watcher-ws-summary-20260813T004849Z.json` |
+| Runtime around turns | `phase7-watcher-runtime-20260813T004935Z.log` |
+| Operator UI (redacted) | `phase7-watcher-home-20260813T004935Z.xml`, `phase7-watcher-home-20260813T004935Z.txt` |
+| Prior tool-raise Approve path | `phase7-inbound-raise-*.txt`, `phase7-inbound-home-*.xml` |
 
 ## Runtime
 
@@ -45,7 +49,7 @@
 | Accounts listed (count only) | **PASS** (4 connected) |
 | Messages→Beeper raise `approval_required` | **PASS** |
 | beeperwatch starting + subscribed | **PASS** |
-| Self `+OWNER` → agent UI | **PASS** |
-| Watcher-driven turn from SMS loopback | **NOT PROVEN** (createDM self blocked; noted) |
+| Self `+OWNER` → agent UI (tool raise) | **PASS** |
+| Watcher-driven turn (`New message from …` / StartTriggeredTurn) | **PASS** (carrier blocking notice inbound on self gmessages chat; WS `isSender=false` + Operator transcript) |
 
-Overall Phase 7 on Pixel: **PASS (FULL)** for connected Beeper + tip watcher + self→agent UI.
+Overall Phase 7 on Pixel: **PASS (FULL)** — connected Beeper + tip watcher + tool-raise UI + **watcher-driven inbound → agent**.

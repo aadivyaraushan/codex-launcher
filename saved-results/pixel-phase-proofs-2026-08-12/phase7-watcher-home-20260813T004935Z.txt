@@ -1,0 +1,16 @@
+Phone agent
+pong
+pong
+inbound_pending
+New message from +OWNER_LOCAL
+New message from +OWNER_LOCAL
+Codex replied
+Incoming message from +OWNER_LOCAL contained: https://www.eastlakesammestate.com/ No reply or other action was taken because the autonomous-send allow list is empty.
+Incoming carrier notice from +OWNER_LOCAL: “Unable to send message — Message Blocking is active.” No action or reply was sent because the autonomous-send allow list is empty.
+New message from +OWNER_LOCAL
+New message from +OWNER_LOCAL
+Codex replied
+New message from +OWNER_LOCAL
+Codex replied
+Incoming carrier notice from +OWNER_LOCAL: “Unable to send message — Message Blocking is active.” No action or reply was sent because the autonomous-send allow list is empty.Incoming carrier notice from +OWNER_LOCAL: “Unable to send message — Message Blocking is active.” No reply or action was taken because the autonomous-send allow list is empty.
+Incoming carrier notice from +OWNER_LOCAL: “Unable to send message — Message Blocking is active.” No reply or action was taken because the autonomous-send allow list is empty.

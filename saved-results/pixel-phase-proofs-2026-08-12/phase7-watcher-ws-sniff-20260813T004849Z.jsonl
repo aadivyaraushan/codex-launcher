@@ -1,0 +1,10 @@
+{"t": 1786582127.406, "type": "socket_open"}
+{"t": 1786582127.409, "type": "ready", "chat_sha": null}
+{"t": 1786582127.41, "type": "subscribe_sent"}
+{"t": 1786582127.416, "type": "subscriptions.updated", "chat_sha": null}
+{"t": 1786582130.97, "type": "message.upserted", "chat_sha": "0f78a72c0d8f", "ids_n": 1, "entries_n": 1, "entry_flags": [{"isSender": true, "isHidden": false, "isDeleted": false, "has_text": true, "sender_len": 19, "id_sha": "c649f74518"}], "marker_in_entries": true}
+{"t": 1786582130.979, "type": "chat.upserted", "chat_sha": "0f78a72c0d8f"}
+{"t": 1786582131.14, "type": "message.upserted", "chat_sha": "0f78a72c0d8f", "ids_n": 1, "entries_n": 1, "entry_flags": [{"isSender": true, "isHidden": false, "isDeleted": false, "has_text": true, "sender_len": 19, "id_sha": "c649f74518"}], "marker_in_entries": true}
+{"t": 1786582133.446, "type": "message.upserted", "chat_sha": "0f78a72c0d8f", "ids_n": 1, "entries_n": 1, "entry_flags": [{"isSender": true, "isHidden": false, "isDeleted": false, "has_text": true, "sender_len": 19, "id_sha": "c649f74518"}], "marker_in_entries": true}
+{"t": 1786582134.361, "type": "message.upserted", "chat_sha": "0f78a72c0d8f", "ids_n": 1, "entries_n": 1, "entry_flags": [{"isSender": false, "isHidden": false, "isDeleted": false, "has_text": true, "sender_len": 12, "id_sha": "d29e85bc62"}], "marker_in_entries": false}
+{"t": 1786582134.412, "type": "message.upserted", "chat_sha": "0f78a72c0d8f", "ids_n": 1, "entries_n": 1, "entry_flags": [{"isSender": false, "isHidden": false, "isDeleted": false, "has_text": true, "sender_len": 12, "id_sha": "d29e85bc62"}], "marker_in_entries": false}
