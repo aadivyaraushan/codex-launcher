@@ -5,6 +5,7 @@ package turnproxy
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskstate"
 )
@@ -26,15 +27,18 @@ type ChatEventPayload struct {
 	Seq          int             `json:"seq"`
 }
 
-// AgentEventPayload is one "agent" event from the gateway. Thinking tokens
-// arrive as stream:"thinking" with data.text (accumulated) and/or data.delta
-// (incremental). OpenClaw 2026.7.1-2 may omit sessionKey, nest the body under
-// payload, or send type:"thinking" with top-level text. Other streams are
-// ignored here.
+// AgentEventPayload is one "agent" event from the gateway. Live reasoning
+// arrives as stream:"thinking" on newer gateways, and on OpenClaw 2026.7.1-2
+// as item / codex_app_server.item (nested item.type=reasoning summary) or
+// assistant content parts typed thinking/reasoning. SessionKey may be omitted
+// or nested under payload. ItemType and DataType are enum tokens for logs;
+// they are never thinking text.
 type AgentEventPayload struct {
 	RunID      string         `json:"runId"`
 	SessionKey string         `json:"sessionKey"`
 	Stream     string         `json:"stream"`
+	ItemType   string         `json:"-"`
+	DataType   string         `json:"-"`
 	Data       AgentEventData `json:"data"`
 }
 
@@ -128,14 +132,31 @@ func (m *TurnMapper) KnowsRun(runID string) bool {
 	return exists
 }
 
-func (m *TurnMapper) acceptsThinking(payload AgentEventPayload) bool {
-	if payload.Stream != "thinking" || payload.RunID == "" {
+func (m *TurnMapper) acceptsReasoning(payload AgentEventPayload) bool {
+	if payload.RunID == "" || !payload.carriesReasoning() {
 		return false
 	}
 	if payload.SessionKey == "" || payload.SessionKey == m.sessionKey {
 		return true
 	}
 	return m.KnowsRun(payload.RunID)
+}
+
+func (payload AgentEventPayload) carriesReasoning() bool {
+	switch payload.Stream {
+	case "thinking":
+		return true
+	case "item", "codex_app_server.item":
+		return isReasoningToken(payload.ItemType) || isReasoningToken(payload.DataType)
+	case "assistant":
+		return payload.Data.Text != "" || payload.Data.Delta != ""
+	default:
+		return false
+	}
+}
+
+func isReasoningToken(value string) bool {
+	return value == "reasoning" || value == "thinking"
 }
 
 // Finished reports whether runID already reached a terminal chat event.
@@ -190,10 +211,11 @@ func (m *TurnMapper) ReasoningDisplay(runID string) string {
 }
 
 // ApplyAgent folds one gateway agent event into the mapper's run state.
-// stream:"thinking" for this session produces MobileEvents. A missing
-// sessionKey, or a different key on an already in-flight run, still attaches.
+// stream:"thinking" and Pixel item/codex_app_server.item/assistant reasoning
+// summaries produce MobileEvents. A missing sessionKey, or a different key
+// on an already in-flight run, still attaches.
 func (m *TurnMapper) ApplyAgent(payload AgentEventPayload) []taskstate.MobileEvent {
-	if !m.acceptsThinking(payload) {
+	if !m.acceptsReasoning(payload) {
 		return nil
 	}
 	if _, finished := m.finishedRuns[payload.RunID]; finished {
@@ -367,27 +389,34 @@ func textFromMessageContent(message json.RawMessage, wantType string) string {
 }
 
 // NormalizeAgentEvent unwraps the OpenClaw 2026.7.1-2 agent envelopes into
-// AgentEventPayload. It never returns thinking text to callers beyond the
-// struct fields; callers must not log those fields.
+// AgentEventPayload. Reasoning text is taken from thinking tokens or from
+// item summaries, never from hidden CoT `content`. Callers must not log
+// Data.Text or Data.Delta.
 func NormalizeAgentEvent(raw json.RawMessage) (AgentEventPayload, bool) {
 	return decodeAgentEvent(raw, 0)
+}
+
+type agentEnvelope struct {
+	RunID      string          `json:"runId"`
+	SessionKey string          `json:"sessionKey"`
+	Stream     string          `json:"stream"`
+	Type       string          `json:"type"`
+	Kind       string          `json:"kind"`
+	Text       string          `json:"text"`
+	Delta      string          `json:"delta"`
+	Thinking   string          `json:"thinking"`
+	Summary    json.RawMessage `json:"summary"`
+	Item       json.RawMessage `json:"item"`
+	Content    json.RawMessage `json:"content"`
+	Data       json.RawMessage `json:"data"`
+	Payload    json.RawMessage `json:"payload"`
 }
 
 func decodeAgentEvent(raw json.RawMessage, depth int) (AgentEventPayload, bool) {
 	if len(raw) == 0 || depth > 3 {
 		return AgentEventPayload{}, false
 	}
-	var envelope struct {
-		RunID      string          `json:"runId"`
-		SessionKey string          `json:"sessionKey"`
-		Stream     string          `json:"stream"`
-		Type       string          `json:"type"`
-		Text       string          `json:"text"`
-		Delta      string          `json:"delta"`
-		Thinking   string          `json:"thinking"`
-		Data       json.RawMessage `json:"data"`
-		Payload    json.RawMessage `json:"payload"`
-	}
+	var envelope agentEnvelope
 	if json.Unmarshal(raw, &envelope) != nil {
 		return AgentEventPayload{}, false
 	}
@@ -404,71 +433,188 @@ func decodeAgentEvent(raw json.RawMessage, depth int) (AgentEventPayload, bool) 
 		}
 	}
 
+	inner := agentEnvelope{}
+	if len(envelope.Data) > 0 {
+		if json.Unmarshal(envelope.Data, &inner) != nil {
+			inner = agentEnvelope{}
+		}
+	}
 	stream := envelope.Stream
-	if stream == "" && (envelope.Type == "thinking" || envelope.Type == "reasoning") {
+	if stream == "" {
+		stream = inner.Stream
+	}
+	if stream == "" && (envelope.Type == "thinking" || envelope.Type == "reasoning" || inner.Type == "thinking" || inner.Type == "reasoning") {
 		stream = "thinking"
 	}
-	data := AgentEventData{Text: envelope.Text, Delta: envelope.Delta}
-	if data.Text == "" {
-		data.Text = envelope.Thinking
+
+	itemRaw := envelope.Item
+	if len(itemRaw) == 0 {
+		itemRaw = inner.Item
 	}
-	if len(envelope.Data) > 0 {
-		mergeAgentData(&stream, &data, envelope.Data, depth)
+	item := agentEnvelope{}
+	if len(itemRaw) > 0 {
+		_ = json.Unmarshal(itemRaw, &item)
 	}
-	if stream == "" && data.Text == "" && data.Delta == "" && envelope.RunID == "" && envelope.SessionKey == "" {
+
+	itemType := firstEnumToken(item.Type, item.Kind, envelope.Type, envelope.Kind, inner.Type, inner.Kind)
+	dataType := firstEnumToken(inner.Type, inner.Kind, envelope.Type)
+	text, delta, contentType := reasoningFromEnvelope(stream, envelope, inner, item)
+	if itemType == "" {
+		itemType = contentType
+	}
+
+	if stream == "" && text == "" && delta == "" && envelope.RunID == "" && envelope.SessionKey == "" {
 		return AgentEventPayload{}, false
 	}
 	return AgentEventPayload{
 		RunID:      envelope.RunID,
 		SessionKey: envelope.SessionKey,
 		Stream:     stream,
-		Data:       data,
+		ItemType:   itemType,
+		DataType:   dataType,
+		Data:       AgentEventData{Text: text, Delta: delta},
 	}, true
 }
 
-func mergeAgentData(stream *string, data *AgentEventData, raw json.RawMessage, depth int) {
-	var inner struct {
-		Stream   string `json:"stream"`
-		Type     string `json:"type"`
-		Text     string `json:"text"`
-		Delta    string `json:"delta"`
-		Thinking string `json:"thinking"`
-	}
-	if json.Unmarshal(raw, &inner) == nil && (inner.Stream != "" || inner.Type != "" || inner.Text != "" || inner.Delta != "" || inner.Thinking != "") {
-		if data.Text == "" {
-			data.Text = inner.Text
+func reasoningFromEnvelope(stream string, envelope, inner, item agentEnvelope) (text, delta, contentType string) {
+	switch stream {
+	case "item", "codex_app_server.item":
+		if !isReasoningToken(item.Type) && !isReasoningToken(item.Kind) && !isReasoningToken(inner.Type) && !isReasoningToken(inner.Kind) && !isReasoningToken(envelope.Type) && !isReasoningToken(envelope.Kind) {
+			return "", "", firstEnumToken(item.Type, inner.Type, envelope.Type)
 		}
-		if data.Delta == "" {
-			data.Delta = inner.Delta
-		}
-		if data.Text == "" {
-			data.Text = inner.Thinking
-		}
-		if *stream == "" {
-			if inner.Stream != "" {
-				*stream = inner.Stream
-			} else if inner.Type == "thinking" || inner.Type == "reasoning" {
-				*stream = "thinking"
+		text = firstNonEmpty(extractSummary(item.Summary), extractSummary(inner.Summary), extractSummary(envelope.Summary))
+		return text, "", "reasoning"
+	case "assistant":
+		text, contentType = firstThinkingContent(envelope.Content, inner.Content, item.Content)
+		if text == "" {
+			text = firstNonEmpty(envelope.Thinking, inner.Thinking)
+			if text != "" {
+				contentType = "thinking"
 			}
 		}
-		return
+		return text, "", contentType
+	default:
+		// stream:"thinking" and the older top-level type:"thinking" shape.
+		text = firstNonEmpty(envelope.Text, envelope.Thinking, inner.Text, inner.Thinking, extractSummary(item.Summary), extractSummary(inner.Summary), extractSummary(envelope.Summary))
+		delta = firstNonEmpty(envelope.Delta, inner.Delta)
+		if text == "" && delta == "" && len(envelope.Data) > 0 {
+			var asString string
+			if json.Unmarshal(envelope.Data, &asString) == nil {
+				text = asString
+			}
+		}
+		if text == "" {
+			text, contentType = firstThinkingContent(envelope.Content, inner.Content, item.Content)
+		}
+		if contentType == "" && (text != "" || delta != "") {
+			contentType = "thinking"
+		}
+		return text, delta, contentType
+	}
+}
+
+func extractSummary(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
 	}
 	var asString string
-	if json.Unmarshal(raw, &asString) == nil && data.Text == "" {
-		data.Text = asString
-		return
+	if json.Unmarshal(raw, &asString) == nil {
+		return asString
 	}
-	if raw[0] == '{' {
-		if nested, ok := decodeAgentEvent(raw, depth+1); ok {
-			if data.Text == "" {
-				data.Text = nested.Data.Text
+	var asStrings []string
+	if json.Unmarshal(raw, &asStrings) == nil {
+		return joinNonEmpty(asStrings)
+	}
+	var asObjects []struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &asObjects) == nil {
+		parts := make([]string, 0, len(asObjects))
+		for _, part := range asObjects {
+			if part.Text != "" {
+				parts = append(parts, part.Text)
 			}
-			if data.Delta == "" {
-				data.Delta = nested.Data.Delta
+		}
+		return joinNonEmpty(parts)
+	}
+	return ""
+}
+
+func firstThinkingContent(blobs ...json.RawMessage) (text, contentType string) {
+	var parts []string
+	for _, raw := range blobs {
+		if len(raw) == 0 {
+			continue
+		}
+		var entries []struct {
+			Type     string `json:"type"`
+			Text     string `json:"text"`
+			Thinking string `json:"thinking"`
+		}
+		if json.Unmarshal(raw, &entries) != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !isReasoningToken(entry.Type) {
+				continue
 			}
-			if *stream == "" {
-				*stream = nested.Stream
+			chunk := entry.Text
+			if chunk == "" {
+				chunk = entry.Thinking
+			}
+			if chunk == "" {
+				continue
+			}
+			parts = append(parts, chunk)
+			if contentType == "" {
+				contentType = entry.Type
 			}
 		}
 	}
+	return joinNonEmpty(parts), contentType
+}
+
+func firstEnumToken(values ...string) string {
+	for _, value := range values {
+		if token := enumToken(value); token != "" {
+			return token
+		}
+	}
+	return ""
+}
+
+func enumToken(value string) string {
+	if value == "" || len(value) > 64 {
+		return ""
+	}
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.' || c == '/' || c == ':' {
+			continue
+		}
+		return ""
+	}
+	return value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func joinNonEmpty(parts []string) string {
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part != "" {
+			filtered = append(filtered, part)
+		}
+	}
+	if len(filtered) == 0 {
+		return ""
+	}
+	return strings.Join(filtered, "\n")
 }

@@ -936,6 +936,137 @@ func TestThinkingWithAlternateSessionKeyOrNestedPayloadAttachesToTheActiveRun(t 
 	}
 }
 
+func TestPixelItemReasoningFillsKindReasoningAndUpdatesWorking(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+
+	result, err := source.StartExistingTurn(context.Background(), testTaskID, "plan tonight")
+	if err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      result.TurnID,
+		"sessionKey": testSessionKey,
+		"stream":     "item",
+		"data": map[string]any{
+			"item": map[string]any{
+				"id":      "rsn-1",
+				"type":    "reasoning",
+				"summary": []string{"Checking the calendar"},
+				"content": []string{"hidden chain of thought"},
+			},
+		},
+	})
+	working := publisher.next(t)
+	if working.Kind != "activity" || working.State != taskstate.Working || !working.StartsTurn {
+		t.Fatalf("first item reasoning = %+v, want turn-starting Working", working)
+	}
+	if working.Summary != "Checking the calendar" {
+		t.Fatalf("working summary = %q", working.Summary)
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"payload": map[string]any{
+			"runId":  result.TurnID,
+			"stream": "codex_app_server.item",
+			"data": map[string]any{
+				"phase": "completed",
+				"type":  "reasoning",
+				"item": map[string]any{
+					"type": "reasoning",
+					"summary": []map[string]string{
+						{"type": "summary_text", "text": "Checking the calendar then drafting"},
+					},
+					"content": []map[string]string{
+						{"type": "reasoning_text", "text": "hidden chain of thought"},
+					},
+				},
+			},
+		},
+	})
+	updated := publisher.next(t)
+	if updated.Kind != "activity" || updated.StartsTurn || updated.Summary == working.Summary {
+		t.Fatalf("later item reasoning = %+v, want a changed Working summary without StartsTurn", updated)
+	}
+	if updated.Summary != "Checking the calendar then drafting" {
+		t.Fatalf("updated summary = %q", updated.Summary)
+	}
+
+	page, err := source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("ReadTranscript: %v", err)
+	}
+	if len(page.Entries) != 2 {
+		t.Fatalf("entries = %+v, want user then one updating reasoning row", page.Entries)
+	}
+	if page.Entries[1].Kind != tasktranscript.KindReasoning || page.Entries[1].Text != updated.Summary {
+		t.Fatalf("reasoning entry = %+v, want the latest safe summary", page.Entries[1])
+	}
+	if strings.Contains(page.Entries[1].Text, "hidden") {
+		t.Fatal("hidden CoT leaked into the transcript")
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      result.TurnID,
+		"sessionKey": testSessionKey,
+		"stream":     "assistant",
+		"data": map[string]any{
+			"text": "pong",
+			"content": []map[string]string{
+				{"type": "thinking", "text": "Need a shorter path"},
+				{"type": "text", "text": "pong"},
+			},
+		},
+	})
+	assistantThinking := publisher.next(t)
+	if assistantThinking.Summary != "Need a shorter path" {
+		t.Fatalf("assistant thinking = %+v, want reasoning from content type, not reply text", assistantThinking)
+	}
+}
+
+func TestUnmatchedItemReasoningDoesNotAttachToInboundPhoneAgent(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+	home, err := source.StartExistingTurn(context.Background(), HomeComposeTaskID, "plan tonight")
+	if err != nil {
+		t.Fatalf("home compose: %v", err)
+	}
+	gateway.nextRequest(t)
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      "run-unrelated",
+		"sessionKey": "agent:main:main",
+		"stream":     "item",
+		"data": map[string]any{
+			"item": map[string]any{"type": "reasoning", "summary": []string{"should not land on inbound"}},
+		},
+	})
+	gateway.sendRaw("agent", map[string]any{
+		"runId":  home.TurnID,
+		"stream": "codex_app_server.item",
+		"data": map[string]any{
+			"type": "reasoning",
+			"item": map[string]any{"type": "reasoning", "summary": []string{"Home chat reasoning"}},
+		},
+	})
+	applied := publisher.next(t)
+	if applied.Summary == "should not land on inbound" || applied.TaskID != home.ThreadID {
+		t.Fatalf("unrelated item reasoning leaked: %+v", applied)
+	}
+	if applied.Summary != "Home chat reasoning" {
+		t.Fatalf("home item reasoning = %+v", applied)
+	}
+	inboundPage, err := source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("inbound transcript: %v", err)
+	}
+	for _, entry := range inboundPage.Entries {
+		if entry.Kind == tasktranscript.KindReasoning {
+			t.Fatalf("unrelated item reasoning leaked into inbound: %+v", entry)
+		}
+	}
+}
+
 func TestAgentEventLogsApplicationWithoutThinkingText(t *testing.T) {
 	logs := newSafeLogBuffer()
 	logger := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -975,11 +1106,30 @@ func TestAgentEventLogsApplicationWithoutThinkingText(t *testing.T) {
 	if strings.Contains(logsText, "secret chain of thought") {
 		t.Fatal("thinking text must not appear in logs")
 	}
-	if !strings.Contains(logsText, "received agent event") || !strings.Contains(logsText, "drop_reason=not_thinking") {
+	if !strings.Contains(logsText, "received agent event") || !strings.Contains(logsText, "drop_reason=not_reasoning") {
 		t.Fatalf("lifecycle agent event was not logged as dropped, logs:\n%s", logsText)
 	}
 	if !strings.Contains(logsText, "applied=true") || !strings.Contains(logsText, "session_key_present=true") {
 		t.Fatalf("applied thinking was not logged, logs:\n%s", logsText)
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":  result.TurnID,
+		"stream": "item",
+		"data": map[string]any{
+			"item": map[string]any{
+				"type":    "reasoning",
+				"summary": []string{"item summary without logging the words"},
+			},
+		},
+	})
+	_ = publisher.next(t)
+	logsText = logs.String()
+	if strings.Contains(logsText, "item summary without logging the words") {
+		t.Fatal("item reasoning text must not appear in logs")
+	}
+	if !strings.Contains(logsText, "stream=item") || !strings.Contains(logsText, "item_type=reasoning") {
+		t.Fatalf("item reasoning was not logged with enum type, logs:\n%s", logsText)
 	}
 
 	gateway.sendAgent(AgentEventPayload{

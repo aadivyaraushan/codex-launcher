@@ -268,6 +268,16 @@ func TestNormalizeAgentEventAcceptsOpenClawNestedAndTopLevelShapes(t *testing.T)
 			raw:  `{"runId":"run-1","data":{"stream":"thinking","text":"Inside data"}}`,
 			want: AgentEventPayload{RunID: "run-1", Stream: "thinking", Data: AgentEventData{Text: "Inside data"}},
 		},
+		{
+			name: "item reasoning keeps stream name",
+			raw:  `{"runId":"run-1","stream":"item","data":{"item":{"type":"reasoning","summary":["Checking"]}}}`,
+			want: AgentEventPayload{RunID: "run-1", Stream: "item", ItemType: "reasoning", Data: AgentEventData{Text: "Checking"}},
+		},
+		{
+			name: "codex_app_server.item reasoning keeps stream name",
+			raw:  `{"runId":"run-1","stream":"codex_app_server.item","data":{"type":"reasoning","item":{"type":"reasoning","summary":["Checking"]}}}`,
+			want: AgentEventPayload{RunID: "run-1", Stream: "codex_app_server.item", ItemType: "reasoning", DataType: "reasoning", Data: AgentEventData{Text: "Checking"}},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -277,6 +287,12 @@ func TestNormalizeAgentEventAcceptsOpenClawNestedAndTopLevelShapes(t *testing.T)
 			}
 			if got.RunID != test.want.RunID || got.SessionKey != test.want.SessionKey || got.Stream != test.want.Stream {
 				t.Fatalf("ids = %+v, want %+v", got, test.want)
+			}
+			if test.want.ItemType != "" && got.ItemType != test.want.ItemType {
+				t.Fatalf("item type = %q, want %q", got.ItemType, test.want.ItemType)
+			}
+			if test.want.DataType != "" && got.DataType != test.want.DataType {
+				t.Fatalf("data type = %q, want %q", got.DataType, test.want.DataType)
 			}
 			if got.Data.Text != test.want.Data.Text || got.Data.Delta != test.want.Data.Delta {
 				t.Fatalf("data = %+v, want %+v", got.Data, test.want.Data)
@@ -312,5 +328,103 @@ func TestChatMessageThinkingContentUpdatesWorkingBeforeReply(t *testing.T) {
 	reply := mapper.Apply(ChatEventPayload{State: "final", RunID: "run-1", SessionKey: testSessionKey, Message: message})
 	if len(reply) != 1 || reply[0].Kind != "reply" || reply[0].Summary != "Done." {
 		t.Fatalf("final with thinking+text = %+v, want reply from text content", reply)
+	}
+}
+
+func TestPixelItemStreamsFillReasoningFromSummaryNotContent(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "item nested reasoning summary strings",
+			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"item","data":{"item":{"id":"rsn-1","type":"reasoning","summary":["Checking the calendar"],"content":["hidden chain of thought"]}}}`,
+			want: "Checking the calendar",
+		},
+		{
+			name: "codex_app_server.item nested summary objects",
+			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"codex_app_server.item","data":{"phase":"completed","type":"reasoning","item":{"type":"reasoning","summary":[{"type":"summary_text","text":"then drafting a reply"}],"content":[{"type":"reasoning_text","text":"hidden chain of thought"}]}}}`,
+			want: "then drafting a reply",
+		},
+		{
+			name: "nested payload envelope",
+			raw:  `{"payload":{"runId":"run-1","stream":"item","data":{"kind":"reasoning","item":{"type":"reasoning","summary":["Need a shorter path"]}}}}`,
+			want: "Need a shorter path",
+		},
+		{
+			name: "item kind and summary string",
+			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"item","data":{"kind":"reasoning","summary":"Checking the calendar"}}`,
+			want: "Checking the calendar",
+		},
+		{
+			name: "assistant thinking content type",
+			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Done.","content":[{"type":"thinking","text":"Checking the calendar"},{"type":"text","text":"Done."}]}}`,
+			want: "Checking the calendar",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			payload, ok := NormalizeAgentEvent(json.RawMessage(test.raw))
+			if !ok {
+				t.Fatal("NormalizeAgentEvent returned false")
+			}
+			if payload.ItemType != "reasoning" && payload.ItemType != "thinking" {
+				t.Fatalf("item type = %q, want reasoning or thinking", payload.ItemType)
+			}
+			if strings.Contains(payload.Data.Text, "hidden") || strings.Contains(payload.Data.Delta, "hidden") {
+				t.Fatalf("hidden CoT leaked into normalized data: %+v", payload.Data)
+			}
+			mapper := NewTurnMapper(testTaskID, testSessionKey)
+			events := mapper.ApplyAgent(payload)
+			if len(events) != 1 || events[0].Kind != "activity" || events[0].State != taskstate.Working || !events[0].StartsTurn {
+				t.Fatalf("ApplyAgent = %+v, want turn-starting Working", events)
+			}
+			if events[0].Summary != test.want {
+				t.Fatalf("summary = %q, want %q", events[0].Summary, test.want)
+			}
+			if mapper.ReasoningDisplay("run-1") != test.want {
+				t.Fatalf("ReasoningDisplay = %q, want %q", mapper.ReasoningDisplay("run-1"), test.want)
+			}
+		})
+	}
+}
+
+func TestAssistantReplyAndNonReasoningItemsDoNotBecomeReasoning(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{
+			name: "assistant reply text only",
+			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Done.","delta":"Done."}}`,
+		},
+		{
+			name: "item agentMessage",
+			raw:  `{"runId":"run-1","stream":"item","data":{"item":{"type":"agentMessage","text":"Done."}}}`,
+		},
+		{
+			name: "codex_app_server.item command",
+			raw:  `{"runId":"run-1","stream":"codex_app_server.item","data":{"type":"commandExecution","item":{"type":"commandExecution","command":"ls"}}}`,
+		},
+		{
+			name: "lifecycle",
+			raw:  `{"runId":"run-1","stream":"lifecycle","data":{"phase":"start"}}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			payload, ok := NormalizeAgentEvent(json.RawMessage(test.raw))
+			if !ok {
+				t.Fatal("NormalizeAgentEvent returned false")
+			}
+			mapper := NewTurnMapper(testTaskID, testSessionKey)
+			if events := mapper.ApplyAgent(payload); len(events) != 0 {
+				t.Fatalf("ApplyAgent = %+v, want no reasoning", events)
+			}
+			if got := mapper.ReasoningDisplay("run-1"); got != "" {
+				t.Fatalf("ReasoningDisplay = %q, want empty", got)
+			}
+		})
 	}
 }

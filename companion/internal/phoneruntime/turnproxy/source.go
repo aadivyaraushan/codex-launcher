@@ -143,8 +143,8 @@ func newConversation(taskID, sessionKey, title string) *conversation {
 }
 
 // handleEvent runs on the client's reader goroutine for every "event"
-// frame. Chat replies and agent thinking for known sessions are applied;
-// everything else is ignored.
+// frame. Chat replies and agent reasoning (thinking, item, or assistant
+// thinking content) for known sessions are applied; everything else is ignored.
 func (source *Source) handleEvent(event string, payload json.RawMessage) {
 	switch event {
 	case "chat":
@@ -195,15 +195,15 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 	agentPayload, ok := NormalizeAgentEvent(payload)
 	sessionKeyPresent := ok && agentPayload.SessionKey != ""
 	if !ok {
-		source.logAgentEvent(event, "", "", false, false, "unparsable", 0, "")
-		return
-	}
-	if agentPayload.Stream != "thinking" {
-		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, "not_thinking", 0, "")
+		source.logAgentEvent(event, "", "", false, false, "unparsable", 0, "", "", "")
 		return
 	}
 	if agentPayload.RunID == "" {
-		source.logAgentEvent(event, agentPayload.Stream, "", sessionKeyPresent, false, "missing_run_id", 0, "")
+		source.logAgentEvent(event, agentPayload.Stream, "", sessionKeyPresent, false, "missing_run_id", 0, "", agentPayload.ItemType, agentPayload.DataType)
+		return
+	}
+	if !agentPayload.carriesReasoning() {
+		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, "not_reasoning", 0, "", agentPayload.ItemType, agentPayload.DataType)
 		return
 	}
 
@@ -211,7 +211,7 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 	conv, dropReason := source.conversationForThinkingLocked(agentPayload.SessionKey, agentPayload.RunID)
 	if conv == nil {
 		source.mu.Unlock()
-		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, dropReason, 0, "")
+		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, dropReason, 0, "", agentPayload.ItemType, agentPayload.DataType)
 		return
 	}
 	agentPayload.SessionKey = conv.sessionKey
@@ -241,14 +241,16 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 	}
 	source.mu.Unlock()
 
-	source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, applied, dropReason, emitted, taskID)
+	source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, applied, dropReason, emitted, taskID, agentPayload.ItemType, agentPayload.DataType)
 	source.publish(mobileEvents)
 }
 
-func (source *Source) logAgentEvent(event, stream, runID string, sessionKeyPresent, applied bool, dropReason string, emitted int, taskID string) {
+func (source *Source) logAgentEvent(event, stream, runID string, sessionKeyPresent, applied bool, dropReason string, emitted int, taskID, itemType, dataType string) {
 	source.logger.Info("[turnproxy] received agent event",
 		"event", event,
 		"stream", stream,
+		"item_type", itemType,
+		"data_type", dataType,
 		"session_key_present", sessionKeyPresent,
 		"run_id", runID,
 		"applied", applied,

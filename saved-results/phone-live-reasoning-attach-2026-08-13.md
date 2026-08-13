@@ -22,6 +22,8 @@ Verified against OpenClaw 2026.7.1-2 `src/infra/agent-events.ts` and `src/gatewa
 
 Caps: 2026.7.1-2 protocol hello-ok does not require `thinking-events` (broadcasts non-tool agent streams to Control UI-visible clients). Newer gateways do. Connect now sends `thinking-events` and `session-scoped-events`, and logs sent vs accepted caps.
 
+**Follow-up (same day):** Pixel proof of this attach still showed `thinking: 0` and every agent event `drop_reason=not_thinking`. See `saved-results/phone-live-reasoning-item-streams-2026-08-13.md`.
+
 ## Inputs → Outputs → Algorithm
 
 1. **Inputs** — Gateway `event:"agent"` frames (canonical, nested `payload`, `type:"thinking"`, `data.stream`, missing sessionKey, or sessionKey `agent:main:main`) plus the in-flight `chat.send` run id.
