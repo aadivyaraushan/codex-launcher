@@ -72,6 +72,9 @@ import app.codexlauncher.launcher.apps.InstalledApp
 import app.codexlauncher.launcher.apps.InstalledAppsLoader
 import app.codexlauncher.launcher.apps.InstalledAppsRepository
 import app.codexlauncher.launcher.home.HomeScreen
+import app.codexlauncher.launcher.modelauth.ModelAuthScreen
+import app.codexlauncher.runtime.modelauth.ModelAuth
+import app.codexlauncher.runtime.modelauth.loopback.ModelAuthClient
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import app.codexlauncher.runtime.standalone.LocalRuntimeEndpoint
@@ -289,6 +292,10 @@ class LauncherActivity : ComponentActivity() {
             var homeRouteMessage by remember { mutableStateOf<String?>(null) }
             var localAutoLinkBusy by remember { mutableStateOf(false) }
             var localAutoLinkAttempted by rememberSaveable { mutableStateOf(false) }
+            var modelAuthBusy by remember { mutableStateOf(false) }
+            var modelAuthCode by rememberSaveable { mutableStateOf<String?>(null) }
+            var modelAuthUrl by rememberSaveable { mutableStateOf<String?>(null) }
+            var modelAuthError by remember { mutableStateOf<String?>(null) }
             // Callers: Home Compose status strip. Blocking socket probe → readOffMain (IO).
             // User: "Fix: Run probe on Dispatchers.IO" + unpaired loopback session connect.
             LaunchedEffect(localStorageUiState, pairingState) {
@@ -401,6 +408,39 @@ class LauncherActivity : ComponentActivity() {
                     )
                 }
             }
+            LaunchedEffect(
+                standaloneStatus.reachable,
+                standaloneStatus.modelAuth,
+                standaloneStatus.taskCapable,
+                destination,
+            ) {
+                val needsGate =
+                    standaloneStatus.reachable &&
+                        standaloneStatus.modelAuth != ModelAuth.OauthReady
+                val gateOpen =
+                    standaloneStatus.modelAuth == ModelAuth.OauthReady &&
+                        standaloneStatus.taskCapable
+                if (needsGate && destination == LauncherDestination.HOME) {
+                    AppLog.info(
+                        feature = "model-auth",
+                        message = "showing ChatGPT sign-in gate",
+                        fields =
+                            mapOf(
+                                "model_auth" to standaloneStatus.modelAuth.name.lowercase(),
+                                "task_capable" to standaloneStatus.taskCapable,
+                            ),
+                    )
+                    destination = LauncherDestination.MODEL_AUTH
+                }
+                if (gateOpen && destination == LauncherDestination.MODEL_AUTH) {
+                    AppLog.info(
+                        feature = "model-auth",
+                        message = "ChatGPT sign-in gate lifted",
+                        fields = mapOf("decision" to "home"),
+                    )
+                    destination = LauncherDestination.HOME
+                }
+            }
             val loadedRootDestination = pairingState.startDestination()
             val rootDestination = loadedRootDestination ?: LauncherDestination.HOME
             val visibleDestination =
@@ -487,13 +527,14 @@ class LauncherActivity : ComponentActivity() {
                 if (decisionState.active != null) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
             }
-            BackHandler(enabled = destination in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE, LauncherDestination.PROJECT, LauncherDestination.TASK, LauncherDestination.TASK_DETAIL, LauncherDestination.PAIRING)) {
+            BackHandler(enabled = destination in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE, LauncherDestination.PROJECT, LauncherDestination.TASK, LauncherDestination.TASK_DETAIL, LauncherDestination.PAIRING, LauncherDestination.MODEL_AUTH)) {
                 val from = destination
                 destination =
                     when (destination) {
                         LauncherDestination.APPEARANCE -> LauncherDestination.APPS
                         LauncherDestination.PROJECT -> LauncherDestination.HOME
                         LauncherDestination.PAIRING -> LauncherDestination.HOME
+                        LauncherDestination.MODEL_AUTH -> LauncherDestination.HOME
                         LauncherDestination.TASK -> {
                             sessionViewModel.clearAttachments()
                             sessionViewModel.closeTask()
@@ -533,6 +574,52 @@ class LauncherActivity : ComponentActivity() {
                             onSubmitManual = pairingViewModel::submitManualEntry,
                             onQrDecoded = pairingViewModel::submitScanned,
                             onRetrySave = pairingViewModel::submitSaveRetry,
+                            onAllApps = { destination = LauncherDestination.APPS },
+                            onAndroidSettings = ::openAndroidSettings,
+                        )
+                    LauncherDestination.MODEL_AUTH ->
+                        ModelAuthScreen(
+                            userCode = modelAuthCode,
+                            verificationUrl = modelAuthUrl,
+                            busy = modelAuthBusy,
+                            errorMessage = modelAuthError,
+                            onContinue = {
+                                scope.launch {
+                                    modelAuthBusy = true
+                                    modelAuthError = null
+                                    AppLog.info(
+                                        feature = "model-auth",
+                                        message = "continue with ChatGPT",
+                                        fields = mapOf("decision" to "start"),
+                                    )
+                                    try {
+                                        val start =
+                                            withContext(Dispatchers.IO) {
+                                                ModelAuthClient.start()
+                                            }
+                                        modelAuthCode = start.userCode
+                                        modelAuthUrl = start.verificationUrl
+                                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(start.verificationUrl)))
+                                    } catch (error: Exception) {
+                                        AppLog.info(
+                                            feature = "model-auth",
+                                            message = "continue with ChatGPT failed",
+                                            fields =
+                                                mapOf(
+                                                    "error" to (error.message ?: error::class.simpleName.orEmpty()),
+                                                    "decision" to "fail_closed",
+                                                ),
+                                        )
+                                        modelAuthError = "Could not start ChatGPT sign-in. Try again."
+                                    } finally {
+                                        modelAuthBusy = false
+                                    }
+                                }
+                            },
+                            onOpenVerification = {
+                                val url = modelAuthUrl ?: return@ModelAuthScreen
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            },
                             onAllApps = { destination = LauncherDestination.APPS },
                             onAndroidSettings = ::openAndroidSettings,
                         )
@@ -953,6 +1040,7 @@ class LauncherActivity : ComponentActivity() {
 
 internal enum class LauncherDestination {
     PAIRING,
+    MODEL_AUTH,
     HOME,
     PROJECT,
     TASK,
@@ -993,7 +1081,8 @@ internal fun visibleDestination(
     when (requested) {
         LauncherDestination.HOME -> root
         LauncherDestination.PAIRING -> LauncherDestination.PAIRING
-        LauncherDestination.PROJECT -> if (root == LauncherDestination.HOME) requested else root
+        LauncherDestination.MODEL_AUTH -> LauncherDestination.MODEL_AUTH
+        LauncherDestination.PROJECT -> if (root == LauncherDestination.HOME || root == LauncherDestination.MODEL_AUTH) requested else root
         LauncherDestination.TASK ->
             if (root == LauncherDestination.HOME && phase == ConnectionPhase.ONLINE && hasTranscript) requested else root
         LauncherDestination.TASK_DETAIL ->

@@ -2,6 +2,9 @@ package app.codexlauncher.runtime.standalone
 
 import android.content.Context
 import app.codexlauncher.diagnostics.AppLog
+import app.codexlauncher.runtime.modelauth.HealthSnapshot
+import app.codexlauncher.runtime.modelauth.ModelAuth
+import app.codexlauncher.runtime.modelauth.loopback.ModelAuthClient
 import java.net.InetSocketAddress
 import java.net.Socket
 import kotlinx.coroutines.CoroutineDispatcher
@@ -26,29 +29,34 @@ object StandaloneRuntimeStatusReader {
         context: Context,
         port: Int = DEFAULT_PORT,
         probe: (Int) -> Boolean = ::probeLoopback,
+        health: (Int) -> HealthSnapshot? = { ModelAuthClient.health(it) },
     ): StandaloneRuntimeStatus {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val localPairAcked =
             !prefs.getString("runtimeIdentity", null).isNullOrBlank() &&
                 !prefs.getString("tlsSpki", null).isNullOrBlank()
-        return read(localPairAcked = localPairAcked, port = port, probe = probe)
+        return read(localPairAcked = localPairAcked, port = port, probe = probe, health = health)
     }
 
     fun read(
         localPairAcked: Boolean,
         port: Int = DEFAULT_PORT,
         probe: (Int) -> Boolean = ::probeLoopback,
+        health: (Int) -> HealthSnapshot? = { null },
     ): StandaloneRuntimeStatus {
         // Probe even before local-pair ack so Home/auto-link can see runtime is up.
         // Callers: LauncherActivity status poll + LocalPairLoopbackBootstrap.run(context).
         // User: "Probe reachability even when not yet acked (so we know runtime is up)."
         val reachable = probe(port)
         val runtimeServing = localPairAcked && reachable
+        val snapshot = if (reachable) health(port) else null
         val status =
             StandaloneRuntimeStatus(
                 localPairAcked = localPairAcked,
                 runtimeServing = runtimeServing,
                 reachable = reachable,
+                taskCapable = snapshot?.taskCapable == true,
+                modelAuth = snapshot?.modelAuth ?: ModelAuth.Missing,
             )
         AppLog.info(
             feature = "standalone",
@@ -58,6 +66,8 @@ object StandaloneRuntimeStatusReader {
                     "local_pair_acked" to localPairAcked,
                     "runtime_serving" to runtimeServing,
                     "reachable" to reachable,
+                    "task_capable" to status.taskCapable,
+                    "model_auth" to status.modelAuth.name.lowercase(),
                     "ready" to status.isReady,
                 ),
         )
@@ -68,17 +78,19 @@ object StandaloneRuntimeStatusReader {
         context: Context,
         port: Int = DEFAULT_PORT,
         probe: (Int) -> Boolean = ::probeLoopback,
+        health: (Int) -> HealthSnapshot? = { ModelAuthClient.health(it) },
         io: CoroutineDispatcher = Dispatchers.IO,
     ): StandaloneRuntimeStatus =
-        withContext(io) { read(context = context, port = port, probe = probe) }
+        withContext(io) { read(context = context, port = port, probe = probe, health = health) }
 
     suspend fun readOffMain(
         localPairAcked: Boolean,
         port: Int = DEFAULT_PORT,
         probe: (Int) -> Boolean = ::probeLoopback,
+        health: (Int) -> HealthSnapshot? = { null },
         io: CoroutineDispatcher = Dispatchers.IO,
     ): StandaloneRuntimeStatus =
-        withContext(io) { read(localPairAcked = localPairAcked, port = port, probe = probe) }
+        withContext(io) { read(localPairAcked = localPairAcked, port = port, probe = probe, health = health) }
 
     private fun probeLoopback(port: Int): Boolean =
         try {

@@ -33,8 +33,11 @@ adb install -r codex-launcher-0.1.0-alpha.1.apk
 4. Choose one of the project folders approved during companion setup.
 
 The phone stores a hardware-backed pairing key when the device supports it,
-the pinned computer identity, and non-secret connection details. Your ChatGPT
-sign-in stays on the computer.
+the pinned computer identity, and non-secret connection details.
+
+On the **phone-agent** path, Operator requires **your own ChatGPT / Codex
+login** (device-code in OpenClaw) before Home Send works. Tokens stay in
+OpenClaw; they are not stored in the Android app. An API key is not enough.
 
 ## Make it the home screen
 

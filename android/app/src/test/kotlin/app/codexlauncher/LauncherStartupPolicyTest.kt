@@ -29,6 +29,14 @@ class LauncherStartupPolicyTest {
             LauncherDestination.HOME,
             visibleDestination(LauncherDestination.HOME, LauncherDestination.HOME),
         )
+        assertEquals(
+            LauncherDestination.MODEL_AUTH,
+            visibleDestination(LauncherDestination.HOME, LauncherDestination.MODEL_AUTH),
+        )
+        assertEquals(
+            LauncherDestination.APPS,
+            visibleDestination(LauncherDestination.MODEL_AUTH, LauncherDestination.APPS),
+        )
     }
 
     @Test

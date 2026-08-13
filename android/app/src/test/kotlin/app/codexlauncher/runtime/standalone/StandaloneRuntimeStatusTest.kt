@@ -30,10 +30,15 @@ class StandaloneRuntimeStatusTest {
             ).isReady,
         )
         assertTrue(
+            StandaloneRuntimeStatus.phoneReady().isReady,
+        )
+        assertFalse(
             StandaloneRuntimeStatus(
                 localPairAcked = true,
                 runtimeServing = true,
                 reachable = true,
+                taskCapable = true,
+                modelAuth = app.codexlauncher.runtime.modelauth.ModelAuth.Missing,
             ).isReady,
         )
     }
@@ -53,8 +58,12 @@ class StandaloneRuntimeStatusTest {
             StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = false).headline(),
         )
         assertEquals(
-            "Ready on this phone",
+            "Sign in with ChatGPT to use Operator",
             StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true).headline(),
+        )
+        assertEquals(
+            "Ready on this phone",
+            StandaloneRuntimeStatus.phoneReady().headline(),
         )
     }
 }

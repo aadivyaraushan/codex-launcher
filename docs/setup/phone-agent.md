@@ -7,6 +7,21 @@ plugin, boot/restore scripts, and the Android chat / approval UI.
 For the computer-Codex lane (companion + relay), see
 [companion.md](companion.md) and [relay-box.md](relay-box.md).
 
+## ChatGPT login (required)
+
+Operator does **not** pay model cost. Before Home Send works, OpenClaw on the
+phone must have **your** ChatGPT / Codex login:
+
+1. Home shows **Sign in with ChatGPT to use Operator**. All apps and Android
+   Settings stay available.
+2. Tap **Continue with ChatGPT**. Phone-runtime starts
+   `openclaw models auth login --provider openai --device-code`.
+3. Enter the one-time code at the ChatGPT verification URL (opened in the
+   browser). Tokens stay in OpenClaw’s store — Operator never puts ChatGPT
+   tokens in the Android app.
+4. Home Send turns on only when health reports `taskCapable=true` **and**
+   `modelAuth=oauth_ready`. An API key (`keyed: true`) is not enough.
+
 ## Pieces
 
 | Piece | In this repo | On the phone (typical) |

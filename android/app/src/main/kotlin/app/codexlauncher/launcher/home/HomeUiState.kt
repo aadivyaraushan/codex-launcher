@@ -5,6 +5,7 @@ import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
 import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
+import app.codexlauncher.runtime.modelauth.ModelAuth
 import app.codexlauncher.task.summary.MessageSpeaker
 import app.codexlauncher.task.summary.TaskLastMessage
 import app.codexlauncher.task.summary.TaskState
@@ -158,13 +159,21 @@ object HomeUiPolicy {
                 null
             }
         val macReady = hasCurrentSnapshot && selectedProject != null
+        val oauthReady = standalone.modelAuth == ModelAuth.OauthReady
         val visibleTasks = if (hasCurrentSnapshot) tasks else emptyList()
         val canSendWithoutSelection =
-            !macReady && standalone.isReady && HomeSendRouter.phoneAgentPresent(visibleTasks.map { it.id })
-        val canSend = macReady || standalone.isReady
+            oauthReady &&
+                standalone.taskCapable &&
+                !macReady &&
+                standalone.isReady &&
+                HomeSendRouter.phoneAgentPresent(visibleTasks.map { it.id })
+        val canSend = (macReady && oauthReady && standalone.taskCapable) || standalone.isReady
         val title = if (paired) computerName else "Operator"
         val headline =
             when {
+                standalone.modelAuth != ModelAuth.OauthReady &&
+                    (standalone.localPairAcked || standalone.reachable) ->
+                    standalone.headline()
                 !paired || !hasCurrentSnapshot -> standalone.headline()
                 else -> connection.headline
             }
@@ -182,9 +191,9 @@ object HomeUiPolicy {
             showAllApps = true,
             showAndroidSettings = true,
             lastConnectedLabel = lastConnectedLabel.takeIf { paired },
-            showComposer = true,
+            showComposer = canSend,
             showLinkComputer = !paired,
-            showLinkLocalRuntime = !standalone.isReady,
+            showLinkLocalRuntime = !standalone.localPairAcked,
         )
     }
 }

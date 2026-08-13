@@ -28,8 +28,7 @@ class HomeUiStateTest {
             ProjectChoice(id = "research", displayName = "Research"),
         )
 
-    private val standaloneReady =
-        StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+    private val standaloneReady = StandaloneRuntimeStatus.phoneReady()
 
     @Test
     fun everyNonOnlineStateRemovesComputerContentButKeepsEscapeRoutes() {
@@ -219,9 +218,51 @@ class HomeUiStateTest {
     }
 
     @Test
+    fun composerAndSendStayOffUntilChatGptOauthIsReady() {
+        val noOauth =
+            StandaloneRuntimeStatus(
+                localPairAcked = true,
+                runtimeServing = true,
+                reachable = true,
+                taskCapable = true,
+                modelAuth = app.codexlauncher.runtime.modelauth.ModelAuth.Missing,
+            )
+        val state =
+            HomeUiPolicy.render(
+                computerName = "studio-mac",
+                connection = ConnectionSnapshot.initial(),
+                projects = projects,
+                tasks = tasks,
+                standalone = noOauth,
+                paired = false,
+            )
+
+        assertFalse(state.canSend)
+        assertFalse(state.showComposer)
+        assertEquals("Sign in with ChatGPT to use Operator", state.headline)
+        assertTrue(state.showAllApps)
+        assertTrue(state.showAndroidSettings)
+    }
+
+    @Test
+    fun oauthReadyAndTaskCapableShowsComposer() {
+        val state =
+            HomeUiPolicy.render(
+                computerName = "Operator",
+                connection = ConnectionSnapshot.initial(),
+                projects = emptyList(),
+                tasks = listOf(HomeTask(id = PHONE_AGENT_TASK_ID, title = "Phone agent", stateLabel = "Replied")),
+                standalone = StandaloneRuntimeStatus.phoneReady(),
+                paired = false,
+            )
+
+        assertTrue(state.canSend)
+        assertTrue(state.showComposer)
+    }
+
+    @Test
     fun unpairedStandaloneReadyEnablesAutoSendWithOperatorTitle() {
-        val ready =
-            StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+        val ready = StandaloneRuntimeStatus.phoneReady()
         val state =
             HomeUiPolicy.render(
                 computerName = "studio-mac",
@@ -260,15 +301,14 @@ class HomeUiStateTest {
             )
 
         assertFalse(state.canSend)
-        assertTrue(state.showComposer)
+        assertFalse(state.showComposer)
         assertTrue(state.showLinkLocalRuntime)
         assertEquals(notReady.headline(), state.headline)
     }
 
     @Test
     fun macOnlineOrStandaloneReadyEnablesSend() {
-        val ready =
-            StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+        val ready = StandaloneRuntimeStatus.phoneReady()
         val notReady = StandaloneRuntimeStatus.notReady()
         val online =
             ConnectionSnapshot(
@@ -277,13 +317,23 @@ class HomeUiStateTest {
                 baseSequence = 42,
             )
 
-        assertTrue(
+        assertFalse(
             HomeUiPolicy.render(
                 computerName = "studio-mac",
                 connection = online,
                 projects = projects,
                 tasks = tasks,
                 standalone = notReady,
+                paired = true,
+            ).canSend,
+        )
+        assertTrue(
+            HomeUiPolicy.render(
+                computerName = "studio-mac",
+                connection = online,
+                projects = projects,
+                tasks = tasks,
+                standalone = ready,
                 paired = true,
             ).canSend,
         )
@@ -311,8 +361,7 @@ class HomeUiStateTest {
 
     @Test
     fun phoneAgentTaskEnablesSendWithoutSelectionWhenStandaloneIsReady() {
-        val ready =
-            StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+        val ready = StandaloneRuntimeStatus.phoneReady()
         val state =
             HomeUiPolicy.render(
                 computerName = "Operator",
@@ -334,8 +383,7 @@ class HomeUiStateTest {
 
     @Test
     fun macProjectPathDoesNotSkipSelectionEvenIfPhoneAgentIsListed() {
-        val ready =
-            StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+        val ready = StandaloneRuntimeStatus.phoneReady()
         val state =
             HomeUiPolicy.render(
                 computerName = "studio-mac",

@@ -2,6 +2,7 @@ package app.codexlauncher.launcher.home
 
 import android.view.WindowInsets
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -60,6 +61,43 @@ class HomeScreenTest {
         compose.onNodeWithText("notes.txt").assertIsDisplayed()
         compose.onNodeWithContentDescription("Remove notes.txt").performClick()
         assertEquals("upload-1", removed)
+    }
+
+    @Test
+    fun modelAuthGateHidesComposerAndKeepsEscapeRoutes() {
+        var allAppsOpens = 0
+        var settingsOpens = 0
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state =
+                        HomeUiState(
+                            computerName = "Operator",
+                            headline = "Sign in with ChatGPT to use Operator",
+                            tasks = emptyList(),
+                            selectedProjectName = null,
+                            contentBaseSequence = null,
+                            canChangeComputer = false,
+                            canChangeProject = false,
+                            canSend = false,
+                            mustChooseProject = false,
+                            showAllApps = true,
+                            showAndroidSettings = true,
+                            showComposer = false,
+                        ),
+                    onAllApps = { allAppsOpens += 1 },
+                    onAndroidSettings = { settingsOpens += 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Sign in with ChatGPT to use Operator").assertIsDisplayed()
+        compose.onAllNodesWithText("What do you want done?").assertCountEquals(0)
+        compose.onNodeWithContentDescription("Send prompt").assertDoesNotExist()
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Android Settings").performClick()
+        assertEquals(1, allAppsOpens)
+        assertEquals(1, settingsOpens)
     }
 
     @Test
@@ -479,6 +517,7 @@ class HomeScreenTest {
             mustChooseProject = selectedProjectName == null,
             showAllApps = true,
             showAndroidSettings = true,
+            showComposer = true,
         )
 
     private fun taskOptions() =
