@@ -387,16 +387,17 @@ func TestStartTurnForwardsChatSendAndStreamsReply(t *testing.T) {
 		t.Fatalf("idempotencyKey = %q, must be set and equal the returned TurnID %q", params.IdempotencyKey, result.TurnID)
 	}
 
+	expectSendWorking(t, publisher, testTaskID)
 	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "Hi there", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 1})
 	gateway.sendChat(ChatEventPayload{State: "final", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 2})
 
 	working := publisher.next(t)
-	if working.Kind != "activity" || working.State != taskstate.Working || !working.StartsTurn {
-		t.Fatalf("first event = %+v, want a turn-starting Working activity", working)
+	if working.Kind != "activity" || working.State != taskstate.Working || working.StartsTurn || working.Summary != "Hi there" {
+		t.Fatalf("delta event = %+v, want updating Working with the live reply", working)
 	}
 	reply := publisher.next(t)
 	if reply.Kind != "reply" || reply.State != taskstate.IdleAfterReply || reply.Summary != "Hi there" {
-		t.Fatalf("second event = %+v, want the assembled reply", reply)
+		t.Fatalf("final event = %+v, want the assembled reply", reply)
 	}
 }
 
@@ -453,6 +454,7 @@ func TestStartTurnPrefersServerAssignedRunID(t *testing.T) {
 		t.Fatalf("TurnID = %q, want the server-assigned runId srv-run-9", result.TurnID)
 	}
 	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, testTaskID)
 
 	// The active turn tracked from the stream must be the same id the
 	// caller was handed, or the launcher cannot match "the turn I started"
@@ -593,6 +595,7 @@ func TestCurrentTaskRemembersWhoSpokeLast(t *testing.T) {
 		t.Fatalf("last message after send = %#v, want %#v", sent.LastMessage, wantUser)
 	}
 
+	expectSendWorking(t, publisher, testTaskID)
 	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "Hi there", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 1})
 	publisher.next(t)
 
@@ -633,11 +636,12 @@ func TestCurrentTaskSanitizesMultilineAgentReply(t *testing.T) {
 		t.Fatalf("StartExistingTurn: %v", err)
 	}
 	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, testTaskID)
 
 	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "{\n  \"ok\": true\n}", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 1})
 	working := publisher.next(t)
 	if working.Kind != "activity" {
-		t.Fatalf("first event = %#v, want working activity", working)
+		t.Fatalf("delta event = %#v, want working activity", working)
 	}
 
 	gateway.sendChat(ChatEventPayload{State: "final", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 2})
@@ -682,6 +686,7 @@ func TestCurrentTaskTracksRunState(t *testing.T) {
 		t.Fatalf("StartExistingTurn: %v", err)
 	}
 	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, testTaskID)
 
 	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "thinking", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 1})
 	publisher.next(t)
@@ -731,6 +736,7 @@ func TestReadTranscriptReturnsUserAndAgentLinesFromThisSession(t *testing.T) {
 		t.Fatalf("StartExistingTurn: %v", err)
 	}
 	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, testTaskID)
 	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "pong", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 1})
 	gateway.sendChat(ChatEventPayload{State: "final", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 2})
 	publisher.next(t)
@@ -792,14 +798,15 @@ func TestThinkingAgentEventsFillReasoningTranscriptAndUpdateWorking(t *testing.T
 		t.Fatalf("StartExistingTurn: %v", err)
 	}
 	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, testTaskID)
 
 	gateway.sendAgent(AgentEventPayload{
 		Stream: "thinking", RunID: result.TurnID, SessionKey: testSessionKey,
 		Data: AgentEventData{Text: "Checking the calendar\nthen drafting"},
 	})
 	working := publisher.next(t)
-	if working.Kind != "activity" || working.State != taskstate.Working || !working.StartsTurn {
-		t.Fatalf("first thinking = %+v, want turn-starting Working", working)
+	if working.Kind != "activity" || working.State != taskstate.Working || working.StartsTurn {
+		t.Fatalf("first thinking = %+v, want Working without StartsTurn after send", working)
 	}
 	if working.Summary != "Checking the calendar then drafting" {
 		t.Fatalf("working summary = %q, want collapsed reasoning", working.Summary)
@@ -855,6 +862,7 @@ func TestThinkingWithAlternateSessionKeyOrNestedPayloadAttachesToTheActiveRun(t 
 	if err := json.Unmarshal(homeSend.Params, &homeParams); err != nil {
 		t.Fatalf("decode home chat.send: %v", err)
 	}
+	expectSendWorking(t, publisher, home.ThreadID)
 
 	gateway.sendRaw("agent", map[string]any{
 		"payload": map[string]any{
@@ -944,6 +952,7 @@ func TestPixelItemReasoningFillsKindReasoningAndUpdatesWorking(t *testing.T) {
 		t.Fatalf("StartExistingTurn: %v", err)
 	}
 	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, testTaskID)
 
 	gateway.sendRaw("agent", map[string]any{
 		"runId":      result.TurnID,
@@ -958,8 +967,8 @@ func TestPixelItemReasoningFillsKindReasoningAndUpdatesWorking(t *testing.T) {
 		},
 	})
 	working := publisher.next(t)
-	if working.Kind != "activity" || working.State != taskstate.Working || !working.StartsTurn {
-		t.Fatalf("first item reasoning = %+v, want turn-starting Working", working)
+	if working.Kind != "activity" || working.State != taskstate.Working || working.StartsTurn {
+		t.Fatalf("first item reasoning = %+v, want Working without StartsTurn after send", working)
 	}
 	if working.Summary != "Reasoning" {
 		t.Fatalf("projector-shaped item summary = %q, want the Reasoning title until a summary arrives", working.Summary)
@@ -1049,6 +1058,7 @@ func TestUnmatchedItemReasoningDoesNotAttachToInboundPhoneAgent(t *testing.T) {
 		t.Fatalf("home compose: %v", err)
 	}
 	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, home.ThreadID)
 
 	gateway.sendRaw("agent", map[string]any{
 		"runId":      "run-unrelated",
@@ -1107,6 +1117,7 @@ func TestAgentEventLogsApplicationWithoutThinkingText(t *testing.T) {
 		t.Fatalf("StartExistingTurn: %v", err)
 	}
 	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, testTaskID)
 
 	gateway.sendRaw("agent", map[string]any{
 		"runId":  result.TurnID,
@@ -1128,6 +1139,9 @@ func TestAgentEventLogsApplicationWithoutThinkingText(t *testing.T) {
 	}
 	if !strings.Contains(logsText, "applied=true") || !strings.Contains(logsText, "session_key_present=true") {
 		t.Fatalf("applied thinking was not logged, logs:\n%s", logsText)
+	}
+	if !strings.Contains(logsText, "reasoning_runes=") {
+		t.Fatalf("applied thinking must log a rune count, logs:\n%s", logsText)
 	}
 
 	gateway.sendRaw("agent", map[string]any{
@@ -1161,6 +1175,21 @@ func TestAgentEventLogsApplicationWithoutThinkingText(t *testing.T) {
 	if !strings.Contains(logsText, "applied=false") || !strings.Contains(logsText, "drop_reason=unchanged") {
 		t.Fatalf("empty thinking must log applied=false, logs:\n%s", logsText)
 	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      result.TurnID,
+		"sessionKey": testSessionKey,
+		"stream":     "assistant",
+		"data":       map[string]any{"text": "secret assistant tokens", "delta": "secret assistant tokens"},
+	})
+	_ = publisher.next(t)
+	logsText = logs.String()
+	if strings.Contains(logsText, "secret assistant tokens") {
+		t.Fatal("assistant reasoning text must not appear in logs")
+	}
+	if !strings.Contains(logsText, "stream=assistant") || !strings.Contains(logsText, "reasoning_runes=") {
+		t.Fatalf("assistant reasoning was not logged with stream and rune count, logs:\n%s", logsText)
+	}
 }
 
 func TestThinkingAgentEventsFromOtherSessionsAreIgnoredBySource(t *testing.T) {
@@ -1170,6 +1199,7 @@ func TestThinkingAgentEventsFromOtherSessionsAreIgnoredBySource(t *testing.T) {
 		t.Fatalf("StartExistingTurn: %v", err)
 	}
 	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, testTaskID)
 
 	gateway.sendAgent(AgentEventPayload{
 		Stream: "thinking", RunID: "run-z", SessionKey: "agent:other:main",
@@ -1180,7 +1210,7 @@ func TestThinkingAgentEventsFromOtherSessionsAreIgnoredBySource(t *testing.T) {
 	if working.Summary == "secret chain of thought" {
 		t.Fatal("foreign thinking must not become this session's Working summary")
 	}
-	if working.Kind != "activity" || working.Summary != "Codex is working" {
+	if working.Kind != "activity" || working.Summary != "Hi" {
 		t.Fatalf("expected the chat delta Working, got %+v", working)
 	}
 	page, err := source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
@@ -1216,6 +1246,7 @@ func TestHomeComposeStartsANewConversationInsteadOfAppendingPhoneAgent(t *testin
 		t.Fatalf("inbound session = %q, want the stable agent session", inboundParams.SessionKey)
 	}
 
+	expectSendWorking(t, publisher, testTaskID)
 	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "old reply", RunID: first.TurnID, SessionKey: testSessionKey, Seq: 1})
 	gateway.sendChat(ChatEventPayload{State: "final", RunID: first.TurnID, SessionKey: testSessionKey, Seq: 2})
 	publisher.next(t)
@@ -1305,6 +1336,211 @@ func TestHomeComposeStartsANewConversationInsteadOfAppendingPhoneAgent(t *testin
 	}
 	if followParams.SessionKey != homeParams.SessionKey {
 		t.Fatalf("follow-up session = %q, want the home chat session %q", followParams.SessionKey, homeParams.SessionKey)
+	}
+}
+
+func expectSendWorking(t *testing.T, publisher *channelPublisher, taskID string) taskstate.MobileEvent {
+	t.Helper()
+	event := publisher.next(t)
+	if event.TaskID != taskID || event.Kind != "activity" || event.State != taskstate.Working || !event.StartsTurn || event.Summary != "Codex is working" {
+		t.Fatalf("send Working = %+v, want StartsTurn activity on %q", event, taskID)
+	}
+	return event
+}
+
+func TestSendPublishesWorkingBeforeAnyChatDelta(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+
+	result, err := source.StartExistingTurn(context.Background(), testTaskID, "hello agent")
+	if err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+
+	working := expectSendWorking(t, publisher, testTaskID)
+	if working.Summary != "Codex is working" {
+		t.Fatalf("send Working summary = %q", working.Summary)
+	}
+
+	task, err := source.CurrentTask(context.Background(), testTaskID)
+	if err != nil {
+		t.Fatalf("CurrentTask after send: %v", err)
+	}
+	if task.State != taskstate.Working {
+		t.Fatalf("state after send = %q, want working before any chat delta", task.State)
+	}
+	if task.ActiveTurnID != result.TurnID {
+		t.Fatalf("ActiveTurnID = %q, want the accepted turn %q", task.ActiveTurnID, result.TurnID)
+	}
+}
+
+func TestHomeComposePublishesWorkingOnSend(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+
+	home, err := source.StartExistingTurn(context.Background(), HomeComposeTaskID, "plan tonight")
+	if err != nil {
+		t.Fatalf("home compose: %v", err)
+	}
+	gateway.nextRequest(t)
+
+	expectSendWorking(t, publisher, home.ThreadID)
+
+	task, err := source.CurrentTask(context.Background(), home.ThreadID)
+	if err != nil {
+		t.Fatalf("CurrentTask after home send: %v", err)
+	}
+	if task.State != taskstate.Working || task.ActiveTurnID != home.TurnID {
+		t.Fatalf("home task after send = %+v, want Working on the accepted turn", task)
+	}
+}
+
+func TestChatDeltasUpdateAgentTranscriptBeforeFinal(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+
+	result, err := source.StartExistingTurn(context.Background(), testTaskID, "Say only: pong")
+	if err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, testTaskID)
+
+	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "po", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 1})
+	first := publisher.next(t)
+	if first.Kind != "activity" || first.State != taskstate.Working || first.StartsTurn || first.Summary != "po" {
+		t.Fatalf("first delta Working = %+v, want updating summary po", first)
+	}
+
+	page, err := source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("ReadTranscript after first delta: %v", err)
+	}
+	if len(page.Entries) != 2 || page.Entries[0].Kind != tasktranscript.KindUser || page.Entries[1].Kind != tasktranscript.KindAgent || page.Entries[1].Text != "po" {
+		t.Fatalf("after first delta entries = %+v, want user then live KindAgent", page.Entries)
+	}
+
+	gateway.sendChat(ChatEventPayload{State: "delta", DeltaText: "ng", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 2})
+	second := publisher.next(t)
+	if second.Kind != "activity" || second.Summary != "pong" || second.Summary == first.Summary {
+		t.Fatalf("second delta Working = %+v, want changed summary pong", second)
+	}
+
+	page, err = source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("ReadTranscript after second delta: %v", err)
+	}
+	if len(page.Entries) != 2 || page.Entries[1].Kind != tasktranscript.KindAgent || page.Entries[1].Text != "pong" {
+		t.Fatalf("after second delta entries = %+v, want one updating KindAgent", page.Entries)
+	}
+
+	gateway.sendChat(ChatEventPayload{State: "final", RunID: result.TurnID, SessionKey: testSessionKey, Seq: 3})
+	reply := publisher.next(t)
+	if reply.Kind != "reply" || reply.Summary != "pong" {
+		t.Fatalf("final = %+v, want the assembled reply", reply)
+	}
+	page, err = source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("ReadTranscript after final: %v", err)
+	}
+	if len(page.Entries) != 2 || page.Entries[1].Kind != tasktranscript.KindAgent || page.Entries[1].Text != "pong" {
+		t.Fatalf("after final entries = %+v, want the same KindAgent row", page.Entries)
+	}
+}
+
+func TestAssistantAndItemDeltasUpdateReasoningBeyondTitle(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+
+	result, err := source.StartExistingTurn(context.Background(), testTaskID, "plan tonight")
+	if err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+	expectSendWorking(t, publisher, testTaskID)
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      result.TurnID,
+		"sessionKey": testSessionKey,
+		"stream":     "item",
+		"data": map[string]any{
+			"itemId": "rsn-1",
+			"phase":  "start",
+			"kind":   "analysis",
+			"title":  "Reasoning",
+			"status": "running",
+		},
+	})
+	title := publisher.next(t)
+	if title.Summary != "Reasoning" || title.StartsTurn {
+		t.Fatalf("item title = %+v, want placeholder Reasoning without StartsTurn", title)
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      result.TurnID,
+		"sessionKey": testSessionKey,
+		"stream":     "assistant",
+		"data":       map[string]any{"text": "Checking", "delta": "Checking"},
+	})
+	first := publisher.next(t)
+	if first.Kind != "activity" || first.Summary != "Checking" || first.Summary == "Reasoning" {
+		t.Fatalf("assistant delta = %+v, want live reasoning tokens, not the title", first)
+	}
+
+	page, err := source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("ReadTranscript after assistant delta: %v", err)
+	}
+	if len(page.Entries) != 2 || page.Entries[1].Kind != tasktranscript.KindReasoning || page.Entries[1].Text != "Checking" {
+		t.Fatalf("after assistant delta entries = %+v, want KindReasoning beyond the title", page.Entries)
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      result.TurnID,
+		"sessionKey": testSessionKey,
+		"stream":     "assistant",
+		"data":       map[string]any{"delta": " the calendar"},
+	})
+	second := publisher.next(t)
+	if second.Summary != "Checking the calendar" || second.Summary == first.Summary {
+		t.Fatalf("later assistant delta = %+v, want growing reasoning text", second)
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      result.TurnID,
+		"sessionKey": testSessionKey,
+		"stream":     "item",
+		"data": map[string]any{
+			"item": map[string]any{
+				"id":      "rsn-1",
+				"type":    "reasoning",
+				"summary": []string{"Checking the calendar then drafting"},
+				"content": []string{"hidden chain of thought"},
+			},
+		},
+	})
+	summarized := publisher.next(t)
+	if summarized.Summary != "Checking the calendar then drafting" {
+		t.Fatalf("item summary = %+v, want it to replace the live tokens", summarized)
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      result.TurnID,
+		"sessionKey": testSessionKey,
+		"stream":     "item",
+		"data": map[string]any{
+			"itemId": "rsn-1",
+			"phase":  "start",
+			"kind":   "analysis",
+			"title":  "Reasoning",
+		},
+	})
+	page, err = source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("ReadTranscript after placeholder replay: %v", err)
+	}
+	if page.Entries[1].Kind != tasktranscript.KindReasoning || page.Entries[1].Text != summarized.Summary {
+		t.Fatalf("placeholder replay overwrote live reasoning: %+v", page.Entries[1])
+	}
+	if strings.Contains(page.Entries[1].Text, "hidden") {
+		t.Fatal("hidden CoT leaked into the transcript")
 	}
 }
 

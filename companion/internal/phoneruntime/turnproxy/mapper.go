@@ -30,9 +30,9 @@ type ChatEventPayload struct {
 // AgentEventPayload is one "agent" event from the gateway. Live reasoning
 // arrives as stream:"thinking" on newer gateways, and on OpenClaw 2026.7.1-2
 // as item / codex_app_server.item (nested item.type=reasoning summary) or
-// assistant content parts typed thinking/reasoning. SessionKey may be omitted
-// or nested under payload. ItemType and DataType are enum tokens for logs;
-// they are never thinking text.
+// assistant data.text / data.delta (and thinking/reasoning content parts).
+// SessionKey may be omitted or nested under payload. ItemType and DataType
+// are enum tokens for logs; they are never thinking text.
 type AgentEventPayload struct {
 	RunID      string         `json:"runId"`
 	SessionKey string         `json:"sessionKey"`
@@ -61,6 +61,7 @@ const genericWorkingSummary = "Codex is working"
 type runState struct {
 	text      string
 	reasoning string
+	lastReply string
 	started   bool
 }
 
@@ -209,11 +210,19 @@ func (m *TurnMapper) workingEvent(run *runState, summary string) taskstate.Mobil
 
 func (m *TurnMapper) applyReasoning(run *runState, text, delta string) (taskstate.MobileEvent, bool) {
 	previous := taskstate.SafeDisplay(run.reasoning, "", summaryLimit)
-	if text != "" {
+	switch {
+	case text != "":
+		if text == reasoningFallbackSummary && run.reasoning != "" && run.reasoning != reasoningFallbackSummary {
+			return taskstate.MobileEvent{}, false
+		}
 		run.reasoning = text
-	} else if delta != "" {
-		run.reasoning += delta
-	} else {
+	case delta != "":
+		if run.reasoning == "" || run.reasoning == reasoningFallbackSummary {
+			run.reasoning = delta
+		} else {
+			run.reasoning += delta
+		}
+	default:
 		return taskstate.MobileEvent{}, false
 	}
 	summary := taskstate.SafeDisplay(run.reasoning, "", summaryLimit)
@@ -232,6 +241,32 @@ func (m *TurnMapper) ReasoningDisplay(runID string) string {
 		return ""
 	}
 	return taskstate.SafeDisplay(run.reasoning, "", summaryLimit)
+}
+
+// ReplyDisplay returns the safe display text of the in-flight reply buffer
+// for runID, or "" if this run has none.
+func (m *TurnMapper) ReplyDisplay(runID string) string {
+	run, exists := m.runs[runID]
+	if !exists {
+		return ""
+	}
+	return taskstate.SafeDisplay(run.text, "", summaryLimit)
+}
+
+// StartRun records runID as in-flight and emits the first StartsTurn Working
+// event so Operator can show activity as soon as chat.send is accepted.
+func (m *TurnMapper) StartRun(runID string) []taskstate.MobileEvent {
+	if runID == "" {
+		return nil
+	}
+	if _, finished := m.finishedRuns[runID]; finished {
+		return nil
+	}
+	run := m.runFor(runID)
+	if run.started {
+		return nil
+	}
+	return []taskstate.MobileEvent{m.workingEvent(run, genericWorkingSummary)}
 }
 
 // ApplyAgent folds one gateway agent event into the mapper's run state.
@@ -292,11 +327,16 @@ func (m *TurnMapper) Apply(payload ChatEventPayload) []taskstate.MobileEvent {
 		} else {
 			run.text += payload.DeltaText
 		}
-		if !run.started {
+		display := taskstate.SafeDisplay(run.text, "", summaryLimit)
+		if display != "" && display != run.lastReply {
 			// StartsTurn matters beyond this one flag: the event pump drops a
 			// Working event that follows a terminal state unless it starts a
 			// new turn (internal/app/eventpump.go:39), so every run's first
-			// activity event must carry it.
+			// activity event must carry it. Later deltas must change Summary
+			// or the pump dedupes them.
+			run.lastReply = display
+			events = append(events, m.workingEvent(run, display))
+		} else if !run.started {
 			events = append(events, m.workingEvent(run, genericWorkingSummary))
 		}
 	case "final":
@@ -520,7 +560,17 @@ func reasoningFromEnvelope(stream string, envelope, inner, item agentEnvelope) (
 				contentType = "thinking"
 			}
 		}
-		return text, "", contentType
+		if text == "" && contentType == "" {
+			// OpenClaw 2026.7.1-2 often never emits stream=thinking; live
+			// tokens arrive as assistant data.text / data.delta while the
+			// run is in flight.
+			text = firstNonEmpty(envelope.Text, inner.Text)
+			delta = firstNonEmpty(envelope.Delta, inner.Delta)
+			if text != "" || delta != "" {
+				contentType = "thinking"
+			}
+		}
+		return text, delta, contentType
 	default:
 		// stream:"thinking" and the older top-level type:"thinking" shape.
 		text = firstNonEmpty(envelope.Text, envelope.Thinking, inner.Text, inner.Thinking, extractSummary(item.Summary), extractSummary(inner.Summary), extractSummary(envelope.Summary))

@@ -5,7 +5,7 @@
     {"state": "final", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 2}
   ],
   "want": [
-    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "{ \"ok\": true }", "startsTurn": true},
     {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "{ \"ok\": true }", "startsTurn": false}
   ]
 }

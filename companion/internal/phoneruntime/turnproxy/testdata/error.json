@@ -5,7 +5,7 @@
     {"state": "error", "errorMessage": "rate limited by provider", "errorKind": "rate_limit", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 2}
   ],
   "want": [
-    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Working on it", "startsTurn": true},
     {"taskId": "phone-agent", "kind": "failure", "state": "failed", "summary": "rate limited by provider", "startsTurn": false}
   ]
 }

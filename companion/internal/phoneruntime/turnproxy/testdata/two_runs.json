@@ -7,9 +7,9 @@
     {"state": "final", "runId": "run-2", "sessionKey": "agent:main:main", "seq": 4}
   ],
   "want": [
-    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "first answer", "startsTurn": true},
     {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "first answer", "startsTurn": false},
-    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "second answer", "startsTurn": true},
     {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "second answer", "startsTurn": false}
   ]
 }

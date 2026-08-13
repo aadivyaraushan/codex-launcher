@@ -173,19 +173,26 @@ func (source *Source) handleChatEvent(payload json.RawMessage) {
 	}
 	mobileEvents := conv.mapper.Apply(chatPayload)
 	conv.applyRunState(chatPayload.State, chatPayload.RunID)
-	if reasoning := conv.mapper.ReasoningDisplay(chatPayload.RunID); reasoning != "" {
-		conv.upsertReasoning(reasoning, chatPayload.RunID)
+	reasoning := conv.mapper.ReasoningDisplay(chatPayload.RunID)
+	if reasoning != "" {
+		conv.upsertTranscript(tasktranscript.KindReasoning, reasoning, chatPayload.RunID)
 	}
+	reply := conv.mapper.ReplyDisplay(chatPayload.RunID)
 	for _, mobileEvent := range mobileEvents {
 		switch mobileEvent.Kind {
 		case "reply":
 			conv.lastMessage = taskstate.SafeLastMessage(taskstate.LastMessage{From: taskstate.SpeakerAgent, Text: mobileEvent.Summary})
-			conv.appendTranscript(tasktranscript.KindAgent, mobileEvent.Summary, chatPayload.RunID)
+			if reply == "" {
+				reply = mobileEvent.Summary
+			}
 		case "failure", "interrupted":
 			conv.appendTranscript(tasktranscript.KindActivity, mobileEvent.Summary, chatPayload.RunID)
 		}
 	}
-	source.logger.Info("[turnproxy] applied chat event", "gateway_state", chatPayload.State, "run_id", chatPayload.RunID, "emitted", len(mobileEvents), "task_state", string(conv.state), "task_id", conv.taskID)
+	if reply != "" {
+		conv.upsertTranscript(tasktranscript.KindAgent, reply, chatPayload.RunID)
+	}
+	source.logger.Info("[turnproxy] applied chat event", "gateway_state", chatPayload.State, "run_id", chatPayload.RunID, "emitted", len(mobileEvents), "task_state", string(conv.state), "task_id", conv.taskID, "reply_runes", utf8.RuneCountInString(reply), "reasoning_runes", utf8.RuneCountInString(reasoning))
 	source.mu.Unlock()
 
 	source.publish(mobileEvents)
@@ -195,15 +202,15 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 	agentPayload, ok := NormalizeAgentEvent(payload)
 	sessionKeyPresent := ok && agentPayload.SessionKey != ""
 	if !ok {
-		source.logAgentEvent(event, "", "", false, false, "unparsable", 0, "", "", "")
+		source.logAgentEvent(event, "", "", false, false, "unparsable", 0, "", "", "", 0)
 		return
 	}
 	if agentPayload.RunID == "" {
-		source.logAgentEvent(event, agentPayload.Stream, "", sessionKeyPresent, false, "missing_run_id", 0, "", agentPayload.ItemType, agentPayload.DataType)
+		source.logAgentEvent(event, agentPayload.Stream, "", sessionKeyPresent, false, "missing_run_id", 0, "", agentPayload.ItemType, agentPayload.DataType, 0)
 		return
 	}
 	if !agentPayload.carriesReasoning() {
-		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, "not_reasoning", 0, "", agentPayload.ItemType, agentPayload.DataType)
+		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, "not_reasoning", 0, "", agentPayload.ItemType, agentPayload.DataType, 0)
 		return
 	}
 
@@ -211,7 +218,7 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 	conv, dropReason := source.conversationForThinkingLocked(agentPayload.SessionKey, agentPayload.RunID)
 	if conv == nil {
 		source.mu.Unlock()
-		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, dropReason, 0, "", agentPayload.ItemType, agentPayload.DataType)
+		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, dropReason, 0, "", agentPayload.ItemType, agentPayload.DataType, 0)
 		return
 	}
 	agentPayload.SessionKey = conv.sessionKey
@@ -223,7 +230,7 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 	}
 	reasoning := conv.mapper.ReasoningDisplay(agentPayload.RunID)
 	if reasoning != "" {
-		conv.upsertReasoning(reasoning, agentPayload.RunID)
+		conv.upsertTranscript(tasktranscript.KindReasoning, reasoning, agentPayload.RunID)
 	}
 	taskID := conv.taskID
 	emitted := len(mobileEvents)
@@ -239,13 +246,14 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 	} else {
 		dropReason = ""
 	}
+	reasoningRunes := utf8.RuneCountInString(reasoning)
 	source.mu.Unlock()
 
-	source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, applied, dropReason, emitted, taskID, agentPayload.ItemType, agentPayload.DataType)
+	source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, applied, dropReason, emitted, taskID, agentPayload.ItemType, agentPayload.DataType, reasoningRunes)
 	source.publish(mobileEvents)
 }
 
-func (source *Source) logAgentEvent(event, stream, runID string, sessionKeyPresent, applied bool, dropReason string, emitted int, taskID, itemType, dataType string) {
+func (source *Source) logAgentEvent(event, stream, runID string, sessionKeyPresent, applied bool, dropReason string, emitted int, taskID, itemType, dataType string, reasoningRunes int) {
 	source.logger.Info("[turnproxy] received agent event",
 		"event", event,
 		"stream", stream,
@@ -257,6 +265,7 @@ func (source *Source) logAgentEvent(event, stream, runID string, sessionKeyPrese
 		"drop_reason", dropReason,
 		"emitted", emitted,
 		"task_id", taskID,
+		"reasoning_runes", reasoningRunes,
 	)
 }
 
@@ -406,11 +415,16 @@ func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastM
 	}
 	source.mu.Lock()
 	conv.pendingRunID = turnID
+	conv.sentRunID = turnID
 	conv.lastMessage = taskstate.SafeLastMessage(lastMessage)
 	conv.appendTranscript(kindFromSpeaker(lastMessage.From), lastMessage.Text, turnID)
+	conv.state = taskstate.Working
+	conv.activeTurnID = turnID
 	conv.updatedAt = time.Now().Unix()
+	working := conv.mapper.StartRun(turnID)
 	source.mu.Unlock()
 	source.logger.Info("[turnproxy] chat.send accepted", "task_id", conv.taskID, "session_key", conv.sessionKey, "turn_id", turnID, "thinking", requestThinking)
+	source.publish(working)
 	return taskadapter.ExistingTaskResult{ThreadID: conv.taskID, TurnID: turnID}, nil
 }
 
@@ -657,7 +671,7 @@ func (source *Source) Close() error {
 	return source.client.Close()
 }
 
-func (conv *conversation) upsertReasoning(text, turnID string) {
+func (conv *conversation) upsertTranscript(kind tasktranscript.Kind, text, turnID string) {
 	text = boundTranscriptText(text)
 	if text == "" {
 		return
@@ -667,12 +681,12 @@ func (conv *conversation) upsertReasoning(text, turnID string) {
 	}
 	for index := len(conv.entries) - 1; index >= 0; index-- {
 		entry := conv.entries[index]
-		if entry.TurnID == turnID && entry.Kind == tasktranscript.KindReasoning {
+		if entry.TurnID == turnID && entry.Kind == kind {
 			conv.entries[index].Text = text
 			return
 		}
 	}
-	conv.appendTranscript(tasktranscript.KindReasoning, text, turnID)
+	conv.appendTranscript(kind, text, turnID)
 }
 
 func (conv *conversation) appendTranscript(kind tasktranscript.Kind, text, turnID string) {

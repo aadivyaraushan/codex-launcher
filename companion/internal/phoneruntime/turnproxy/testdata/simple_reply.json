@@ -1,12 +1,13 @@
 {
-  "note": "one run: two appended deltas, then final — the phone sees Working once, then the assembled reply",
+  "note": "one run: two appended deltas, then final — Working summary tracks the live reply text so the event pump does not drop equal summaries, then the assembled reply",
   "events": [
     {"state": "delta", "deltaText": "Hello", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 1},
     {"state": "delta", "deltaText": " world", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 2},
     {"state": "final", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 3}
   ],
   "want": [
-    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Hello", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Hello world", "startsTurn": false},
     {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "Hello world", "startsTurn": false}
   ]
 }

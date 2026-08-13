@@ -5,7 +5,7 @@
     {"state": "aborted", "stopReason": "user_abort", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 2}
   ],
   "want": [
-    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Let me think", "startsTurn": true},
     {"taskId": "phone-agent", "kind": "interrupted", "state": "interrupted", "summary": "Codex was interrupted", "startsTurn": false}
   ]
 }

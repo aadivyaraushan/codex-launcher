@@ -278,6 +278,11 @@ func TestNormalizeAgentEventAcceptsOpenClawNestedAndTopLevelShapes(t *testing.T)
 			raw:  `{"runId":"run-1","stream":"codex_app_server.item","data":{"type":"reasoning","item":{"type":"reasoning","summary":["Checking"]}}}`,
 			want: AgentEventPayload{RunID: "run-1", Stream: "codex_app_server.item", ItemType: "reasoning", DataType: "reasoning", Data: AgentEventData{Text: "Checking"}},
 		},
+		{
+			name: "assistant data text and delta",
+			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Checking","delta":"Checking"}}`,
+			want: AgentEventPayload{RunID: "run-1", SessionKey: "agent:main:main", Stream: "assistant", Data: AgentEventData{Text: "Checking", Delta: "Checking"}},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -363,6 +368,11 @@ func TestPixelItemStreamsFillReasoningFromSummaryNotContent(t *testing.T) {
 			want: "Checking the calendar",
 		},
 		{
+			name: "assistant data text and delta without thinking content",
+			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Checking","delta":"Checking"}}`,
+			want: "Checking",
+		},
+		{
 			name: "item analysis title Reasoning from 2026.7.1-2 projector",
 			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"item","data":{"itemId":"rsn-1","phase":"start","kind":"analysis","title":"Reasoning","status":"running"}}`,
 			want: "Reasoning",
@@ -400,15 +410,93 @@ func TestPixelItemStreamsFillReasoningFromSummaryNotContent(t *testing.T) {
 	}
 }
 
+func TestStartRunEmitsWorkingBeforeAnyChatDelta(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	started := mapper.StartRun("run-1")
+	if len(started) != 1 || started[0].Kind != "activity" || started[0].State != taskstate.Working || !started[0].StartsTurn || started[0].Summary != genericWorkingSummary {
+		t.Fatalf("StartRun = %+v, want StartsTurn Working", started)
+	}
+	if !mapper.KnowsRun("run-1") {
+		t.Fatal("StartRun must remember the run so later thinking can attach")
+	}
+	if again := mapper.StartRun("run-1"); len(again) != 0 {
+		t.Fatalf("second StartRun = %+v, want nothing", again)
+	}
+
+	first := mapper.Apply(ChatEventPayload{State: "delta", DeltaText: "Hi", RunID: "run-1", SessionKey: testSessionKey})
+	if len(first) != 1 || first[0].StartsTurn || first[0].Summary != "Hi" {
+		t.Fatalf("first delta after StartRun = %+v, want updating Working without StartsTurn", first)
+	}
+	if mapper.ReplyDisplay("run-1") != "Hi" {
+		t.Fatalf("ReplyDisplay = %q, want Hi", mapper.ReplyDisplay("run-1"))
+	}
+
+	second := mapper.Apply(ChatEventPayload{State: "delta", DeltaText: " there", RunID: "run-1", SessionKey: testSessionKey})
+	if len(second) != 1 || second[0].Summary != "Hi there" || second[0].Summary == first[0].Summary {
+		t.Fatalf("later delta = %+v, want a changed Working summary", second)
+	}
+}
+
+func TestAssistantDataTextAndDeltaBecomeReasoningWhileInFlight(t *testing.T) {
+	payload, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Checking","delta":"Checking"}}`))
+	if !ok {
+		t.Fatal("NormalizeAgentEvent returned false")
+	}
+	if payload.Data.Text != "Checking" || payload.Data.Delta != "Checking" {
+		t.Fatalf("normalized assistant data = %+v, want text and delta", payload.Data)
+	}
+
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	mapper.StartRun("run-1")
+	first := mapper.ApplyAgent(payload)
+	if len(first) != 1 || first[0].Summary != "Checking" || first[0].StartsTurn {
+		t.Fatalf("assistant text = %+v, want live reasoning after StartRun", first)
+	}
+
+	delta, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"delta":" the calendar"}}`))
+	if !ok {
+		t.Fatal("NormalizeAgentEvent returned false for delta")
+	}
+	second := mapper.ApplyAgent(delta)
+	if len(second) != 1 || second[0].Summary != "Checking the calendar" {
+		t.Fatalf("assistant delta = %+v, want appended reasoning", second)
+	}
+	if mapper.ReasoningDisplay("run-1") != "Checking the calendar" {
+		t.Fatalf("ReasoningDisplay = %q", mapper.ReasoningDisplay("run-1"))
+	}
+}
+
+func TestItemPlaceholderDoesNotOverwriteLiveReasoning(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	title, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"item","data":{"kind":"analysis","title":"Reasoning"}}`))
+	if !ok {
+		t.Fatal("NormalizeAgentEvent returned false")
+	}
+	if events := mapper.ApplyAgent(title); len(events) != 1 || events[0].Summary != "Reasoning" {
+		t.Fatalf("title = %+v, want placeholder Reasoning", events)
+	}
+
+	live, ok := NormalizeAgentEvent(json.RawMessage(`{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"delta":"Checking the calendar"}}`))
+	if !ok {
+		t.Fatal("NormalizeAgentEvent returned false")
+	}
+	if events := mapper.ApplyAgent(live); len(events) != 1 || events[0].Summary != "Checking the calendar" {
+		t.Fatalf("assistant delta over title = %+v", events)
+	}
+
+	if events := mapper.ApplyAgent(title); len(events) != 0 {
+		t.Fatalf("replayed placeholder = %+v, want it to keep live reasoning", events)
+	}
+	if mapper.ReasoningDisplay("run-1") != "Checking the calendar" {
+		t.Fatalf("ReasoningDisplay = %q, want live tokens kept", mapper.ReasoningDisplay("run-1"))
+	}
+}
+
 func TestAssistantReplyAndNonReasoningItemsDoNotBecomeReasoning(t *testing.T) {
 	tests := []struct {
 		name string
 		raw  string
 	}{
-		{
-			name: "assistant reply text only",
-			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Done.","delta":"Done."}}`,
-		},
 		{
 			name: "item agentMessage",
 			raw:  `{"runId":"run-1","stream":"item","data":{"item":{"type":"agentMessage","text":"Done."}}}`,

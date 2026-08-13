@@ -6,7 +6,7 @@
     {"state": "delta", "deltaText": "late straggler", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 1}
   ],
   "want": [
-    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Hi", "startsTurn": true},
     {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "Hi", "startsTurn": false}
   ]
 }
