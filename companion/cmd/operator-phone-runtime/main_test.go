@@ -4,9 +4,57 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"log/slog"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime"
 )
+
+func TestMainSourceDoesNotCallHealth(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatalf("read main.go: %v", err)
+	}
+	if strings.Contains(string(src), ".Health()") {
+		t.Fatal("main.go must not call Health(); that used to block bind of :9443 on hung OpenClaw auth")
+	}
+}
+
+func TestLogServeStartingUsesConfigNotHealth(t *testing.T) {
+	cli, err := parseRuntimeCLI([]string{"-root", "/tmp/root"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if cli.Listen != phoneruntime.ListenAddress {
+		t.Fatalf("Listen = %q, want %s", cli.Listen, phoneruntime.ListenAddress)
+	}
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	logServeStarting(logger, cli.Listen)
+	out := buf.String()
+	if !strings.Contains(out, `"mode":"`+phoneruntime.ModeStandalonePhone+`"`) {
+		t.Fatalf("log missing mode constant: %s", out)
+	}
+	if !strings.Contains(out, `"listen":"`+phoneruntime.ListenAddress+`"`) {
+		t.Fatalf("log missing listen from config: %s", out)
+	}
+	if strings.Contains(out, `"process"`) {
+		t.Fatalf("pre-Serve log must not pull process from Health: %s", out)
+	}
+
+	buf.Reset()
+	cli, err = parseRuntimeCLI([]string{"-root", "/tmp/root", "-listen", "127.0.0.1:0"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("parse override: %v", err)
+	}
+	logServeStarting(logger, cli.Listen)
+	out = buf.String()
+	if !strings.Contains(out, `"listen":"127.0.0.1:0"`) {
+		t.Fatalf("override listen missing from log: %s", out)
+	}
+}
 
 func TestParseRuntimeCLIWiresGatewayFlags(t *testing.T) {
 	cli, err := parseRuntimeCLI([]string{

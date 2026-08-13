@@ -76,5 +76,10 @@ All passed. Auth was not wiped. `OPERATOR_ALLOW_SOFTWARE_ATTEST` was not changed
 
 Sibling search: `modelAuthStatus`, `ListOpenAI(`, `models auth list`. Only `/v1/health` used `modelAuthStatus`; it no longer calls the CLI on the handler. `preferOAuthAfterLogin` still lists in the background after oauth (store-first now). Beeper health still probes with a 3s timeout inside `Health()` — different path, left alone.
 
+## Listen before Health (Pixel Continue-with-ChatGPT, 2026-08-13)
+
+PR #19 stopped `/v1/health` from waiting on the CLI, but `operator-phone-runtime` still called `Health()` three times in the "serve starting" log *before* `Serve()`. That can wait on Beeper (3s probe) and used to wait on `openclaw models auth list`, so `:9443` was not listening when Continue-with-ChatGPT needed it.
+
+Fix: `saved-results/listen-before-health.md`. Boot log uses listen/mode from config. `Serve()` binds first. No software-attest change.
 
 Searched `taskCapable`, `keyed`, `modelAuth`, `canSend`, `showComposer`. Send/composer now require `modelAuth=oauth_ready` in `HomeUiPolicy` and `StandaloneRuntimeStatus.isReady`. Android OpenAI broker remains keystore API-key for other Google/OpenAI device features and was left unchanged (requirement: do not put ChatGPT tokens in the Android app).

@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/modelauth"
 )
 
 // Gate facts for this edit (existing file, not new):
 // 1) Callers: `go test ./internal/phoneruntime -run TestHealth` exercises this file;
-//    production callers of Health() are runtime.go Serve /v1/health and cmd/operator-phone-runtime.
+//    production Health() is runtime.go Serve /v1/health only. operator-phone-runtime
+//    logs listen/mode from config and must not call Health before Serve.
 // 2) Grep: health_test.go already owns Health JSON contract tests; no second beeper-health test file.
 // 3) No data files; BeeperAccountStatus is in-memory {ID,Network,Status}.
 // 4) User: "Wire Operator health beeper= if a valid path exists (Mac token or phone)."
@@ -218,7 +220,46 @@ func TestHealthHTTPEndpoint(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if report.Mode != "standalone_phone" {
+	if report.Mode != phoneruntime.ModeStandalonePhone {
 		t.Fatalf("Mode = %q", report.Mode)
 	}
+}
+
+func TestServeBindsBeforeHealthWork(t *testing.T) {
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	rt, err := phoneruntime.Open(context.Background(), phoneruntime.Config{
+		Root:          t.TempDir(),
+		DisplayName:   "Operator phone",
+		ListenAddress: "127.0.0.1:0",
+	}, phoneruntime.Dependencies{
+		Random: rand.Reader,
+		BeeperAccounts: func(context.Context) ([]phoneruntime.BeeperAccountStatus, error) {
+			<-release
+			return nil, context.Canceled
+		},
+		ModelAuth: phoneruntime.ModelAuthHooks{
+			List: func(context.Context) ([]modelauth.Profile, error) {
+				<-release
+				return nil, context.Canceled
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer rt.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = rt.Serve(ctx) }()
+
+	deadline := time.Now().Add(400 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if rt.BoundAddress() != "" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("Serve did not bind before Health/model-auth work finished")
 }

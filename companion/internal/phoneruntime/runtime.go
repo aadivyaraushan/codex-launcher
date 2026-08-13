@@ -46,6 +46,9 @@ import (
 // holding it is an error; never scan for another port.
 const ListenAddress = "127.0.0.1:9443"
 
+// ModeStandalonePhone is the process mode string for boot logs and health JSON.
+const ModeStandalonePhone = "standalone_phone"
+
 // turnProxySessionKey is the OpenClaw Gateway's default single-agent session
 // (see saved-results/openclaw-gateway-protocol.md). The phone agent only
 // ever speaks for that one session, so there is nothing to pick per task.
@@ -439,7 +442,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	rt.brokerReady = loadBrokerReady(config.Root)
 	rt.beeperAccounts = beeperAccounts
 	rt.wireModelAuth(dependencies.ModelAuth)
-	logger.Info("[phone-runtime] opened", "mode", "standalone_phone", "root", config.Root, "listen", config.ListenAddress, "registered_count", len(inventory.Registered), "task_capable", false, "local_pair_acked", rt.localPairAcked, "broker_ready_count", len(rt.brokerReady), "beeper_probe", beeperAccounts != nil, "gateway_configured", turnSource != nil, "allow_software_attest", config.AllowSoftwareAttest)
+	logger.Info("[phone-runtime] opened", "mode", ModeStandalonePhone, "root", config.Root, "listen", config.ListenAddress, "registered_count", len(inventory.Registered), "task_capable", false, "local_pair_acked", rt.localPairAcked, "broker_ready_count", len(rt.brokerReady), "beeper_probe", beeperAccounts != nil, "gateway_configured", turnSource != nil, "allow_software_attest", config.AllowSoftwareAttest)
 	return rt, nil
 }
 
@@ -1012,7 +1015,7 @@ func (runtime *Runtime) Health() Health {
 		localPair = "offer_pending"
 	}
 	return Health{
-		Mode:          "standalone_phone",
+		Mode:          ModeStandalonePhone,
 		Process:       process,
 		Beeper:        beeper,
 		Credentials:   credentials,
@@ -1028,6 +1031,8 @@ func (runtime *Runtime) Serve(ctx context.Context) error {
 	if runtime == nil || runtime.mobile == nil {
 		return ErrMissingDependency
 	}
+	// Bind first. Do not call Health or model-auth list here: they can wait
+	// on OpenClaw or Beeper, and Continue-with-ChatGPT needs :9443 listening.
 	listener, err := net.Listen("tcp", runtime.config.ListenAddress)
 	if err != nil {
 		runtime.setProcess("failed")
@@ -1040,7 +1045,7 @@ func (runtime *Runtime) Serve(ctx context.Context) error {
 	runtime.boundAddr = listener.Addr().String()
 	runtime.process = "serving"
 	runtime.mu.Unlock()
-	runtime.logger.Info("[phone-runtime] listening", "address", runtime.boundAddr, "mode", "standalone_phone")
+	runtime.logger.Info("[phone-runtime] listening", "address", runtime.boundAddr, "mode", ModeStandalonePhone)
 
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method == http.MethodGet && request.URL.Path == "/v1/health" {

@@ -72,6 +72,11 @@ func parseRuntimeCLI(args []string, output io.Writer) (runtimeCLI, error) {
 	return cli, nil
 }
 
+// logServeStarting writes the pre-Serve line from CLI config, not Health.
+func logServeStarting(logger *slog.Logger, listen string) {
+	logger.Info("[phone-runtime] serve starting", "mode", phoneruntime.ModeStandalonePhone, "listen", listen)
+}
+
 func run(args []string) int {
 	if len(args) > 0 && args[0] == "pair-android" {
 		return runPairAndroid(args[1:])
@@ -117,7 +122,10 @@ func run(args []string) int {
 	}
 	defer runtime.Close()
 
-	logger.Info("[phone-runtime] serve starting", "mode", runtime.Health().Mode, "process", runtime.Health().Process, "listen", runtime.Health().ListenAddress)
+	// Log listen/mode from CLI config. Do not call Health before Serve:
+	// Health used to block on hung OpenClaw models-auth list (and still
+	// probes Beeper), which left :9443 unbound for Continue-with-ChatGPT.
+	logServeStarting(logger, cli.Listen)
 	if err := runtime.Serve(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "operator-phone-runtime: serve: %v\n", err)
 		return 1
