@@ -675,6 +675,9 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	if err := json.Unmarshal(message.Body, &action); err != nil {
 		return err
 	}
+	// Held until action_result and the snapshot (including a new
+	// phone-chat-* fork) are queued. sendChat must not PublishTaskEvent
+	// on this goroutine; it publishes StartsTurn Working after this unlock.
 	handler.publishMu.Lock()
 	defer handler.publishMu.Unlock()
 	handler.mu.Lock()

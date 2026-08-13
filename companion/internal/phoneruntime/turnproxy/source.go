@@ -386,7 +386,9 @@ func (conv *conversation) applyRunState(state, runID string) {
 
 // StartExistingTurn sends chat.send. The inbound phone-agent task continues
 // that session. HomeComposeTaskID allocates a new phone-chat task/session
-// so Home compose does not append to the inbound transcript.
+// so Home compose does not append to the inbound transcript. StartsTurn
+// Working is published after this returns so a start_turn caller holding
+// publishMu is not deadlocked.
 func (source *Source) StartExistingTurn(ctx context.Context, taskID, prompt string) (taskadapter.ExistingTaskResult, error) {
 	return source.sendChat(ctx, taskID, prompt, taskstate.LastMessage{From: taskstate.SpeakerUser, Text: prompt}, true)
 }
@@ -431,16 +433,34 @@ func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastM
 	working := conv.mapper.StartRun(idempotencyKey)
 	taskID, sessionKey := conv.taskID, conv.sessionKey
 	source.mu.Unlock()
-	source.publish(working)
+	// Log before publish: Pixel home send PXW20260813T195644Z allocated a
+	// phone-chat-* and then hung here. handleAction holds publishMu across
+	// start_turn; a synchronous PublishTaskEvent tried to take it again.
 	source.logger.Info("[turnproxy] turn started", "task_id", taskID, "session_key", sessionKey, "turn_id", idempotencyKey, "thinking", requestThinking)
 
 	reqID, respCh, err := source.client.sendRequest(ctx, "chat.send", params)
 	if err != nil {
 		source.abandonChatSend(conv, idempotencyKey)
+		source.logger.Info("[turnproxy] chat.send dispatch failed before working publish", "task_id", taskID, "turn_id", idempotencyKey, "error", err.Error())
 		return taskadapter.ExistingTaskResult{}, err
 	}
+	// Publish Working on another goroutine so start_turn can unlock
+	// publishMu and return. That unlock also runs after the snapshot has
+	// the new phone-chat-*, so the event does not hit ErrUnknownTaskEvent.
+	source.publishAfterStartTurn(working)
 	go source.finishChatSend(reqID, respCh, conv, idempotencyKey, requestThinking)
 	return taskadapter.ExistingTaskResult{ThreadID: taskID, TurnID: idempotencyKey}, nil
+}
+
+func (source *Source) publishAfterStartTurn(mobileEvents []taskstate.MobileEvent) {
+	if len(mobileEvents) == 0 {
+		return
+	}
+	events := append([]taskstate.MobileEvent(nil), mobileEvents...)
+	go func() {
+		source.logger.Info("[turnproxy] publishing start working", "task_id", events[0].TaskID, "kind", events[0].Kind, "starts_turn", events[0].StartsTurn)
+		source.publish(events)
+	}()
 }
 
 func (source *Source) abandonChatSend(conv *conversation, idempotencyKey string) {
