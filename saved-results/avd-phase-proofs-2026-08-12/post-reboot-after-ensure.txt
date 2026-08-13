@@ -1,0 +1,7 @@
+operator-phone-boot: started watchdog pid=3348
+BRIDGE_UP
+GW_DOWN
+{"process":"starting","attempt":1,"backoff_s":1,"ts":1786569604}
+run: /etc/operator/services/openclaw-gateway: (pid 3365) 20s; run: log: (pid 3364) 20s
+run: /etc/operator/services/phone-runtime: (pid 3363) 20s; run: log: (pid 3362) 20s
+bridge=200n

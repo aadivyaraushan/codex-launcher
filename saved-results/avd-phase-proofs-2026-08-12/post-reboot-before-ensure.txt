@@ -1,0 +1,4 @@
+ts=2026-08-12T21:20:03Z
+BRIDGE_DOWN
+GW_DOWN
+{"process":"starting","attempt":1,"backoff_s":1,"ts":1786567822}
