@@ -1,0 +1,5 @@
+code approval_required
+gateId_set True
+approval_required True
+headline_redacted Send a Google Messages message to <self>
+raw_keys ['error', 'gateId', 'ok', 'preview']

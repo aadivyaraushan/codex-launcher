@@ -1,0 +1,5 @@
+operator-phone-boot: watchdog already running
+bridge=down
+gateway=up
+journal={"process":"watchdog_already_running"} 
+EXIT:1

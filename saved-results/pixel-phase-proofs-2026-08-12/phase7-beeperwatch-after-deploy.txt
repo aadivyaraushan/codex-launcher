@@ -1,0 +1,9 @@
+2026-08-13_00:26:34.57181 {"time":"2026-08-13T00:26:34.57169588Z","level":"INFO","msg":"[phone-runtime] opened","mode":"standalone_phone","root":"/var/lib/operator-phone","listen":"127.0.0.1:9443","registered_count":79,"task_capable":false,"local_pair_acked":true,"broker_ready_count":1,"beeper_probe":true,"gateway_configured":true,"allow_software_attest":false}
+2026-08-13_00:31:40.31327 {"time":"2026-08-13T00:31:40.313175725Z","level":"INFO","msg":"[phone-runtime] Beeper watcher starting","base_url":"http://127.0.0.1:23373"}
+2026-08-13_00:31:40.32275 {"time":"2026-08-13T00:31:40.322586451Z","level":"INFO","msg":"[phone-runtime] opened","mode":"standalone_phone","root":"/var/lib/operator-phone","listen":"127.0.0.1:9443","registered_count":79,"task_capable":false,"local_pair_acked":true,"broker_ready_count":1,"beeper_probe":true,"gateway_configured":true,"allow_software_attest":false}
+2026-08-13_00:31:40.35325 {"time":"2026-08-13T00:31:40.353166163Z","level":"INFO","msg":"[beeperwatch] connected and subscribed"}
+2026-08-13_00:31:44.02532 {"time":"2026-08-13T00:31:44.025240994Z","level":"INFO","msg":"[phone-runtime] Beeper watcher starting","base_url":"http://127.0.0.1:23373"}
+2026-08-13_00:31:44.02839 {"time":"2026-08-13T00:31:44.028303982Z","level":"INFO","msg":"[phone-runtime] opened","mode":"standalone_phone","root":"/var/lib/operator-phone","listen":"127.0.0.1:9443","registered_count":79,"task_capable":false,"local_pair_acked":true,"broker_ready_count":1,"beeper_probe":true,"gateway_configured":true,"allow_software_attest":false}
+2026-08-13_00:31:44.03516 {"time":"2026-08-13T00:31:44.035094672Z","level":"INFO","msg":"[beeperwatch] connected and subscribed"}
+---
+svlogd -tt /var/log/operator/phone-runtime 
