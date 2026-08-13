@@ -1,0 +1,43 @@
+stamp=20260812T233958Z
+serial=4B230DLAQ001Z5
+mode=full_adb_reboot
+host_utc=2026-08-12T23:39:58Z
+device_uptime_s=301764.32
+boot_completed=1
+battery=89
+level:
+focus=  mCurrentFocus=Window{1b5fb1b u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+--- operator-phone-boot status ---
+bridge=up
+gateway=up
+journal={"process":"watchdog_already_running"} 
+EXIT:0
+--- job 7301 ---
+Pending Job 7301: /data/data/com.termux/files/usr/libexec/operator-runtime-watchdog	(periodic: 900000ms) (persisted)
+
+--- boot scripts ---
+/data/data/com.termux/files/home/.config/termux/boot/:
+total 11
+drwx------. 2 u0_a451 u0_a451 3452 Aug 13 01:54 .
+drwx------. 3 u0_a451 u0_a451 3452 Aug  5 05:55 ..
+-rwxr-xr-x. 1 u0_a451 u0_a451  371 Aug 13 01:54 10-operator-runtime
+
+/data/data/com.termux/files/home/.termux/boot/:
+total 11
+drwx------. 2 u0_a451 u0_a451 3452 Aug 13 01:54 .
+drwx------. 3 u0_a451 u0_a451 3452 Aug 13 01:54 ..
+-rwxr-xr-x. 1 u0_a451 u0_a451  371 Aug 13 01:54 10-operator-runtime
+CLI=present
+WATCHDOG=present
+--- health ---
+{"mode":"standalone_phone","process":"serving","beeper":"connected","credentials":{"gcalendar":"unavailable:android_broker_pending","gdrive":"unavailable:android_broker_pending","msteams":"unavailable:android_broker_pending","notion":"unavailable:android_broker_pending","outlook":"unavailable:android_broker_pending","podcasts":"unavailable:no PODCASTS_FEED_URL configured","slack":"unavailable:android_broker_pending","spotify":"unavailable:android_broker_pending","todoist":"ready","youtube":"unavailable:no YOUTUBE_API_KEY configured; the deep-link hand-off still covers opening the app"},"adapters":["venmo","cashapp","zelle","starbucks","chipotle","spotify","audible","applemusic","uber","ubereats","resy","doordash","googlephotos","teams","booking","tripadvisor","viator","stubhub","alltrails","taskrabbit","thumbtack","creditkarma","turbotax","lyft","googlekeep","whatsapp","messenger","signal","googlemaps","netflix","facebook","united","delta","southwest","american","citymapper","youtube","airbnb","opentable","grubhub","threads","tiktok","expedia","target","walmart","nike","sephora","wayfair","kayak","priceline","linkedin","ebay","pinterest","duolingo","fitbit","shazam","chromecast","youtubemusic","soundcloud","pandora","asana","trello","mstodo","googledocs","dropbox","googlesheets","evernote","googleslides","pocketcasts","goodreads","kindle","claude","chatgpt","grok","instagram","discord","messages","notification_reply","maps"],"listenAddress":"127.0.0.1:9443","taskCapable":true,"localPair":"acked"}
+
+--- gateway health host ---
+{"ok":true,"status":"live"}
+--- ports host ---
+host_19443=open
+host_18789=open
+--- curl ssl quick ---
+example_https=200
+PRE_REBOOT_UPTIME=301769.60
+PRE_REBOOT_EPOCH=1786578004

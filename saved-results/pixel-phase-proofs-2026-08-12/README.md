@@ -9,7 +9,7 @@ Physical Pixel 9 serial **`4B230DLAQ001Z5`** only.
 | 5 Turn proxy | **PASS** | `phase5-turnproxy-pong.md` |
 | 6 Home/thread + Approve | **PASS** | `phase6-home-thread-pixel.md` + `phase6-home-thread-gate.md` / `phase6-approve-sheet-on-pixel.md` |
 | 7 Beeper | **PASS** (scoped) | `phase7-beeper-pixel.md` — connected + 4 accounts + Messages `approval_required`→Deny; inbound event trigger still open |
-| 9 Boot persistence | **PARTIAL PASS** | `phase9-boot-persistence-pixel.md` + `phase9-soft-boot-pixel.md` (soft restore; no full reboot) |
+| 9 Boot persistence | **FAIL** (full reboot) | `phase9-full-reboot-pixel.md` — real adb reboot + uptime reset proven; recovery blocked on post-reboot password lockscreen. Soft-boot retained in phase9-soft-boot-pixel.md / phase9-boot-persistence-pixel.md |
 
 **Phase 5 quote:** `Agent: pong` (`phase5-after-reply-20260812T230351Z.xml` / `phase5-pass-home-agent-pong.png`).
 
@@ -20,3 +20,5 @@ Physical Pixel 9 serial **`4B230DLAQ001Z5`** only.
 **Phase 4/6 Approve:** PASS on owner Messages self-send (see phase4/phase6 approve notes).
 
 **Phase 7 overnight (23:33–23:35Z):** bridge `beeper=connected` + 4 connected accounts + Messages send→`approval_required`→UI **Deny** (known_recipients=0). Inbound Beeper event→agent still open (blocks deleting overnight babysitting with Phase 9 full reboot).
+
+**Phase 9 full reboot (2026-08-12T23:40Z):** **FAIL** — password required after restart; no unattended CE restore. See `phase9-full-reboot-pixel.md`.

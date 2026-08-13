@@ -14,7 +14,7 @@
 | 5 Turn proxy | **PASS** | Prior pong evidence |
 | 6 Home/thread + Approve | **PASS** | Prior + home-thread artifacts |
 | 7 Beeper | **PARTIAL PASS** | connected+tools + screenshots + phone-local `/v1/ws`→`ready`; stale empty-recipient claim fixed; event→agent deferred (CLI has no `-beeper-base-url`; runit unset; 0 beeperwatch logs) |
-| 9 Soft-boot | **PARTIAL PASS** | Documented soft restore; no full reboot overnight |
+| 9 Full reboot | **FAIL** | Real reboot proven (uptime reset); lockscreen password blocked CE/Termux/SSH restore; soft-boot PASS retained separately |
 
 ## Key commits this session
 
@@ -33,8 +33,12 @@
 - `phase7-beeper-package.txt` (`com.beeper.android` 4.53.1)
 - `phase7-ws-event-stream-proof.json` (phone-local Beeper `/v1/ws` 101 + `ready`)
 
+## Phase 9 full reboot attempt
+
+Real `adb reboot` at 2026-08-12T23:40:24Z (uptime 301791s→15s). Stuck on "Password is required after device restarts"; agent had no device password. Evidence: `phase9-full-reboot-pixel.md`.
+
 ## Open follow-ups
 
 1. Add `-beeper-base-url` (or env) to `operator-phone-runtime` CLI, wire `http://127.0.0.1:23373` + token into runit, then prove event→agent with a safe self/test inbound DM (no strangers).
-2. Full device reboot UI proof for Phase 9 (USB stranding risk).
+2. Phase 9 full reboot: unlock Pixel once after reboot (password required after restart), then re-run ensure/status/pong proof.
 3. Do not commit Beeper inbox screenshots (PII).

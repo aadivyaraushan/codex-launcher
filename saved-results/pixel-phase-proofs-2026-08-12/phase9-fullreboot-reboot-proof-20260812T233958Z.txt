@@ -1,0 +1,13 @@
+stamp=20260812T233958Z
+serial=4B230DLAQ001Z5
+reboot_issued_utc=2026-08-12T23:40:24Z
+pre_uptime=301791.08 1679346.80
+boot_completed_seen=1
+post_uptime_at_boot_completed~=15s
+current_uptime=951.66
+uptime_reset=YES
+real_adb_reboot=YES
+lock_state=deviceLocked=1 Password required after device restarts
+ce_termux_accessible=NO
+host_utc=2026-08-12T23:56:39Z
+note=waiting_for_user_password_unlock_then_auto_recover
