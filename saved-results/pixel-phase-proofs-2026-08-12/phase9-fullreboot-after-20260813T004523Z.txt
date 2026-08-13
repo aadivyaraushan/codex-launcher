@@ -1,0 +1,27 @@
+stamp=20260813T004523Z
+host_utc=2026-08-13T00:45:23Z
+host_gst=2026-08-13T04:45:23
+serial=4B230DLAQ001Z5
+--- dumpsys keyguard ---
+        mInputRestricted=false
+    mShowingDream=false mDreamingLockscreen=false
+    isKeyguardShowing=false
+--- uptime ---
+3875.29 27095.38
+--- boot_completed ---
+1
+--- focus ---
+  mCurrentFocus=Window{e9b09f2 u0 com.termux/com.termux.app.TermuxActivity}
+--- operator-phone-boot status ---
+bridge=up
+gateway=up
+journal={"process":"watchdog_already_running"} 
+EXIT:0
+--- job scheduler ---
+Pending Job 7301: /data/data/com.termux/files/usr/libexec/operator-runtime-watchdog	(periodic: 900000ms) (persisted)
+
+--- health ---
+{"mode":"standalone_phone","process":"serving","beeper":"connected","credentials":{"gcalendar":"unavailable:android_broker_pending","gdrive":"unavailable:android_broker_pending","msteams":"unavailable:android_broker_pending","notion":"unavailable:android_broker_pending","outlook":"unavailable:android_broker_pending","podcasts":"unavailable:no PODCASTS_FEED_URL configured","slack":"unavailable:android_broker_pending","spotify":"unavailable:android_broker_pending","todoist":"ready","youtube":"unavailable:no YOUTUBE_API_KEY configured; the deep-link hand-off still covers opening the app"},"adapters":["venmo","cashapp","zelle","starbucks","chipotle","spotify","audible","applemusic","uber","ubereats","resy","doordash","googlephotos","teams","booking","tripadvisor","viator","stubhub","alltrails","taskrabbit","thumbtack","creditkarma","turbotax","lyft","googlekeep","whatsapp","messenger","signal","googlemaps","netflix","facebook","united","delta","southwest","american","citymapper","youtube","airbnb","opentable","grubhub","threads","tiktok","expedia","target","walmart","nike","sephora","wayfair","kayak","priceline","linkedin","ebay","pinterest","duolingo","fitbit","shazam","chromecast","youtubemusic","soundcloud","pandora","asana","trello","mstodo","googledocs","dropbox","googlesheets","evernote","googleslides","pocketcasts","goodreads","kindle","claude","chatgpt","grok","instagram","discord","messages","notification_reply","maps"],"listenAddress":"127.0.0.1:9443","taskCapable":true,"localPair":"acked"}
+
+--- gateway ---
+{"ok":true,"status":"live"}

@@ -33,6 +33,7 @@
 | WS metadata sniff | `phase7-watcher-ws-sniff-20260813T004849Z.jsonl`, `phase7-watcher-ws-summary-20260813T004849Z.json` |
 | Runtime around turns | `phase7-watcher-runtime-20260813T004935Z.log` |
 | Operator UI (redacted) | `phase7-watcher-home-20260813T004935Z.xml`, `phase7-watcher-home-20260813T004935Z.txt` |
+| Home Replied | `phase7-event-agent-homescreen-20260813T005041Z.png` + `.xml` |
 | Prior tool-raise Approve path | `phase7-inbound-raise-*.txt`, `phase7-inbound-home-*.xml` |
 
 ## Runtime
