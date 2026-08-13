@@ -229,6 +229,33 @@ func (p *channelPublisher) PublishTaskEvent(_ context.Context, event taskstate.M
 	return nil
 }
 
+// mutexPublisher takes mu inside PublishTaskEvent. start_turn holds
+// handler.publishMu on the same goroutine, so a synchronous publish from
+// sendChat deadlocks. Pixel home send PXW20260813T195644Z never logged
+// "turn started" because of that.
+type mutexPublisher struct {
+	mu     *sync.Mutex
+	events chan taskstate.MobileEvent
+}
+
+func (p *mutexPublisher) PublishTaskEvent(_ context.Context, event taskstate.MobileEvent) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events <- event
+	return nil
+}
+
+func (p *mutexPublisher) next(t *testing.T) taskstate.MobileEvent {
+	t.Helper()
+	select {
+	case event := <-p.events:
+		return event
+	case <-time.After(5 * time.Second):
+		t.Fatal("no phone event arrived in time")
+		return taskstate.MobileEvent{}
+	}
+}
+
 func (p *channelPublisher) next(t *testing.T) taskstate.MobileEvent {
 	t.Helper()
 	select {
@@ -1492,6 +1519,53 @@ func TestHomeComposePublishesWorkingOnSend(t *testing.T) {
 	}
 	if task.State != taskstate.Working || task.ActiveTurnID != home.TurnID {
 		t.Fatalf("home task after send = %+v, want Working on the accepted turn", task)
+	}
+}
+
+func TestStartExistingTurnDoesNotDeadlockWhenPublisherReentersCallerLock(t *testing.T) {
+	var publishMu sync.Mutex
+	publisher := &mutexPublisher{mu: &publishMu, events: make(chan taskstate.MobileEvent, 8)}
+	gateway := newFakeGateway(t, false)
+	source, err := Connect(context.Background(), Config{
+		URL:        gateway.url(),
+		Token:      "test-token",
+		TaskID:     testTaskID,
+		SessionKey: testSessionKey,
+		Publisher:  publisher,
+		Logger:     slog.New(slog.DiscardHandler),
+	})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(func() { source.Close() })
+
+	done := make(chan error, 1)
+	go func() {
+		publishMu.Lock()
+		_, startErr := source.StartExistingTurn(context.Background(), HomeComposeTaskID, "plan tonight")
+		publishMu.Unlock()
+		done <- startErr
+	}()
+
+	select {
+	case startErr := <-done:
+		if startErr != nil {
+			t.Fatalf("StartExistingTurn: %v", startErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("StartExistingTurn deadlocked: sendChat published Working on the same goroutine that already held the publisher lock")
+	}
+
+	request := gateway.nextRequest(t)
+	if request.Method != "chat.send" {
+		t.Fatalf("gateway saw %q, want chat.send after start_turn returned", request.Method)
+	}
+	working := publisher.next(t)
+	if working.Kind != "activity" || working.State != taskstate.Working || !working.StartsTurn || working.Summary != "Codex is working" {
+		t.Fatalf("Working after unlock = %+v, want StartsTurn activity", working)
+	}
+	if !strings.HasPrefix(working.TaskID, homeChatPrefix) {
+		t.Fatalf("Working task = %q, want phone-chat-*", working.TaskID)
 	}
 }
 

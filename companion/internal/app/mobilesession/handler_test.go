@@ -952,6 +952,60 @@ func TestHomeComposeStartTurnReturnsForkTaskIdAndProvisionalSnapshot(t *testing.
 	if snapshot.Type != "snapshot" || !bytes.Contains(snapshot.Body, []byte(`"taskId":"phone-chat-abc"`)) {
 		t.Fatalf("home compose snapshot = %s, want the new chat in the task list", snapshot.Body)
 	}
+	sender.sent = make(chan contract.Message, 1)
+	if err := handler.PublishTaskEvent(context.Background(), taskstate.MobileEvent{
+		TaskID: "phone-chat-abc", Kind: "activity", State: taskstate.Working, Summary: "Codex is working", StartsTurn: true,
+	}); err != nil {
+		t.Fatalf("Working after home compose snapshot: %v (fork must already be in the catalog)", err)
+	}
+	event := awaitSentMessage(t, sender.sent)
+	if event.Type != "event" || !bytes.Contains(event.Body, []byte(`"taskId":"phone-chat-abc"`)) || !bytes.Contains(event.Body, []byte(`"state":"working"`)) {
+		t.Fatalf("Working event = %s", event.Body)
+	}
+}
+
+func TestHomeComposeStartTurnCommitsWorkingAfterForkIsInSnapshot(t *testing.T) {
+	source := &reentrantWorkingSource{
+		existingTaskSource: existingTaskSource{
+			task:          taskstate.Task{ID: "phone-home", Title: "New chat", ProjectLabel: "Phone agent", State: taskstate.IdleAfterReply, UpdatedAtUnix: sessionNow.Unix()},
+			startThreadID: "phone-chat-abc",
+		},
+	}
+	store := promptqueue.NewMemoryStore()
+	handler, sender := newTestHandlerWithTaskQueue(t, source, store)
+	source.handler = handler
+	if err := handler.Handle(context.Background(), sender, decode(t, `{"version":{"major":1,"minor":0},"messageId":"hello","sender":"phone","type":"hello","body":{"clientInstanceId":"pixel-9","supportedMajors":[1],"resume":{"mode":"no_local_state"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	sender.messages = nil
+	sender.sent = make(chan contract.Message, 8)
+	action := decode(t, `{"version":{"major":1,"minor":0},"messageId":"home","sender":"phone","type":"action","body":{"actionId":"home-action","kind":"start_turn","taskId":"phone-home","text":"plan tonight"}}`)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- handler.Handle(context.Background(), sender, action)
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("start_turn: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("start_turn did not return; Working publish must not run on the start_turn goroutine")
+	}
+
+	result := awaitSentMessage(t, sender.sent)
+	if result.Type != "action_result" || !bytes.Contains(result.Body, []byte(`"forkTaskId":"phone-chat-abc"`)) {
+		t.Fatalf("home compose result = %s", result.Body)
+	}
+	snapshot := awaitSentMessage(t, sender.sent)
+	if snapshot.Type != "snapshot" || !bytes.Contains(snapshot.Body, []byte(`"taskId":"phone-chat-abc"`)) {
+		t.Fatalf("home compose snapshot = %s, want the fork in the catalog before Working", snapshot.Body)
+	}
+	event := awaitSentMessage(t, sender.sent)
+	if event.Type != "event" || !bytes.Contains(event.Body, []byte(`"taskId":"phone-chat-abc"`)) || !bytes.Contains(event.Body, []byte(`"state":"working"`)) {
+		t.Fatalf("Working event = %s, want Working after the fork snapshot", event.Body)
+	}
 }
 
 func TestExistingIdleSendStartsImmediatelyAndBusySendQueuesDurably(t *testing.T) {
@@ -1717,6 +1771,15 @@ type existingTaskSource struct {
 	startThreadID string
 }
 
+// reentrantWorkingSource publishes StartsTurn Working the way turnproxy
+// sendChat does after a Home send: on another goroutine, so
+// handler.publishMu can be released and the fork snapshot committed
+// before PublishTaskEvent runs.
+type reentrantWorkingSource struct {
+	existingTaskSource
+	handler *Handler
+}
+
 type recoveryTaskSource struct {
 	tasks              []taskstate.Task
 	calls              []string
@@ -1821,6 +1884,19 @@ func (source *existingTaskSource) StartExistingTurn(_ context.Context, _ string,
 		threadID = source.startThreadID
 	}
 	return taskadapter.ExistingTaskResult{ThreadID: threadID, TurnID: "turn-started"}, nil
+}
+
+func (source *reentrantWorkingSource) StartExistingTurn(ctx context.Context, taskID, text string) (taskadapter.ExistingTaskResult, error) {
+	result, err := source.existingTaskSource.StartExistingTurn(ctx, taskID, text)
+	if err != nil {
+		return result, err
+	}
+	go func() {
+		_ = source.handler.PublishTaskEvent(context.Background(), taskstate.MobileEvent{
+			TaskID: result.ThreadID, Kind: "activity", State: taskstate.Working, Summary: "Codex is working", StartsTurn: true,
+		})
+	}()
+	return result, nil
 }
 
 func (source *existingTaskSource) StartExistingTurnWithAttachments(ctx context.Context, taskID, text string, values []taskadapter.AttachmentInput) (taskadapter.ExistingTaskResult, error) {
