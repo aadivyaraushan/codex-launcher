@@ -178,6 +178,10 @@ func (gateway *fakeGateway) sendAgent(payload AgentEventPayload) {
 	gateway.write(context.Background(), wireFrame{Type: "event", Event: "agent", Payload: payload})
 }
 
+func (gateway *fakeGateway) sendRaw(event string, payload any) {
+	gateway.write(context.Background(), wireFrame{Type: "event", Event: event, Payload: payload})
+}
+
 func (gateway *fakeGateway) nextRequest(t *testing.T) gatewayRequest {
 	t.Helper()
 	select {
@@ -213,6 +217,27 @@ func (p *channelPublisher) next(t *testing.T) taskstate.MobileEvent {
 		t.Fatal("no phone event arrived in time")
 		return taskstate.MobileEvent{}
 	}
+}
+
+type safeLogBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func newSafeLogBuffer() *safeLogBuffer {
+	return &safeLogBuffer{}
+}
+
+func (logs *safeLogBuffer) Write(p []byte) (int, error) {
+	logs.mu.Lock()
+	defer logs.mu.Unlock()
+	return logs.buf.Write(p)
+}
+
+func (logs *safeLogBuffer) String() string {
+	logs.mu.Lock()
+	defer logs.mu.Unlock()
+	return logs.buf.String()
 }
 
 // --- helpers ---
@@ -267,9 +292,18 @@ func TestConnectPerformsOperatorHandshake(t *testing.T) {
 	if params.Auth.Token != "test-token" {
 		t.Fatalf("auth token = %q, want the configured token", params.Auth.Token)
 	}
-	if len(params.Caps) != 1 || params.Caps[0] != thinkingEventsCap {
-		t.Fatalf("caps = %q, want [%s] so the gateway will stream thinking", params.Caps, thinkingEventsCap)
+	if !containsString(params.Caps, thinkingEventsCap) || !containsString(params.Caps, sessionScopedEventsCap) {
+		t.Fatalf("caps = %q, want %s and %s so this OpenClaw version can stream thinking", params.Caps, thinkingEventsCap, sessionScopedEventsCap)
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 // A fresh Source starts with a blank lastMessage, so every gateway redial
@@ -805,6 +839,108 @@ func TestThinkingAgentEventsFillReasoningTranscriptAndUpdateWorking(t *testing.T
 	}
 	if len(page.Entries) != 3 || page.Entries[2].Kind != tasktranscript.KindAgent {
 		t.Fatalf("after reply entries = %+v, want user, reasoning, agent", page.Entries)
+	}
+}
+
+func TestThinkingWithAlternateSessionKeyOrNestedPayloadAttachesToTheActiveRun(t *testing.T) {
+	source, gateway, publisher := connectedSource(t)
+	home, err := source.StartExistingTurn(context.Background(), HomeComposeTaskID, "plan tonight")
+	if err != nil {
+		t.Fatalf("home compose: %v", err)
+	}
+	homeSend := gateway.nextRequest(t)
+	var homeParams struct {
+		SessionKey string `json:"sessionKey"`
+	}
+	if err := json.Unmarshal(homeSend.Params, &homeParams); err != nil {
+		t.Fatalf("decode home chat.send: %v", err)
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"payload": map[string]any{
+			"runId":  home.TurnID,
+			"stream": "thinking",
+			"data":   map[string]any{"text": "Checking the calendar"},
+		},
+	})
+	first := publisher.next(t)
+	if first.Kind != "activity" || first.State != taskstate.Working || first.Summary != "Checking the calendar" || first.TaskID != home.ThreadID {
+		t.Fatalf("nested thinking = %+v, want Working on the home chat", first)
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      home.TurnID,
+		"sessionKey": "agent:main:main",
+		"stream":     "thinking",
+		"data":       map[string]any{"text": "Checking the calendar then drafting"},
+	})
+	updated := publisher.next(t)
+	if updated.TaskID != home.ThreadID || updated.Summary != "Checking the calendar then drafting" {
+		t.Fatalf("mismatched sessionKey thinking = %+v, want it on the home chat not inbound", updated)
+	}
+
+	homePage, err := source.ReadTranscript(context.Background(), home.ThreadID, tasktranscript.PageOptions{TaskID: home.ThreadID, Limit: 32})
+	if err != nil {
+		t.Fatalf("home transcript: %v", err)
+	}
+	if len(homePage.Entries) != 2 || homePage.Entries[1].Kind != tasktranscript.KindReasoning || homePage.Entries[1].Text != updated.Summary {
+		t.Fatalf("home transcript = %+v, want user then updating KindReasoning", homePage.Entries)
+	}
+	inboundPage, err := source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("inbound transcript: %v", err)
+	}
+	for _, entry := range inboundPage.Entries {
+		if entry.Kind == tasktranscript.KindReasoning {
+			t.Fatalf("home thinking leaked into inbound: %+v", entry)
+		}
+	}
+}
+
+func TestAgentEventLogsApplicationWithoutThinkingText(t *testing.T) {
+	logs := newSafeLogBuffer()
+	logger := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	gateway := newFakeGateway(t, false)
+	publisher := newChannelPublisher()
+	source, err := Connect(context.Background(), Config{
+		URL:        gateway.url(),
+		Token:      "test-token",
+		TaskID:     testTaskID,
+		SessionKey: testSessionKey,
+		Publisher:  publisher,
+		Logger:     logger,
+	})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(func() { source.Close() })
+
+	result, err := source.StartExistingTurn(context.Background(), testTaskID, "hello")
+	if err != nil {
+		t.Fatalf("StartExistingTurn: %v", err)
+	}
+	gateway.nextRequest(t)
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":  result.TurnID,
+		"stream": "lifecycle",
+		"data":   map[string]any{"phase": "start"},
+	})
+	gateway.sendAgent(AgentEventPayload{
+		Stream: "thinking", RunID: result.TurnID, SessionKey: testSessionKey,
+		Data: AgentEventData{Text: "secret chain of thought"},
+	})
+	_ = publisher.next(t)
+
+	logsText := logs.String()
+	if strings.Contains(logsText, "secret chain of thought") {
+		t.Fatal("thinking text must not appear in logs")
+	}
+	if !strings.Contains(logsText, "received agent event") || !strings.Contains(logsText, "drop_reason=not_thinking") {
+		t.Fatalf("lifecycle agent event was not logged as dropped, logs:\n%s", logsText)
+	}
+	if !strings.Contains(logsText, "applied=true") || !strings.Contains(logsText, "session_key_present=true") {
+		t.Fatalf("applied thinking was not logged, logs:\n%s", logsText)
 	}
 }
 

@@ -113,14 +113,26 @@ func connectClient(ctx context.Context, url, token string, logger *slog.Logger, 
 		Client:      connectClientInfo{ID: "gateway-client", Version: "dev", Platform: "go", Mode: "backend"},
 		Role:        "operator",
 		Scopes:      []string{"operator.read", "operator.write"},
-		Caps:        []string{thinkingEventsCap},
+		Caps:        []string{thinkingEventsCap, sessionScopedEventsCap},
 		Auth:        connectAuth{Token: token},
 	}
-	if _, err := client.request(ctx, "connect", params); err != nil {
+	hello, err := client.request(ctx, "connect", params)
+	if err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("turnproxy: connect handshake: %w", err)
 	}
-	logger.Info("[turnproxy] gateway connected")
+	var accepted struct {
+		Features struct {
+			Capabilities []string `json:"capabilities"`
+			Events       []string `json:"events"`
+		} `json:"features"`
+	}
+	_ = json.Unmarshal(hello, &accepted)
+	logger.Info("[turnproxy] gateway connected",
+		"sent_caps", params.Caps,
+		"accepted_caps", accepted.Features.Capabilities,
+		"events", accepted.Features.Events,
+	)
 	return client, nil
 }
 

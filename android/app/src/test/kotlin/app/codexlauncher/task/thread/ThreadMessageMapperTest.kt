@@ -235,9 +235,10 @@ class ThreadMessageMapperTest {
     }
 
     @Test
-    fun reasoningEntriesRenderAsActivitySoTheAssemblerDoesNotDropThem() {
+    fun reasoningEntriesRenderAsALabeledReasoningRow() {
         val reasoning = ThreadMessageMapper.fromTranscript(entry(TranscriptEntryKind.REASONING, text = "Checking the calendar"))
-        assertEquals(ThreadMessage.Activity(id = "e1", line = "Checking the calendar"), reasoning)
+        assertEquals(ThreadMessage.Reasoning(id = "e1", text = "Checking the calendar"), reasoning)
+        assertNotEquals(ThreadMessage.Activity(id = "e1", line = "Checking the calendar"), reasoning)
     }
 
     // ── Home rows quote the last message ──
@@ -246,6 +247,7 @@ class ThreadMessageMapperTest {
     fun homeRowPreviewsNameTheSpeaker() {
         assertEquals("Agent: Done, sent it.", ThreadMessagePreview.line(ThreadMessage.Agent(id = "e1", text = "Done, sent it.")))
         assertEquals("You: send it", ThreadMessagePreview.line(ThreadMessage.User(id = "e2", text = "send it")))
+        assertEquals("Reasoning: Checking the calendar", ThreadMessagePreview.line(ThreadMessage.Reasoning(id = "e3", text = "Checking the calendar")))
     }
 }
 

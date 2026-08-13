@@ -59,7 +59,8 @@ class TaskThreadAssemblerTest {
         )
         assertEquals(listOf("e1", "e2", "e3", "e4"), state.messages.map { it.id })
         assertTrue(state.messages[0] is ThreadMessage.User)
-        assertTrue(state.messages[1] is ThreadMessage.Activity)
+        assertTrue(state.messages[1] is ThreadMessage.Reasoning)
+        assertEquals("thinking", (state.messages[1] as ThreadMessage.Reasoning).text)
         assertTrue(state.messages[2] is ThreadMessage.Agent)
         assertTrue(state.messages[3] is ThreadMessage.Activity)
     }

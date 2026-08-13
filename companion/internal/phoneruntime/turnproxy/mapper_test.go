@@ -218,6 +218,73 @@ func TestThinkingAgentEventsFromOtherSessionsAreIgnored(t *testing.T) {
 	}
 }
 
+func TestThinkingWithAlternateSessionKeyAttachesToTheActiveRun(t *testing.T) {
+	mapper := NewTurnMapper(testTaskID, testSessionKey)
+	started := mapper.Apply(ChatEventPayload{State: "delta", DeltaText: "", RunID: "run-1", SessionKey: testSessionKey})
+	if len(started) != 1 || !started[0].StartsTurn {
+		t.Fatalf("need an in-flight run before the mismatched thinking, got %+v", started)
+	}
+
+	events := mapper.ApplyAgent(AgentEventPayload{
+		Stream: "thinking", RunID: "run-1", SessionKey: "agent:main:phone-other",
+		Data: AgentEventData{Text: "Checking the calendar"},
+	})
+	if len(events) != 1 || events[0].Kind != "activity" || events[0].Summary != "Checking the calendar" {
+		t.Fatalf("mismatched sessionKey thinking = %+v, want it attached to the active run", events)
+	}
+
+	missingKey := mapper.ApplyAgent(AgentEventPayload{
+		Stream: "thinking", RunID: "run-1",
+		Data: AgentEventData{Text: "Checking the calendar then drafting"},
+	})
+	if len(missingKey) != 1 || missingKey[0].Summary != "Checking the calendar then drafting" {
+		t.Fatalf("missing sessionKey thinking = %+v, want it attached to the active run", missingKey)
+	}
+}
+
+func TestNormalizeAgentEventAcceptsOpenClawNestedAndTopLevelShapes(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want AgentEventPayload
+	}{
+		{
+			name: "canonical",
+			raw:  `{"runId":"run-1","sessionKey":"agent:main:phone-1","stream":"thinking","data":{"text":"Checking","delta":"Checking"}}`,
+			want: AgentEventPayload{RunID: "run-1", SessionKey: "agent:main:phone-1", Stream: "thinking", Data: AgentEventData{Text: "Checking", Delta: "Checking"}},
+		},
+		{
+			name: "nested payload",
+			raw:  `{"payload":{"runId":"run-1","stream":"thinking","data":{"text":"Nested"}}}`,
+			want: AgentEventPayload{RunID: "run-1", Stream: "thinking", Data: AgentEventData{Text: "Nested"}},
+		},
+		{
+			name: "top-level type thinking",
+			raw:  `{"type":"thinking","runId":"run-1","text":"Need a shorter path"}`,
+			want: AgentEventPayload{RunID: "run-1", Stream: "thinking", Data: AgentEventData{Text: "Need a shorter path"}},
+		},
+		{
+			name: "stream in data",
+			raw:  `{"runId":"run-1","data":{"stream":"thinking","text":"Inside data"}}`,
+			want: AgentEventPayload{RunID: "run-1", Stream: "thinking", Data: AgentEventData{Text: "Inside data"}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := NormalizeAgentEvent(json.RawMessage(test.raw))
+			if !ok {
+				t.Fatal("NormalizeAgentEvent returned false")
+			}
+			if got.RunID != test.want.RunID || got.SessionKey != test.want.SessionKey || got.Stream != test.want.Stream {
+				t.Fatalf("ids = %+v, want %+v", got, test.want)
+			}
+			if got.Data.Text != test.want.Data.Text || got.Data.Delta != test.want.Data.Delta {
+				t.Fatalf("data = %+v, want %+v", got.Data, test.want.Data)
+			}
+		})
+	}
+}
+
 func TestThinkingSummaryCollapsesNewlinesAndControlChars(t *testing.T) {
 	mapper := NewTurnMapper(testTaskID, testSessionKey)
 	events := mapper.ApplyAgent(AgentEventPayload{

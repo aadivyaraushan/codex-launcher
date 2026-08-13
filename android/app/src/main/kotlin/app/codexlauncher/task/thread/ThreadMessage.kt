@@ -17,6 +17,9 @@ sealed interface ThreadMessage {
     /** Tool activity or a command line, rendered as a compact mono line. */
     data class Activity(override val id: String, val line: String) : ThreadMessage
 
+    /** Model thinking, rendered as a muted labeled Reasoning row. */
+    data class Reasoning(override val id: String, val text: String) : ThreadMessage
+
     /**
      * A pending decision request rendered as an agent message with an
      * inline preview card, replacing the old approval/question sheets.

@@ -336,15 +336,10 @@ private fun TranscriptEntryRow(
             }
         TranscriptEntryKind.AGENT -> Text(entry.text.orEmpty(), style = MaterialTheme.typography.bodyLarge)
         TranscriptEntryKind.REASONING, TranscriptEntryKind.PLAN ->
-            Column {
-                Text(
-                    if (entry.kind == TranscriptEntryKind.PLAN) "Plan" else "Reasoning",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(entry.text.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            ReasoningRow(
+                label = if (entry.kind == TranscriptEntryKind.PLAN) "Plan" else "Reasoning",
+                text = entry.text.orEmpty(),
+            )
         TranscriptEntryKind.COMMAND ->
             Surface(
                 color = MaterialTheme.colorScheme.surface,
@@ -374,6 +369,19 @@ private fun TranscriptEntryRow(
             }
         TranscriptEntryKind.ACTIVITY ->
             Text(entry.text.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun ReasoningRow(label: String, text: String) {
+    Column {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

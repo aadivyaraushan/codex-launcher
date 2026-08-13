@@ -28,7 +28,9 @@ type ChatEventPayload struct {
 
 // AgentEventPayload is one "agent" event from the gateway. Thinking tokens
 // arrive as stream:"thinking" with data.text (accumulated) and/or data.delta
-// (incremental). Other streams are ignored here.
+// (incremental). OpenClaw 2026.7.1-2 may omit sessionKey, nest the body under
+// payload, or send type:"thinking" with top-level text. Other streams are
+// ignored here.
 type AgentEventPayload struct {
 	RunID      string         `json:"runId"`
 	SessionKey string         `json:"sessionKey"`
@@ -80,7 +82,9 @@ type TurnMapper struct {
 }
 
 // NewTurnMapper builds a mapper for one task pinned to one gateway session.
-// Payloads for any other session are ignored by Apply and ApplyAgent.
+// Chat payloads for any other session are ignored by Apply. Thinking with a
+// missing sessionKey, or a different key on an already in-flight run, still
+// attaches via ApplyAgent.
 func NewTurnMapper(taskID, sessionKey string) *TurnMapper {
 	return &TurnMapper{
 		taskID:       taskID,
@@ -113,6 +117,25 @@ func (m *TurnMapper) runFor(runID string) *runState {
 	run = &runState{}
 	m.runs[runID] = run
 	return run
+}
+
+// KnowsRun reports whether this mapper already has in-flight state for runID.
+func (m *TurnMapper) KnowsRun(runID string) bool {
+	if runID == "" {
+		return false
+	}
+	_, exists := m.runs[runID]
+	return exists
+}
+
+func (m *TurnMapper) acceptsThinking(payload AgentEventPayload) bool {
+	if payload.Stream != "thinking" || payload.RunID == "" {
+		return false
+	}
+	if payload.SessionKey == "" || payload.SessionKey == m.sessionKey {
+		return true
+	}
+	return m.KnowsRun(payload.RunID)
 }
 
 func (m *TurnMapper) workingEvent(run *runState, summary string) taskstate.MobileEvent {
@@ -158,9 +181,10 @@ func (m *TurnMapper) ReasoningDisplay(runID string) string {
 }
 
 // ApplyAgent folds one gateway agent event into the mapper's run state.
-// Only stream:"thinking" for this session produces MobileEvents.
+// stream:"thinking" for this session produces MobileEvents. A missing
+// sessionKey, or a different key on an already in-flight run, still attaches.
 func (m *TurnMapper) ApplyAgent(payload AgentEventPayload) []taskstate.MobileEvent {
-	if payload.SessionKey != m.sessionKey || payload.Stream != "thinking" {
+	if !m.acceptsThinking(payload) {
 		return nil
 	}
 	if _, finished := m.finishedRuns[payload.RunID]; finished {
@@ -273,7 +297,27 @@ func fallbackMessageText(message json.RawMessage) string {
 }
 
 func thinkingFromMessage(message json.RawMessage) (text, delta string) {
-	return textFromMessageContent(message, "thinking"), ""
+	text = textFromMessageContent(message, "thinking")
+	if text == "" {
+		text = textFromMessageContent(message, "reasoning")
+	}
+	if text != "" {
+		return text, ""
+	}
+	if len(message) == 0 {
+		return "", ""
+	}
+	var body struct {
+		Thinking  string `json:"thinking"`
+		Reasoning string `json:"reasoning"`
+	}
+	if json.Unmarshal(message, &body) != nil {
+		return "", ""
+	}
+	if body.Thinking != "" {
+		return body.Thinking, ""
+	}
+	return body.Reasoning, ""
 }
 
 func textFromMessageContent(message json.RawMessage, wantType string) string {
@@ -311,4 +355,111 @@ func textFromMessageContent(message json.RawMessage, wantType string) string {
 		out += "\n" + part
 	}
 	return out
+}
+
+// NormalizeAgentEvent unwraps the OpenClaw 2026.7.1-2 agent envelopes into
+// AgentEventPayload. It never returns thinking text to callers beyond the
+// struct fields; callers must not log those fields.
+func NormalizeAgentEvent(raw json.RawMessage) (AgentEventPayload, bool) {
+	return decodeAgentEvent(raw, 0)
+}
+
+func decodeAgentEvent(raw json.RawMessage, depth int) (AgentEventPayload, bool) {
+	if len(raw) == 0 || depth > 3 {
+		return AgentEventPayload{}, false
+	}
+	var envelope struct {
+		RunID      string          `json:"runId"`
+		SessionKey string          `json:"sessionKey"`
+		Stream     string          `json:"stream"`
+		Type       string          `json:"type"`
+		Text       string          `json:"text"`
+		Delta      string          `json:"delta"`
+		Thinking   string          `json:"thinking"`
+		Data       json.RawMessage `json:"data"`
+		Payload    json.RawMessage `json:"payload"`
+	}
+	if json.Unmarshal(raw, &envelope) != nil {
+		return AgentEventPayload{}, false
+	}
+	if len(envelope.Payload) > 0 && envelope.Payload[0] == '{' {
+		nested, ok := decodeAgentEvent(envelope.Payload, depth+1)
+		if ok {
+			if nested.RunID == "" {
+				nested.RunID = envelope.RunID
+			}
+			if nested.SessionKey == "" {
+				nested.SessionKey = envelope.SessionKey
+			}
+			return nested, true
+		}
+	}
+
+	stream := envelope.Stream
+	if stream == "" && (envelope.Type == "thinking" || envelope.Type == "reasoning") {
+		stream = "thinking"
+	}
+	data := AgentEventData{Text: envelope.Text, Delta: envelope.Delta}
+	if data.Text == "" {
+		data.Text = envelope.Thinking
+	}
+	if len(envelope.Data) > 0 {
+		mergeAgentData(&stream, &data, envelope.Data, depth)
+	}
+	if stream == "" && data.Text == "" && data.Delta == "" && envelope.RunID == "" && envelope.SessionKey == "" {
+		return AgentEventPayload{}, false
+	}
+	return AgentEventPayload{
+		RunID:      envelope.RunID,
+		SessionKey: envelope.SessionKey,
+		Stream:     stream,
+		Data:       data,
+	}, true
+}
+
+func mergeAgentData(stream *string, data *AgentEventData, raw json.RawMessage, depth int) {
+	var inner struct {
+		Stream   string `json:"stream"`
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		Delta    string `json:"delta"`
+		Thinking string `json:"thinking"`
+	}
+	if json.Unmarshal(raw, &inner) == nil && (inner.Stream != "" || inner.Type != "" || inner.Text != "" || inner.Delta != "" || inner.Thinking != "") {
+		if data.Text == "" {
+			data.Text = inner.Text
+		}
+		if data.Delta == "" {
+			data.Delta = inner.Delta
+		}
+		if data.Text == "" {
+			data.Text = inner.Thinking
+		}
+		if *stream == "" {
+			if inner.Stream != "" {
+				*stream = inner.Stream
+			} else if inner.Type == "thinking" || inner.Type == "reasoning" {
+				*stream = "thinking"
+			}
+		}
+		return
+	}
+	var asString string
+	if json.Unmarshal(raw, &asString) == nil && data.Text == "" {
+		data.Text = asString
+		return
+	}
+	if raw[0] == '{' {
+		if nested, ok := decodeAgentEvent(raw, depth+1); ok {
+			if data.Text == "" {
+				data.Text = nested.Data.Text
+			}
+			if data.Delta == "" {
+				data.Delta = nested.Data.Delta
+			}
+			if *stream == "" {
+				*stream = nested.Stream
+			}
+		}
+	}
 }

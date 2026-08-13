@@ -97,7 +97,7 @@ object ThreadMessageMapper {
         TranscriptEntryKind.USER -> ThreadMessage.User(id = entry.id, text = entry.text.orEmpty())
         TranscriptEntryKind.COMMAND -> ThreadMessage.Activity(id = entry.id, line = entry.command.orEmpty())
         TranscriptEntryKind.ACTIVITY -> ThreadMessage.Activity(id = entry.id, line = entry.text.orEmpty())
-        TranscriptEntryKind.REASONING -> ThreadMessage.Activity(id = entry.id, line = entry.text.orEmpty())
+        TranscriptEntryKind.REASONING -> ThreadMessage.Reasoning(id = entry.id, text = entry.text.orEmpty())
         TranscriptEntryKind.PLAN, TranscriptEntryKind.FILE_CHANGE -> null
     }
 }
@@ -108,6 +108,7 @@ object ThreadMessagePreview {
         is ThreadMessage.Agent -> "Agent: ${message.text}"
         is ThreadMessage.User -> "You: ${message.text}"
         is ThreadMessage.Activity -> message.line
+        is ThreadMessage.Reasoning -> "Reasoning: ${message.text}"
         is ThreadMessage.Ask -> "Agent: ${message.prompt}"
     }
 }
