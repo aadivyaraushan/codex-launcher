@@ -37,6 +37,10 @@ This cloud run (2026-08-13):
 - Full `:app:testDebugUnitTest`: **708 tests / 1 failure**, `TaskControlViewModelTest.accepted start_turn with forkTaskId opens the new thread` expected `thread-1` got `phone-home`. That class was not edited here; it is not a Dictate UI failure.
 - Instrumented `HomeScreenTest` / `TaskScreenTest` were not run: no Android device/emulator in this VM.
 
+## Independent judge
+
+Verdict: **pass-with-nits** (no must-fix). Nits: follow-up no longer shows `"…"` while recording/uploading; `material-icons-extended` is heavier than a single local vector. Left both as-is: the task asked for a mic, and for `Icons.Filled.Mic` specifically.
+
 ## Sibling search
 
 Searched Kotlin for `⌁`, `Text("Mic")`, `Dictate prompt`, `Icons.Filled.Mic`. App glyphs were only Home `⌁` and follow-up `"Mic"`/`"…"`. Left `outputs/codex-launcher-visual-directions.html` mock (still `⌁`) because it is not the Android control; `design-contract.test.mjs` only asserts `aria-label="Dictate prompt"`.
