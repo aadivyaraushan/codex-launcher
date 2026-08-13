@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedIconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -201,6 +202,15 @@ internal fun PromptDictationButton(
             }
         },
     ) {
+        PromptDictationMicIcon(busy = tap.state.recording || tap.state.uploading)
+    }
+}
+
+@Composable
+internal fun PromptDictationMicIcon(busy: Boolean) {
+    if (busy) {
+        Text("…")
+    } else {
         Icon(
             imageVector = Icons.Filled.Mic,
             contentDescription = null,

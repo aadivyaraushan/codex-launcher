@@ -696,6 +696,8 @@ class LauncherActivity : ComponentActivity() {
                                     runSilentLocalLink("button")
                                 }
                             },
+                            dictationRecording = homeDictationTap.state.recording,
+                            dictationUploading = homeDictationTap.state.uploading,
                             onDictate = onDictate@{
                                 if (!homeDictationTap.state.recording && !homeDictationTap.state.uploading) {
                                     if (!draftComposerViewModel.beginDictation()) {

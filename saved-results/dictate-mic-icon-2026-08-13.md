@@ -7,15 +7,16 @@
 
 ## Result
 
-Home Dictate and task follow-up Dictate now draw `Icons.Filled.Mic` inside the existing 48.dp buttons. Labels stay `Dictate prompt` / `Dictate follow-up`. `onDictate`, Deepgram key handling, `RECORD_AUDIO`, and composer merge are unchanged.
+Home Dictate and task follow-up Dictate draw `Icons.Filled.Mic` when idle, and `"…"` while recording or uploading. Home reads `homeDictationTap.state.recording/uploading` from `LauncherActivity`. Labels stay `Dictate prompt` / `Dictate follow-up`. Deepgram key handling, `RECORD_AUDIO`, and composer merge are unchanged.
 
 Docs checked: Android [Icons.Filled](https://developer.android.com/reference/kotlin/androidx/compose/material/icons/Icons.Filled) (core set has no Mic), [Compose Material 3 1.4.0 notes](https://developer.android.com/jetpack/androidx/releases/compose-material3) (add `material-icons-extended` yourself; Mic is not in core), and the [Bottom app bar sample](https://developer.android.com/develop/ui/compose/components/app-bars) which uses `Icon(Icons.Filled.Mic, ...)`.
 
 ## What changed
 
-- `HomeScreen.kt`: `Text("⌁")` → `Icon(Icons.Filled.Mic, contentDescription = null)` on the existing `IconButton`.
-- `PromptDictation.kt`: `"Mic"` / `"…"` text → the same mic icon (follow-up is also a mic).
-- Tests: energy glyph and `"Mic"` text must not appear; content descriptions still drive the click.
+- Shared `PromptDictationMicIcon(busy)`: mic when idle, `"…"` when busy.
+- `HomeScreen` takes `dictationRecording` / `dictationUploading`; button stays enabled while recording (second tap stops) and disables while uploading.
+- `LauncherActivity` passes `homeDictationTap.state.recording/uploading` into Home. `onDictate` still calls the same Deepgram tap.
+- Tests: idle has no `⌁` / `"Mic"` / `"…"`; recording shows `"…"`; uploading shows `"…"` and disables the home button.
 
 ## Verify
 
@@ -30,16 +31,16 @@ From `android/` with `ANDROID_HOME` set:
   --tests app.codexlauncher.task.composer.DraftComposerViewModelTest
 ```
 
-This cloud run (2026-08-13):
+This cloud run (2026-08-13), after wiring live recording/uploading:
 
 - `compileDebugKotlin` and `compileDebugAndroidTestKotlin`: BUILD SUCCESSFUL
 - Dictation-related unit tests: **36 tests / 0 failures** (`PromptDictationTest` 7, `PromptDictationEngineTest` 10, `DeepgramListenClientTest` 5, `DeepgramApiKeySourceTest` 4, `DraftComposerViewModelTest` 10)
-- Full `:app:testDebugUnitTest`: **708 tests / 1 failure**, `TaskControlViewModelTest.accepted start_turn with forkTaskId opens the new thread` expected `thread-1` got `phone-home`. That class was not edited here; it is not a Dictate UI failure.
+- Full `:app:testDebugUnitTest` (earlier on this branch): **708 tests / 1 failure**, `TaskControlViewModelTest.accepted start_turn with forkTaskId opens the new thread` expected `thread-1` got `phone-home`. That class was not edited here.
 - Instrumented `HomeScreenTest` / `TaskScreenTest` were not run: no Android device/emulator in this VM.
 
 ## Independent judge
 
-Verdict: **pass-with-nits** (no must-fix). Nits: follow-up no longer shows `"…"` while recording/uploading; `material-icons-extended` is heavier than a single local vector. Left both as-is: the task asked for a mic, and for `Icons.Filled.Mic` specifically.
+First review: **pass-with-nits** — follow-up had lost `"…"` while busy. That nit is now fixed: home and follow-up share `PromptDictationMicIcon`, and Home receives live `recording`/`uploading` from `homeDictationTap`.
 
 ## Sibling search
 

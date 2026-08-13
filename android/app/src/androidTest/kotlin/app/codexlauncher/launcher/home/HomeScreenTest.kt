@@ -226,12 +226,45 @@ class HomeScreenTest {
 
         compose.onNodeWithText("⌁").assertDoesNotExist()
         compose.onNodeWithText("Mic").assertDoesNotExist()
+        compose.onNodeWithText("…").assertDoesNotExist()
         compose.onNodeWithContentDescription("Dictate prompt").assertIsEnabled().performClick()
         assertEquals(1, dictationStarts)
 
         compose.runOnIdle {
             composerState = DraftComposerState("Keep this", DraftComposerPhase.UNAVAILABLE)
         }
+        compose.onNodeWithContentDescription("Dictate prompt").assertIsNotEnabled()
+    }
+
+    @Test
+    fun dictationShowsBusyGlyphWhileRecordingOrUploading() {
+        var recording by mutableStateOf(false)
+        var uploading by mutableStateOf(false)
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = onlineState(selectedProjectName = "Codex Launcher"),
+                    composerState = DraftComposerState("Keep this", DraftComposerPhase.READY),
+                    dictationRecording = recording,
+                    dictationUploading = uploading,
+                )
+            }
+        }
+
+        compose.onNodeWithText("…").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Dictate prompt").assertIsEnabled()
+
+        compose.runOnIdle { recording = true }
+        compose.onNodeWithText("…").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Dictate prompt").assertIsEnabled()
+        compose.onNodeWithText("⌁").assertDoesNotExist()
+        compose.onNodeWithText("Mic").assertDoesNotExist()
+
+        compose.runOnIdle {
+            recording = false
+            uploading = true
+        }
+        compose.onNodeWithText("…").assertIsDisplayed()
         compose.onNodeWithContentDescription("Dictate prompt").assertIsNotEnabled()
     }
 

@@ -18,11 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -55,6 +52,7 @@ import app.codexlauncher.task.composer.DraftComposerPhase
 import app.codexlauncher.task.composer.DraftComposerState
 import app.codexlauncher.task.attachments.AttachmentUploadState
 import app.codexlauncher.task.attachments.AttachmentRows
+import app.codexlauncher.task.control.PromptDictationMicIcon
 
 @Composable
 fun HomeScreen(
@@ -78,6 +76,8 @@ fun HomeScreen(
     onRemoveAttachment: (String) -> Unit = {},
     onAttach: () -> Unit = {},
     onDictate: () -> Unit = {},
+    dictationRecording: Boolean = false,
+    dictationUploading: Boolean = false,
     onConnectionHelp: () -> Unit = {},
     onManageComputer: () -> Unit = {},
     onLinkComputer: () -> Unit = {},
@@ -129,6 +129,8 @@ fun HomeScreen(
                     onRemoveAttachment = onRemoveAttachment,
                     onAttach = onAttach,
                     onDictate = onDictate,
+                    dictationRecording = dictationRecording,
+                    dictationUploading = dictationUploading,
                     onOpenTask = onOpenTask,
                     onLinkLocalRuntime = onLinkLocalRuntime,
                     imeBottomPx = imeBottomPx,
@@ -254,6 +256,8 @@ private fun OnlineContent(
     onRemoveAttachment: (String) -> Unit,
     onAttach: () -> Unit,
     onDictate: () -> Unit,
+    dictationRecording: Boolean,
+    dictationUploading: Boolean,
     onOpenTask: (String) -> Unit,
     onLinkLocalRuntime: () -> Unit = {},
     imeBottomPx: Int,
@@ -436,13 +440,10 @@ private fun OnlineContent(
                 }
                 IconButton(
                     onClick = onDictate,
-                    enabled = composerState.canEdit,
+                    enabled = composerState.canEdit && !dictationUploading,
                     modifier = Modifier.size(48.dp).semantics { contentDescription = "Dictate prompt" },
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Mic,
-                        contentDescription = null,
-                    )
+                    PromptDictationMicIcon(busy = dictationRecording || dictationUploading)
                 }
                 IconButton(
                     onClick = { onSend(composerState.text, selection) },

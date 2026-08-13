@@ -11,6 +11,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -143,6 +145,7 @@ class TaskScreenTest {
         compose.onNodeWithText("Mic").assertDoesNotExist()
         compose.onNodeWithText("⌁").assertDoesNotExist()
         compose.onNodeWithText("Voice").assertDoesNotExist()
+        compose.onNodeWithText("…").assertDoesNotExist()
         compose.onNodeWithContentDescription("Follow-up message").performTextInput("Typed words")
         compose.onNodeWithContentDescription("Dictate follow-up").performClick()
         compose.onNodeWithContentDescription("Follow-up message").assertTextContains("Typed words spoken words")
@@ -168,6 +171,30 @@ class TaskScreenTest {
         nextResult = PromptDictationResult.Failed.Network
         compose.onNodeWithContentDescription("Dictate follow-up").performClick()
         compose.onNodeWithText("Couldn’t reach speech recognition").assertIsDisplayed()
+    }
+
+    @Test
+    fun dictationShowsBusyGlyphUntilTheOverrideCompletes() {
+        var held: ((PromptDictationResult) -> Unit)? = null
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.LIGHT) {
+                TaskScreen(
+                    state = populatedState(),
+                    taskState = app.codexlauncher.task.summary.TaskState.IDLE_AFTER_REPLY,
+                    onRequestDictation = { callback -> held = callback },
+                )
+            }
+        }
+
+        compose.onNodeWithText("…").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Dictate follow-up").assertIsEnabled().performClick()
+        compose.onNodeWithText("…").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Dictate follow-up").assertIsNotEnabled()
+
+        compose.runOnIdle { held?.invoke(PromptDictationResult.Cancelled) }
+        compose.onNodeWithText("Dictation canceled").assertIsDisplayed()
+        compose.onNodeWithText("…").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Dictate follow-up").assertIsEnabled()
     }
 
     @Test
