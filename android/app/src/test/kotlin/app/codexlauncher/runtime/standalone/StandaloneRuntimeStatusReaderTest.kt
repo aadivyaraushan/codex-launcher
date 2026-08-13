@@ -37,6 +37,12 @@ class StandaloneRuntimeStatusReaderTest {
                             probeThread.set(Thread.currentThread().name)
                             true
                         },
+                        health = {
+                            app.codexlauncher.runtime.modelauth.HealthSnapshot(
+                                taskCapable = true,
+                                modelAuth = app.codexlauncher.runtime.modelauth.ModelAuth.OauthReady,
+                            )
+                        },
                         io = executor.asCoroutineDispatcher(),
                     )
                 assertTrue(status.isReady)
@@ -68,5 +74,38 @@ class StandaloneRuntimeStatusReaderTest {
         assertEquals(false, status.localPairAcked)
         assertEquals(false, status.runtimeServing)
         assertEquals(false, status.isReady)
+    }
+
+    @Test
+    fun healthOauthReadyAndTaskCapableMakesStatusReady() {
+        val ready =
+            StandaloneRuntimeStatusReader.read(
+                localPairAcked = true,
+                probe = { true },
+                health = {
+                    app.codexlauncher.runtime.modelauth.HealthSnapshot(
+                        taskCapable = true,
+                        modelAuth = app.codexlauncher.runtime.modelauth.ModelAuth.OauthReady,
+                    )
+                },
+            )
+        assertTrue(ready.isReady)
+
+        val keyedOnly =
+            StandaloneRuntimeStatusReader.read(
+                localPairAcked = true,
+                probe = { true },
+                health = {
+                    app.codexlauncher.runtime.modelauth.HealthSnapshot(
+                        taskCapable = true,
+                        modelAuth = app.codexlauncher.runtime.modelauth.ModelAuth.Missing,
+                    )
+                },
+            )
+        assertEquals(false, keyedOnly.isReady)
+        assertEquals(
+            "Sign in with ChatGPT to use Operator",
+            keyedOnly.headline(),
+        )
     }
 }

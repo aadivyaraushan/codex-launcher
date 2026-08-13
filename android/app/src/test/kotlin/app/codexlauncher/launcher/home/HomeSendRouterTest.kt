@@ -7,8 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomeSendRouterTest {
-    private val ready =
-        StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
+    private val ready = StandaloneRuntimeStatus.phoneReady()
     private val notReady =
         StandaloneRuntimeStatus(localPairAcked = false, runtimeServing = false, reachable = false)
 

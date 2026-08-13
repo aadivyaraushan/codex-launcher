@@ -21,6 +21,11 @@ Phones already hold the apps, accounts, and attention. Operator puts the agent
 Sensitive material stays as **file paths in config** (bridge token, TLS cert),
 never as committed values. Logs use ids, not message text or people’s names.
 
+**Bring your own ChatGPT login.** Operator will not pay model cost. Home Send
+stays off until OpenClaw on the phone has a ChatGPT OAuth profile (device-code
+login). API keys do not count. Tokens stay in OpenClaw, not in the Android app.
+See [phone-agent setup](docs/setup/phone-agent.md).
+
 ## Architecture
 
 ```

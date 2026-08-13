@@ -105,6 +105,13 @@
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
 
         <activity
+            android:name=".runtime.modelauth.authorize.ChatGptAuthorizeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="ChatGPT sign-in"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
+        <activity
             android:name=".runtime.broker.outlook.OutlookAuthorizeActivity"
             android:exported="true"
             android:excludeFromRecents="true"

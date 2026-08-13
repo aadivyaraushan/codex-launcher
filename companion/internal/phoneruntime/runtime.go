@@ -35,6 +35,8 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/agenttrigger"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/beeperwatch"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/localtrust"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/modelauth"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/modelauth/device"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/turnproxy"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
 	"github.com/codex-launcher/codex-launcher/companion/internal/promptqueue"
@@ -106,6 +108,19 @@ type Dependencies struct {
 	// BeeperWatch runs the Beeper watcher. Nil means real: beeperwatch.Run.
 	// Tests inject a stub to avoid a live websocket.
 	BeeperWatch func(context.Context, beeperwatch.Config)
+	// ModelAuth is the ChatGPT OAuth (BYO subscription) hook set. Nil
+	// funcs mean production OpenClaw CLI. Tests inject fakes so we never
+	// spawn openclaw or touch tokens.
+	ModelAuth ModelAuthHooks
+}
+
+// ModelAuthHooks are the OpenClaw CLI seams for ChatGPT device-code login.
+// List must return id/type/provider only — never tokens.
+type ModelAuthHooks struct {
+	List           func(context.Context) ([]modelauth.Profile, error)
+	StartLogin     func(context.Context) (device.Prompt, error)
+	SetAuthOrder   func(context.Context, []string) error
+	RestartGateway func(context.Context) error
 }
 
 type Health struct {
@@ -117,6 +132,7 @@ type Health struct {
 	ListenAddress string            `json:"listenAddress"`
 	TaskCapable   bool              `json:"taskCapable"`
 	LocalPair     string            `json:"localPair"`
+	ModelAuth     string            `json:"modelAuth"`
 }
 
 type Runtime struct {
@@ -173,6 +189,18 @@ type Runtime struct {
 	// Close can wait for it too. Nil when no watcher was started (no
 	// BeeperBaseURL configured, or no access token was available).
 	beeperWatchDone chan struct{}
+	// ChatGPT OAuth (BYO subscription) — list/start never return tokens.
+	listModelAuth       func(context.Context) ([]modelauth.Profile, error)
+	startModelAuth      func(context.Context) (device.Prompt, error)
+	setAuthOrder        func(context.Context, []string) error
+	restartGateway      func(context.Context) error
+	modelAuthPending    bool
+	pendingModelAuth    device.Prompt
+	authOrderApplied    bool
+	preferOrderInFlight bool
+	lastModelAuth       string
+	closed              bool
+	modelAuthListLogged bool
 }
 
 func (config Config) validate() error {
@@ -407,6 +435,7 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 	}
 	rt.brokerReady = loadBrokerReady(config.Root)
 	rt.beeperAccounts = beeperAccounts
+	rt.wireModelAuth(dependencies.ModelAuth)
 	logger.Info("[phone-runtime] opened", "mode", "standalone_phone", "root", config.Root, "listen", config.ListenAddress, "registered_count", len(inventory.Registered), "task_capable", false, "local_pair_acked", rt.localPairAcked, "broker_ready_count", len(rt.brokerReady), "beeper_probe", beeperAccounts != nil, "gateway_configured", turnSource != nil, "allow_software_attest", config.AllowSoftwareAttest)
 	return rt, nil
 }
@@ -678,6 +707,9 @@ func (runtime *Runtime) Close() error {
 	if runtime == nil || runtime.store == nil {
 		return nil
 	}
+	runtime.mu.Lock()
+	runtime.closed = true
+	runtime.mu.Unlock()
 	stopTurnProxyConnect(runtime.turnProxyCancel, runtime.turnProxyDone, runtime.beeperWatchDone, runtime.turnSource, runtime.logger)
 	return runtime.store.Close()
 }
@@ -985,6 +1017,7 @@ func (runtime *Runtime) Health() Health {
 		ListenAddress: listen,
 		TaskCapable:   runtime.TaskCapable(),
 		LocalPair:     localPair,
+		ModelAuth:     runtime.modelAuthStatus(),
 	}
 }
 
@@ -1010,6 +1043,10 @@ func (runtime *Runtime) Serve(ctx context.Context) error {
 		if request.Method == http.MethodGet && request.URL.Path == "/v1/health" {
 			writer.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(writer).Encode(runtime.Health())
+			return
+		}
+		if request.Method == http.MethodPost && request.URL.Path == "/v1/model-auth/start" {
+			runtime.serveModelAuthStart(writer, request)
 			return
 		}
 		if request.Method == http.MethodPost && request.URL.Path == "/v1/local-pair/offer" {
