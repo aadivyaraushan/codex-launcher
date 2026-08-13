@@ -892,7 +892,7 @@ func TestHomeComposeStartsANewConversationInsteadOfAppendingPhoneAgent(t *testin
 	if homeParams.Message != "new home prompt" {
 		t.Fatalf("home message = %q", homeParams.Message)
 	}
-	if homeParams.Thinking != "high" {
+	if homeParams.Thinking != "max" {
 		t.Fatalf("home thinking = %q, want high so the gateway streams thinking events", homeParams.Thinking)
 	}
 

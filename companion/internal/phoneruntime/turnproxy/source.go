@@ -34,7 +34,7 @@ const (
 	thinkingEventsCap = "thinking-events"
 	homeChatPrefix    = "phone-chat-"
 	homeSessionPrefix = "agent:main:phone-"
-	userThinkingLevel = "high"
+	userThinkingLevel = "max"
 )
 
 // Config configures one Source: which gateway to dial, which inbound task
