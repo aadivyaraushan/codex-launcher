@@ -362,6 +362,16 @@ func TestPixelItemStreamsFillReasoningFromSummaryNotContent(t *testing.T) {
 			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"assistant","data":{"text":"Done.","content":[{"type":"thinking","text":"Checking the calendar"},{"type":"text","text":"Done."}]}}`,
 			want: "Checking the calendar",
 		},
+		{
+			name: "item analysis title Reasoning from 2026.7.1-2 projector",
+			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"item","data":{"itemId":"rsn-1","phase":"start","kind":"analysis","title":"Reasoning","status":"running"}}`,
+			want: "Reasoning",
+		},
+		{
+			name: "codex_app_server.item type only from 2026.7.1-2 projector",
+			raw:  `{"runId":"run-1","sessionKey":"agent:main:main","stream":"codex_app_server.item","data":{"phase":"started","itemId":"rsn-1","type":"reasoning"}}`,
+			want: "Reasoning",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -410,6 +420,10 @@ func TestAssistantReplyAndNonReasoningItemsDoNotBecomeReasoning(t *testing.T) {
 		{
 			name: "lifecycle",
 			raw:  `{"runId":"run-1","stream":"lifecycle","data":{"phase":"start"}}`,
+		},
+		{
+			name: "item compaction analysis",
+			raw:  `{"runId":"run-1","stream":"item","data":{"kind":"analysis","title":"Context compaction","phase":"start"}}`,
 		},
 	}
 	for _, test := range tests {

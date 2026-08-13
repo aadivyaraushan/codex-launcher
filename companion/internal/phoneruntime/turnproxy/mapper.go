@@ -159,6 +159,30 @@ func isReasoningToken(value string) bool {
 	return value == "reasoning" || value == "thinking"
 }
 
+const reasoningFallbackSummary = "Reasoning"
+
+func isItemReasoning(envelope, inner, item agentEnvelope) bool {
+	if isReasoningToken(item.Type) || isReasoningToken(item.Kind) || isReasoningToken(inner.Type) || isReasoningToken(inner.Kind) || isReasoningToken(envelope.Type) || isReasoningToken(envelope.Kind) {
+		return true
+	}
+	kind := firstNonEmpty(item.Kind, inner.Kind, envelope.Kind)
+	title := firstNonEmpty(item.Title, inner.Title, envelope.Title)
+	return kind == "analysis" && title == "Reasoning"
+}
+
+func reasoningItemType(envelope, inner, item agentEnvelope) string {
+	if tok := firstEnumToken(item.Type, inner.Type, envelope.Type); isReasoningToken(tok) {
+		return tok
+	}
+	if tok := firstEnumToken(item.Kind, inner.Kind, envelope.Kind); isReasoningToken(tok) {
+		return tok
+	}
+	if isItemReasoning(envelope, inner, item) {
+		return "reasoning"
+	}
+	return firstEnumToken(item.Type, inner.Type, envelope.Type, inner.Kind)
+}
+
 // Finished reports whether runID already reached a terminal chat event.
 func (m *TurnMapper) Finished(runID string) bool {
 	if runID == "" {
@@ -402,6 +426,7 @@ type agentEnvelope struct {
 	Stream     string          `json:"stream"`
 	Type       string          `json:"type"`
 	Kind       string          `json:"kind"`
+	Title      string          `json:"title"`
 	Text       string          `json:"text"`
 	Delta      string          `json:"delta"`
 	Thinking   string          `json:"thinking"`
@@ -456,7 +481,7 @@ func decodeAgentEvent(raw json.RawMessage, depth int) (AgentEventPayload, bool) 
 		_ = json.Unmarshal(itemRaw, &item)
 	}
 
-	itemType := firstEnumToken(item.Type, item.Kind, envelope.Type, envelope.Kind, inner.Type, inner.Kind)
+	itemType := reasoningItemType(envelope, inner, item)
 	dataType := firstEnumToken(inner.Type, inner.Kind, envelope.Type)
 	text, delta, contentType := reasoningFromEnvelope(stream, envelope, inner, item)
 	if itemType == "" {
@@ -479,10 +504,13 @@ func decodeAgentEvent(raw json.RawMessage, depth int) (AgentEventPayload, bool) 
 func reasoningFromEnvelope(stream string, envelope, inner, item agentEnvelope) (text, delta, contentType string) {
 	switch stream {
 	case "item", "codex_app_server.item":
-		if !isReasoningToken(item.Type) && !isReasoningToken(item.Kind) && !isReasoningToken(inner.Type) && !isReasoningToken(inner.Kind) && !isReasoningToken(envelope.Type) && !isReasoningToken(envelope.Kind) {
-			return "", "", firstEnumToken(item.Type, inner.Type, envelope.Type)
+		if !isItemReasoning(envelope, inner, item) {
+			return "", "", firstEnumToken(item.Type, inner.Type, envelope.Type, inner.Kind)
 		}
 		text = firstNonEmpty(extractSummary(item.Summary), extractSummary(inner.Summary), extractSummary(envelope.Summary))
+		if text == "" {
+			text = reasoningFallbackSummary
+		}
 		return text, "", "reasoning"
 	case "assistant":
 		text, contentType = firstThinkingContent(envelope.Content, inner.Content, item.Content)

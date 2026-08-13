@@ -950,6 +950,26 @@ func TestPixelItemReasoningFillsKindReasoningAndUpdatesWorking(t *testing.T) {
 		"sessionKey": testSessionKey,
 		"stream":     "item",
 		"data": map[string]any{
+			"itemId": "rsn-1",
+			"phase":  "start",
+			"kind":   "analysis",
+			"title":  "Reasoning",
+			"status": "running",
+		},
+	})
+	working := publisher.next(t)
+	if working.Kind != "activity" || working.State != taskstate.Working || !working.StartsTurn {
+		t.Fatalf("first item reasoning = %+v, want turn-starting Working", working)
+	}
+	if working.Summary != "Reasoning" {
+		t.Fatalf("projector-shaped item summary = %q, want the Reasoning title until a summary arrives", working.Summary)
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      result.TurnID,
+		"sessionKey": testSessionKey,
+		"stream":     "item",
+		"data": map[string]any{
 			"item": map[string]any{
 				"id":      "rsn-1",
 				"type":    "reasoning",
@@ -958,12 +978,9 @@ func TestPixelItemReasoningFillsKindReasoningAndUpdatesWorking(t *testing.T) {
 			},
 		},
 	})
-	working := publisher.next(t)
-	if working.Kind != "activity" || working.State != taskstate.Working || !working.StartsTurn {
-		t.Fatalf("first item reasoning = %+v, want turn-starting Working", working)
-	}
-	if working.Summary != "Checking the calendar" {
-		t.Fatalf("working summary = %q", working.Summary)
+	summarized := publisher.next(t)
+	if summarized.Summary != "Checking the calendar" || summarized.StartsTurn {
+		t.Fatalf("nested summary = %+v, want an updating Working summary", summarized)
 	}
 
 	gateway.sendRaw("agent", map[string]any{
