@@ -33,3 +33,5 @@ go test ./companion/internal/phoneruntime/turnproxy/ -count=1
 Covered: send → Working before any chat delta; chat deltas update KindAgent before final; assistant/item deltas update KindReasoning past the title; logs have rune counts and no thinking text.
 
 Software-attest was not enabled or touched.
+
+PR: https://github.com/aadivyaraushan/codex-launcher/pull/21 (into `worktree-phase2-tool-bridge`). Independent judge signed off: instant Working, KindAgent/KindReasoning streaming, placeholder guard, CoT-safe logs, and proving tests hold.
