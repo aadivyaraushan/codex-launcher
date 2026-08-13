@@ -76,6 +76,7 @@ type conversation struct {
 	state        taskstate.State
 	activeTurnID string
 	pendingRunID string
+	sentRunID    string
 	updatedAt    int64
 	lastMessage  taskstate.LastMessage
 	entries      []tasktranscript.Entry
@@ -201,14 +202,14 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, "not_thinking", 0, "")
 		return
 	}
+	if agentPayload.RunID == "" {
+		source.logAgentEvent(event, agentPayload.Stream, "", sessionKeyPresent, false, "missing_run_id", 0, "")
+		return
+	}
 
 	source.mu.Lock()
-	conv := source.conversationForThinkingLocked(agentPayload.SessionKey, agentPayload.RunID)
+	conv, dropReason := source.conversationForThinkingLocked(agentPayload.SessionKey, agentPayload.RunID)
 	if conv == nil {
-		dropReason := "unknown_session"
-		if agentPayload.SessionKey == "" {
-			dropReason = "unknown_run"
-		}
 		source.mu.Unlock()
 		source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, false, dropReason, 0, "")
 		return
@@ -220,14 +221,27 @@ func (source *Source) handleAgentEvent(event string, payload json.RawMessage) {
 		conv.activeTurnID = agentPayload.RunID
 		conv.updatedAt = time.Now().Unix()
 	}
-	if reasoning := conv.mapper.ReasoningDisplay(agentPayload.RunID); reasoning != "" {
+	reasoning := conv.mapper.ReasoningDisplay(agentPayload.RunID)
+	if reasoning != "" {
 		conv.upsertReasoning(reasoning, agentPayload.RunID)
 	}
 	taskID := conv.taskID
 	emitted := len(mobileEvents)
+	applied := emitted > 0
+	if !applied {
+		if conv.mapper.Finished(agentPayload.RunID) {
+			dropReason = "finished_run"
+		} else if reasoning == "" {
+			dropReason = "no_text"
+		} else {
+			dropReason = "unchanged"
+		}
+	} else {
+		dropReason = ""
+	}
 	source.mu.Unlock()
 
-	source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, true, "", emitted, taskID)
+	source.logAgentEvent(event, agentPayload.Stream, agentPayload.RunID, sessionKeyPresent, applied, dropReason, emitted, taskID)
 	source.publish(mobileEvents)
 }
 
@@ -244,7 +258,7 @@ func (source *Source) logAgentEvent(event, stream, runID string, sessionKeyPrese
 	)
 }
 
-func (source *Source) conversationForThinkingLocked(sessionKey, runID string) *conversation {
+func (source *Source) conversationForThinkingLocked(sessionKey, runID string) (*conversation, string) {
 	if runID != "" {
 		var match *conversation
 		for _, conv := range source.conversations {
@@ -252,25 +266,38 @@ func (source *Source) conversationForThinkingLocked(sessionKey, runID string) *c
 				continue
 			}
 			if match != nil {
-				return nil
+				return nil, "ambiguous_run"
 			}
 			match = conv
 		}
 		if match != nil {
-			return match
+			return match, ""
 		}
+		if sessionKey == "" {
+			return nil, "unknown_run"
+		}
+		// A sessionKey hit is not enough when runId is present but matches
+		// no in-flight turn: that is how home-chat thinking stamped
+		// agent:main:main used to land on the inbound phone-agent row.
+		if source.bySession[sessionKey] == nil {
+			return nil, "unknown_session"
+		}
+		return nil, "unknown_run"
 	}
 	if sessionKey != "" {
-		return source.bySession[sessionKey]
+		if conv := source.bySession[sessionKey]; conv != nil {
+			return conv, ""
+		}
+		return nil, "unknown_session"
 	}
-	return nil
+	return nil, "unknown_run"
 }
 
 func (conv *conversation) ownsRun(runID string) bool {
 	if runID == "" {
 		return false
 	}
-	if conv.activeTurnID == runID || conv.pendingRunID == runID || conv.mapper.KnowsRun(runID) {
+	if conv.activeTurnID == runID || conv.pendingRunID == runID || conv.sentRunID == runID || conv.mapper.KnowsRun(runID) {
 		return true
 	}
 	start := len(conv.entries) - 4
@@ -351,6 +378,7 @@ func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastM
 	idempotencyKey := newIdempotencyKey()
 	source.mu.Lock()
 	conv.pendingRunID = idempotencyKey
+	conv.sentRunID = idempotencyKey
 	source.mu.Unlock()
 	params := chatSendParams{
 		SessionKey:     conv.sessionKey,
@@ -365,6 +393,7 @@ func (source *Source) sendChat(ctx context.Context, taskID, prompt string, lastM
 		source.mu.Lock()
 		if conv.pendingRunID == idempotencyKey {
 			conv.pendingRunID = ""
+			conv.sentRunID = ""
 		}
 		source.mu.Unlock()
 		return taskadapter.ExistingTaskResult{}, err

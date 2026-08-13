@@ -895,6 +895,45 @@ func TestThinkingWithAlternateSessionKeyOrNestedPayloadAttachesToTheActiveRun(t 
 			t.Fatalf("home thinking leaked into inbound: %+v", entry)
 		}
 	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"type":       "thinking",
+		"runId":      home.TurnID,
+		"text":       "Need a shorter path",
+		"sessionKey": "agent:main:main",
+	})
+	topLevel := publisher.next(t)
+	if topLevel.TaskID != home.ThreadID || topLevel.Summary != "Need a shorter path" {
+		t.Fatalf("top-level type thinking = %+v, want it on the home chat", topLevel)
+	}
+
+	gateway.sendRaw("agent", map[string]any{
+		"runId":      "run-unrelated",
+		"sessionKey": "agent:main:main",
+		"stream":     "thinking",
+		"data":       map[string]any{"text": "should not land on inbound"},
+	})
+	gateway.sendRaw("agent", map[string]any{
+		"runId":  home.TurnID,
+		"stream": "thinking",
+		"data":   map[string]any{"text": "Still drafting on the home chat"},
+	})
+	afterUnrelated := publisher.next(t)
+	if afterUnrelated.Summary == "should not land on inbound" || afterUnrelated.TaskID != home.ThreadID {
+		t.Fatalf("unrelated thinking with inbound sessionKey leaked: %+v", afterUnrelated)
+	}
+	if afterUnrelated.Summary != "Still drafting on the home chat" {
+		t.Fatalf("next event after unrelated thinking = %+v, want the home chat update", afterUnrelated)
+	}
+	inboundPage, err = source.ReadTranscript(context.Background(), testTaskID, tasktranscript.PageOptions{TaskID: testTaskID, Limit: 32})
+	if err != nil {
+		t.Fatalf("inbound transcript after unrelated: %v", err)
+	}
+	for _, entry := range inboundPage.Entries {
+		if entry.Kind == tasktranscript.KindReasoning {
+			t.Fatalf("unrelated thinking leaked into inbound: %+v", entry)
+		}
+	}
 }
 
 func TestAgentEventLogsApplicationWithoutThinkingText(t *testing.T) {
@@ -941,6 +980,19 @@ func TestAgentEventLogsApplicationWithoutThinkingText(t *testing.T) {
 	}
 	if !strings.Contains(logsText, "applied=true") || !strings.Contains(logsText, "session_key_present=true") {
 		t.Fatalf("applied thinking was not logged, logs:\n%s", logsText)
+	}
+
+	gateway.sendAgent(AgentEventPayload{
+		Stream: "thinking", RunID: result.TurnID, SessionKey: testSessionKey,
+	})
+	gateway.sendAgent(AgentEventPayload{
+		Stream: "thinking", RunID: result.TurnID, SessionKey: testSessionKey,
+		Data: AgentEventData{Text: "later thought"},
+	})
+	_ = publisher.next(t)
+	logsText = logs.String()
+	if !strings.Contains(logsText, "applied=false") || !strings.Contains(logsText, "drop_reason=unchanged") {
+		t.Fatalf("empty thinking must log applied=false, logs:\n%s", logsText)
 	}
 }
 

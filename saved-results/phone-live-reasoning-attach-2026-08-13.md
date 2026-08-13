@@ -17,6 +17,8 @@ Verified against OpenClaw 2026.7.1-2 `src/infra/agent-events.ts` and `src/gatewa
 - `ApplyAgent` also required an exact sessionKey match, so even a correct conversation would drop mismatched keys.
 - Nested envelopes (`payload: { stream, data, runId }`, top-level `type:"thinking"` + `text`) did not fill `AgentEventPayload.Stream`.
 - Drop paths were silent, so Pixel logs could not tell “never arrived” from “arrived and dropped”.
+- A sessionKey fallback to `agent:main:main` when runId did not match would have painted home thinking onto the inbound Phone agent row. Unmatched run ids now drop with `unknown_run`.
+- `applied=true` is only logged when a Working event is actually emitted. Empty or duplicate thinking logs `applied=false` with `drop_reason=no_text|unchanged|finished_run`.
 
 Caps: 2026.7.1-2 protocol hello-ok does not require `thinking-events` (broadcasts non-tool agent streams to Control UI-visible clients). Newer gateways do. Connect now sends `thinking-events` and `session-scoped-events`, and logs sent vs accepted caps.
 

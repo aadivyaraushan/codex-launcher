@@ -138,6 +138,15 @@ func (m *TurnMapper) acceptsThinking(payload AgentEventPayload) bool {
 	return m.KnowsRun(payload.RunID)
 }
 
+// Finished reports whether runID already reached a terminal chat event.
+func (m *TurnMapper) Finished(runID string) bool {
+	if runID == "" {
+		return false
+	}
+	_, exists := m.finishedRuns[runID]
+	return exists
+}
+
 func (m *TurnMapper) workingEvent(run *runState, summary string) taskstate.MobileEvent {
 	startsTurn := !run.started
 	run.started = true
