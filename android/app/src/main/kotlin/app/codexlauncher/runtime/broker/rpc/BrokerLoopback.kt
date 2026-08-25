@@ -21,9 +21,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -117,38 +117,81 @@ object BrokerLoopback {
     }
 
     private fun handleConn(socket: Socket, router: BrokerRouter) {
-        socket.use { s ->
-            val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
-            val requestLine = reader.readLine() ?: return
-            val parts = requestLine.split(" ")
-            if (parts.size < 2) return
-            val method = parts[0]
-            val path = parts[1].substringBefore('?')
-            var contentLength = 0
-            while (true) {
-                val line = reader.readLine() ?: break
-                if (line.isEmpty()) break
-                if (line.startsWith("Content-Length:", ignoreCase = true)) {
-                    contentLength = line.substringAfter(':').trim().toIntOrNull() ?: 0
-                }
+        try {
+            socket.use { s ->
+                val output = s.getOutputStream()
+                val request = readBrokerHttpRequest(s.getInputStream(), output) ?: return
+                val resp = router.handle(request.method, request.path, request.body)
+                val bodyBytes = resp.body.toByteArray(Charsets.UTF_8)
+                val header =
+                    "HTTP/1.1 ${resp.status} OK\r\n" +
+                        "Content-Type: application/json\r\n" +
+                        "Content-Length: ${bodyBytes.size}\r\n" +
+                        "Connection: close\r\n\r\n"
+                output.write(header.toByteArray(Charsets.US_ASCII))
+                output.write(bodyBytes)
+                output.flush()
             }
-            val bodyChars = CharArray(contentLength.coerceAtMost(1 shl 20))
-            var read = 0
-            while (read < bodyChars.size) {
-                val n = reader.read(bodyChars, read, bodyChars.size - read)
-                if (n < 0) break
-                read += n
-            }
-            val body = String(bodyChars, 0, read)
-            val resp = router.handle(method, path, body)
-            OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8).use { out ->
-                out.write("HTTP/1.1 ${resp.status} OK\r\n")
-                out.write("Content-Type: application/json\r\n")
-                out.write("Content-Length: ${resp.body.toByteArray(Charsets.UTF_8).size}\r\n")
-                out.write("Connection: close\r\n\r\n")
-                out.write(resp.body)
-                out.flush()
-            }
+        } catch (e: Exception) {
+            AppLog.error(feature = "broker-loopback", message = "connection failed", error = e)
         }
     }
+}
+
+internal data class BrokerHttpRequest(
+    val method: String,
+    val path: String,
+    val body: String,
+)
+
+internal fun readBrokerHttpRequest(input: InputStream, output: OutputStream): BrokerHttpRequest? {
+    val requestLine = readAsciiLine(input) ?: return null
+    val parts = requestLine.split(" ")
+    if (parts.size < 2) return null
+    var contentLength = 0
+    var expectContinue = false
+    while (true) {
+        val line = readAsciiLine(input) ?: break
+        if (line.isEmpty()) break
+        if (line.startsWith("Content-Length:", ignoreCase = true)) {
+            contentLength = line.substringAfter(':').trim().toIntOrNull() ?: 0
+        }
+        if (line.startsWith("Expect:", ignoreCase = true) &&
+            line.substringAfter(':').trim().equals("100-continue", ignoreCase = true)
+        ) {
+            expectContinue = true
+        }
+    }
+    if (expectContinue) {
+        output.write("HTTP/1.1 100 Continue\r\n\r\n".toByteArray(Charsets.US_ASCII))
+        output.flush()
+        AppLog.info(
+            feature = "broker-loopback",
+            message = "sent 100 continue",
+            fields = mapOf("content_length" to contentLength.toString()),
+        )
+    }
+    val bodyBytes = ByteArray(contentLength.coerceIn(0, 1 shl 20))
+    var read = 0
+    while (read < bodyBytes.size) {
+        val count = input.read(bodyBytes, read, bodyBytes.size - read)
+        if (count < 0) break
+        read += count
+    }
+    return BrokerHttpRequest(
+        method = parts[0],
+        path = parts[1].substringBefore('?'),
+        body = String(bodyBytes, 0, read, Charsets.UTF_8),
+    )
+}
+
+private fun readAsciiLine(input: InputStream): String? {
+    val buffer = ByteArrayOutputStream(128)
+    while (true) {
+        val next = input.read()
+        if (next < 0) return if (buffer.size() == 0) null else buffer.toString(Charsets.US_ASCII)
+        if (next == '\n'.code) break
+        if (next != '\r'.code) buffer.write(next)
+    }
+    return buffer.toString(Charsets.US_ASCII)
 }
