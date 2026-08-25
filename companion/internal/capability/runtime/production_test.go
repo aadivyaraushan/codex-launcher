@@ -298,6 +298,29 @@ func (*fakeProductionBeeper) Send(context.Context, string, string) (beeper.Sent,
 	return beeper.Sent{ChatID: "chat-1", PendingMessageID: "pending-1"}, nil
 }
 
+// Read and manage surface (B2). This fake only needs to satisfy the widened
+// beepermessage.API so the production registry builds; the behavioral read and
+// manage tests live in the beepermessage package against a richer fake.
+func (*fakeProductionBeeper) ListChats(context.Context, beeper.ListChatsOptions) ([]beeper.Chat, error) {
+	return nil, nil
+}
+func (*fakeProductionBeeper) ListMessages(context.Context, string, int) ([]beeper.Message, error) {
+	return nil, nil
+}
+func (*fakeProductionBeeper) Reply(context.Context, string, string, string) (beeper.Sent, error) {
+	return beeper.Sent{ChatID: "chat-1", PendingMessageID: "pending-1"}, nil
+}
+func (*fakeProductionBeeper) EditMessage(context.Context, string, string, string) error { return nil }
+func (*fakeProductionBeeper) DeleteMessage(context.Context, string, string) error       { return nil }
+func (*fakeProductionBeeper) React(context.Context, string, string, string) error       { return nil }
+func (*fakeProductionBeeper) Unreact(context.Context, string, string, string) error     { return nil }
+func (*fakeProductionBeeper) MarkRead(context.Context, string) error                    { return nil }
+func (*fakeProductionBeeper) MarkUnread(context.Context, string) error                  { return nil }
+func (*fakeProductionBeeper) Archive(context.Context, string, bool) error               { return nil }
+func (*fakeProductionBeeper) UpdateChat(context.Context, string, beeper.ChatState) error { return nil }
+func (*fakeProductionBeeper) SetReminder(context.Context, string, string) error         { return nil }
+func (*fakeProductionBeeper) ClearReminder(context.Context, string) error               { return nil }
+
 func TestBeeperConnectionReplacesTheThreeMessagingHandoffsWithConfirmedSendAdapters(t *testing.T) {
 	_, inv, err := NewProduction(ProductionConfig{
 		Model: stubModel, Logger: quietLogger(), BeeperAPI: &fakeProductionBeeper{},

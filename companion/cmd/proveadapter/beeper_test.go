@@ -41,6 +41,28 @@ func (a *recordingBeeperAPI) Send(context.Context, string, string) (beeper.Sent,
 	return beeper.Sent{ChatID: "chat-1", PendingMessageID: "pending-1"}, nil
 }
 
+func (a *recordingBeeperAPI) ListChats(context.Context, beeper.ListChatsOptions) ([]beeper.Chat, error) {
+	return nil, nil
+}
+func (a *recordingBeeperAPI) ListMessages(context.Context, string, int) ([]beeper.Message, error) {
+	return nil, nil
+}
+func (a *recordingBeeperAPI) Reply(context.Context, string, string, string) (beeper.Sent, error) {
+	return beeper.Sent{ChatID: "chat-1", PendingMessageID: "pending-1"}, nil
+}
+func (a *recordingBeeperAPI) EditMessage(context.Context, string, string, string) error { return nil }
+func (a *recordingBeeperAPI) DeleteMessage(context.Context, string, string) error       { return nil }
+func (a *recordingBeeperAPI) React(context.Context, string, string, string) error       { return nil }
+func (a *recordingBeeperAPI) Unreact(context.Context, string, string, string) error     { return nil }
+func (a *recordingBeeperAPI) MarkRead(context.Context, string) error                    { return nil }
+func (a *recordingBeeperAPI) MarkUnread(context.Context, string) error                  { return nil }
+func (a *recordingBeeperAPI) Archive(context.Context, string, bool) error               { return nil }
+func (a *recordingBeeperAPI) UpdateChat(context.Context, string, beeper.ChatState) error {
+	return nil
+}
+func (a *recordingBeeperAPI) SetReminder(context.Context, string, string) error { return nil }
+func (a *recordingBeeperAPI) ClearReminder(context.Context, string) error       { return nil }
+
 func TestBeeperProofRefusesToSendWithoutExplicitApproval(t *testing.T) {
 	api := &recordingBeeperAPI{}
 	err := proveBeeper(context.Background(), api, beeperProofConfig{

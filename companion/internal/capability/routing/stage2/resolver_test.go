@@ -195,6 +195,66 @@ func TestResolvedByAdapterPassesTheUnchangedPersonNameToOneNamedAdapter(t *testi
 	}
 }
 
+// B4. The canonical misroute at the routing layer. "What's my most recent
+// unread Instagram message" reaches stage 2 as a Read on beeper_messaging,
+// named instagram, with an empty subject (the unread scan carries no
+// recipient). Before the adapter declared Read it was filtered out by the verb
+// gate and the whole class dead-ended; now it must survive the gate, resolve to
+// the named network without asking, invent no handle (the adapter runs its own
+// unread scan), and carry no preview requirement, since a read changes nothing.
+func TestAnUnreadReadOnANamedBeeperNetworkResolvesToItWithNoHandleOrPreview(t *testing.T) {
+	reg := registry.New()
+	if err := reg.Register(adapterFor("instagram", manifest.Read, manifest.Send, manifest.Modify, manifest.Cancel)); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	resolver := New(reg, contacts.NewGraph(func() time.Time { return now }), ClassMap{
+		"beeper_messaging": {Adapters: []string{"instagram"}, Addressing: ResolvedByAdapter},
+	}, manifest.PlatformAndroid)
+	rt := route(manifest.Read, "beeper_messaging", "", 0.95)
+	rt.AppNamed = "instagram"
+
+	got, err := resolver.Resolve(t.Context(), rt)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.MustAsk {
+		t.Fatalf("an unread read asked %q instead of routing to instagram", got.Question)
+	}
+	if got.AdapterID != "instagram" {
+		t.Fatalf("resolved to %q, want instagram", got.AdapterID)
+	}
+	if got.Handle != "" {
+		t.Fatalf("stage 2 invented a handle %q before the adapter scanned unread", got.Handle)
+	}
+	if got.RequiresPreview {
+		t.Error("a read carries a preview requirement")
+	}
+}
+
+// A read on beeper_messaging that names no network cannot be silently guessed:
+// three networks declare Read, so the resolver must ask which one rather than
+// leaking one network's unread into another (the class-scoping half of the
+// canonical bug).
+func TestAnUnnamedBeeperReadAcrossSeveralNetworksAsks(t *testing.T) {
+	reg := registry.New()
+	for _, id := range []string{"instagram", "discord", "messages"} {
+		if err := reg.Register(adapterFor(id, manifest.Read, manifest.Send)); err != nil {
+			t.Fatalf("Register(%s): %v", id, err)
+		}
+	}
+	resolver := New(reg, contacts.NewGraph(func() time.Time { return now }), ClassMap{
+		"beeper_messaging": {Adapters: []string{"instagram", "discord", "messages"}, Addressing: ResolvedByAdapter},
+	}, manifest.PlatformAndroid)
+
+	got, err := resolver.Resolve(t.Context(), route(manifest.Read, "beeper_messaging", "", 0.95))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !got.MustAsk {
+		t.Fatalf("guessed %s among three networks instead of asking", got.AdapterID)
+	}
+}
+
 // ---- the doors stay shut ------------------------------------------------
 
 func TestASwitchedOffAdapterIsNeverRoutedTo(t *testing.T) {
@@ -257,5 +317,89 @@ func TestNamedSlotsSurviveIntoTheDecision(t *testing.T) {
 	}
 	if decision.Fields["origin"] != "home" || decision.Fields["destination"] != "SFO" {
 		t.Fatalf("decision fields=%v, want both endpoints", decision.Fields)
+	}
+}
+
+// handsOffMessaging registers one deep-link messaging surface: it can only
+// open the app and hand over a draft (Ceiling HandsOff), and it never
+// consumes a resolved handle. The class is addressed ToAPerson, exactly as
+// production wires the deep-link messaging pack.
+func handsOffMessaging(t *testing.T, verb manifest.Verb, entries ...contacts.Entry) *Resolver {
+	t.Helper()
+	reg := registry.New()
+	a := adapterFor("whatsapp", verb)
+	a.m.Ceiling = manifest.HandsOff
+	if err := reg.Register(a); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	graph := contacts.NewGraph(func() time.Time { return now })
+	for _, e := range entries {
+		graph.Add(e)
+	}
+	classes := ClassMap{"messaging": {Adapters: []string{"whatsapp"}, Addressing: ToAPerson}}
+	return New(reg, graph, classes, manifest.PlatformAndroid)
+}
+
+// A hand-off surface can never turn a resolved handle into a sent message —
+// it only opens the app with the subject as a hint. Resolving it against the
+// (permanently empty on the phone) contact graph can therefore only dead-end.
+// When the one surviving adapter tops out at HandsOff, the resolver must hand
+// off the same way a ToAThing class does, not ask "I don't know how to reach
+// X." This is Fix 2: it turns every deep-link messaging and money dead-end
+// into the open-the-app hand-off that is that tier's honest ceiling.
+func TestAHandsOffPersonSurfaceOpensTheAppInsteadOfDeadEndingOnEmptyContacts(t *testing.T) {
+	r := handsOffMessaging(t, manifest.Compose) // empty graph, as the phone always is
+
+	got, err := r.Resolve(context.Background(), route(manifest.Compose, "messaging", "my mom", 0.95))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.MustAsk {
+		t.Fatalf("hand-off surface asked %q instead of opening the app", got.Question)
+	}
+	if got.AdapterID != "whatsapp" {
+		t.Fatalf("AdapterID = %q, want whatsapp", got.AdapterID)
+	}
+	if got.Handle != "" {
+		t.Errorf("a hand-off decision carries a handle %q; the app resolves the recipient itself", got.Handle)
+	}
+}
+
+// The subject the router produced must survive onto the hand-off decision so
+// the adapter can show it as the "for: X" hint. The resolver does not put the
+// subject on the Decision (flow passes route.Subject straight through), so the
+// only guarantee here is that the hand-off does not blank or rewrite anything
+// downstream needs — it returns an executable decision, not a question.
+func TestAHandsOffPersonSurfaceDecisionIsExecutable(t *testing.T) {
+	r := handsOffMessaging(t, manifest.Compose)
+
+	got, err := r.Resolve(context.Background(), route(manifest.Compose, "messaging", "Jordan", 0.95))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.MustAsk || got.AdapterID == "" {
+		t.Fatalf("want an executable hand-off decision, got %+v", got)
+	}
+}
+
+// Fix 2 must be scoped to hand-off surfaces only. A surface that can actually
+// complete the send (Ceiling Completes) genuinely needs the person resolved;
+// with an empty graph it must still ask, never silently hand off to an app
+// that would then send to nobody.
+func TestACompletesPersonSurfaceStillAsksOnEmptyContacts(t *testing.T) {
+	reg := registry.New()
+	if err := reg.Register(adapterFor("sms", manifest.Send)); err != nil { // Ceiling defaults to Completes
+		t.Fatalf("Register: %v", err)
+	}
+	graph := contacts.NewGraph(func() time.Time { return now })
+	classes := ClassMap{"messaging": {Adapters: []string{"sms"}, Addressing: ToAPerson}}
+	r := New(reg, graph, classes, manifest.PlatformAndroid)
+
+	got, err := r.Resolve(context.Background(), route(manifest.Send, "messaging", "Alex", 0.95))
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !got.MustAsk {
+		t.Fatalf("a Completes surface with an empty graph handed off instead of asking: %+v", got)
 	}
 }

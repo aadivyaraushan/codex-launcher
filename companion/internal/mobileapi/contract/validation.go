@@ -877,6 +877,14 @@ func validateTranscriptEntry(entry map[string]json.RawMessage) bool {
 	switch stringValue(entry["kind"]) {
 	case "user", "agent", "reasoning", "plan", "activity":
 		return exactKeys(entry, "id", "turnId", "kind", "text") && boundedString(entry["text"], MaxTranscriptEntryRunes)
+	case "message":
+		// A message entry renders one received chat message as its own row:
+		// the sender's display name, the body text (which may span multiple
+		// lines), and when it was sent.
+		return exactKeys(entry, "id", "turnId", "kind", "sender", "text", "sentAt") &&
+			safeDisplayString(entry["sender"], 256) &&
+			boundedString(entry["text"], MaxTranscriptEntryRunes) &&
+			validRFC3339(stringValue(entry["sentAt"]))
 	case "command":
 		return onlyAllowedKeys(entry, "id", "turnId", "kind", "status", "command", "output") &&
 			knownTranscriptStatus(stringValue(entry["status"])) && boundedString(entry["command"], MaxTranscriptEntryRunes) &&
@@ -1109,7 +1117,7 @@ func knownCapabilityCeiling(value string) bool {
 
 func knownDeviceActionKind(value string) bool {
 	switch value {
-	case "notification_reply", "youtube_play":
+	case "notification_reply", "youtube_play", "open_page":
 		return true
 	default:
 		return false

@@ -285,6 +285,20 @@ func (r *Resolver) Resolve(_ context.Context, route stage1.Route) (Decision, err
 	}
 
 	if class.Addressing == ToAPerson {
+		// A hand-off surface never turns a resolved handle into a sent
+		// message — it only opens the app with the subject as a hint (see
+		// adapters/deeplink). Resolving it against the contact graph, a
+		// directory it never reads, can only dead-end. So when the one
+		// surviving adapter tops out at HandsOff, hand off exactly as a
+		// ToAThing class would: take the survivor and pass the subject
+		// through unresolved, rather than asking "I don't know how to reach X."
+		if len(survivors) == 1 {
+			if ceiling, _, err := r.reg.EffectiveCeiling(survivors[0]); err == nil && ceiling == manifest.HandsOff {
+				dec.AdapterID = survivors[0]
+				return dec, nil
+			}
+		}
+
 		contactDec := r.graph.Resolve(route.Subject, namedAdapter)
 		if contactDec.MustAsk {
 			dec.MustAsk = true

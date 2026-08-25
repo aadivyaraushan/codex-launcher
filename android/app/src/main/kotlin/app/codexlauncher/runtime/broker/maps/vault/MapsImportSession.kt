@@ -13,6 +13,7 @@ import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.runtime.broker.maps.envelope.MapsCredentialEnvelope
 import app.codexlauncher.runtime.broker.maps.envelope.MapsEnvelopeMeta
 import app.codexlauncher.runtime.broker.maps.envelope.SealedMapsEnvelope
+import app.codexlauncher.runtime.broker.openai.vault.OpenAiApiKeyVault
 import org.json.JSONObject
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -24,6 +25,7 @@ import java.util.UUID
 
 data class MapsImportOffer(
     val importId: String,
+    val provider: String,
     val expiresAtUnix: Long,
     val deviceSerial: String,
     val packageName: String,
@@ -37,6 +39,7 @@ object MapsImportSession {
     fun createOffer(
         context: Context,
         deviceSerial: String,
+        provider: String = "maps",
         nowUnix: Long = System.currentTimeMillis() / 1000,
         ttlSeconds: Long = 600,
     ): MapsImportOffer {
@@ -56,6 +59,7 @@ object MapsImportSession {
         val offer =
             MapsImportOffer(
                 importId = importId,
+                provider = provider,
                 expiresAtUnix = nowUnix + ttlSeconds,
                 deviceSerial = deviceSerial,
                 packageName = context.packageName,
@@ -68,6 +72,7 @@ object MapsImportSession {
                 .edit()
                 .putString("pending_import_id", importId)
                 .putString("pending_import_alias", alias)
+                .putString("pending_provider", provider)
                 .putLong("pending_import_expires", offer.expiresAtUnix)
                 .putString("pending_device_serial", deviceSerial)
                 .putString("pending_signing_digest", digest)
@@ -76,7 +81,7 @@ object MapsImportSession {
         AppLog.info(
             feature = "maps-broker",
             message = "maps import offer created",
-            fields = mapOf("import_id" to importId, "expires_at" to offer.expiresAtUnix.toString()),
+            fields = mapOf("import_id" to importId, "provider" to provider, "expires_at" to offer.expiresAtUnix.toString()),
         )
         return offer
     }
@@ -84,7 +89,7 @@ object MapsImportSession {
     fun offerToJson(offer: MapsImportOffer): String =
         JSONObject()
             .put("v", 1)
-            .put("provider", "maps")
+            .put("provider", offer.provider)
             .put("importId", offer.importId)
             .put("expiresAtUnix", offer.expiresAtUnix)
             .put("deviceSerial", offer.deviceSerial)
@@ -115,10 +120,15 @@ object MapsImportSession {
                 packageName = root.getString("packageName"),
                 signingDigestSha256 = root.getString("signingDigestSha256"),
             )
+        // The provider to expect (and to route the decrypted key into) comes
+        // from THIS device's own pending-offer state, never from the sealed
+        // JSON's own claim -- otherwise a forged envelope could pick its own
+        // provider and land wherever it wants.
+        val pendingProvider = prefs.getString("pending_provider", "maps") ?: "maps"
         val expected =
             MapsEnvelopeMeta(
                 importId = importId,
-                provider = "maps",
+                provider = pendingProvider,
                 expiresAtUnix = meta.expiresAtUnix,
                 deviceSerial = prefs.getString("pending_device_serial", "") ?: "",
                 packageName = context.packageName,
@@ -137,19 +147,24 @@ object MapsImportSession {
         val apiKeyBytes = MapsCredentialEnvelope.open(privateKey, sealed, expected, nowUnix)
         val apiKey = String(apiKeyBytes, Charsets.UTF_8)
         apiKeyBytes.fill(0)
-        MapsApiKeyVault.android(context).putApiKey(apiKey)
+        when (pendingProvider) {
+            "maps" -> MapsApiKeyVault.android(context).putApiKey(apiKey)
+            "openai" -> OpenAiApiKeyVault.android(context).putApiKey(apiKey)
+            else -> error("unsupported_import_provider")
+        }
         prefs.edit()
             .remove("pending_import_id")
             .remove("pending_import_alias")
             .remove("pending_import_expires")
+            .remove("pending_provider")
             .remove("pending_device_serial")
             .remove("pending_signing_digest")
             .commit()
         runCatching { ks.deleteEntry(alias) }
         AppLog.info(
             feature = "maps-broker",
-            message = "maps envelope imported into vault",
-            fields = mapOf("import_id" to importId, "has_key" to "true"),
+            message = "envelope imported into vault",
+            fields = mapOf("import_id" to importId, "provider" to pendingProvider, "has_key" to "true"),
         )
     }
 

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 )
@@ -102,15 +103,28 @@ func (p Preview) Fingerprint() string {
 	return p.Plan.Fingerprint()
 }
 
+// OutcomeMessage is one received message a read outcome carries alongside
+// its flattened Detail sentence, so a thread UI can render it as its own
+// chat row instead of re-parsing Detail's "sender: text · …" string.
+type OutcomeMessage struct {
+	Sender string
+	Text   string
+	SentAt time.Time
+}
+
 // Outcome is what actually happened when a plan was executed. Reached is
 // the ceiling actually reached, which may be lower than the manifest's
 // declared ceiling; Done is true only when the request fully completed
 // on-device; HandedOffTo names the app control was handed to, when it was.
+// Messages carries the structured rows behind a read's Detail sentence, when
+// the adapter has them; Detail remains the fallback and the desktop
+// rendering regardless.
 type Outcome struct {
 	Reached     manifest.Ceiling
 	Done        bool
 	HandedOffTo string
 	Detail      string
+	Messages    []OutcomeMessage
 }
 
 // Adapter is the contract every capability adapter implements.

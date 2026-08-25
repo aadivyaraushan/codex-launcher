@@ -193,6 +193,25 @@ func (s stubBeeper) Send(context.Context, string, string) (beeper.Sent, error) {
 	}
 	return beeper.Sent{ChatID: "contract-chat", PendingMessageID: "contract-pending"}, nil
 }
+func (s stubBeeper) ListChats(context.Context, beeper.ListChatsOptions) ([]beeper.Chat, error) {
+	return nil, s.err
+}
+func (s stubBeeper) ListMessages(context.Context, string, int) ([]beeper.Message, error) {
+	return nil, s.err
+}
+func (s stubBeeper) Reply(context.Context, string, string, string) (beeper.Sent, error) {
+	return beeper.Sent{ChatID: "contract-chat", PendingMessageID: "contract-pending"}, s.err
+}
+func (s stubBeeper) EditMessage(context.Context, string, string, string) error { return s.err }
+func (s stubBeeper) DeleteMessage(context.Context, string, string) error       { return s.err }
+func (s stubBeeper) React(context.Context, string, string, string) error       { return s.err }
+func (s stubBeeper) Unreact(context.Context, string, string, string) error     { return s.err }
+func (s stubBeeper) MarkRead(context.Context, string) error                    { return s.err }
+func (s stubBeeper) MarkUnread(context.Context, string) error                  { return s.err }
+func (s stubBeeper) Archive(context.Context, string, bool) error               { return s.err }
+func (s stubBeeper) UpdateChat(context.Context, string, beeper.ChatState) error { return s.err }
+func (s stubBeeper) SetReminder(context.Context, string, string) error         { return s.err }
+func (s stubBeeper) ClearReminder(context.Context, string) error               { return s.err }
 
 // ---- building the whole set ----------------------------------------------
 

@@ -31,6 +31,11 @@ const (
 	KindCommand    Kind = "command"
 	KindFileChange Kind = "file_change"
 	KindActivity   Kind = "activity"
+	// KindMessage renders one received chat message as its own row: sender,
+	// body text, and when it was sent. The wire requires exactly
+	// {id, turnId, kind, sender, text, sentAt} for this kind
+	// (contract/validation.go:880-887).
+	KindMessage Kind = "message"
 )
 
 type PageOptions struct {
@@ -55,6 +60,11 @@ type Entry struct {
 	Command string       `json:"command,omitempty"`
 	Output  string       `json:"output,omitempty"`
 	Changes []FileChange `json:"changes,omitempty"`
+	// Sender and SentAt are set only on KindMessage entries: the display name
+	// of who sent the message, and when, as an RFC3339 string
+	// (contract/validation.go:884-887 requires both, present only for "message").
+	Sender string `json:"sender,omitempty"`
+	SentAt string `json:"sentAt,omitempty"`
 }
 
 type FileChange struct {
@@ -150,20 +160,40 @@ func mapPage(thread rawThread, options PageOptions, allowLegacyTurns bool) (Page
 		start = 0
 	}
 	page := Page{TaskID: options.TaskID, Entries: append([]Entry(nil), entries[start:end]...)}
+	if start > 0 && len(page.Entries) != 0 {
+		page.EarlierCursor = page.Entries[0].ID
+	}
+	return BoundPageForWire(page), nil
+}
+
+// BoundPageForWire enforces the two wire limits contract/validation.go and
+// EncodeText impose on a task_page frame: no entry's text/command/output may
+// exceed MaxEntryRunes, and the encoded frame may not exceed maxPageBytes.
+// Every source of transcript pages (the desktop/app-server mapper here, and
+// the phone-side thread store) must run its page through this before
+// returning it, or an oversized entry or an oversized page becomes
+// unencodable and the whole page fails to reach the client.
+//
+// Individual entries are clipped first via boundEntry. If the page as a
+// whole is still too big, the oldest entries are dropped one at a time
+// (newest entries are what a resumed conversation needs first) until it
+// fits, and EarlierCursor is kept pointing at the earliest entry still
+// present so the dropped entries stay reachable by paging further back.
+// Either kind of clipping sets Truncated so the client knows the page is
+// incomplete. The input page's Entries slice is consumed and returned as
+// part of the result, not aliased by the caller afterward.
+func BoundPageForWire(page Page) Page {
 	for index := range page.Entries {
 		bounded, wasTruncated := boundEntry(page.Entries[index])
 		page.Entries[index] = bounded
 		page.Truncated = page.Truncated || wasTruncated
-	}
-	if start > 0 && len(page.Entries) != 0 {
-		page.EarlierCursor = page.Entries[0].ID
 	}
 	for encodedPageBytes(page) > maxPageBytes && len(page.Entries) > 1 {
 		page.Entries = page.Entries[1:]
 		page.EarlierCursor = page.Entries[0].ID
 		page.Truncated = true
 	}
-	return page, nil
+	return page
 }
 
 func mapItem(raw json.RawMessage, turnID string) (Entry, error) {

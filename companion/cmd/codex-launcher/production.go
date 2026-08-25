@@ -93,11 +93,19 @@ func startProductionCapabilityFlow(ctx context.Context, output io.Writer) (mobil
 	var beeperAPI *beeper.Client
 	beeperToken := strings.TrimSpace(os.Getenv("BEEPER_ACCESS_TOKEN"))
 	beeperReadOnly := envEnabled(os.Getenv("BEEPER_READONLY"))
-	if beeperToken != "" && !beeperReadOnly {
-		beeperAPI = beeper.NewClient(os.Getenv("BEEPER_DESKTOP_BASE_URL"), beeper.StaticToken(beeperToken), nil, logger)
-		logger.Info("[production-serve] Beeper messaging enabled", "write_enabled", true, "token_present", true)
+	if beeperToken != "" {
+		client := beeper.NewClient(os.Getenv("BEEPER_DESKTOP_BASE_URL"), beeper.StaticToken(beeperToken), nil, logger)
+		// Read-only mode keeps reads working and only refuses writes, rather
+		// than disabling Beeper entirely.
+		if beeperReadOnly {
+			beeperAPI = client.ReadOnly()
+			logger.Info("[production-serve] Beeper messaging enabled read-only", "write_enabled", false, "token_present", true)
+		} else {
+			beeperAPI = client
+			logger.Info("[production-serve] Beeper messaging enabled", "write_enabled", true, "token_present", true)
+		}
 	} else {
-		logger.Info("[production-serve] Beeper messaging unavailable", "token_present", beeperToken != "", "read_only", beeperReadOnly)
+		logger.Info("[production-serve] Beeper messaging unavailable", "token_present", false, "read_only", beeperReadOnly)
 	}
 	service, inventory, err := capabilityruntime.NewProduction(capabilityruntime.ProductionConfig{
 		Model:             routingModel,

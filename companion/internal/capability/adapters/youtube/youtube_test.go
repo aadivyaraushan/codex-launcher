@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -116,7 +117,7 @@ func TestPlayResolvesAndHandsTheExactVideoToThePixel(t *testing.T) {
 	if !errors.As(err, &deviceWork) {
 		t.Fatalf("execute error = %v, want DeviceWorkError", err)
 	}
-	if out != (adapter.Outcome{}) {
+	if !reflect.DeepEqual(out, adapter.Outcome{}) {
 		t.Fatalf("execute claimed an outcome before the phone answered: %+v", out)
 	}
 	if deviceWork.AdapterID != ID || deviceWork.Kind != "youtube_play" {

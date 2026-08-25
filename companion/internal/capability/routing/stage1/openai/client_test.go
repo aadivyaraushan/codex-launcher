@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1836,4 +1838,133 @@ func contains(list any, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestBrokeredModelSendsNoAuthorizationHeaderAndHitsBrokerPath(t *testing.T) {
+	var gotPath, gotMethod, gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotAuth = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		_, _ = io.WriteString(w, `{"id":"resp_1","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"verb\":\"read\",\"app_class\":\"beeper_messaging\",\"app_named\":\"instagram\",\"subject\":\"\",\"body\":\"\",\"confidence\":0.9}"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`)
+	}))
+	defer server.Close()
+
+	client, err := NewBrokered(server.URL, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewBrokered: %v", err)
+	}
+	if _, err := client.Model(context.Background(), "what's my unread Instagram message"); err != nil {
+		t.Fatalf("Model: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method=%q, want POST", gotMethod)
+	}
+	if gotPath != "/v1/broker/openai/responses" {
+		t.Fatalf("path=%q, want /v1/broker/openai/responses", gotPath)
+	}
+	if gotAuth != "" {
+		t.Fatalf("authorization=%q, want no Authorization header on the brokered path", gotAuth)
+	}
+}
+
+func TestBrokeredModelParsesRouteJSONIdenticallyToKeyedPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"id":"resp_1","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"verb\":\"read\",\"app_class\":\"beeper_messaging\",\"app_named\":\"instagram\",\"subject\":\"\",\"body\":\"\",\"confidence\":0.9}"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`)
+	}))
+	defer server.Close()
+
+	client, err := NewBrokered(server.URL, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewBrokered: %v", err)
+	}
+	router := stage1.New(client.Model)
+	route, err := router.Route(context.Background(), "what's my unread Instagram message")
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if route.Verb != manifest.Read || route.AppClass != "beeper_messaging" || route.AppNamed != "instagram" {
+		t.Fatalf("route=%+v", route)
+	}
+}
+
+func TestBrokeredStatusReturnsKeyedBool(t *testing.T) {
+	for _, keyed := range []bool{true, false} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet || r.URL.Path != "/v1/broker/openai/status" {
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+			_, _ = io.WriteString(w, `{"keyed":`+boolJSON(keyed)+`}`)
+		}))
+
+		client, err := NewBrokered(server.URL, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err != nil {
+			t.Fatalf("NewBrokered: %v", err)
+		}
+		got, err := client.Status(context.Background())
+		if err != nil {
+			t.Fatalf("Status: %v", err)
+		}
+		if got != keyed {
+			t.Fatalf("Status()=%v, want %v", got, keyed)
+		}
+		server.Close()
+	}
+}
+
+func boolJSON(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+func TestBrokeredModelReturnsErrRouterNotProvisionedOnNoKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, `{"error":"no_key"}`)
+	}))
+	defer server.Close()
+
+	client, err := NewBrokered(server.URL, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewBrokered: %v", err)
+	}
+	if _, err := client.Model(context.Background(), "what's my unread Instagram message"); !errors.Is(err, ErrRouterNotProvisioned) {
+		t.Fatalf("Model err=%v, want ErrRouterNotProvisioned", err)
+	}
+}
+
+func TestBrokeredModelReturnsErrRouterUnreachableOnTransportFailureAndPlainServerError(t *testing.T) {
+	t.Run("transport failure", func(t *testing.T) {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("net.Listen: %v", err)
+		}
+		deadURL := "http://" + listener.Addr().String()
+		if err := listener.Close(); err != nil {
+			t.Fatalf("Listener.Close: %v", err)
+		}
+
+		client, err := NewBrokered(deadURL, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err != nil {
+			t.Fatalf("NewBrokered: %v", err)
+		}
+		if _, err := client.Model(context.Background(), "utterance"); !errors.Is(err, ErrRouterUnreachable) {
+			t.Fatalf("Model err=%v, want ErrRouterUnreachable", err)
+		}
+	})
+
+	t.Run("plain 500", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer server.Close()
+
+		client, err := NewBrokered(server.URL, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err != nil {
+			t.Fatalf("NewBrokered: %v", err)
+		}
+		if _, err := client.Model(context.Background(), "utterance"); !errors.Is(err, ErrRouterUnreachable) {
+			t.Fatalf("Model err=%v, want ErrRouterUnreachable", err)
+		}
+	})
 }

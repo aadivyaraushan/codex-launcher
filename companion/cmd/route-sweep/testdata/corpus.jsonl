@@ -1,0 +1,111 @@
+{"utterance":"send a message on Venmo","expected_app":"venmo","expected_class":"money","expected_verb":"compose","beeper":"both","note":"auto: venmo compose coverage"}
+{"utterance":"send a message on Cash App","expected_app":"cashapp","expected_class":"money","expected_verb":"compose","beeper":"both","note":"auto: cashapp compose coverage"}
+{"utterance":"send a message on Zelle","expected_app":"zelle","expected_class":"money","expected_verb":"compose","beeper":"both","note":"auto: zelle compose coverage"}
+{"utterance":"order something from Starbucks","expected_app":"starbucks","expected_class":"food","expected_verb":"order","beeper":"both","note":"auto: starbucks order coverage"}
+{"utterance":"order something from Chipotle","expected_app":"chipotle","expected_class":"food","expected_verb":"order","beeper":"both","note":"auto: chipotle order coverage"}
+{"utterance":"play something on Spotify","expected_app":"spotify","expected_class":"media","expected_verb":"play","beeper":"both","note":"auto: spotify play coverage"}
+{"utterance":"add a note in Spotify","expected_app":"spotify","expected_class":"media","expected_verb":"write","beeper":"both","note":"auto: spotify write coverage"}
+{"utterance":"check my Audible","expected_app":"audible","expected_class":"media","expected_verb":"read","beeper":"both","note":"auto: audible read coverage"}
+{"utterance":"play something on Audible","expected_app":"audible","expected_class":"media","expected_verb":"play","beeper":"both","note":"auto: audible play coverage"}
+{"utterance":"play something on Apple Music","expected_app":"applemusic","expected_class":"media","expected_verb":"play","beeper":"both","note":"auto: applemusic play coverage"}
+{"utterance":"add a note in Apple Music","expected_app":"applemusic","expected_class":"media","expected_verb":"write","beeper":"both","note":"auto: applemusic write coverage"}
+{"utterance":"send a message on Messages","expected_app":"messages","expected_class":"messaging","expected_verb":"compose","beeper":"off","note":"auto: messages compose coverage (Beeper off)"}
+{"utterance":"send a message on Messages","expected_app":"messages","expected_class":"beeper_messaging","expected_verb":"send","beeper":"on","note":"auto: messages taken over by Beeper (beeper_messaging/send)"}
+{"utterance":"send a message on Discord","expected_app":"discord","expected_class":"messaging","expected_verb":"compose","beeper":"off","note":"auto: discord compose coverage (Beeper off)"}
+{"utterance":"send a message on Discord","expected_app":"discord","expected_class":"beeper_messaging","expected_verb":"send","beeper":"on","note":"auto: discord taken over by Beeper (beeper_messaging/send)"}
+{"utterance":"check my Uber","expected_app":"uber","expected_class":"rides","expected_verb":"read","beeper":"both","note":"auto: uber read coverage"}
+{"utterance":"check my Uber Eats","expected_app":"ubereats","expected_class":"food","expected_verb":"read","beeper":"both","note":"auto: ubereats read coverage"}
+{"utterance":"check my Resy","expected_app":"resy","expected_class":"food","expected_verb":"read","beeper":"both","note":"auto: resy read coverage"}
+{"utterance":"check my DoorDash","expected_app":"doordash","expected_class":"food","expected_verb":"read","beeper":"both","note":"auto: doordash read coverage"}
+{"utterance":"order something from DoorDash","expected_app":"doordash","expected_class":"food","expected_verb":"order","beeper":"both","note":"auto: doordash order coverage"}
+{"utterance":"check my Google Photos","expected_app":"googlephotos","expected_class":"media","expected_verb":"read","beeper":"both","note":"auto: googlephotos read coverage"}
+{"utterance":"add a note in Google Photos","expected_app":"googlephotos","expected_class":"media","expected_verb":"write","beeper":"both","note":"auto: googlephotos write coverage"}
+{"utterance":"send a message on Teams","expected_app":"teams","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: teams compose coverage"}
+{"utterance":"check my Booking.com","expected_app":"booking","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: booking read coverage"}
+{"utterance":"check my Tripadvisor","expected_app":"tripadvisor","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: tripadvisor read coverage"}
+{"utterance":"check my Viator","expected_app":"viator","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: viator read coverage"}
+{"utterance":"check my StubHub","expected_app":"stubhub","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: stubhub read coverage"}
+{"utterance":"check my AllTrails","expected_app":"alltrails","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: alltrails read coverage"}
+{"utterance":"send a message on Taskrabbit","expected_app":"taskrabbit","expected_class":"services","expected_verb":"compose","beeper":"both","note":"auto: taskrabbit compose coverage"}
+{"utterance":"send a message on Thumbtack","expected_app":"thumbtack","expected_class":"services","expected_verb":"compose","beeper":"both","note":"auto: thumbtack compose coverage"}
+{"utterance":"check my Credit Karma","expected_app":"creditkarma","expected_class":"finance","expected_verb":"read","beeper":"both","note":"auto: creditkarma read coverage"}
+{"utterance":"check my TurboTax","expected_app":"turbotax","expected_class":"finance","expected_verb":"read","beeper":"both","note":"auto: turbotax read coverage"}
+{"utterance":"check my Lyft","expected_app":"lyft","expected_class":"rides","expected_verb":"read","beeper":"both","note":"auto: lyft read coverage"}
+{"utterance":"add a note in Google Keep","expected_app":"googlekeep","expected_class":"notes","expected_verb":"write","beeper":"both","note":"auto: googlekeep write coverage"}
+{"utterance":"send a message on WhatsApp","expected_app":"whatsapp","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: whatsapp compose coverage"}
+{"utterance":"send a message on Messenger","expected_app":"messenger","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: messenger compose coverage"}
+{"utterance":"send a message on Signal","expected_app":"signal","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: signal compose coverage"}
+{"utterance":"check my Google Maps","expected_app":"googlemaps","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: googlemaps read coverage"}
+{"utterance":"add a note in Google Maps","expected_app":"googlemaps","expected_class":"travel","expected_verb":"write","beeper":"both","note":"auto: googlemaps write coverage"}
+{"utterance":"play something on Netflix","expected_app":"netflix","expected_class":"media","expected_verb":"play","beeper":"both","note":"auto: netflix play coverage"}
+{"utterance":"add a note in Netflix","expected_app":"netflix","expected_class":"media","expected_verb":"write","beeper":"both","note":"auto: netflix write coverage"}
+{"utterance":"send a message on Facebook","expected_app":"facebook","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: facebook compose coverage"}
+{"utterance":"check my United","expected_app":"united","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: united read coverage"}
+{"utterance":"check my Delta","expected_app":"delta","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: delta read coverage"}
+{"utterance":"check my Southwest","expected_app":"southwest","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: southwest read coverage"}
+{"utterance":"check my American Airlines","expected_app":"american","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: american read coverage"}
+{"utterance":"check my Citymapper","expected_app":"citymapper","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: citymapper read coverage"}
+{"utterance":"play something on YouTube","expected_app":"youtube","expected_class":"media","expected_verb":"play","beeper":"both","note":"auto: youtube play coverage"}
+{"utterance":"check my YouTube","expected_app":"youtube","expected_class":"media","expected_verb":"read","beeper":"both","note":"auto: youtube read coverage"}
+{"utterance":"check my Airbnb","expected_app":"airbnb","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: airbnb read coverage"}
+{"utterance":"check my OpenTable","expected_app":"opentable","expected_class":"food","expected_verb":"read","beeper":"both","note":"auto: opentable read coverage"}
+{"utterance":"check my Grubhub","expected_app":"grubhub","expected_class":"food","expected_verb":"read","beeper":"both","note":"auto: grubhub read coverage"}
+{"utterance":"order something from Grubhub","expected_app":"grubhub","expected_class":"food","expected_verb":"order","beeper":"both","note":"auto: grubhub order coverage"}
+{"utterance":"send a message on Threads","expected_app":"threads","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: threads compose coverage"}
+{"utterance":"send a message on TikTok","expected_app":"tiktok","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: tiktok compose coverage"}
+{"utterance":"check my Expedia","expected_app":"expedia","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: expedia read coverage"}
+{"utterance":"check my Target","expected_app":"target","expected_class":"shopping","expected_verb":"read","beeper":"both","note":"auto: target read coverage"}
+{"utterance":"check my Walmart","expected_app":"walmart","expected_class":"shopping","expected_verb":"read","beeper":"both","note":"auto: walmart read coverage"}
+{"utterance":"check my Nike","expected_app":"nike","expected_class":"shopping","expected_verb":"read","beeper":"both","note":"auto: nike read coverage"}
+{"utterance":"check my Sephora","expected_app":"sephora","expected_class":"shopping","expected_verb":"read","beeper":"both","note":"auto: sephora read coverage"}
+{"utterance":"check my Wayfair","expected_app":"wayfair","expected_class":"shopping","expected_verb":"read","beeper":"both","note":"auto: wayfair read coverage"}
+{"utterance":"check my Kayak","expected_app":"kayak","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: kayak read coverage"}
+{"utterance":"check my Priceline","expected_app":"priceline","expected_class":"travel","expected_verb":"read","beeper":"both","note":"auto: priceline read coverage"}
+{"utterance":"send a message on LinkedIn","expected_app":"linkedin","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: linkedin compose coverage"}
+{"utterance":"check my eBay","expected_app":"ebay","expected_class":"shopping","expected_verb":"read","beeper":"both","note":"auto: ebay read coverage"}
+{"utterance":"send a message on Pinterest","expected_app":"pinterest","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: pinterest compose coverage"}
+{"utterance":"check my Duolingo","expected_app":"duolingo","expected_class":"services","expected_verb":"read","beeper":"both","note":"auto: duolingo read coverage"}
+{"utterance":"check my Fitbit","expected_app":"fitbit","expected_class":"services","expected_verb":"read","beeper":"both","note":"auto: fitbit read coverage"}
+{"utterance":"check my Shazam","expected_app":"shazam","expected_class":"media","expected_verb":"read","beeper":"both","note":"auto: shazam read coverage"}
+{"utterance":"play something on Chromecast","expected_app":"chromecast","expected_class":"media","expected_verb":"play","beeper":"both","note":"auto: chromecast play coverage"}
+{"utterance":"play something on YouTube Music","expected_app":"youtubemusic","expected_class":"media","expected_verb":"play","beeper":"both","note":"auto: youtubemusic play coverage"}
+{"utterance":"check my YouTube Music","expected_app":"youtubemusic","expected_class":"media","expected_verb":"read","beeper":"both","note":"auto: youtubemusic read coverage"}
+{"utterance":"play something on SoundCloud","expected_app":"soundcloud","expected_class":"media","expected_verb":"play","beeper":"both","note":"auto: soundcloud play coverage"}
+{"utterance":"check my SoundCloud","expected_app":"soundcloud","expected_class":"media","expected_verb":"read","beeper":"both","note":"auto: soundcloud read coverage"}
+{"utterance":"play something on Pandora","expected_app":"pandora","expected_class":"media","expected_verb":"play","beeper":"both","note":"auto: pandora play coverage"}
+{"utterance":"check my Pandora","expected_app":"pandora","expected_class":"media","expected_verb":"read","beeper":"both","note":"auto: pandora read coverage"}
+{"utterance":"add a note in Asana","expected_app":"asana","expected_class":"tasks","expected_verb":"write","beeper":"both","note":"auto: asana write coverage"}
+{"utterance":"add a note in Trello","expected_app":"trello","expected_class":"tasks","expected_verb":"write","beeper":"both","note":"auto: trello write coverage"}
+{"utterance":"add a note in Microsoft To Do","expected_app":"mstodo","expected_class":"tasks","expected_verb":"write","beeper":"both","note":"auto: mstodo write coverage"}
+{"utterance":"add a note in Google Docs","expected_app":"googledocs","expected_class":"notes","expected_verb":"write","beeper":"both","note":"auto: googledocs write coverage"}
+{"utterance":"check my Dropbox","expected_app":"dropbox","expected_class":"notes","expected_verb":"read","beeper":"both","note":"auto: dropbox read coverage"}
+{"utterance":"add a note in Google Sheets","expected_app":"googlesheets","expected_class":"notes","expected_verb":"write","beeper":"both","note":"auto: googlesheets write coverage"}
+{"utterance":"add a note in Evernote","expected_app":"evernote","expected_class":"notes","expected_verb":"write","beeper":"both","note":"auto: evernote write coverage"}
+{"utterance":"add a note in Google Slides","expected_app":"googleslides","expected_class":"notes","expected_verb":"write","beeper":"both","note":"auto: googleslides write coverage"}
+{"utterance":"play something on Pocket Casts","expected_app":"pocketcasts","expected_class":"media","expected_verb":"play","beeper":"both","note":"auto: pocketcasts play coverage"}
+{"utterance":"check my Pocket Casts","expected_app":"pocketcasts","expected_class":"media","expected_verb":"read","beeper":"both","note":"auto: pocketcasts read coverage"}
+{"utterance":"check my Goodreads","expected_app":"goodreads","expected_class":"notes","expected_verb":"read","beeper":"both","note":"auto: goodreads read coverage"}
+{"utterance":"check my Kindle","expected_app":"kindle","expected_class":"media","expected_verb":"read","beeper":"both","note":"auto: kindle read coverage"}
+{"utterance":"send a message on Claude","expected_app":"claude","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: claude compose coverage"}
+{"utterance":"send a message on ChatGPT","expected_app":"chatgpt","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: chatgpt compose coverage"}
+{"utterance":"send a message on Grok","expected_app":"grok","expected_class":"messaging","expected_verb":"compose","beeper":"both","note":"auto: grok compose coverage"}
+{"utterance":"what's my most recent unread Instagram messages","beeper":"on","expected_app":"instagram","expected_class":"beeper_messaging","expected_verb":"read","note":"canary: read unread IG DM"}
+{"utterance":"reply to the last Instagram DM","beeper":"on","expected_app":"instagram","expected_class":"beeper_messaging","expected_verb":"send","note":"IG reply under Beeper"}
+{"utterance":"send John a message on Messages","beeper":"on","expected_app":"messages","expected_class":"beeper_messaging","expected_verb":"send","note":"orphaning: Messages moved to beeper_messaging"}
+{"utterance":"message Sarah on Discord","beeper":"on","expected_app":"discord","expected_class":"beeper_messaging","expected_verb":"send","note":"orphaning: Discord moved to beeper_messaging"}
+{"utterance":"do I have any unread Discord messages","beeper":"on","expected_app":"discord","expected_class":"beeper_messaging","expected_verb":"read","note":"read intent, Discord"}
+{"utterance":"text my mom on WhatsApp","beeper":"on","expected_app":"whatsapp","expected_class":"messaging","expected_verb":"compose","note":"ToAPerson, empty contacts graph"}
+{"utterance":"message Alex on Signal","beeper":"on","expected_app":"signal","expected_class":"messaging","expected_verb":"compose","note":"ToAPerson, empty contacts"}
+{"utterance":"send a Messenger message to Dad","beeper":"on","expected_app":"messenger","expected_class":"messaging","expected_verb":"compose","note":"ToAPerson, empty contacts"}
+{"utterance":"pay Jordan 20 dollars on Venmo","beeper":"on","expected_app":"venmo","expected_class":"money","expected_verb":"compose","note":"money is ToAPerson; empty contacts dead-end"}
+{"utterance":"send 15 to Chris with Cash App","beeper":"on","expected_app":"cashapp","expected_class":"money","expected_verb":"compose","note":"money ToAPerson"}
+{"utterance":"what's the status of my DoorDash order","beeper":"on","expected_app":"doordash","expected_class":"food","expected_verb":"read","note":"read-back; deep-link only opens"}
+{"utterance":"where's my Uber","beeper":"on","expected_app":"uber","expected_class":"rides","expected_verb":"read","note":"read-back ride status"}
+{"utterance":"what's playing on Spotify","beeper":"on","expected_app":"spotify","expected_class":"media","expected_verb":"read","note":"read-back now-playing; deep-link only opens"}
+{"utterance":"play my Discover Weekly on Spotify","beeper":"on","expected_app":"spotify","expected_class":"media","expected_verb":"play","note":"action verb; should route+open"}
+{"utterance":"order my usual coffee from Starbucks","beeper":"on","expected_app":"starbucks","expected_class":"food","expected_verb":"order","note":"action verb; opens app"}
+{"utterance":"pull up directions home in Google Maps","beeper":"on","expected_app":"googlemaps","expected_class":"travel","expected_verb":"read","note":"maps deep-link shadows driven maps adapter"}
+{"utterance":"what's my next meeting on my calendar","beeper":"on","expected_app":"gcalendar","expected_class":"calendar","expected_verb":"read","note":"cloud tier unwired on phone -> no_route"}
+{"utterance":"find the roadmap doc in Notion","beeper":"on","expected_app":"notion","expected_class":"notes","expected_verb":"read","note":"cloud tier unwired -> no_route"}
+{"utterance":"send a message to the team in Slack","beeper":"on","expected_app":"slack","expected_class":"slack","expected_verb":"send","note":"cloud tier unwired -> no_route"}
+{"utterance":"read my latest email in Outlook","beeper":"on","expected_app":"outlook","expected_class":"email","expected_verb":"read","note":"cloud tier unwired -> no_route"}

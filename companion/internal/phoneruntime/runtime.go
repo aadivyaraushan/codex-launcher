@@ -20,15 +20,17 @@ import (
 	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/app/mobilesession"
-	deeplinkadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/deeplink"
-	stage1explicit "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/explicit"
+	capabilityflow "github.com/codex-launcher/codex-launcher/companion/internal/capability/flow"
+	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
 	capabilityruntime "github.com/codex-launcher/codex-launcher/companion/internal/capability/runtime"
 	"github.com/codex-launcher/codex-launcher/companion/internal/durablestore"
 	"github.com/codex-launcher/codex-launcher/companion/internal/eventjournal"
 	"github.com/codex-launcher/codex-launcher/companion/internal/mobileapi/transport"
 	"github.com/codex-launcher/codex-launcher/companion/internal/pairing"
 	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/localtrust"
+	"github.com/codex-launcher/codex-launcher/companion/internal/phoneruntime/threads"
 	"github.com/codex-launcher/codex-launcher/companion/internal/projects"
+	"github.com/codex-launcher/codex-launcher/companion/internal/promptqueue"
 )
 
 // ListenAddress is the fixed loopback port for phone-runtime. A process already
@@ -69,20 +71,21 @@ type Health struct {
 }
 
 type Runtime struct {
-	config       Config
-	logger       *slog.Logger
-	now          func() time.Time
-	store        io.Closer
-	pairing      *pairing.Service
-	mobile       *transport.Server
-	flow         mobilesession.CapabilityFlow
-	inventory    capabilityruntime.Inventory
-	router       string
-	mu           sync.Mutex
-	process      string
-	boundAddr    string
-	certificate  tls.Certificate
-	handler      *mobilesession.Handler
+	config      Config
+	logger      *slog.Logger
+	now         func() time.Time
+	store       io.Closer
+	threadStore *threads.Store
+	pairing     *pairing.Service
+	mobile      *transport.Server
+	flow        mobilesession.CapabilityFlow
+	inventory   capabilityruntime.Inventory
+	router      string
+	mu          sync.Mutex
+	process     string
+	boundAddr   string
+	certificate tls.Certificate
+	handler     *mobilesession.Handler
 	// Callers: CreateLocalPairOffer / ReleasePendingViaAttestation; Android LocalPairHandshake.
 	// Affected API: pendingSessionOffer for /v1/pair enrollment after attest.
 	// Attest JSON adds sessionSecret,hostPublicKey,tlsPublicKey,host,port,protocol.
@@ -95,6 +98,9 @@ type Runtime struct {
 	brokerReady map[string]string
 	// beeperAccounts probes local/remote Beeper for health beeper= (no tokens stored).
 	beeperAccounts func(context.Context) ([]BeeperAccountStatus, error)
+	// routerStatus probes the OpenAI broker's /v1/broker/openai/status for Health's
+	// "openai_broker" vs "openai_broker:no_key" (nil when flow was injected in tests).
+	routerStatus func(context.Context) (bool, error)
 }
 
 func (config Config) validate() error {
@@ -144,70 +150,107 @@ func Open(ctx context.Context, config Config, dependencies Dependencies) (*Runti
 		return nil, err
 	}
 	journal := eventjournal.New(store, logger)
-	handler, err := mobilesession.NewWithLogger(ctx, config.DisplayName, projectService, journal, logger, now)
+
+	// threadStore turns every capability request into a persistent task the
+	// phone's task list/transcript reads can find again (plan P2). It opens
+	// next to state.sqlite3 rather than inside it: threads.Store owns its own
+	// schema and connection, independent of durablestore's.
+	threadsPath := filepath.Join(config.Root, "threads.sqlite3")
+	threadStore, err := threads.Open(threadsPath, now, logger)
 	if err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("open thread store: %w", err)
+	}
+
+	// store (state.sqlite3's durablestore.Store) already implements the full
+	// promptqueue.Store interface (durablestore/stores.go's Create/
+	// CompareAndSwap/Entry/NextPending/... methods) -- the same instance app.go
+	// hands promptqueue.New for the desktop path, reused here so a queued
+	// follow-up prompt survives a phone-runtime restart instead of a
+	// promptqueue.MemoryStore silently dropping it.
+	promptQueue := promptqueue.New(store, logger)
+	handler, err := mobilesession.NewWithTaskSourceAndQueue(ctx, config.DisplayName, projectService, journal, threadStore, promptQueue, logger, now)
+	if err != nil {
+		_ = threadStore.Close()
 		_ = store.Close()
 		return nil, err
 	}
 
 	flow := dependencies.Flow
 	inventory := capabilityruntime.Inventory{}
-	routerSource := "explicit_app"
+	routerSource := "openai_broker"
+	var routerStatus func(context.Context) (bool, error)
 	beeperAccounts := dependencies.BeeperAccounts
 	if beeperAccounts == nil {
 		beeperAccounts = openBeeperAccounts(logger)
 	}
 	if flow == nil {
-		specs := deeplinkadapter.Wave1Specs()
-		rules := make([]stage1explicit.Rule, 0, len(specs))
-		for _, spec := range specs {
-			rules = append(rules, stage1explicit.Rule{ID: spec.ID, Name: spec.AppName, AppClass: spec.AppClass, Verbs: spec.Verbs})
+		beeperAPI := beeperAPIFromEnv(logger)
+		brokered, brokerErr := stage1openai.NewBrokered(phoneOpenAIBrokerBaseURL(), logger)
+		if brokerErr != nil {
+			_ = threadStore.Close()
+			_ = store.Close()
+			return nil, brokerErr
 		}
-		model := stage1explicit.New(rules, logger)
 		// Fact-force: callers=New/Serve phone-runtime; API=ProductionConfig.MapsBrokerBaseURL;
 		// user: "Maps Go→Android Places/Routes RPC"
 		prod := capabilityruntime.ProductionConfig{
-			Model:             model.Route,
+			Model:             brokered.Model,
 			Logger:            logger,
 			MapsBrokerBaseURL: phoneMapsBrokerBaseURL(),
 		}
-		if api := beeperAPIFromEnv(logger); api != nil {
-			prod.BeeperAPI = api
+		if beeperAPI != nil {
+			prod.BeeperAPI = beeperAPI
 		}
 		service, inv, buildErr := capabilityruntime.NewProduction(prod)
 		if buildErr != nil {
+			_ = threadStore.Close()
 			_ = store.Close()
 			return nil, buildErr
 		}
 		flow = service
 		inventory = inv
+		routerStatus = brokered.Status
 	}
-	handler.EnableCapabilities(flow)
+	handler.EnableCapabilities(threadStore.WrapFlow(flow))
+	// A follow-up turn's preview (StartExistingTurn -> threads.Store.prepare)
+	// runs after the start_turn reply already went out, so it can't ride that
+	// reply; the sink pushes it as an unsolicited capability_preview frame
+	// instead (handler.go's PublishCapabilityPreview).
+	threadStore.SetPreviewSink(func(_ string, preview capabilityflow.Preview) {
+		if err := handler.PublishCapabilityPreview(ctx, preview); err != nil {
+			logger.Error("[phone-runtime] follow-up preview push failed", "request_id", preview.RequestID, "error", err.Error())
+		}
+	})
 
 	mobileServer, err := transport.NewServer(pairingService, handler.Handle, logger)
 	if err != nil {
+		_ = threadStore.Close()
 		_ = store.Close()
 		return nil, err
 	}
 	certificate, err := pairingService.TLSCertificate(now())
 	if err != nil {
+		_ = threadStore.Close()
 		_ = store.Close()
 		return nil, err
 	}
 
 	rt := &Runtime{
-		config:      config,
-		logger:      logger,
-		now:         now,
-		store:       store,
-		pairing:     pairingService,
-		mobile:      mobileServer,
-		flow:        flow,
-		inventory:   inventory,
-		router:      routerSource,
-		process:     "ready",
-		certificate: certificate,
-		handler:     handler,
+		config:       config,
+		logger:       logger,
+		now:          now,
+		store:        store,
+		threadStore:  threadStore,
+		pairing:      pairingService,
+		mobile:       mobileServer,
+		flow:         flow,
+		inventory:    inventory,
+		router:       routerSource,
+		routerStatus: routerStatus,
+		process:      "ready",
+		certificate:  certificate,
+		handler:      handler,
 		operatorPin: localtrust.ExpectedOperator{
 			PackageName: "app.codexlauncher",
 			// Release (frozen owner) APK signer. Debug builds use c613e660… — accept both below.
@@ -227,7 +270,12 @@ func (runtime *Runtime) Close() error {
 	if runtime == nil || runtime.store == nil {
 		return nil
 	}
-	return runtime.store.Close()
+	threadErr := runtime.threadStore.Close()
+	storeErr := runtime.store.Close()
+	if threadErr != nil {
+		return threadErr
+	}
+	return storeErr
 }
 
 func (runtime *Runtime) TaskCapable() bool { return false }
@@ -295,14 +343,14 @@ type localPairAttestRequest struct {
 }
 
 type localPairAttestResponse struct {
-	OfferID        string `json:"offerId"`
-	Secret         string `json:"secret"`
-	SessionSecret  string `json:"sessionSecret"`
-	HostPublicKey  string `json:"hostPublicKey"`
-	TLSPublicKey   string `json:"tlsPublicKey"`
-	Host           string `json:"host"`
-	Port           int    `json:"port"`
-	Protocol       int    `json:"protocol"`
+	OfferID       string `json:"offerId"`
+	Secret        string `json:"secret"`
+	SessionSecret string `json:"sessionSecret"`
+	HostPublicKey string `json:"hostPublicKey"`
+	TLSPublicKey  string `json:"tlsPublicKey"`
+	Host          string `json:"host"`
+	Port          int    `json:"port"`
+	Protocol      int    `json:"protocol"`
 }
 
 type localPairAckRequest struct {
@@ -518,10 +566,19 @@ func (runtime *Runtime) Health() Health {
 	} else if pending {
 		localPair = "offer_pending"
 	}
+	router := runtime.router
+	if runtime.routerStatus != nil {
+		statusCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		keyed, err := runtime.routerStatus(statusCtx)
+		cancel()
+		if err == nil && !keyed {
+			router = runtime.router + ":no_key"
+		}
+	}
 	return Health{
 		Mode:          "standalone_phone",
 		Process:       process,
-		Router:        runtime.router,
+		Router:        router,
 		Beeper:        beeper,
 		Credentials:   credentials,
 		Adapters:      adapters,

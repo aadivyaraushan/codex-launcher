@@ -40,12 +40,14 @@ var (
 
 // Chat is one conversation on one bridged network.
 type Chat struct {
-	ID          string `json:"id"`
-	LocalChatID string `json:"localChatID"`
-	AccountID   string `json:"accountID"`
-	Network     string `json:"network"`
-	Title       string `json:"title"`
-	Type        string `json:"type"`
+	ID           string `json:"id"`
+	LocalChatID  string `json:"localChatID"`
+	AccountID    string `json:"accountID"`
+	Network      string `json:"network"`
+	Title        string `json:"title"`
+	Type         string `json:"type"`
+	UnreadCount  int    `json:"unreadCount"`
+	LastActivity string `json:"lastActivity"`
 }
 
 // Account identifies one connected bridge. Account IDs are assigned by
@@ -265,6 +267,12 @@ func (c *Client) do(ctx context.Context, method, path string, body, result any) 
 			"method", method, "path", cleanPath, "status", response.StatusCode)
 		return fmt.Errorf("beeper: %s %s returned status %s",
 			method, cleanPath, strconv.Itoa(response.StatusCode))
+	}
+	if result == nil {
+		// Most write endpoints answer 204 No Content with an empty body; there
+		// is nothing to decode into.
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
+		return nil
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(result); err != nil {
 		return fmt.Errorf("beeper: decode %s response: %w", method, err)

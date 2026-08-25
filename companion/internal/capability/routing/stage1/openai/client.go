@@ -4,6 +4,7 @@
 package openai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,6 +22,20 @@ const (
 
 var ErrMissingAPIKey = errors.New("openai stage1: API key is required")
 
+// ErrRouterNotProvisioned is returned by the brokered Model when the broker
+// is reachable but holds no OpenAI key yet (HTTP 503 {"error":"no_key"}).
+var ErrRouterNotProvisioned = errors.New("openai stage1: broker has no key provisioned")
+
+// ErrRouterUnreachable is returned by the brokered Model on a transport
+// failure or any non-2xx response that is not the no-key case.
+var ErrRouterUnreachable = errors.New("openai stage1: broker unreachable")
+
+const (
+	responsesPath    = "/v1/responses"
+	brokerModelPath  = "/v1/broker/openai/responses"
+	brokerStatusPath = "/v1/broker/openai/status"
+)
+
 type Config struct {
 	APIKey     string
 	BaseURL    string
@@ -28,11 +43,16 @@ type Config struct {
 	Logger     *slog.Logger
 }
 
+// Client calls the OpenAI Responses API to run stage 1 routing, either
+// directly with an API key (New) or through the on-device broker that adds
+// the key on the phone's behalf (NewBrokered).
 type Client struct {
-	apiKey  string
-	baseURL string
-	http    *http.Client
-	logger  *slog.Logger
+	apiKey    string
+	baseURL   string
+	modelPath string
+	brokered  bool
+	http      *http.Client
+	logger    *slog.Logger
 }
 
 func New(config Config) (*Client, error) {
@@ -50,11 +70,106 @@ func New(config Config) (*Client, error) {
 	}
 	return &Client{
 		apiKey: config.APIKey, baseURL: strings.TrimRight(config.BaseURL, "/"),
-		http: config.HTTPClient, logger: config.Logger,
+		modelPath: responsesPath,
+		http:      config.HTTPClient, logger: config.Logger,
 	}, nil
 }
 
+// NewBrokered returns a Client that builds the same stage-1 request as New
+// but sends it, with no Authorization header, to the local Android broker
+// at baseURL, which holds the OpenAI key on the phone's behalf.
+func NewBrokered(baseURL string, logger *slog.Logger) (*Client, error) {
+	if strings.TrimSpace(baseURL) == "" {
+		return nil, fmt.Errorf("openai stage1: broker base URL is required")
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Client{
+		baseURL:   strings.TrimRight(baseURL, "/"),
+		modelPath: brokerModelPath,
+		brokered:  true,
+		http:      http.DefaultClient,
+		logger:    logger,
+	}, nil
+}
+
+// Status asks the broker whether it currently holds an OpenAI key, without
+// ever seeing the key itself.
+func (c *Client) Status(ctx context.Context) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+brokerStatusPath, nil)
+	if err != nil {
+		return false, fmt.Errorf("openai stage1: build status request: %w", err)
+	}
+	response, err := c.http.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("openai stage1: status request failed: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return false, fmt.Errorf("openai stage1: broker status returned status %d", response.StatusCode)
+	}
+	var decoded struct {
+		Keyed bool `json:"keyed"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<16)).Decode(&decoded); err != nil {
+		return false, fmt.Errorf("openai stage1: decode status response: %w", err)
+	}
+	return decoded.Keyed, nil
+}
+
 func (c *Client) Model(ctx context.Context, utterance string) ([]byte, error) {
+	body, err := buildRequestBody(utterance)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+c.modelPath, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("openai stage1: build request: %w", err)
+	}
+	if !c.brokered {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c.logger.Info("[stage1-openai] request", "model", Model, "utterance_bytes", len(utterance), "reasoning_effort", "none")
+	response, err := c.http.Do(req)
+	if err != nil {
+		c.logger.Error("[stage1-openai] request failed", "model", Model, "error", err)
+		if c.brokered {
+			return nil, fmt.Errorf("openai stage1: broker request failed: %w: %v", ErrRouterUnreachable, err)
+		}
+		return nil, fmt.Errorf("openai stage1: request failed: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		c.logger.Error("[stage1-openai] response rejected", "model", Model, "status", response.StatusCode)
+		if c.brokered {
+			payload, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+			if response.StatusCode == http.StatusServiceUnavailable && isNoKeyBody(payload) {
+				return nil, fmt.Errorf("openai stage1: %w", ErrRouterNotProvisioned)
+			}
+			return nil, fmt.Errorf("openai stage1: broker returned status %d: %w", response.StatusCode, ErrRouterUnreachable)
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
+		return nil, fmt.Errorf("openai stage1: Responses API returned status %d", response.StatusCode)
+	}
+	return parseResponseEnvelope(response.Body, c.logger)
+}
+
+// isNoKeyBody reports whether body is the broker's {"error":"no_key"} shape.
+func isNoKeyBody(body []byte) bool {
+	var payload struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false
+	}
+	return payload.Error == "no_key"
+}
+
+// buildRequestBody encodes the stage-1 Responses API request body shared by
+// the keyed and brokered paths: same instructions, same schema, same model.
+func buildRequestBody(utterance string) ([]byte, error) {
 	request := responseRequest{
 		Model:     Model,
 		Store:     false,
@@ -79,6 +194,8 @@ func (c *Client) Model(ctx context.Context, utterance string) ([]byte, error) {
 			"For connected Outlook mail, use app_class email and app_named outlook with verb read, write, or send; put the message subject in subject and recipient/body details in body.",
 			"For Podcasts plain RSS, use app_class media and app_named podcasts with verb read (list episodes from a feed) or play (resolve one episode enclosure URL). Completes via enclosure — no partner API and no OAuth.",
 			"For a new confirmed message through a connected Beeper account on Instagram, Discord, or Google Messages, use app_class beeper_messaging with verb send. Put the person's visible conversation name in subject, the full message in body, and use app_named instagram, discord, or messages respectively. This route searches Beeper's live chat list and asks if more than one conversation matches.",
+			"For reading messages on a connected Beeper network, use app_class beeper_messaging with verb read and app_named instagram, discord, or messages. Put a conversation name in subject to read that thread, a search phrase in subject to find matching messages, or leave subject empty to scan that network's unread conversations (an unread ask like 'what's my most recent unread Instagram message' leaves subject empty). Never claim message content until the returned preview shows it.",
+			"For managing an existing Beeper message or conversation, use app_class beeper_messaging with app_named instagram, discord, or messages, verb modify (or verb cancel for delete and clear_reminder), and put the manage action in the operation field. operation must be exactly one of: reply, edit, delete, react, unreact, mark_read, mark_unread, archive, unarchive, pin, mute, set_reminder, clear_reminder. Put quoted target text or the reply/reaction content in body. The adapter picks the target message by recency and asks if it is unsure; never invent a message id.",
 			"For a draft the user only wants opened without sending, use app_class messaging and verb compose with app_named instagram, discord, or messages. That prepare-and-open route never claims the message was sent.",
 			"For personal Teams prepare-and-open, use app_class messaging and app_named teams with verb compose. Open only — never claim the message was sent (Graph chat send does not support personal accounts).",
 			// The separate path the three lines below point at. Without this
@@ -168,26 +285,15 @@ func (c *Client) Model(ctx context.Context, utterance string) ([]byte, error) {
 	if err := json.NewEncoder(&encoded).Encode(request); err != nil {
 		return nil, fmt.Errorf("openai stage1: encode request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/responses", strings.NewReader(encoded.String()))
-	if err != nil {
-		return nil, fmt.Errorf("openai stage1: build request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	c.logger.Info("[stage1-openai] request", "model", Model, "utterance_bytes", len(utterance), "reasoning_effort", "none")
-	response, err := c.http.Do(req)
-	if err != nil {
-		c.logger.Error("[stage1-openai] request failed", "model", Model, "error", err)
-		return nil, fmt.Errorf("openai stage1: request failed: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
-		c.logger.Error("[stage1-openai] response rejected", "model", Model, "status", response.StatusCode)
-		return nil, fmt.Errorf("openai stage1: Responses API returned status %d", response.StatusCode)
-	}
+	return []byte(encoded.String()), nil
+}
+
+// parseResponseEnvelope decodes a Responses API reply body into the single
+// route JSON blob stage1.ParseRoute expects, shared by the keyed and
+// brokered paths since the wire shape is identical either way.
+func parseResponseEnvelope(body io.Reader, logger *slog.Logger) ([]byte, error) {
 	var decoded responseEnvelope
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&decoded); err != nil {
+	if err := json.NewDecoder(io.LimitReader(body, 1<<20)).Decode(&decoded); err != nil {
 		return nil, fmt.Errorf("openai stage1: decode response: %w", err)
 	}
 	var outputs []string
@@ -204,7 +310,7 @@ func (c *Client) Model(ctx context.Context, utterance string) ([]byte, error) {
 	if len(outputs) != 1 || strings.TrimSpace(outputs[0]) == "" {
 		return nil, fmt.Errorf("openai stage1: response contained %d output_text blocks, want exactly one", len(outputs))
 	}
-	c.logger.Info("[stage1-openai] response", "model", Model, "input_tokens", decoded.Usage.InputTokens, "output_tokens", decoded.Usage.OutputTokens, "total_tokens", decoded.Usage.TotalTokens)
+	logger.Info("[stage1-openai] response", "model", Model, "input_tokens", decoded.Usage.InputTokens, "output_tokens", decoded.Usage.OutputTokens, "total_tokens", decoded.Usage.TotalTokens)
 	return []byte(outputs[0]), nil
 }
 
@@ -228,10 +334,11 @@ type textConfig struct {
 // namedSlots lists the fixed set of named slots the model may fill in
 // fields. These are exactly the slots adapters read via Fields[...]: maps
 // reads origin/destination/navigate, apple reminders reads list, apple
-// notes reads folder. page_id (notion) and feed_url (podcasts) are
-// app-internal ids a cloud model has no business guessing, so they are not
-// offered here.
-var namedSlots = []string{"origin", "destination", "navigate", "list", "folder"}
+// notes reads folder, and beeper messaging reads operation (which manage
+// action a modify/cancel verb means). page_id (notion) and feed_url
+// (podcasts) are app-internal ids a cloud model has no business guessing, so
+// they are not offered here.
+var namedSlots = []string{"origin", "destination", "navigate", "list", "folder", "operation"}
 
 func routeFormat() map[string]any {
 	slotProperties := make(map[string]any, len(namedSlots))

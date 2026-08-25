@@ -53,8 +53,14 @@ var ErrMissingProductionDependency = errors.New("capability runtime: a routing m
 // value instead means Resolve refuses it by name the first time anyone
 // asks, which is what makes adding the entry here mandatory rather than
 // optional.
+// BeeperMessagingClass is the class NewProduction registers Beeper-taken-over
+// messaging apps under when a Beeper connection is present. Stage1 rule
+// building (routing/phonerules) reads it so a moved app's rule and the class
+// the resolver actually finds it in can never drift apart and orphan.
+const BeeperMessagingClass = "beeper_messaging"
+
 var classAddressing = map[string]stage2.Addressing{
-	"beeper_messaging":             stage2.ResolvedByAdapter,
+	BeeperMessagingClass:           stage2.ResolvedByAdapter,
 	"calendar":                     stage2.ToAThing,
 	"drive":                        stage2.ToAThing,
 	"email":                        stage2.ToAThing,
@@ -177,6 +183,13 @@ type Inventory struct {
 	// does; AdapterIDs and Report below are the only doors the world outside
 	// this package gets onto it.
 	tel *verification.Telemetry
+
+	// resolver is the exact stage 2 resolver NewProduction wired for this
+	// build (same registry, contact graph, and class map flow.Service
+	// carries). It stays unexported so nothing outside this package can
+	// rebuild a second, divergent resolver from the pieces below; Resolve
+	// is the one door onto it.
+	resolver *stage2.Resolver
 }
 
 // ApplyKillList switches adapters on and off to match a remote list. It is
@@ -200,6 +213,28 @@ func (i Inventory) AdapterIDs() []string {
 // a real observation.
 func (i Inventory) Report(adapterID string) (verification.Report, error) {
 	return i.tel.Report(adapterID)
+}
+
+// Resolve runs a stage 1 Route through the same stage 2 resolver
+// NewProduction built for this inventory — the real registry, contact
+// graph, and class map, not a rebuilt copy. A caller driving stage 1 and
+// stage 2 end to end (a routing sweep, say) uses this instead of
+// reconstructing a resolver from Inventory's otherwise unexported pieces.
+func (i Inventory) Resolve(ctx context.Context, route stage1.Route) (stage2.Decision, error) {
+	return i.resolver.Resolve(ctx, route)
+}
+
+// Manifest returns the manifest of one registered adapter. Together with
+// Resolve above, it lets a caller that already has a Decision's AdapterID
+// check what that adapter actually declares — whether it offers a verb the
+// caller expected, for instance — without reaching past Inventory into the
+// registry itself.
+func (i Inventory) Manifest(adapterID string) (manifest.Manifest, error) {
+	a, err := i.reg.Get(adapterID)
+	if err != nil {
+		return manifest.Manifest{}, err
+	}
+	return a.Describe(), nil
 }
 
 // NewProduction builds the one capability flow the plain `serve` command
@@ -306,7 +341,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 				return nil, Inventory{}, err
 			}
 			inv.Registered = append(inv.Registered, spec.ID)
-			byClass["beeper_messaging"] = append(byClass["beeper_messaging"], spec.ID)
+			byClass[BeeperMessagingClass] = append(byClass[BeeperMessagingClass], spec.ID)
 		}
 	}
 
@@ -459,6 +494,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	inv.Classes = byClass
 	inv.reg = reg
 	resolver := stage2.New(reg, contacts.NewGraph(time.Now), classes, manifest.PlatformAndroid)
+	inv.resolver = resolver
 	runner := execution.New(reg)
 	inv.tel = runner.Telemetry()
 

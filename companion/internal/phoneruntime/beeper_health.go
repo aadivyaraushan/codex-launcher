@@ -50,16 +50,20 @@ func beeperAPIFromEnv(logger *slog.Logger) *beeper.Client {
 		logger.Info("[phone-runtime] Beeper API unavailable", "reason", "no_access_token")
 		return nil
 	}
-	if envEnabled(os.Getenv("BEEPER_READONLY")) {
-		logger.Info("[phone-runtime] Beeper API unavailable", "reason", "read_only")
-		return nil
-	}
 	baseURL := strings.TrimSpace(os.Getenv("BEEPER_DESKTOP_BASE_URL"))
 	if baseURL == "" {
 		baseURL = beeper.DefaultBaseURL
 	}
+	client := beeper.NewClient(baseURL, beeper.StaticToken(token), nil, logger)
+	// Read-only mode keeps reads working (unread scans, thread reads) and only
+	// refuses writes, rather than making Beeper vanish. A cautious user still
+	// gets to read their messages.
+	if envEnabled(os.Getenv("BEEPER_READONLY")) {
+		logger.Info("[phone-runtime] Beeper API enabled read-only", "base_url", baseURL, "token_present", true)
+		return client.ReadOnly()
+	}
 	logger.Info("[phone-runtime] Beeper API enabled", "base_url", baseURL, "token_present", true)
-	return beeper.NewClient(baseURL, beeper.StaticToken(token), nil, logger)
+	return client
 }
 
 func openBeeperAccounts(logger *slog.Logger) func(context.Context) ([]BeeperAccountStatus, error) {

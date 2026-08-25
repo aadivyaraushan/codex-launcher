@@ -107,29 +107,52 @@ func (m *Model) matchApp(words []word) (appMatch, bool) {
 	return selected, found
 }
 
+// verbGroups maps an action word to the verbs that word can mean, most
+// specific first. A word like "send" names an intent, not a concrete verb:
+// on a deep-link compose app it means Compose, on a Beeper-taken-over app it
+// means Send. chooseVerb picks whichever verb in the group the matched app
+// actually declares, so the same words route correctly under either wiring.
+var verbGroups = map[string][]manifest.Verb{
+	"play": {manifest.Play}, "watch": {manifest.Play}, "listen": {manifest.Play},
+	"read": {manifest.Read}, "find": {manifest.Read}, "search": {manifest.Read}, "show": {manifest.Read}, "browse": {manifest.Read}, "check": {manifest.Read},
+	"send": {manifest.Compose, manifest.Send}, "message": {manifest.Compose, manifest.Send}, "text": {manifest.Compose, manifest.Send}, "draft": {manifest.Compose, manifest.Send}, "post": {manifest.Compose, manifest.Send},
+	"write": {manifest.Write}, "add": {manifest.Write}, "create": {manifest.Write}, "save": {manifest.Write}, "update": {manifest.Write},
+	"order": {manifest.Order},
+}
+
 func chooseVerb(words []word, allowed []manifest.Verb) (manifest.Verb, *verbMatch, error) {
 	allowedSet := make(map[manifest.Verb]bool, len(allowed))
 	for _, verb := range allowed {
 		allowedSet[verb] = true
 	}
-	aliases := map[string]manifest.Verb{
-		"play": manifest.Play, "watch": manifest.Play, "listen": manifest.Play,
-		"read": manifest.Read, "find": manifest.Read, "search": manifest.Read, "show": manifest.Read, "browse": manifest.Read, "check": manifest.Read,
-		"send": manifest.Compose, "message": manifest.Compose, "text": manifest.Compose, "draft": manifest.Compose, "post": manifest.Compose,
-		"write": manifest.Write, "add": manifest.Write, "create": manifest.Write, "save": manifest.Write, "update": manifest.Write,
-		"order": manifest.Order,
+	resolve := func(group []manifest.Verb) (manifest.Verb, bool) {
+		for _, verb := range group {
+			if allowedSet[verb] {
+				return verb, true
+			}
+		}
+		return "", false
 	}
 	var selected *verbMatch
 	for index, token := range words {
-		verb, known := aliases[token.lower]
+		group, known := verbGroups[token.lower]
 		if !known {
 			continue
 		}
+		verb, ok := resolve(group)
 		if selected == nil {
-			if !allowedSet[verb] {
+			if !ok {
 				return "", nil, ErrVerbUnclear
 			}
 			selected = &verbMatch{verb: verb, index: index}
+			continue
+		}
+		if !ok {
+			// This word names an action this app can't do; it's ordinary
+			// subject text unless it opens a second, separate command.
+			if startsAnotherCommand(words, index) {
+				return "", nil, ErrVerbUnclear
+			}
 			continue
 		}
 		if selected.verb != verb && startsAnotherCommand(words, index) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	capabilityadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
@@ -60,7 +61,7 @@ func TestYouTubeFlowOpensAVideoThroughTheProductionRouter(t *testing.T) {
 	if deviceWork.Kind != "youtube_play" || deviceWork.Handle != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" || deviceWork.Text != "Bicycle Repair Basics" {
 		t.Fatalf("device work = %+v", deviceWork)
 	}
-	if outcome != (capabilityadapter.Outcome{}) {
+	if !reflect.DeepEqual(outcome, capabilityadapter.Outcome{}) {
 		t.Fatalf("outcome=%+v, want zero outcome before phone playback", outcome)
 	}
 	if len(api.queries) != 1 {

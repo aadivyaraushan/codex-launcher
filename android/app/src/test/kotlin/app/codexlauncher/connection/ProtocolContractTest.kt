@@ -441,6 +441,14 @@ class ProtocolContractTest {
         assertEquals(30L, cold.lastSequence)
     }
 
+    @Test
+    fun `thread fixtures decode through production codec`() {
+        fixture("thread.jsonl").forEachIndexed { index, frame ->
+            val decoded = runCatching { ProtocolCodec.decodeText(frame) }
+            assertTrue("thread.jsonl line ${index + 1}: ${decoded.exceptionOrNull()}", decoded.isSuccess)
+        }
+    }
+
     private fun fixture(name: String): List<String> =
         File("../../protocol/fixtures/$name").readLines().filter(String::isNotBlank)
 

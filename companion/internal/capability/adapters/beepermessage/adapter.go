@@ -25,12 +25,26 @@ var (
 	ErrDeliveryPending = errors.New("beeper message: Beeper accepted the message but final thread visibility is not yet confirmed")
 )
 
-// API is the narrow Beeper surface a confirmed message needs.
+// API is the Beeper surface the adapter needs across send, read, and manage.
 type API interface {
 	SearchChats(context.Context, string) ([]beeper.Chat, error)
 	Accounts(context.Context) ([]beeper.Account, error)
 	StartChat(context.Context, string, string) (beeper.Chat, error)
 	Send(context.Context, string, string) (beeper.Sent, error)
+
+	ListChats(context.Context, beeper.ListChatsOptions) ([]beeper.Chat, error)
+	ListMessages(context.Context, string, int) ([]beeper.Message, error)
+	Reply(context.Context, string, string, string) (beeper.Sent, error)
+	EditMessage(context.Context, string, string, string) error
+	DeleteMessage(context.Context, string, string) error
+	React(context.Context, string, string, string) error
+	Unreact(context.Context, string, string, string) error
+	MarkRead(context.Context, string) error
+	MarkUnread(context.Context, string) error
+	Archive(context.Context, string, bool) error
+	UpdateChat(context.Context, string, beeper.ChatState) error
+	SetReminder(context.Context, string, string) error
+	ClearReminder(context.Context, string) error
 }
 
 // Spec binds one Operator adapter id to one Beeper network. The production
@@ -78,7 +92,7 @@ func (a *Adapter) Describe() manifest.Manifest {
 		auth = manifest.AuthOAuth
 	}
 	return manifest.Manifest{
-		ID: a.spec.ID, Runtime: manifest.RT2, Verbs: []manifest.Verb{manifest.Send},
+		ID: a.spec.ID, Runtime: manifest.RT2, Verbs: []manifest.Verb{manifest.Read, manifest.Send, manifest.Modify, manifest.Cancel},
 		Ceiling: manifest.Completes, Consent: manifest.ConsentA,
 		Auth: auth, Cost: manifest.CostFree,
 		Gates: []manifest.Gate{manifest.GateNone}, Capacity: manifest.Capacity{Kind: manifest.CapacityNone},
@@ -93,22 +107,25 @@ func (a *Adapter) Resolve(ctx context.Context, in adapter.Intent) (adapter.Plan,
 	if a.api == nil {
 		return adapter.Plan{}, ErrNotConnected
 	}
-	if in.Verb != manifest.Send {
-		return adapter.Plan{}, fmt.Errorf("beeper message: verb %q is not supported", in.Verb)
+	switch in.Verb {
+	case manifest.Send:
+		return a.resolveSend(ctx, in)
+	case manifest.Read:
+		return a.resolveRead(ctx, in)
+	default:
+		return a.resolveManage(ctx, in)
 	}
-	recipient := strings.TrimSpace(in.Subject)
-	if recipient == "" {
-		return adapter.Plan{}, ErrNoRecipient
-	}
-	message := strings.TrimSpace(in.Body)
-	if message == "" {
-		return adapter.Plan{}, ErrEmptyMessage
-	}
+}
 
-	chats, err := a.api.SearchChats(ctx, recipient)
+// matchingChats runs a Beeper chat search and narrows the results to this
+// adapter's network, sorted by title. It is the one place send, read, and
+// manage all go through to turn a spoken name into candidate chats, so the
+// matching rule (and its network filter) can never drift between them.
+func (a *Adapter) matchingChats(ctx context.Context, subject string) ([]beeper.Chat, error) {
+	chats, err := a.api.SearchChats(ctx, subject)
 	if err != nil {
 		a.logger.Error("[beeper-message] chat search failed", "adapter_id", a.spec.ID, "network", a.spec.Network, "error", err)
-		return adapter.Plan{}, err
+		return nil, err
 	}
 	matches := make([]beeper.Chat, 0, len(chats))
 	for _, chat := range chats {
@@ -122,6 +139,54 @@ func (a *Adapter) Resolve(ctx context.Context, in adapter.Intent) (adapter.Plan,
 		matches = append(matches, chat)
 	}
 	sort.Slice(matches, func(i, j int) bool { return matches[i].Title < matches[j].Title })
+	return matches, nil
+}
+
+func clarifyNoMatch(network, subject string) error {
+	return &adapter.ClarificationError{Question: fmt.Sprintf("I couldn't find a %s conversation matching %s. Which conversation did you mean?", network, subject)}
+}
+
+func clarifyAmbiguous(network, subject string, matches []beeper.Chat) error {
+	titles := make([]string, len(matches))
+	for i, chat := range matches {
+		titles[i] = chat.Title
+	}
+	return &adapter.ClarificationError{Question: fmt.Sprintf("I found %d %s conversations matching %s: %s. Which one did you mean?", len(matches), network, subject, strings.Join(titles, ", "))}
+}
+
+// resolveOneChat resolves a subject to exactly one chat on this adapter's
+// network, or a ClarificationError when there is no match or more than one.
+// It is the matching rule read and manage share; send keeps its own inline
+// version because of the phone-start branch that runs before its
+// zero-match clarification.
+func (a *Adapter) resolveOneChat(ctx context.Context, subject string) (beeper.Chat, error) {
+	matches, err := a.matchingChats(ctx, subject)
+	if err != nil {
+		return beeper.Chat{}, err
+	}
+	if len(matches) == 0 {
+		return beeper.Chat{}, clarifyNoMatch(a.spec.Network, subject)
+	}
+	if len(matches) > 1 {
+		return beeper.Chat{}, clarifyAmbiguous(a.spec.Network, subject, matches)
+	}
+	return matches[0], nil
+}
+
+func (a *Adapter) resolveSend(ctx context.Context, in adapter.Intent) (adapter.Plan, error) {
+	recipient := strings.TrimSpace(in.Subject)
+	if recipient == "" {
+		return adapter.Plan{}, ErrNoRecipient
+	}
+	message := strings.TrimSpace(in.Body)
+	if message == "" {
+		return adapter.Plan{}, ErrEmptyMessage
+	}
+
+	matches, err := a.matchingChats(ctx, recipient)
+	if err != nil {
+		return adapter.Plan{}, err
+	}
 	if len(matches) == 0 && a.spec.StartByPhone {
 		phoneNumber, ok := normalizedE164(recipient)
 		if ok {
@@ -154,15 +219,11 @@ func (a *Adapter) Resolve(ctx context.Context, in adapter.Intent) (adapter.Plan,
 	}
 	if len(matches) == 0 {
 		a.logger.Info("[beeper-message] resolve needs clarification", "adapter_id", a.spec.ID, "network", a.spec.Network, "reason", "no_match")
-		return adapter.Plan{}, &adapter.ClarificationError{Question: fmt.Sprintf("I couldn't find a %s conversation matching %s. Which conversation did you mean?", a.spec.Network, recipient)}
+		return adapter.Plan{}, clarifyNoMatch(a.spec.Network, recipient)
 	}
 	if len(matches) > 1 {
-		titles := make([]string, len(matches))
-		for i, chat := range matches {
-			titles[i] = chat.Title
-		}
 		a.logger.Info("[beeper-message] resolve needs clarification", "adapter_id", a.spec.ID, "network", a.spec.Network, "reason", "multiple_matches", "match_count", len(matches))
-		return adapter.Plan{}, &adapter.ClarificationError{Question: fmt.Sprintf("I found %d %s conversations matching %s: %s. Which one did you mean?", len(matches), a.spec.Network, recipient, strings.Join(titles, ", "))}
+		return adapter.Plan{}, clarifyAmbiguous(a.spec.Network, recipient, matches)
 	}
 
 	chat := matches[0]
@@ -198,7 +259,21 @@ func normalizedE164(raw string) (string, bool) {
 	return "+" + digits.String(), true
 }
 
-func (a *Adapter) Preview(_ context.Context, plan adapter.Plan) (adapter.Preview, error) {
+// Preview dispatches on what kind of plan Resolve produced: a read plan
+// carries "kind", a manage plan carries "operation", and a send plan carries
+// neither.
+func (a *Adapter) Preview(ctx context.Context, plan adapter.Plan) (adapter.Preview, error) {
+	switch {
+	case plan.Details["kind"] != "":
+		return a.previewRead(plan)
+	case plan.Details["operation"] != "":
+		return a.previewManage(plan)
+	default:
+		return a.previewSend(plan)
+	}
+}
+
+func (a *Adapter) previewSend(plan adapter.Plan) (adapter.Preview, error) {
 	a.logger.Info("[beeper-message] preview", "adapter_id", a.spec.ID, "network", a.spec.Network, "chat_id", plan.Handle, "text_length", len(plan.Details["text"]))
 	return adapter.Preview{
 		Plan:     plan,
@@ -212,7 +287,20 @@ func (a *Adapter) Preview(_ context.Context, plan adapter.Plan) (adapter.Preview
 	}, nil
 }
 
+// Execute dispatches the same way Preview does: by verb for a read plan, by
+// the presence of "operation" for a manage plan, and send otherwise.
 func (a *Adapter) Execute(ctx context.Context, plan adapter.Plan) (adapter.Outcome, error) {
+	switch {
+	case plan.Verb == manifest.Read:
+		return a.executeRead(plan)
+	case plan.Details["operation"] != "":
+		return a.executeManage(ctx, plan)
+	default:
+		return a.executeSend(ctx, plan)
+	}
+}
+
+func (a *Adapter) executeSend(ctx context.Context, plan adapter.Plan) (adapter.Outcome, error) {
 	a.logger.Info("[beeper-message] execute", "adapter_id", a.spec.ID, "network", a.spec.Network, "chat_id", plan.Handle, "text_length", len(plan.Details["text"]))
 	chatID := plan.Handle
 	if chatID == "" && plan.Details["start_phone"] != "" {

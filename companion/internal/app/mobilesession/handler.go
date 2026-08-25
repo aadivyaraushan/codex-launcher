@@ -21,6 +21,7 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/execution"
 	capabilityflow "github.com/codex-launcher/codex-launcher/companion/internal/capability/flow"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
+	stage1openai "github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1/openai"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/taskadapter"
@@ -38,6 +39,14 @@ import (
 type TaskSource interface {
 	ListRecent(context.Context, int) ([]taskstate.Task, error)
 }
+
+// Sentences shown to the phone when the on-device stage-1 router fails closed.
+// They ride the cancelled+sentence shape (see handleCapabilityAction), the only
+// shape ProtocolCodec.kt renders free text for.
+const (
+	routerNotProvisionedSentence = "Operator's router isn't set up on this phone yet. Ask the operator to finish setup."
+	routerUnreachableSentence    = "I couldn't reach the router just now. Try again in a moment."
+)
 
 type CapabilityFlow interface {
 	Prepare(context.Context, string, string, string) (capabilityflow.Preview, error)
@@ -962,19 +971,25 @@ func (handler *Handler) handleCapabilityAction(ctx context.Context, sender trans
 				handler.logger.Info("[mobile-session] capability needs an answer before it can act", "device_id", sender.DeviceID(), "request_id", actionID, "question_length", len(question.Question))
 				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", question.Question)
 			}
+			// A phone router that fails closed (no key provisioned, or the
+			// broker unreachable) is not a malfunction to hide behind
+			// "internal" — it is a state the user can act on. Deliver the
+			// explanation on the same cancelled+sentence shape the question
+			// uses, the only shape the phone renders text for. Only these two
+			// sentinels map; every other error stays a genuine failure.
+			if errors.Is(err, stage1openai.ErrRouterNotProvisioned) {
+				handler.logger.Info("[mobile-session] stage-1 router has no key provisioned", "device_id", sender.DeviceID(), "request_id", actionID)
+				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", routerNotProvisionedSentence)
+			}
+			if errors.Is(err, stage1openai.ErrRouterUnreachable) {
+				handler.logger.Info("[mobile-session] stage-1 router unreachable", "device_id", sender.DeviceID(), "request_id", actionID)
+				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", routerUnreachableSentence)
+			}
 			code := capabilityFailureCode(err)
 			handler.logger.Error("[mobile-session] capability prepare failed", "device_id", sender.DeviceID(), "request_id", actionID, "error_class", fmt.Sprintf("%T", err), "code", code)
 			return handler.publishCapabilityFailure(ctx, sender, actionID, code)
 		}
-		body, err := json.Marshal(struct {
-			RequestID    string   `json:"requestId"`
-			AdapterID    string   `json:"adapterId"`
-			Verb         string   `json:"verb"`
-			Headline     string   `json:"headline"`
-			Lines        []string `json:"lines"`
-			ConfirmLabel string   `json:"confirmLabel"`
-			Fingerprint  string   `json:"fingerprint"`
-		}{preview.RequestID, preview.AdapterID, string(preview.Verb), preview.Headline, preview.Lines, preview.Confirm, preview.Fingerprint})
+		body, err := capabilityPreviewBody(preview)
 		if err != nil {
 			return err
 		}
@@ -1901,6 +1916,47 @@ func transcriptReadError(err error) *taskPageError {
 	default:
 		return &taskPageError{Code: "internal", Retryable: true}
 	}
+}
+
+// capabilityPreviewBody is the capability_preview wire body, shared by the
+// solicited reply (handleCapabilityAction's "capability_request" case, right
+// after Prepare returns) and the unsolicited push (PublishCapabilityPreview,
+// for a follow-up turn started via StartExistingTurn, whose preview has no
+// inbound reply to ride on).
+func capabilityPreviewBody(preview capabilityflow.Preview) (json.RawMessage, error) {
+	return json.Marshal(struct {
+		RequestID    string   `json:"requestId"`
+		AdapterID    string   `json:"adapterId"`
+		Verb         string   `json:"verb"`
+		Headline     string   `json:"headline"`
+		Lines        []string `json:"lines"`
+		ConfirmLabel string   `json:"confirmLabel"`
+		Fingerprint  string   `json:"fingerprint"`
+	}{preview.RequestID, preview.AdapterID, string(preview.Verb), preview.Headline, preview.Lines, preview.Confirm, preview.Fingerprint})
+}
+
+// PublishCapabilityPreview pushes an unsolicited capability_preview frame to
+// every currently active connection. A follow-up turn's Prepare (threads
+// package's StartExistingTurn) runs after the start_turn reply already went
+// out, so its preview has nowhere else to ride; capability_preview carries no
+// journal sequence (line ~1005 sends it the same way, sequence nil), so this
+// goes straight to active connections rather than through queueBroadcast's
+// journal-sequenced path.
+func (handler *Handler) PublishCapabilityPreview(ctx context.Context, preview capabilityflow.Preview) error {
+	if handler == nil {
+		return ErrMissingDependency
+	}
+	body, err := capabilityPreviewBody(preview)
+	if err != nil {
+		return err
+	}
+	recipients, _ := handler.activeView.Load().([]transport.MessageSender)
+	for _, sender := range recipients {
+		if sendErr := handler.send(ctx, sender, "capability_preview", nil, body); sendErr != nil {
+			handler.disconnectRecipients([]transport.MessageSender{sender})
+		}
+	}
+	return nil
 }
 
 func (handler *Handler) PublishTaskEvent(ctx context.Context, taskEvent taskstate.MobileEvent) error {

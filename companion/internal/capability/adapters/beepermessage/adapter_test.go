@@ -18,6 +18,14 @@ type fakeBeeper struct {
 	started    []startCall
 	startReply beeper.Chat
 	sent       []sentCall
+	// Read and manage (B2). unreadChats is what ListChats returns (mixed
+	// networks, so the adapter's own network filter is under test); messages
+	// is ListMessages keyed by chat id; calls is an ordered log of every
+	// write the adapter dispatched, so a test can assert which message id it
+	// targeted.
+	unreadChats []beeper.Chat
+	messages    map[string][]beeper.Message
+	calls       []string
 }
 
 type startCall struct {

@@ -92,6 +92,64 @@ func TestTheLocalRouteRefusesToGuess(t *testing.T) {
 	}
 }
 
+// A Beeper-taken-over app is registered under beeper_messaging with verb
+// Send, but the words a person uses ("send", "message") are the same ones a
+// deep-link compose app hears. The matcher must read those words as the Send
+// this app actually does, not refuse them because its single alias points at
+// Compose. This is the routing half of the Beeper-orphaning fix.
+func TestMessagingWordsRouteToSendWhenTheAppOnlyDoesSend(t *testing.T) {
+	model := testModel(Rule{ID: "discord", Name: "Discord", AppClass: "beeper_messaging", Verbs: []manifest.Verb{manifest.Send}})
+
+	raw, err := model.Route(context.Background(), "send a message on Discord")
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := stage1.ParseRoute(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Verb != manifest.Send || route.AppClass != "beeper_messaging" || route.AppNamed != "discord" {
+		t.Fatalf("route = %+v", route)
+	}
+}
+
+// The same words on a deep-link compose app still resolve to Compose. The
+// concrete verb comes from what the app can do, not from the keyword alone.
+func TestMessagingWordsStillRouteToComposeWhenTheAppComposes(t *testing.T) {
+	model := testModel(Rule{ID: "whatsapp", Name: "WhatsApp", AppClass: "messaging", Verbs: []manifest.Verb{manifest.Compose}})
+
+	raw, err := model.Route(context.Background(), "send a message on WhatsApp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := stage1.ParseRoute(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Verb != manifest.Compose {
+		t.Fatalf("route = %+v", route)
+	}
+}
+
+// A title word that names an action this app cannot do stays part of the
+// subject, exactly as before. Reading "send"/"post" in a song title as a new
+// command would be the regression the verb-group change must not introduce.
+func TestATitleWordNamingAnUnsupportedActionStaysInTheSubject(t *testing.T) {
+	model := testModel(Rule{ID: "youtube", Name: "YouTube", AppClass: "media", Verbs: []manifest.Verb{manifest.Play, manifest.Read}})
+
+	raw, err := model.Route(context.Background(), "Play Send My Love on YouTube")
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := stage1.ParseRoute(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Verb != manifest.Play || route.Subject != "Send My Love" {
+		t.Fatalf("route = %+v", route)
+	}
+}
+
 func TestASingleVerbAppNeedsNoVerbGuess(t *testing.T) {
 	model := testModel(Rule{ID: "discord", Name: "Discord", AppClass: "messaging", Verbs: []manifest.Verb{manifest.Compose}})
 
