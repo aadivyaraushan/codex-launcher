@@ -120,12 +120,18 @@ module.exports = async function handler(request, response) {
     console.error('[waitlist] store failed', {
       code: err && err.code,
       message: err && err.message,
+      detail: err && err.detail,
       ip
     });
     if (err && err.code === 'misconfigured') {
       response.status(500).json({ ok: false, error: 'misconfigured' });
       return;
     }
-    response.status(502).json({ ok: false, error: 'store_failed' });
+    response.status(502).json({
+      ok: false,
+      error: 'store_failed',
+      code: err && err.code ? String(err.code) : 'unknown',
+      detail: err && err.detail ? String(err.detail).slice(0, 80) : undefined
+    });
   }
 };
