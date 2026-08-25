@@ -1,0 +1,7 @@
+ts	phase	decision	rationale	evidence
+2026-08-07	A-frame	Target = green sweep on real device across every connected app x action, not just Instagram	User escalated scope 3x; final ask is full-coverage iterate-to-green	planning/ux-misroute-autodiscovery-plan.md
+2026-08-07	A-frame	Money gate cleared: metered OpenAI on ssdear@gmail.com (personal, ~$1k), keep spend reasonable	User explicit OK in autonomous mode; account named in .env	saved-results/openai-router-spend-approval-2026-08-07.md
+2026-08-07	A-frame	Execution spine = existing judge-approved openai-beeper-phone-runtime-plan.md	It fixes both root causes (LLM router + Beeper read); already PASS by fresh judge	planning/openai-beeper-phone-runtime-plan.md
+2026-08-07	B-harness	New sweep drives RAW utterances through real stage1/explicit -> stage2; existing eval is blind (feeds pre-recorded replies)	The blind eval is why manual spot-checking was the only thing catching these	internal/capability/routing/eval/eval.go
+2026-08-07	B-harness	Router made pluggable (RouterFunc) so same sweep later points at OpenAI broker	Build the lever once; reuse for both routers	(harness agent in progress)
+2026-08-07	setup	Worktree ux-misroute-fix; Beeper Desktop NOT running on Mac (:23373 dead) -> live reads deferred to bring-up phase	Code built+unit-tested with fakes first, live last	curl :23373 -> 000
