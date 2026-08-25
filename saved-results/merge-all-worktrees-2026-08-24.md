@@ -27,7 +27,7 @@ Combine every live product worktree into one tested `main` without discarding di
 
 ## Deliberately not imported
 
-- Phase 0 checkpoint `b53bcda`: 7,198 generated files, 2,405 binaries, OAuth callback artifacts, and a private Termux SSH key. Its branch and worktree remain untouched. Four safe health files were imported separately.
+- Phase 0 checkpoint `b53bcda`: 7,194 changed files, 2,405 binaries, OAuth callback artifacts, and a private Termux SSH key. Its branch and worktree remain untouched. Four safe health files were imported separately.
 - Detached wave 4 generated ARM64 binary: SHA-256 `ec59d3cf576c3cce2fdc5b0bf81f7e4fefd77d2e06eb091309ad937195908996`. It remains in its original worktree. The combined branch uses a fresh build from current source instead.
 - Nested `.claude/worktrees` metadata and ignored Android build caches.
 
