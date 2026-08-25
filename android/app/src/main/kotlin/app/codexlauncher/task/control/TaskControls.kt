@@ -30,6 +30,8 @@ import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskQueueState
 import app.codexlauncher.task.attachments.AttachmentRows
 import app.codexlauncher.task.attachments.AttachmentUploadState
+import app.codexlauncher.task.dictation.PromptDictationButton
+import app.codexlauncher.task.dictation.PromptDictationUiState
 import kotlinx.coroutines.launch
 
 @Composable
@@ -42,7 +44,8 @@ fun TaskControls(
     onRedirect: suspend (String) -> ExistingTaskControlOutcome,
     onStop: suspend () -> ExistingTaskControlOutcome,
     onDismissUnresolved: suspend () -> Boolean,
-    onRequestDictation: ((((PromptDictationResult) -> Unit) -> Unit))? = null,
+    dictationState: PromptDictationUiState = PromptDictationUiState(),
+    onToggleDictation: () -> Unit = {},
     composerText: String? = null,
     onComposerTextChange: ((String) -> Unit)? = null,
     attachments: List<AttachmentUploadState> = emptyList(),
@@ -111,7 +114,7 @@ fun TaskControls(
             value = text,
             onValueChange = updateText,
             modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Follow-up message" },
-            enabled = !sending && !followUpsBlocked,
+            enabled = !sending && !followUpsBlocked && !dictationState.isListening && !dictationState.isBusy,
             placeholder = { Text(if (active) "Add a follow-up or redirect…" else "Send a follow-up…") },
             minLines = 1,
             maxLines = 4,
@@ -122,7 +125,7 @@ fun TaskControls(
             OutlinedButton(onClick = onAttach, enabled = !sending && !followUpsBlocked && attachments.size < 2) { Text("Attach") }
             Button(
                 modifier = Modifier.weight(1f),
-                enabled = !sending && !followUpsBlocked && text.isNotBlank(),
+                enabled = !sending && !followUpsBlocked && !dictationState.isListening && !dictationState.isBusy && text.isNotBlank(),
                 onClick = {
                     val submitted = text
                     sending = true
@@ -147,19 +150,16 @@ fun TaskControls(
                 OutlinedButton(onClick = { stopDialog = true }, enabled = !sending) { Text("Stop") }
             }
             PromptDictationButton(
+                state = dictationState,
                 enabled = !sending && !followUpsBlocked,
-                requestOverride = onRequestDictation,
-                onResult = { result ->
-                    when (result) {
-                        is PromptDictationResult.Recognized -> {
-                            updateText(mergePromptDictation(text, result.text))
-                            message = "Dictation added"
-                        }
-                        PromptDictationResult.Cancelled -> message = "Dictation canceled"
-                        PromptDictationResult.Unavailable -> message = "Speech recognition isn’t installed"
-                        PromptDictationResult.Failed -> message = "Couldn’t understand speech"
-                    }
-                },
+                target = "follow-up",
+                onToggle = onToggleDictation,
+            )
+        }
+        dictationState.statusText?.let {
+            Text(
+                it,
+                color = if (dictationState.message == null) androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant else androidx.compose.material3.MaterialTheme.colorScheme.error,
             )
         }
         message?.let { Text(it) }

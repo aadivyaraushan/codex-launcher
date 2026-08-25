@@ -65,7 +65,8 @@ import app.codexlauncher.task.configuration.PermissionModeOption
 import app.codexlauncher.task.configuration.ReasoningOption
 import app.codexlauncher.task.configuration.TaskModelOption
 import app.codexlauncher.task.control.ExistingTaskControlOutcome
-import app.codexlauncher.task.control.PromptDictationResult
+import app.codexlauncher.task.dictation.PromptDictationPhase
+import app.codexlauncher.task.dictation.PromptDictationUiState
 import app.codexlauncher.task.attachments.AttachmentUploadState
 import app.codexlauncher.task.management.TaskActionOutcome
 import app.codexlauncher.task.summary.TaskQueueState
@@ -369,6 +370,8 @@ private fun TaskStateScenario(scenario: ScenarioId) {
     var unresolvedFork by remember(scenario) { mutableStateOf(scenario == ScenarioId.TASK_FORK_UNKNOWN) }
     var actionStatus by remember(scenario) { mutableStateOf<String?>(null) }
     var attachments by remember(scenario) { mutableStateOf(emptyList<AttachmentUploadState>()) }
+    var followUp by remember(scenario) { mutableStateOf("") }
+    var dictation by remember(scenario) { mutableStateOf(PromptDictationUiState()) }
     if (actionStatus != null) {
         Box(Modifier.fillMaxSize().padding(20.dp)) { Text(requireNotNull(actionStatus)) }
         return
@@ -410,7 +413,17 @@ private fun TaskStateScenario(scenario: ScenarioId) {
         onRedirect = { ExistingTaskControlOutcome.Redirected },
         onStop = { ExistingTaskControlOutcome.Interrupted },
         onDismissUnresolvedControl = { true },
-        onRequestDictation = { deliver -> deliver(PromptDictationResult.Recognized("Spoken sample")) },
+        followUpText = followUp,
+        onFollowUpTextChange = { followUp = it },
+        dictationState = dictation,
+        onToggleDictation = {
+            if (dictation.isListening) {
+                dictation = PromptDictationUiState(PromptDictationPhase.READY)
+            } else {
+                followUp = "Spoken sample"
+                dictation = PromptDictationUiState(PromptDictationPhase.LISTENING)
+            }
+        },
         attachments = attachments,
         onAttach = {
             attachments = listOf(AttachmentUploadState("sample-follow-up", "sample-follow-up.txt", "text/plain", 64))

@@ -52,6 +52,8 @@ import app.codexlauncher.task.composer.DraftComposerPhase
 import app.codexlauncher.task.composer.DraftComposerState
 import app.codexlauncher.task.attachments.AttachmentUploadState
 import app.codexlauncher.task.attachments.AttachmentRows
+import app.codexlauncher.task.dictation.PromptDictationButton
+import app.codexlauncher.task.dictation.PromptDictationUiState
 
 @Composable
 fun HomeScreen(
@@ -77,6 +79,7 @@ fun HomeScreen(
     attachmentMessage: String? = null,
     onRemoveAttachment: (String) -> Unit = {},
     onAttach: () -> Unit = {},
+    dictationState: PromptDictationUiState = PromptDictationUiState(),
     onDictate: () -> Unit = {},
     onConnectionHelp: () -> Unit = {},
     onManageComputer: () -> Unit = {},
@@ -131,6 +134,7 @@ fun HomeScreen(
                     attachmentMessage = attachmentMessage,
                     onRemoveAttachment = onRemoveAttachment,
                     onAttach = onAttach,
+                    dictationState = dictationState,
                     onDictate = onDictate,
                     onOpenTask = onOpenTask,
                     onLinkLocalRuntime = onLinkLocalRuntime,
@@ -259,6 +263,7 @@ private fun OnlineContent(
     attachmentMessage: String?,
     onRemoveAttachment: (String) -> Unit,
     onAttach: () -> Unit,
+    dictationState: PromptDictationUiState,
     onDictate: () -> Unit,
     onOpenTask: (String) -> Unit,
     onLinkLocalRuntime: () -> Unit = {},
@@ -379,7 +384,7 @@ private fun OnlineContent(
             OutlinedTextField(
                 value = composerState.text,
                 onValueChange = onPromptChange,
-                enabled = composerState.canEdit,
+                enabled = composerState.canEdit && !dictationState.isListening && !dictationState.isBusy,
                 placeholder = { Text("What do you want done?") },
                 modifier =
                     Modifier
@@ -398,6 +403,13 @@ private fun OnlineContent(
             }
             capabilityMessage?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            dictationState.statusText?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (dictationState.message == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                )
             }
             when {
                 newTaskNeedsReview -> {
@@ -438,18 +450,19 @@ private fun OnlineContent(
                 ) {
                     Text("+")
                 }
-                IconButton(
-                    onClick = onDictate,
+                PromptDictationButton(
+                    state = dictationState,
                     enabled = composerState.canEdit,
-                    modifier = Modifier.size(48.dp).semantics { contentDescription = "Dictate prompt" },
-                ) {
-                    Text("⌁")
-                }
+                    target = "prompt",
+                    onToggle = onDictate,
+                )
                 IconButton(
                     onClick = { onSend(composerState.text, selection) },
                     enabled =
                         state.canSend &&
                             composerState.canEdit &&
+                            !dictationState.isListening &&
+                            !dictationState.isBusy &&
                             composerState.text.isNotBlank() &&
                             composerState.version != null &&
                             (selection != null || promptDestination == PromptDestination.AUTO) &&

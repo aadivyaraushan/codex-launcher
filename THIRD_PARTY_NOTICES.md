@@ -11,6 +11,8 @@ Direct runtime dependency families include:
 | AndroidX and Jetpack Compose | Android launcher | Apache-2.0 |
 | CameraX | Android QR scanner | Apache-2.0 |
 | Kotlin coroutines and serialization | Android launcher | Apache-2.0 |
+| Moonshine Voice | Android on-device dictation | MIT |
+| ONNX Runtime | Moonshine model execution on Android | MIT |
 | OkHttp | Android pinned TLS and WebSocket transport | Apache-2.0 |
 | Tink | Android local cryptography | Apache-2.0 |
 | ZXing Core | Android QR decoding | Apache-2.0 |

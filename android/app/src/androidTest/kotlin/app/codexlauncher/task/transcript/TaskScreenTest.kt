@@ -23,6 +23,8 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
 import app.codexlauncher.LauncherDestination
@@ -34,7 +36,8 @@ import org.junit.Rule
 import org.junit.Test
 import app.codexlauncher.task.management.TaskActionOutcome
 import app.codexlauncher.task.control.ExistingTaskControlOutcome
-import app.codexlauncher.task.control.PromptDictationResult
+import app.codexlauncher.task.dictation.PromptDictationPhase
+import app.codexlauncher.task.dictation.PromptDictationUiState
 
 class TaskScreenTest {
     @get:Rule
@@ -127,37 +130,33 @@ class TaskScreenTest {
     }
 
     @Test
-    fun dictationAppendsEditableTextAndReportsCancelWithoutErasingIt() {
-        var nextResult: PromptDictationResult = PromptDictationResult.Recognized("spoken words")
+    fun dictationShowsLiveTextAndRequiresAnExplicitStop() {
+        var followUp by mutableStateOf("Typed words")
+        var dictation by mutableStateOf(PromptDictationUiState())
+        var toggles = 0
         compose.setContent {
             QuietInstrumentTheme(AppearanceMode.LIGHT) {
                 TaskScreen(
                     state = populatedState(),
                     taskState = app.codexlauncher.task.summary.TaskState.IDLE_AFTER_REPLY,
-                    onRequestDictation = { callback -> callback(nextResult) },
+                    followUpText = followUp,
+                    onFollowUpTextChange = { followUp = it },
+                    dictationState = dictation,
+                    onToggleDictation = { toggles += 1 },
                 )
             }
         }
 
         compose.onNodeWithText("Mic").assertIsDisplayed()
-        compose.onNodeWithText("⌁").assertDoesNotExist()
-        compose.onNodeWithText("Voice").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Follow-up message").performTextInput("Typed words")
         compose.onNodeWithContentDescription("Dictate follow-up").performClick()
-        compose.onNodeWithContentDescription("Follow-up message").assertTextContains("Typed words spoken words")
+        assertEquals(1, toggles)
 
-        nextResult = PromptDictationResult.Cancelled
-        compose.onNodeWithContentDescription("Dictate follow-up").performClick()
-        compose.onNodeWithText("Dictation canceled").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Follow-up message").assertTextContains("Typed words spoken words")
-
-        nextResult = PromptDictationResult.Unavailable
-        compose.onNodeWithContentDescription("Dictate follow-up").performClick()
-        compose.onNodeWithText("Speech recognition isn’t installed").assertIsDisplayed()
-
-        nextResult = PromptDictationResult.Failed
-        compose.onNodeWithContentDescription("Dictate follow-up").performClick()
-        compose.onNodeWithText("Couldn’t understand speech").assertIsDisplayed()
+        compose.runOnIdle {
+            dictation = PromptDictationUiState(PromptDictationPhase.LISTENING)
+            followUp = "Typed words spoken words"
+        }
+        compose.onNodeWithContentDescription("Stop follow-up dictation").assertIsDisplayed().performClick()
+        assertEquals(2, toggles)
         compose.onNodeWithContentDescription("Follow-up message").assertTextContains("Typed words spoken words")
     }
 

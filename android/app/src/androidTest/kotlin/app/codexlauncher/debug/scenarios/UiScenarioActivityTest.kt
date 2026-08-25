@@ -295,7 +295,7 @@ class UiScenarioActivityTest {
         show(ScenarioId.TASK_CONTROLS_IDLE)
         compose.onNodeWithContentDescription("Dictate follow-up").performClick()
         compose.onNodeWithContentDescription("Follow-up message").assertTextContains("Spoken sample")
-        compose.onNodeWithText("Dictation added").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Stop follow-up dictation").assertIsDisplayed().performClick()
 
         show(ScenarioId.TASK_CONTROLS_IDLE)
         compose.onNodeWithText("Attach").performClick()

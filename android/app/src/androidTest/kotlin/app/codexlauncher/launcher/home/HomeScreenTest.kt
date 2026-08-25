@@ -7,17 +7,22 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.isDisplayed
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import app.codexlauncher.task.dictation.PromptDictationPhase
+import app.codexlauncher.task.dictation.PromptDictationUiState
 import androidx.compose.runtime.setValue
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
@@ -250,26 +255,38 @@ class HomeScreenTest {
     }
 
     @Test
-    fun dictationIsAvailableOnlyWhileTheHomeDraftCanAcceptEdits() {
+    fun dictationShowsDownloadProgressAndChangesToAnExplicitStop() {
         var dictationStarts = 0
         var composerState by mutableStateOf(DraftComposerState("Keep this", DraftComposerPhase.READY))
+        var dictationState by mutableStateOf(PromptDictationUiState())
         compose.setContent {
             QuietInstrumentTheme(AppearanceMode.DARK) {
                 HomeScreen(
                     state = onlineState(selectedProjectName = "Codex Launcher"),
                     composerState = composerState,
+                    dictationState = dictationState,
                     onDictate = { dictationStarts += 1 },
                 )
             }
         }
 
+        compose.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Dictate prompt"))
         compose.onNodeWithContentDescription("Dictate prompt").assertIsEnabled().performClick()
         assertEquals(1, dictationStarts)
 
         compose.runOnIdle {
-            composerState = DraftComposerState("Keep this", DraftComposerPhase.UNAVAILABLE)
+            dictationState = PromptDictationUiState(PromptDictationPhase.DOWNLOADING, downloadProgress = 0.42f)
         }
+        compose.onNodeWithText("Downloading voice model… 42%").assertIsDisplayed()
         compose.onNodeWithContentDescription("Dictate prompt").assertIsNotEnabled()
+
+        compose.runOnIdle {
+            composerState = DraftComposerState("Keep this spoken words", DraftComposerPhase.READY)
+            dictationState = PromptDictationUiState(PromptDictationPhase.LISTENING)
+        }
+        compose.onNodeWithContentDescription("Stop prompt dictation").assertIsEnabled().performClick()
+        assertEquals(2, dictationStarts)
+        compose.onNodeWithContentDescription("Prompt").assertTextContains("Keep this spoken words")
     }
 
     @Test
@@ -518,6 +535,7 @@ class HomeScreenTest {
             mustChooseProject = selectedProjectName == null,
             showAllApps = true,
             showAndroidSettings = true,
+            showComposer = true,
         )
 
     private fun taskOptions() =

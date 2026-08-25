@@ -1,7 +1,6 @@
 package app.codexlauncher
 
 import android.Manifest
-import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.os.Build
 import android.content.Intent
@@ -103,10 +102,7 @@ import app.codexlauncher.task.transcript.TaskScreen
 import app.codexlauncher.task.transcript.TranscriptDetail
 import app.codexlauncher.task.transcript.TranscriptDetailScreen
 import app.codexlauncher.task.composer.DraftComposerViewModel
-import app.codexlauncher.task.control.PromptDictationContract
-import app.codexlauncher.task.control.PromptDictationResult
-import app.codexlauncher.task.control.homeDictationMessage
-import app.codexlauncher.task.control.mergePromptDictation
+import app.codexlauncher.task.dictation.OnDevicePromptDictation
 import app.codexlauncher.task.attachments.AttachmentDocumentReader
 import app.codexlauncher.task.attachments.AttachmentSelection
 import androidx.activity.result.PickVisualMediaRequest
@@ -167,6 +163,8 @@ class LauncherActivity : ComponentActivity() {
             val notificationAccessBlock by launcherApplication.notificationAccessAsk.state.collectAsState()
             val lastRepliedConversation by launcherApplication.replyGuard.lastReplied.collectAsState()
             val scope = rememberCoroutineScope()
+            val dictation = remember { OnDevicePromptDictation(applicationContext, scope) }
+            val dictationState by dictation.state.collectAsState()
             val appsRepository = remember { InstalledAppsRepository(applicationContext) }
             val appsLoader = remember { InstalledAppsLoader(appsRepository) }
             var pairingState by remember { mutableStateOf<PairingRecordState>(PairingRecordState.Loading) }
@@ -181,29 +179,13 @@ class LauncherActivity : ComponentActivity() {
             var transcriptDetail by remember { mutableStateOf<TranscriptDetail?>(null) }
             var attachmentChoiceVisible by rememberSaveable { mutableStateOf(false) }
             var attachmentMessage by remember { mutableStateOf<String?>(null) }
-            var homeDictationMessage by remember { mutableStateOf<String?>(null) }
             var stoppedConversations by remember { mutableStateOf(emptyList<ThreadKey>()) }
-            val homeDictationLauncher =
-                rememberLauncherForActivityResult(PromptDictationContract("Speak your prompt")) { result ->
-                    val applied =
-                        if (result is PromptDictationResult.Recognized) {
-                            draftComposerViewModel.applyDictation { currentText ->
-                                mergePromptDictation(currentText, result.text)
-                            }
-                        } else {
-                            draftComposerViewModel.cancelDictation()
-                            false
-                        }
-                    homeDictationMessage = homeDictationMessage(result, recognizedApplied = applied)
-                    AppLog.info(
-                        feature = "dictation",
-                        message = "home speech activity result handled",
-                        fields = mapOf(
-                            "result_kind" to result::class.simpleName.orEmpty(),
-                            "output_shape" to if (applied) "draft_and_message" else "message_only",
-                        ),
-                    )
-                }
+            DisposableEffect(dictation) {
+                onDispose { dictation.close() }
+            }
+            LaunchedEffect(destination) {
+                dictation.cancel()
+            }
             val attachmentReader = remember { AttachmentDocumentReader(contentResolver) }
             val acceptPickedAttachment: (Uri?) -> Unit = { uri ->
                 if (uri != null) {
@@ -575,13 +557,11 @@ class LauncherActivity : ComponentActivity() {
                             newTaskOptionsKey = sessionUiState.newTaskOptionsSessionId,
                             composerState = draftComposerState,
                             onPromptChange = { text ->
-                                homeDictationMessage = null
                                 homeRouteMessage = null
                                 draftComposerViewModel.update(text)
                             },
                             onSend = { prompt, selection ->
                                 val version = draftComposerState.version ?: return@HomeScreen
-                                homeDictationMessage = null
                                 val macOnlineWithProject =
                                     sessionUiState.connection.phase == ConnectionPhase.ONLINE &&
                                         !sessionUiState.connection.selectedProjectId.isNullOrBlank() &&
@@ -651,7 +631,7 @@ class LauncherActivity : ComponentActivity() {
                             capabilityMessage = capabilityState.message ?: homeRouteMessage,
                             onPromptDestinationChange = sessionViewModel::setPromptDestination,
                             newTaskNeedsReview = sessionUiState.newTaskNeedsReview,
-                            newTaskMessage = sessionUiState.newTaskMessage ?: homeDictationMessage,
+                            newTaskMessage = sessionUiState.newTaskMessage,
                             onDismissNewTaskReview = {
                                 scope.launch { sessionViewModel.dismissUnconfirmedNewTask() }
                             },
@@ -662,6 +642,7 @@ class LauncherActivity : ComponentActivity() {
                                 attachmentMessage = null
                             },
                             onAttach = { attachmentChoiceVisible = true },
+                            dictationState = dictationState,
                             onLinkComputer = {
                                 scope.launch {
                                     localState.gate.beginPairing()
@@ -679,33 +660,11 @@ class LauncherActivity : ComponentActivity() {
                                     runSilentLocalLink("button")
                                 }
                             },
-                            onDictate = onDictate@{
-                                if (!draftComposerViewModel.beginDictation()) {
-                                    homeDictationMessage = "Dictation wasn’t started because the draft isn’t editable"
-                                    return@onDictate
-                                }
-                                try {
-                                    homeDictationLauncher.launch(Unit)
-                                } catch (error: ActivityNotFoundException) {
-                                    draftComposerViewModel.cancelDictation()
-                                    homeDictationMessage =
-                                        homeDictationMessage(PromptDictationResult.Unavailable, recognizedApplied = false)
-                                    AppLog.error(
-                                        feature = "dictation",
-                                        message = "home speech activity unavailable",
-                                        error = error,
-                                        fields = mapOf("decision" to "keep_composer_text"),
-                                    )
-                                } catch (error: SecurityException) {
-                                    draftComposerViewModel.cancelDictation()
-                                    homeDictationMessage =
-                                        homeDictationMessage(PromptDictationResult.Unavailable, recognizedApplied = false)
-                                    AppLog.error(
-                                        feature = "dictation",
-                                        message = "home speech activity rejected",
-                                        error = error,
-                                        fields = mapOf("decision" to "keep_composer_text"),
-                                    )
+                            onDictate = {
+                                if (dictationState.isListening) {
+                                    dictation.stop()
+                                } else if (draftComposerState.canEdit) {
+                                    dictation.start(draftComposerState.text, draftComposerViewModel::update)
                                 }
                             },
                             onRetry = {
@@ -764,6 +723,16 @@ class LauncherActivity : ComponentActivity() {
                                 onRedirect = { text -> sessionViewModel.redirectTask(transcript.taskId, text) },
                                 onStop = { sessionViewModel.stopTask(transcript.taskId) },
                                 onDismissUnresolvedControl = { sessionViewModel.dismissUnconfirmedTaskControl(transcript.taskId) },
+                                dictationState = dictationState,
+                                onToggleDictation = {
+                                    if (dictationState.isListening) {
+                                        dictation.stop()
+                                    } else {
+                                        dictation.start(sessionUiState.followUpDraft) { text ->
+                                            sessionViewModel.updateTaskFollowUpDraft(transcript.taskId, text)
+                                        }
+                                    }
+                                },
                                 followUpText = sessionUiState.followUpDraft,
                                 onFollowUpTextChange = { text -> sessionViewModel.updateTaskFollowUpDraft(transcript.taskId, text) },
                                 attachments = attachmentUploads,

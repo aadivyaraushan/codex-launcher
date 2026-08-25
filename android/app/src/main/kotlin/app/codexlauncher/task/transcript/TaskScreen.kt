@@ -50,7 +50,7 @@ import app.codexlauncher.task.management.TaskActionsMenu
 import app.codexlauncher.task.control.ExistingTaskControlOutcome
 import app.codexlauncher.task.control.TaskControls
 import app.codexlauncher.task.attachments.AttachmentUploadState
-import app.codexlauncher.task.control.PromptDictationResult
+import app.codexlauncher.task.dictation.PromptDictationUiState
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskQueueState
 
@@ -75,7 +75,8 @@ fun TaskScreen(
     onRedirect: suspend (String) -> ExistingTaskControlOutcome = { ExistingTaskControlOutcome.Unavailable },
     onStop: suspend () -> ExistingTaskControlOutcome = { ExistingTaskControlOutcome.Unavailable },
     onDismissUnresolvedControl: suspend () -> Boolean = { false },
-    onRequestDictation: ((((PromptDictationResult) -> Unit) -> Unit))? = null,
+    dictationState: PromptDictationUiState = PromptDictationUiState(),
+    onToggleDictation: () -> Unit = {},
     followUpText: String? = null,
     onFollowUpTextChange: ((String) -> Unit)? = null,
     attachments: List<AttachmentUploadState> = emptyList(),
@@ -238,7 +239,8 @@ fun TaskScreen(
                 onRedirect = onRedirect,
                 onStop = onStop,
                 onDismissUnresolved = onDismissUnresolvedControl,
-                onRequestDictation = onRequestDictation,
+                dictationState = dictationState,
+                onToggleDictation = onToggleDictation,
                 composerText = followUpText,
                 onComposerTextChange = onFollowUpTextChange,
                 attachments = attachments,
