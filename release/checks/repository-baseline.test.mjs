@@ -28,6 +28,10 @@ assert.match(notice, /Instrument Sans/);
 assert.match(notice, /JetBrains Mono/);
 assert.match(notice, /SIL Open Font License 1\.1/);
 
+const thirdPartyNotices = read("THIRD_PARTY_NOTICES.md");
+assert.match(thirdPartyNotices, /Moonshine Voice/);
+assert.match(thirdPartyNotices, /ONNX Runtime/);
+
 const readme = read("README.md");
 assert.match(readme, /technical alpha/i);
 assert.match(readme, /Android 16/i);
@@ -36,4 +40,4 @@ assert.doesNotMatch(readme, /connects directly.*Tailscale/is);
 assert.match(readme, /Computer offline/);
 assert.match(readme, /does not copy.*ChatGPT.*credential/is);
 
-console.log("repository baseline: 21 assertions passed");
+console.log("repository baseline: 23 assertions passed");

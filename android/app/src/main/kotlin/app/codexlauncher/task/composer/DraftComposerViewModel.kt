@@ -43,7 +43,6 @@ class DraftComposerViewModel(
     private var generation = 0L
     private var revision = 0L
     private var loadedOwnerKey: String? = null
-    private var pendingDictationVersion: DraftVersion? = null
     private val scope = workScope ?: viewModelScope
 
     val state: StateFlow<DraftComposerState> = mutableState.asStateFlow()
@@ -59,7 +58,6 @@ class DraftComposerViewModel(
             synchronized(lock) {
                 if (loadedOwnerKey == ownerKey && mutableState.value.phase in setOf(DraftComposerPhase.LOADING, DraftComposerPhase.READY)) return
                 loadedOwnerKey = ownerKey
-                pendingDictationVersion = null
                 generation += 1
                 revision = 0
                 mutableState.value = DraftComposerState(phase = DraftComposerPhase.LOADING)
@@ -112,34 +110,8 @@ class DraftComposerViewModel(
             generation += 1
             revision = 0
             loadedOwnerKey = null
-            pendingDictationVersion = null
             mutableState.value = DraftComposerState()
         }
-    }
-
-    fun beginDictation(): Boolean =
-        synchronized(lock) {
-            val version = mutableState.value.version
-            if (!mutableState.value.canEdit || version == null) return false
-            pendingDictationVersion = version
-            true
-        }
-
-    fun cancelDictation() {
-        synchronized(lock) { pendingDictationVersion = null }
-    }
-
-    fun applyDictation(transform: (String) -> String): Boolean {
-        val write =
-            synchronized(lock) {
-                val expectedVersion = pendingDictationVersion
-                pendingDictationVersion = null
-                if (!mutableState.value.canEdit || expectedVersion == null || mutableState.value.version != expectedVersion) return false
-                acceptEditLocked(transform(mutableState.value.text))
-            }
-        logAcceptedEdit(write)
-        writes.trySend(write)
-        return true
     }
 
     fun update(text: String) {
