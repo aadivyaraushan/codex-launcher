@@ -10,7 +10,7 @@ every app x action against that. Where it misbehaves, fix the root cause and
 re-run the sweep until it passes. The harness is the instrument; a green sweep
 plus real-device confirmation is the finish line.
 
-Money approved: metered OpenAI on personal key `ssdear@gmail.com` (~$1k, "keep
+Money approved: metered OpenAI on personal key `[redacted-email]` (~$1k, "keep
 spend reasonable"). Record: `saved-results/openai-router-spend-approval-2026-08-07.md`.
 
 ## What actually runs on the phone (verified, not assumed)

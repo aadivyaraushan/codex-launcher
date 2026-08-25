@@ -6,9 +6,9 @@
 
 ## Approved account
 
-- **OPENAI_ACCOUNT:** `ssdear@gmail.com`
+- **OPENAI_ACCOUNT:** `[redacted-email]`
 - **Kind:** personal (`OPENAI_ACCOUNT_KIND=personal`)
-- **Org:** `org-oC0Cx9jwKVEEvRlRlqdQzTwE`
+- **Org:** `[redacted-org]`
 - **Credit on account:** ~$1,000 OpenAI credit (user-stated).
 - **Model:** `gpt-5.6-luna` (per `stage1/openai/client.go`).
 

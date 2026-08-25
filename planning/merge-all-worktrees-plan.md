@@ -45,3 +45,12 @@ Fast-forward main while preserving its pre-existing local files
 - Do not reset or overwrite dirty worktrees.
 - Keep each dirty worktree's checkpoint commit on its existing branch for recovery.
 - Do not commit credentials, local secrets, nested `.git` files, or broad generated directories.
+
+## Result
+
+- Integrated the landing page, phase 2 phone tool bridge, routing diagnosis, phone broker, updater, and on-device dictation branches.
+- Imported only the four safe cold-reboot health files from the phase 0 checkpoint; the checkpoint with a private SSH key and generated output stayed isolated.
+- Kept the phase 2 OpenClaw bridge when the older direct-routing pipeline conflicted with it.
+- Ported the older broker's UTF-8 byte reader and `100 Continue` support into the retained generic broker.
+- Rebuilt the tracked ARM64 phone runtime from the combined source.
+- Go, Android unit/lint/build, release build, and release checks passed before the final review.

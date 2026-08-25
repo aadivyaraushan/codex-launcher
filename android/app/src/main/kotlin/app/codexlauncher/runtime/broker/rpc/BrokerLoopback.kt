@@ -189,9 +189,9 @@ private fun readAsciiLine(input: InputStream): String? {
     val buffer = ByteArrayOutputStream(128)
     while (true) {
         val next = input.read()
-        if (next < 0) return if (buffer.size() == 0) null else buffer.toString(Charsets.US_ASCII)
+        if (next < 0) return if (buffer.size() == 0) null else String(buffer.toByteArray(), Charsets.US_ASCII)
         if (next == '\n'.code) break
         if (next != '\r'.code) buffer.write(next)
     }
-    return buffer.toString(Charsets.US_ASCII)
+    return String(buffer.toByteArray(), Charsets.US_ASCII)
 }

@@ -35,14 +35,19 @@ data class MapsImportOffer(
 
 object MapsImportSession {
     private const val ALIAS_PREFIX = "maps-import-ecdh-"
+    const val PROVIDER_MAPS = "maps"
+    const val PROVIDER_OPENAI = "openai"
 
     fun createOffer(
         context: Context,
         deviceSerial: String,
-        provider: String = "maps",
+        provider: String = PROVIDER_MAPS,
         nowUnix: Long = System.currentTimeMillis() / 1000,
         ttlSeconds: Long = 600,
     ): MapsImportOffer {
+        require(provider == PROVIDER_MAPS || provider == PROVIDER_OPENAI) {
+            "unsupported_provider"
+        }
         val importId = "imp-" + UUID.randomUUID().toString()
         val alias = ALIAS_PREFIX + importId
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -124,7 +129,7 @@ object MapsImportSession {
         // from THIS device's own pending-offer state, never from the sealed
         // JSON's own claim -- otherwise a forged envelope could pick its own
         // provider and land wherever it wants.
-        val pendingProvider = prefs.getString("pending_provider", "maps") ?: "maps"
+        val pendingProvider = prefs.getString("pending_provider", PROVIDER_MAPS) ?: PROVIDER_MAPS
         val expected =
             MapsEnvelopeMeta(
                 importId = importId,
@@ -148,8 +153,8 @@ object MapsImportSession {
         val apiKey = String(apiKeyBytes, Charsets.UTF_8)
         apiKeyBytes.fill(0)
         when (pendingProvider) {
-            "maps" -> MapsApiKeyVault.android(context).putApiKey(apiKey)
-            "openai" -> OpenAiApiKeyVault.android(context).putApiKey(apiKey)
+            PROVIDER_MAPS -> MapsApiKeyVault.android(context).putApiKey(apiKey)
+            PROVIDER_OPENAI -> OpenAiApiKeyVault.android(context).putApiKey(apiKey)
             else -> error("unsupported_import_provider")
         }
         prefs.edit()

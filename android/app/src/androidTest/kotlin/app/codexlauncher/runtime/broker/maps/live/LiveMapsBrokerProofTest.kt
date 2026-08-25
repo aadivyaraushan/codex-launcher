@@ -11,6 +11,7 @@ import app.codexlauncher.runtime.broker.maps.http.MapsAppIdentity
 import app.codexlauncher.runtime.broker.maps.http.MapsPlatformClient
 import app.codexlauncher.runtime.broker.maps.vault.MapsApiKeyVault
 import app.codexlauncher.runtime.broker.maps.vault.MapsImportSession
+import app.codexlauncher.runtime.broker.openai.vault.OpenAiApiKeyVault
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -62,13 +63,13 @@ class LiveMapsBrokerProofTest {
                             File(envelopePath).readText()
                         }
                 MapsImportSession.importSealedJson(ctx, sealed)
-                val vault =
+                val hasKey =
                     if (provider == MapsImportSession.PROVIDER_OPENAI) {
-                        MapsApiKeyVault.androidOpenAi(ctx)
+                        OpenAiApiKeyVault.android(ctx).hasKey()
                     } else {
-                        MapsApiKeyVault.android(ctx)
+                        MapsApiKeyVault.android(ctx).hasKey()
                     }
-                assertTrue("vault must hold $provider key after import", vault.hasKey())
+                assertTrue("vault must hold $provider key after import", hasKey)
                 File(ctx.filesDir, "live-maps-broker-proof.txt").writeText(
                     "mode=import_only\nprovider=$provider\nhas_key=true\nverdict=PASS\n",
                 )

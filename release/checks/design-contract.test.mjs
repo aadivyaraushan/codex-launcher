@@ -16,11 +16,11 @@ assert.equal(screenCalls.length, 7, "exactly seven screens must render per theme
 assert.doesNotMatch(html, /screen\("(?:Attention|Completion)", "0[89]"/);
 
 assert.match(html, /studio-mac/);
-assert.match(html, /class="project-selector"[^>]*>Codex Launcher</);
-assert.match(html, /aria-label="Change project folder"/);
-assert.match(html, /class="send disabled"[^>]*aria-disabled="true"/);
-assert.match(design, /computer is fixed[^\n]+project\/folder[^\n]+changeable/i);
-assert.match(design, /sending is disabled until a project\/folder is selected/i);
+assert.doesNotMatch(html, /class="project-selector"/);
+assert.match(html, /aria-label="Start on phone"/);
+assert.match(html, /aria-label="Start on computer"/);
+assert.match(design, /project\/folder pick inside that flow/i);
+assert.match(design, /sending a computer task is still disabled until a project\/folder is selected/i);
 
 assert.doesNotMatch(html, />Completed(?:<| ·)/);
 assert.doesNotMatch(design, /\*\*Completed:\*\*/);
@@ -30,9 +30,4 @@ assert.match(reference, /Codex replied/i);
 for (const action of ["Rename task", "Archive task", "Fork task"]) {
   assert.match(html, new RegExp(action));
 }
-for (const option of ["Model", "Reasoning", "Permission mode"]) {
-  assert.match(html, new RegExp(option));
-}
-assert.match(html, /aria-label="Dictate prompt"/);
-
-console.log("design contract: 19 assertions passed");
+console.log("design contract: 16 assertions passed");

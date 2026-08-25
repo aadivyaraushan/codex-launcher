@@ -59,6 +59,12 @@ class ScenarioCatalogTest {
                 "reply_access_ask",
                 "reply_stop_offer",
                 "reply_stopped_list",
+                "capability_confirm",
+                "capability_running",
+                "capability_result_unknown",
+                "capability_failed",
+                "capability_question",
+                "capability_unresolved_check",
             )
 
         assertEquals(expected, ScenarioCatalog.all.map { it.wireName }.toSet())
