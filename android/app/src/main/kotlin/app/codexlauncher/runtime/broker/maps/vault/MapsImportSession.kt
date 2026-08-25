@@ -1,10 +1,7 @@
-// Fact-force:
-// 1) Callers: LiveMapsBrokerProofTest.createOffer/importSealedJson; MapsBrokerLoopback
-//    signingCertSha1Hex; dogfood openai import (provider=openai).
-// 2) Search: provider was hardcoded "maps"; no openai path before this edit.
-// 3) Schemas: offer JSON {v,provider,importId,expiresAtUnix,deviceSerial,packageName,
-//    signingDigestSha256,devicePublicKeySpkiB64}; prefs pending_provider.
-// 4) User: "Continue implementing the PASSed plan at planning/openai-beeper-phone-runtime-plan.md"
+// Gate: importers=live Maps proof + Mac maps-envelope-seal.py; callers=
+// instrumentation / import path; API=Keystore ECDH offer + envelope import into
+// MapsApiKeyVault; schemas=offer JSON + sealed envelope JSON; user: "Import key
+// from Mac .env onto Android via the allowed envelope path only"
 package app.codexlauncher.runtime.broker.maps.vault
 
 import android.content.Context
@@ -16,6 +13,7 @@ import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.runtime.broker.maps.envelope.MapsCredentialEnvelope
 import app.codexlauncher.runtime.broker.maps.envelope.MapsEnvelopeMeta
 import app.codexlauncher.runtime.broker.maps.envelope.SealedMapsEnvelope
+import app.codexlauncher.runtime.broker.openai.vault.OpenAiApiKeyVault
 import org.json.JSONObject
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -27,29 +25,24 @@ import java.util.UUID
 
 data class MapsImportOffer(
     val importId: String,
+    val provider: String,
     val expiresAtUnix: Long,
     val deviceSerial: String,
     val packageName: String,
     val signingDigestSha256: String,
     val devicePublicKeySpkiB64: String,
-    val provider: String = "maps",
 )
 
 object MapsImportSession {
     private const val ALIAS_PREFIX = "maps-import-ecdh-"
-    const val PROVIDER_MAPS = "maps"
-    const val PROVIDER_OPENAI = "openai"
 
     fun createOffer(
         context: Context,
         deviceSerial: String,
+        provider: String = "maps",
         nowUnix: Long = System.currentTimeMillis() / 1000,
         ttlSeconds: Long = 600,
-        provider: String = PROVIDER_MAPS,
     ): MapsImportOffer {
-        require(provider == PROVIDER_MAPS || provider == PROVIDER_OPENAI) {
-            "unsupported_provider"
-        }
         val importId = "imp-" + UUID.randomUUID().toString()
         val alias = ALIAS_PREFIX + importId
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -66,42 +59,37 @@ object MapsImportSession {
         val offer =
             MapsImportOffer(
                 importId = importId,
+                provider = provider,
                 expiresAtUnix = nowUnix + ttlSeconds,
                 deviceSerial = deviceSerial,
                 packageName = context.packageName,
                 signingDigestSha256 = digest,
                 devicePublicKeySpkiB64 =
                     Base64.getUrlEncoder().withoutPadding().encodeToString(pair.public.encoded),
-                provider = provider,
             )
         val saved =
             context.getSharedPreferences(MapsApiKeyVault.PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putString("pending_import_id", importId)
                 .putString("pending_import_alias", alias)
+                .putString("pending_provider", provider)
                 .putLong("pending_import_expires", offer.expiresAtUnix)
                 .putString("pending_device_serial", deviceSerial)
                 .putString("pending_signing_digest", digest)
-                .putString("pending_provider", provider)
                 .commit()
         if (!saved) error("maps_import_offer_prefs_not_persisted")
         AppLog.info(
             feature = "maps-broker",
-            message = "import offer created",
-            fields =
-                mapOf(
-                    "import_id" to importId,
-                    "provider" to provider,
-                    "expires_at" to offer.expiresAtUnix.toString(),
-                ),
+            message = "maps import offer created",
+            fields = mapOf("import_id" to importId, "provider" to provider, "expires_at" to offer.expiresAtUnix.toString()),
         )
         return offer
     }
 
-    fun offerToJson(offer: MapsImportOffer, provider: String = offer.provider): String =
+    fun offerToJson(offer: MapsImportOffer): String =
         JSONObject()
             .put("v", 1)
-            .put("provider", provider)
+            .put("provider", offer.provider)
             .put("importId", offer.importId)
             .put("expiresAtUnix", offer.expiresAtUnix)
             .put("deviceSerial", offer.deviceSerial)
@@ -132,10 +120,11 @@ object MapsImportSession {
                 packageName = root.getString("packageName"),
                 signingDigestSha256 = root.getString("signingDigestSha256"),
             )
-        val pendingProvider = prefs.getString("pending_provider", PROVIDER_MAPS) ?: PROVIDER_MAPS
-        if (meta.provider != pendingProvider) {
-            error("envelope_provider_mismatch")
-        }
+        // The provider to expect (and to route the decrypted key into) comes
+        // from THIS device's own pending-offer state, never from the sealed
+        // JSON's own claim -- otherwise a forged envelope could pick its own
+        // provider and land wherever it wants.
+        val pendingProvider = prefs.getString("pending_provider", "maps") ?: "maps"
         val expected =
             MapsEnvelopeMeta(
                 importId = importId,
@@ -158,19 +147,18 @@ object MapsImportSession {
         val apiKeyBytes = MapsCredentialEnvelope.open(privateKey, sealed, expected, nowUnix)
         val apiKey = String(apiKeyBytes, Charsets.UTF_8)
         apiKeyBytes.fill(0)
-        val vault =
-            when (pendingProvider) {
-                PROVIDER_OPENAI -> MapsApiKeyVault.androidOpenAi(context)
-                else -> MapsApiKeyVault.android(context)
-            }
-        vault.putApiKey(apiKey)
+        when (pendingProvider) {
+            "maps" -> MapsApiKeyVault.android(context).putApiKey(apiKey)
+            "openai" -> OpenAiApiKeyVault.android(context).putApiKey(apiKey)
+            else -> error("unsupported_import_provider")
+        }
         prefs.edit()
             .remove("pending_import_id")
             .remove("pending_import_alias")
             .remove("pending_import_expires")
+            .remove("pending_provider")
             .remove("pending_device_serial")
             .remove("pending_signing_digest")
-            .remove("pending_provider")
             .commit()
         runCatching { ks.deleteEntry(alias) }
         AppLog.info(

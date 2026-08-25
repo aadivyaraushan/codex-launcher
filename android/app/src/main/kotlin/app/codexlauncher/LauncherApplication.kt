@@ -17,8 +17,9 @@ import app.codexlauncher.connection.stream.LauncherStreamClient
 import app.codexlauncher.connection.stream.StreamClient
 import app.codexlauncher.diagnostics.AppLog
 // Fact-force: importers=AndroidManifest Application; callers=onCreate;
-// API=MapsBrokerLoopback.startIfKeyed; user: Maps Go→Android Places/Routes RPC
-import app.codexlauncher.runtime.broker.maps.rpc.MapsBrokerLoopback
+// API=BrokerLoopback.start; user: Maps + OpenAI Go→Android broker RPC, always
+// on so a key imported after launch works with no restart
+import app.codexlauncher.runtime.broker.rpc.BrokerLoopback
 import app.codexlauncher.storage.ownership.LocalStateOwner
 import app.codexlauncher.storage.reply.stops.ReplyStopStore
 import app.codexlauncher.storage.reply.stops.replyStopDataStore
@@ -43,9 +44,7 @@ class LauncherApplication : Application() {
                 message = "startup stop list restore finished",
                 fields = mapOf("output_shape" to outcome.name.lowercase()),
             )
-// Fact-force (edit): Callers=AndroidManifest Application; API=MapsBrokerLoopback.startAlways
-// (was startIfKeyed); User: "Continue implementing the PASSed plan at planning/openai-beeper-phone-runtime-plan.md"
-            MapsBrokerLoopback.startAlways(this@LauncherApplication)
+            BrokerLoopback.start(this@LauncherApplication)
         }
     }
 

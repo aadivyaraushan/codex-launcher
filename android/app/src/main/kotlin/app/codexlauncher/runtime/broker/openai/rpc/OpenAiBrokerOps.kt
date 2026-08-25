@@ -1,8 +1,8 @@
-// Fact-force:
-// 1) Callers: OpenAiBrokerOpsTest + BrokerLoopbackDispatch / MapsBrokerLoopback
-// 2) find android -path '*openai/rpc*' → tests only before this file
-// 3) No data files; status JSON {"keyed":bool}; responses forward body to OpenAI
-// 4) User: plan openai-beeper-phone-runtime A1 OpenAI broker ops
+// Gate: importers=OpenAiBrokerOpsTest + BrokerLoopback; callers=Go phone-runtime
+// stage-1 router via loopback; API=POST /v1/broker/openai/responses (forward,
+// bearer added, upstream status+body verbatim) + GET /v1/broker/openai/status
+// ({"keyed":bool}); schemas=opaque JSON passthrough; user: "Workstream A1
+// on-device OpenAI loopback broker, mirror the maps broker one-for-one"
 package app.codexlauncher.runtime.broker.openai.rpc
 
 import app.codexlauncher.diagnostics.AppLog
@@ -14,8 +14,8 @@ data class OpenAiBrokerHttpResponse(
 
 class OpenAiBrokerOps(
     private val hasKey: () -> Boolean,
-    private val withKey: ((ByteArray) -> Unit) -> Unit = { _ -> },
-    private val forward: (authHeader: String, body: String) -> OpenAiBrokerHttpResponse,
+    private val apiKey: () -> String,
+    private val postToUpstream: (headers: Map<String, String>, body: String) -> OpenAiBrokerHttpResponse,
 ) {
     fun handle(method: String, path: String, body: String): OpenAiBrokerHttpResponse {
         AppLog.info(
@@ -23,35 +23,31 @@ class OpenAiBrokerOps(
             message = "ops handle",
             fields = mapOf("method" to method, "path" to path, "body_len" to body.length.toString()),
         )
-        return when (path) {
-            PATH_STATUS -> {
-                if (!method.equals("GET", ignoreCase = true)) {
-                    return OpenAiBrokerHttpResponse(405, """{"error":"method_not_allowed"}""")
-                }
-                val keyed = hasKey()
-                OpenAiBrokerHttpResponse(200, """{"keyed":$keyed}""")
-            }
-            PATH_RESPONSES -> {
-                if (!method.equals("POST", ignoreCase = true)) {
-                    return OpenAiBrokerHttpResponse(405, """{"error":"method_not_allowed"}""")
-                }
-                if (!hasKey()) {
-                    return OpenAiBrokerHttpResponse(503, """{"error":"no_key"}""")
-                }
-                var upstream: OpenAiBrokerHttpResponse? = null
-                withKey { keyBytes ->
-                    val auth = "Bearer " + String(keyBytes, Charsets.UTF_8)
-                    upstream = forward(auth, body)
-                }
-                upstream ?: OpenAiBrokerHttpResponse(502, """{"error":"forward_failed"}""")
-            }
+        return when {
+            method.equals("GET", ignoreCase = true) && path == PATH_STATUS -> status()
+            method.equals("POST", ignoreCase = true) && path == PATH_RESPONSES -> forward(body)
             else -> OpenAiBrokerHttpResponse(404, """{"error":"not_found"}""")
         }
     }
 
+    private fun status(): OpenAiBrokerHttpResponse =
+        OpenAiBrokerHttpResponse(200, """{"keyed":${hasKey()}}""")
+
+    private fun forward(body: String): OpenAiBrokerHttpResponse {
+        if (!hasKey()) {
+            return OpenAiBrokerHttpResponse(503, """{"error":"no_key"}""")
+        }
+        val headers = mapOf("Authorization" to "Bearer ${apiKey()}")
+        return try {
+            postToUpstream(headers, body)
+        } catch (e: Exception) {
+            AppLog.error(feature = "openai-broker", message = "forward failed", error = e)
+            OpenAiBrokerHttpResponse(502, """{"error":"forward_failed"}""")
+        }
+    }
+
     companion object {
-        const val PATH_STATUS = "/v1/broker/openai/status"
         const val PATH_RESPONSES = "/v1/broker/openai/responses"
-        const val UPSTREAM_RESPONSES = "https://api.openai.com/v1/responses"
+        const val PATH_STATUS = "/v1/broker/openai/status"
     }
 }

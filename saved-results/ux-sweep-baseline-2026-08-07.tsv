@@ -1,0 +1,199 @@
+utterance	beeper	actual_app	actual_class	actual_verb	actual_operation	decision	question	expected_app	expected_class	expected_verb	verdict	route_ok	fail_kind	reason
+send a message on Venmo	on	venmo	money	compose		must_ask	I don't know how to reach a message.	venmo	money	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Venmo	off	venmo	money	compose		must_ask	I don't know how to reach a message.	venmo	money	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Cash App	on	cashapp	money	compose		must_ask	I don't know how to reach a message.	cashapp	money	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Cash App	off	cashapp	money	compose		must_ask	I don't know how to reach a message.	cashapp	money	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Zelle	on	zelle	money	compose		must_ask	I don't know how to reach a message.	zelle	money	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Zelle	off	zelle	money	compose		must_ask	I don't know how to reach a message.	zelle	money	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+order something from Starbucks	on	starbucks	food	order		executed		starbucks	food	order	PASS	true		matches expected app, class, and verb
+order something from Starbucks	off	starbucks	food	order		executed		starbucks	food	order	PASS	true		matches expected app, class, and verb
+order something from Chipotle	on	chipotle	food	order		executed		chipotle	food	order	PASS	true		matches expected app, class, and verb
+order something from Chipotle	off	chipotle	food	order		executed		chipotle	food	order	PASS	true		matches expected app, class, and verb
+play something on Spotify	on	spotify	media	play		executed		spotify	media	play	PASS	true		matches expected app, class, and verb
+play something on Spotify	off	spotify	media	play		executed		spotify	media	play	PASS	true		matches expected app, class, and verb
+add a note in Spotify	on	spotify	media	write		executed		spotify	media	write	PASS	true		matches expected app, class, and verb
+add a note in Spotify	off	spotify	media	write		executed		spotify	media	write	PASS	true		matches expected app, class, and verb
+check my Audible	on	audible	media	read		executed		audible	media	read	PASS	true		matches expected app, class, and verb
+check my Audible	off	audible	media	read		executed		audible	media	read	PASS	true		matches expected app, class, and verb
+play something on Audible	on	audible	media	play		executed		audible	media	play	PASS	true		matches expected app, class, and verb
+play something on Audible	off	audible	media	play		executed		audible	media	play	PASS	true		matches expected app, class, and verb
+play something on Apple Music	on	applemusic	media	play		executed		applemusic	media	play	PASS	true		matches expected app, class, and verb
+play something on Apple Music	off	applemusic	media	play		executed		applemusic	media	play	PASS	true		matches expected app, class, and verb
+add a note in Apple Music	on	applemusic	media	write		executed		applemusic	media	write	PASS	true		matches expected app, class, and verb
+add a note in Apple Music	off	applemusic	media	write		executed		applemusic	media	write	PASS	true		matches expected app, class, and verb
+send a message on Messages	off	messages	messaging	compose		must_ask	I don't know how to reach a message.	messages	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Messages	on	messages	messaging	compose		must_ask	I don't have the app you named connected for this.	messages	beeper_messaging	send	DEAD_END	false	orphan_or_unnamed	I don't have the app you named connected for this.
+send a message on Discord	off	discord	messaging	compose		must_ask	I don't know how to reach a message.	discord	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Discord	on	discord	messaging	compose		must_ask	I don't have the app you named connected for this.	discord	beeper_messaging	send	DEAD_END	false	orphan_or_unnamed	I don't have the app you named connected for this.
+check my Uber	on	uber	rides	read		executed		uber	rides	read	PASS	true		matches expected app, class, and verb
+check my Uber	off	uber	rides	read		executed		uber	rides	read	PASS	true		matches expected app, class, and verb
+check my Uber Eats	on	ubereats	food	read		executed		ubereats	food	read	PASS	true		matches expected app, class, and verb
+check my Uber Eats	off	ubereats	food	read		executed		ubereats	food	read	PASS	true		matches expected app, class, and verb
+check my Resy	on	resy	food	read		executed		resy	food	read	PASS	true		matches expected app, class, and verb
+check my Resy	off	resy	food	read		executed		resy	food	read	PASS	true		matches expected app, class, and verb
+check my DoorDash	on	doordash	food	read		executed		doordash	food	read	PASS	true		matches expected app, class, and verb
+check my DoorDash	off	doordash	food	read		executed		doordash	food	read	PASS	true		matches expected app, class, and verb
+order something from DoorDash	on	doordash	food	order		executed		doordash	food	order	PASS	true		matches expected app, class, and verb
+order something from DoorDash	off	doordash	food	order		executed		doordash	food	order	PASS	true		matches expected app, class, and verb
+check my Google Photos	on	googlephotos	media	read		executed		googlephotos	media	read	PASS	true		matches expected app, class, and verb
+check my Google Photos	off	googlephotos	media	read		executed		googlephotos	media	read	PASS	true		matches expected app, class, and verb
+add a note in Google Photos	on	googlephotos	media	write		executed		googlephotos	media	write	PASS	true		matches expected app, class, and verb
+add a note in Google Photos	off	googlephotos	media	write		executed		googlephotos	media	write	PASS	true		matches expected app, class, and verb
+send a message on Teams	on	teams	messaging	compose		must_ask	I don't know how to reach a message.	teams	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Teams	off	teams	messaging	compose		must_ask	I don't know how to reach a message.	teams	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+check my Booking.com	on	booking	travel	read		executed		booking	travel	read	PASS	true		matches expected app, class, and verb
+check my Booking.com	off	booking	travel	read		executed		booking	travel	read	PASS	true		matches expected app, class, and verb
+check my Tripadvisor	on	tripadvisor	travel	read		executed		tripadvisor	travel	read	PASS	true		matches expected app, class, and verb
+check my Tripadvisor	off	tripadvisor	travel	read		executed		tripadvisor	travel	read	PASS	true		matches expected app, class, and verb
+check my Viator	on	viator	travel	read		executed		viator	travel	read	PASS	true		matches expected app, class, and verb
+check my Viator	off	viator	travel	read		executed		viator	travel	read	PASS	true		matches expected app, class, and verb
+check my StubHub	on	stubhub	travel	read		executed		stubhub	travel	read	PASS	true		matches expected app, class, and verb
+check my StubHub	off	stubhub	travel	read		executed		stubhub	travel	read	PASS	true		matches expected app, class, and verb
+check my AllTrails	on	alltrails	travel	read		executed		alltrails	travel	read	PASS	true		matches expected app, class, and verb
+check my AllTrails	off	alltrails	travel	read		executed		alltrails	travel	read	PASS	true		matches expected app, class, and verb
+send a message on Taskrabbit	on	taskrabbit	services	compose		executed		taskrabbit	services	compose	PASS	true		matches expected app, class, and verb
+send a message on Taskrabbit	off	taskrabbit	services	compose		executed		taskrabbit	services	compose	PASS	true		matches expected app, class, and verb
+send a message on Thumbtack	on	thumbtack	services	compose		executed		thumbtack	services	compose	PASS	true		matches expected app, class, and verb
+send a message on Thumbtack	off	thumbtack	services	compose		executed		thumbtack	services	compose	PASS	true		matches expected app, class, and verb
+check my Credit Karma	on	creditkarma	finance	read		executed		creditkarma	finance	read	PASS	true		matches expected app, class, and verb
+check my Credit Karma	off	creditkarma	finance	read		executed		creditkarma	finance	read	PASS	true		matches expected app, class, and verb
+check my TurboTax	on	turbotax	finance	read		executed		turbotax	finance	read	PASS	true		matches expected app, class, and verb
+check my TurboTax	off	turbotax	finance	read		executed		turbotax	finance	read	PASS	true		matches expected app, class, and verb
+check my Lyft	on	lyft	rides	read		executed		lyft	rides	read	PASS	true		matches expected app, class, and verb
+check my Lyft	off	lyft	rides	read		executed		lyft	rides	read	PASS	true		matches expected app, class, and verb
+add a note in Google Keep	on	googlekeep	notes	write		executed		googlekeep	notes	write	PASS	true		matches expected app, class, and verb
+add a note in Google Keep	off	googlekeep	notes	write		executed		googlekeep	notes	write	PASS	true		matches expected app, class, and verb
+send a message on WhatsApp	on	whatsapp	messaging	compose		must_ask	I don't know how to reach a message.	whatsapp	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on WhatsApp	off	whatsapp	messaging	compose		must_ask	I don't know how to reach a message.	whatsapp	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Messenger	on	messenger	messaging	compose		must_ask	I don't know how to reach a message.	messenger	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Messenger	off	messenger	messaging	compose		must_ask	I don't know how to reach a message.	messenger	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Signal	on	signal	messaging	compose		must_ask	I don't know how to reach a message.	signal	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Signal	off	signal	messaging	compose		must_ask	I don't know how to reach a message.	signal	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+check my Google Maps	on	googlemaps	travel	read		executed		googlemaps	travel	read	PASS	true		matches expected app, class, and verb
+check my Google Maps	off	googlemaps	travel	read		executed		googlemaps	travel	read	PASS	true		matches expected app, class, and verb
+add a note in Google Maps	on	googlemaps	travel	write		executed		googlemaps	travel	write	PASS	true		matches expected app, class, and verb
+add a note in Google Maps	off	googlemaps	travel	write		executed		googlemaps	travel	write	PASS	true		matches expected app, class, and verb
+play something on Netflix	on	netflix	media	play		executed		netflix	media	play	PASS	true		matches expected app, class, and verb
+play something on Netflix	off	netflix	media	play		executed		netflix	media	play	PASS	true		matches expected app, class, and verb
+add a note in Netflix	on	netflix	media	write		executed		netflix	media	write	PASS	true		matches expected app, class, and verb
+add a note in Netflix	off	netflix	media	write		executed		netflix	media	write	PASS	true		matches expected app, class, and verb
+send a message on Facebook	on	facebook	messaging	compose		must_ask	I don't know how to reach a message.	facebook	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Facebook	off	facebook	messaging	compose		must_ask	I don't know how to reach a message.	facebook	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+check my United	on	united	travel	read		executed		united	travel	read	PASS	true		matches expected app, class, and verb
+check my United	off	united	travel	read		executed		united	travel	read	PASS	true		matches expected app, class, and verb
+check my Delta	on	delta	travel	read		executed		delta	travel	read	PASS	true		matches expected app, class, and verb
+check my Delta	off	delta	travel	read		executed		delta	travel	read	PASS	true		matches expected app, class, and verb
+check my Southwest	on	southwest	travel	read		executed		southwest	travel	read	PASS	true		matches expected app, class, and verb
+check my Southwest	off	southwest	travel	read		executed		southwest	travel	read	PASS	true		matches expected app, class, and verb
+check my American Airlines	on	american	travel	read		executed		american	travel	read	PASS	true		matches expected app, class, and verb
+check my American Airlines	off	american	travel	read		executed		american	travel	read	PASS	true		matches expected app, class, and verb
+check my Citymapper	on	citymapper	travel	read		executed		citymapper	travel	read	PASS	true		matches expected app, class, and verb
+check my Citymapper	off	citymapper	travel	read		executed		citymapper	travel	read	PASS	true		matches expected app, class, and verb
+play something on YouTube	on	youtube	media	play		executed		youtube	media	play	PASS	true		matches expected app, class, and verb
+play something on YouTube	off	youtube	media	play		executed		youtube	media	play	PASS	true		matches expected app, class, and verb
+check my YouTube	on	youtube	media	read		executed		youtube	media	read	PASS	true		matches expected app, class, and verb
+check my YouTube	off	youtube	media	read		executed		youtube	media	read	PASS	true		matches expected app, class, and verb
+check my Airbnb	on	airbnb	travel	read		executed		airbnb	travel	read	PASS	true		matches expected app, class, and verb
+check my Airbnb	off	airbnb	travel	read		executed		airbnb	travel	read	PASS	true		matches expected app, class, and verb
+check my OpenTable	on	opentable	food	read		executed		opentable	food	read	PASS	true		matches expected app, class, and verb
+check my OpenTable	off	opentable	food	read		executed		opentable	food	read	PASS	true		matches expected app, class, and verb
+check my Grubhub	on	grubhub	food	read		executed		grubhub	food	read	PASS	true		matches expected app, class, and verb
+check my Grubhub	off	grubhub	food	read		executed		grubhub	food	read	PASS	true		matches expected app, class, and verb
+order something from Grubhub	on	grubhub	food	order		executed		grubhub	food	order	PASS	true		matches expected app, class, and verb
+order something from Grubhub	off	grubhub	food	order		executed		grubhub	food	order	PASS	true		matches expected app, class, and verb
+send a message on Threads	on	threads	messaging	compose		must_ask	I don't know how to reach a message.	threads	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Threads	off	threads	messaging	compose		must_ask	I don't know how to reach a message.	threads	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on TikTok	on	tiktok	messaging	compose		must_ask	I don't know how to reach a message.	tiktok	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on TikTok	off	tiktok	messaging	compose		must_ask	I don't know how to reach a message.	tiktok	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+check my Expedia	on	expedia	travel	read		executed		expedia	travel	read	PASS	true		matches expected app, class, and verb
+check my Expedia	off	expedia	travel	read		executed		expedia	travel	read	PASS	true		matches expected app, class, and verb
+check my Target	on	target	shopping	read		executed		target	shopping	read	PASS	true		matches expected app, class, and verb
+check my Target	off	target	shopping	read		executed		target	shopping	read	PASS	true		matches expected app, class, and verb
+check my Walmart	on	walmart	shopping	read		executed		walmart	shopping	read	PASS	true		matches expected app, class, and verb
+check my Walmart	off	walmart	shopping	read		executed		walmart	shopping	read	PASS	true		matches expected app, class, and verb
+check my Nike	on	nike	shopping	read		executed		nike	shopping	read	PASS	true		matches expected app, class, and verb
+check my Nike	off	nike	shopping	read		executed		nike	shopping	read	PASS	true		matches expected app, class, and verb
+check my Sephora	on	sephora	shopping	read		executed		sephora	shopping	read	PASS	true		matches expected app, class, and verb
+check my Sephora	off	sephora	shopping	read		executed		sephora	shopping	read	PASS	true		matches expected app, class, and verb
+check my Wayfair	on	wayfair	shopping	read		executed		wayfair	shopping	read	PASS	true		matches expected app, class, and verb
+check my Wayfair	off	wayfair	shopping	read		executed		wayfair	shopping	read	PASS	true		matches expected app, class, and verb
+check my Kayak	on	kayak	travel	read		executed		kayak	travel	read	PASS	true		matches expected app, class, and verb
+check my Kayak	off	kayak	travel	read		executed		kayak	travel	read	PASS	true		matches expected app, class, and verb
+check my Priceline	on	priceline	travel	read		executed		priceline	travel	read	PASS	true		matches expected app, class, and verb
+check my Priceline	off	priceline	travel	read		executed		priceline	travel	read	PASS	true		matches expected app, class, and verb
+send a message on LinkedIn	on	linkedin	messaging	compose		must_ask	I don't know how to reach a message.	linkedin	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on LinkedIn	off	linkedin	messaging	compose		must_ask	I don't know how to reach a message.	linkedin	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+check my eBay	on	ebay	shopping	read		executed		ebay	shopping	read	PASS	true		matches expected app, class, and verb
+check my eBay	off	ebay	shopping	read		executed		ebay	shopping	read	PASS	true		matches expected app, class, and verb
+send a message on Pinterest	on	pinterest	messaging	compose		must_ask	I don't know how to reach a message.	pinterest	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Pinterest	off	pinterest	messaging	compose		must_ask	I don't know how to reach a message.	pinterest	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+check my Duolingo	on	duolingo	services	read		executed		duolingo	services	read	PASS	true		matches expected app, class, and verb
+check my Duolingo	off	duolingo	services	read		executed		duolingo	services	read	PASS	true		matches expected app, class, and verb
+check my Fitbit	on	fitbit	services	read		executed		fitbit	services	read	PASS	true		matches expected app, class, and verb
+check my Fitbit	off	fitbit	services	read		executed		fitbit	services	read	PASS	true		matches expected app, class, and verb
+check my Shazam	on	shazam	media	read		executed		shazam	media	read	PASS	true		matches expected app, class, and verb
+check my Shazam	off	shazam	media	read		executed		shazam	media	read	PASS	true		matches expected app, class, and verb
+play something on Chromecast	on	chromecast	media	play		executed		chromecast	media	play	PASS	true		matches expected app, class, and verb
+play something on Chromecast	off	chromecast	media	play		executed		chromecast	media	play	PASS	true		matches expected app, class, and verb
+play something on YouTube Music	on	youtubemusic	media	play		executed		youtubemusic	media	play	PASS	true		matches expected app, class, and verb
+play something on YouTube Music	off	youtubemusic	media	play		executed		youtubemusic	media	play	PASS	true		matches expected app, class, and verb
+check my YouTube Music	on	youtubemusic	media	read		executed		youtubemusic	media	read	PASS	true		matches expected app, class, and verb
+check my YouTube Music	off	youtubemusic	media	read		executed		youtubemusic	media	read	PASS	true		matches expected app, class, and verb
+play something on SoundCloud	on	soundcloud	media	play		executed		soundcloud	media	play	PASS	true		matches expected app, class, and verb
+play something on SoundCloud	off	soundcloud	media	play		executed		soundcloud	media	play	PASS	true		matches expected app, class, and verb
+check my SoundCloud	on	soundcloud	media	read		executed		soundcloud	media	read	PASS	true		matches expected app, class, and verb
+check my SoundCloud	off	soundcloud	media	read		executed		soundcloud	media	read	PASS	true		matches expected app, class, and verb
+play something on Pandora	on	pandora	media	play		executed		pandora	media	play	PASS	true		matches expected app, class, and verb
+play something on Pandora	off	pandora	media	play		executed		pandora	media	play	PASS	true		matches expected app, class, and verb
+check my Pandora	on	pandora	media	read		executed		pandora	media	read	PASS	true		matches expected app, class, and verb
+check my Pandora	off	pandora	media	read		executed		pandora	media	read	PASS	true		matches expected app, class, and verb
+add a note in Asana	on	asana	tasks	write		executed		asana	tasks	write	PASS	true		matches expected app, class, and verb
+add a note in Asana	off	asana	tasks	write		executed		asana	tasks	write	PASS	true		matches expected app, class, and verb
+add a note in Trello	on	trello	tasks	write		executed		trello	tasks	write	PASS	true		matches expected app, class, and verb
+add a note in Trello	off	trello	tasks	write		executed		trello	tasks	write	PASS	true		matches expected app, class, and verb
+add a note in Microsoft To Do	on	mstodo	tasks	write		executed		mstodo	tasks	write	PASS	true		matches expected app, class, and verb
+add a note in Microsoft To Do	off	mstodo	tasks	write		executed		mstodo	tasks	write	PASS	true		matches expected app, class, and verb
+add a note in Google Docs	on	googledocs	notes	write		executed		googledocs	notes	write	PASS	true		matches expected app, class, and verb
+add a note in Google Docs	off	googledocs	notes	write		executed		googledocs	notes	write	PASS	true		matches expected app, class, and verb
+check my Dropbox	on	dropbox	notes	read		executed		dropbox	notes	read	PASS	true		matches expected app, class, and verb
+check my Dropbox	off	dropbox	notes	read		executed		dropbox	notes	read	PASS	true		matches expected app, class, and verb
+add a note in Google Sheets	on	googlesheets	notes	write		executed		googlesheets	notes	write	PASS	true		matches expected app, class, and verb
+add a note in Google Sheets	off	googlesheets	notes	write		executed		googlesheets	notes	write	PASS	true		matches expected app, class, and verb
+add a note in Evernote	on	evernote	notes	write		executed		evernote	notes	write	PASS	true		matches expected app, class, and verb
+add a note in Evernote	off	evernote	notes	write		executed		evernote	notes	write	PASS	true		matches expected app, class, and verb
+add a note in Google Slides	on	googleslides	notes	write		executed		googleslides	notes	write	PASS	true		matches expected app, class, and verb
+add a note in Google Slides	off	googleslides	notes	write		executed		googleslides	notes	write	PASS	true		matches expected app, class, and verb
+play something on Pocket Casts	on	pocketcasts	media	play		executed		pocketcasts	media	play	PASS	true		matches expected app, class, and verb
+play something on Pocket Casts	off	pocketcasts	media	play		executed		pocketcasts	media	play	PASS	true		matches expected app, class, and verb
+check my Pocket Casts	on	pocketcasts	media	read		executed		pocketcasts	media	read	PASS	true		matches expected app, class, and verb
+check my Pocket Casts	off	pocketcasts	media	read		executed		pocketcasts	media	read	PASS	true		matches expected app, class, and verb
+check my Goodreads	on	goodreads	notes	read		executed		goodreads	notes	read	PASS	true		matches expected app, class, and verb
+check my Goodreads	off	goodreads	notes	read		executed		goodreads	notes	read	PASS	true		matches expected app, class, and verb
+check my Kindle	on	kindle	media	read		executed		kindle	media	read	PASS	true		matches expected app, class, and verb
+check my Kindle	off	kindle	media	read		executed		kindle	media	read	PASS	true		matches expected app, class, and verb
+send a message on Claude	on	claude	messaging	compose		must_ask	I don't know how to reach a message.	claude	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Claude	off	claude	messaging	compose		must_ask	I don't know how to reach a message.	claude	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on ChatGPT	on	chatgpt	messaging	compose		must_ask	I don't know how to reach a message.	chatgpt	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on ChatGPT	off	chatgpt	messaging	compose		must_ask	I don't know how to reach a message.	chatgpt	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Grok	on	grok	messaging	compose		must_ask	I don't know how to reach a message.	grok	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+send a message on Grok	off	grok	messaging	compose		must_ask	I don't know how to reach a message.	grok	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message.
+what's my most recent unread Instagram messages	on	messages	messaging	compose		must_ask	I don't have the app you named connected for this.	instagram	beeper_messaging	read	DEAD_END	false	orphan_or_unnamed	I don't have the app you named connected for this.
+reply to the last Instagram DM	on					no_route		instagram	beeper_messaging	send	MISROUTE	false		stage1 could not route to "instagram": explicit stage1: no known app was named
+send John a message on Messages	on	messages	messaging	compose		must_ask	I don't have the app you named connected for this.	messages	beeper_messaging	send	DEAD_END	false	orphan_or_unnamed	I don't have the app you named connected for this.
+message Sarah on Discord	on	discord	messaging	compose		must_ask	I don't have the app you named connected for this.	discord	beeper_messaging	send	DEAD_END	false	orphan_or_unnamed	I don't have the app you named connected for this.
+do I have any unread Discord messages	on	messages	messaging	compose		must_ask	I don't have the app you named connected for this.	discord	beeper_messaging	read	DEAD_END	false	orphan_or_unnamed	I don't have the app you named connected for this.
+text my mom on WhatsApp	on	whatsapp	messaging	compose		must_ask	I don't know how to reach my mom.	whatsapp	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach my mom.
+message Alex on Signal	on	signal	messaging	compose		must_ask	I don't know how to reach Alex.	signal	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach Alex.
+send a Messenger message to Dad	on	messenger	messaging	compose		must_ask	I don't know how to reach a message to Dad.	messenger	messaging	compose	DEAD_END	true	empty_contacts	I don't know how to reach a message to Dad.
+pay Jordan 20 dollars on Venmo	on	venmo	money	compose		must_ask	I don't know how to reach pay Jordan 20 dollars.	venmo	money	compose	DEAD_END	true	empty_contacts	I don't know how to reach pay Jordan 20 dollars.
+send 15 to Chris with Cash App	on	cashapp	money	compose		must_ask	I don't know how to reach 15 to Chris.	cashapp	money	compose	DEAD_END	true	empty_contacts	I don't know how to reach 15 to Chris.
+what's the status of my DoorDash order	on	doordash	food	order		executed		doordash	food	read	MISROUTE	false		got verb="order", expected verb="read"
+where's my Uber	on	uber	rides	read		executed		uber	rides	read	PASS	true		matches expected app, class, and verb
+what's playing on Spotify	on					no_route		spotify	media	read	MISROUTE	false		stage1 could not route to "spotify": explicit stage1: action is unclear
+play my Discover Weekly on Spotify	on	spotify	media	play		executed		spotify	media	play	PASS	true		matches expected app, class, and verb
+order my usual coffee from Starbucks	on	starbucks	food	order		executed		starbucks	food	order	PASS	true		matches expected app, class, and verb
+pull up directions home in Google Maps	on					no_route		googlemaps	travel	read	MISROUTE	false		stage1 could not route to "googlemaps": explicit stage1: action is unclear
+what's my next meeting on my calendar	on					no_route		gcalendar	calendar	read	MISROUTE	false		stage1 could not route to "gcalendar": explicit stage1: no known app was named
+find the roadmap doc in Notion	on					no_route		notion	notes	read	MISROUTE	false		stage1 could not route to "notion": explicit stage1: no known app was named
+send a message to the team in Slack	on					no_route		slack	slack	send	MISROUTE	false		stage1 could not route to "slack": explicit stage1: no known app was named
+read my latest email in Outlook	on					no_route		outlook	email	read	MISROUTE	false		stage1 could not route to "outlook": explicit stage1: no known app was named

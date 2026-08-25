@@ -393,6 +393,14 @@ object ProtocolCodec {
         when (optionalString(entry, "kind")) {
             "user", "agent", "reasoning", "plan", "activity" ->
                 entry.keys == setOf("id", "turnId", "kind", "text") && optionalString(entry, "text").isBounded(MAX_TRANSCRIPT_ENTRY_RUNES)
+            "message" ->
+                // A message entry renders one received chat message as its own row:
+                // the sender's display name, the body text (which may span multiple
+                // lines), and when it was sent.
+                entry.keys == setOf("id", "turnId", "kind", "sender", "text", "sentAt") &&
+                    optionalString(entry, "sender").isSafeDisplay(256) &&
+                    optionalString(entry, "text").isBounded(MAX_TRANSCRIPT_ENTRY_RUNES) &&
+                    runCatching { Instant.parse(optionalString(entry, "sentAt")) }.isSuccess
             "command" ->
                 entry.keys.all { it in setOf("id", "turnId", "kind", "status", "command", "output") } &&
                     optionalString(entry, "status") in transcriptStatuses && optionalString(entry, "command").isBounded(MAX_TRANSCRIPT_ENTRY_RUNES) &&
@@ -587,7 +595,7 @@ object ProtocolCodec {
     // Closed set of things this phone knows how to be asked to do. A wire
     // format that let this grow silently would let the Mac ask for an act
     // the phone was never built to carry out.
-    private val deviceActionKinds = setOf("notification_reply", "youtube_play")
+    private val deviceActionKinds = setOf("notification_reply", "youtube_play", "open_page")
     // Four endings, not a boolean. "notification_gone" is neither a success
     // nor a failure worth retrying: the conversation moved on before the
     // phone could act, and lumping it in with "failed" would make the Mac
