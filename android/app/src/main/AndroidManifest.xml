@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <queries>
         <intent>
@@ -41,6 +42,15 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+
+        <receiver
+            android:name=".updater.install.UpdateInstallStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.codexlauncher.updater.INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
 
         <activity
             android:name=".LauncherActivity"

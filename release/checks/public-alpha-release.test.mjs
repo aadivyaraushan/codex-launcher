@@ -26,6 +26,19 @@ assert.match(android, /gradle\/actions\/setup-gradle@90ddb51e90a5fd9ba75f40cf851
 assert.match(android, /reactivecircus\/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2/);
 assert.match(android, /api-level:\s*36/);
 assert.match(android, /connectedDebugAndroidTest/);
+assert.match(android, /publish-alpha:/);
+assert.match(android, /needs:\s*\[unit-and-lint, android-16-emulator\]/);
+assert.match(android, /fetch-depth:\s*0/);
+assert.match(android, /git rev-list --count HEAD/);
+assert.match(android, /-PalphaVersionCode=/);
+assert.match(android, /-PalphaVersionName=/);
+assert.match(android, /alpha-\$\{VERSION_CODE\}/);
+assert.match(android, /version\.json/);
+assert.match(android, /Prune alpha releases older than newest 10/);
+assert.match(android, /CODEX_LAUNCHER_STORE_BASE64/);
+assert.match(android, /public-alpha-release\.test\.mjs/);
+
+
 assert.match(android, /lintDebug/);
 
 const companion = read(".github/workflows/companion.yml");
@@ -110,6 +123,8 @@ for (const variable of [
 ]) {
   assert.ok(appBuild.includes(variable), `Android signing must read ${variable}`);
 }
+assert.match(appBuild, /alphaVersionCode/);
+assert.match(appBuild, /alphaVersionName/);
 
 const readme = read("README.md");
 assert.doesNotMatch(readme, /not yet a usable launcher/i);
@@ -187,4 +202,4 @@ assert.match(checkpoint, /-output dist\/companion/);
 assert.match(checkpoint, /-version 0\.1\.0-alpha\.1/);
 assert.doesNotMatch(checkpoint, /-output-dir|-source-date-epoch/);
 
-console.log("public alpha release contract: 120 assertions passed");
+console.log("public alpha release contract: 121 assertions passed");
