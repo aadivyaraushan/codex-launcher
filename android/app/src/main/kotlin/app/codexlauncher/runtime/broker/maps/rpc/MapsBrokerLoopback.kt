@@ -14,8 +14,6 @@ import app.codexlauncher.runtime.broker.maps.vault.MapsImportSession
 import app.codexlauncher.runtime.broker.openai.http.OpenAiUpstreamClient
 import app.codexlauncher.runtime.broker.openai.rpc.BrokerLoopbackDispatch
 import app.codexlauncher.runtime.broker.openai.rpc.OpenAiBrokerOps
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -98,8 +96,11 @@ object MapsBrokerLoopback {
     private fun handleConn(socket: Socket, dispatch: BrokerLoopbackDispatch) {
         try {
             socket.use { s ->
-                val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
-                val requestLine = reader.readLine() ?: return
+                // Read as bytes: Content-Length is a byte count. Reading into a CharArray
+                // hung Pixel dogfood when stage-1 JSON contained multi-byte UTF-8 —
+                // the reader waited for more chars than bytes on the wire.
+                val input = java.io.BufferedInputStream(s.getInputStream())
+                val requestLine = readAsciiLine(input) ?: return
                 val parts = requestLine.split(" ")
                 if (parts.size < 2) return
                 val method = parts[0]
@@ -107,7 +108,7 @@ object MapsBrokerLoopback {
                 var contentLength = 0
                 var expectContinue = false
                 while (true) {
-                    val line = reader.readLine() ?: break
+                    val line = readAsciiLine(input) ?: break
                     if (line.isEmpty()) break
                     if (line.startsWith("Content-Length:", ignoreCase = true)) {
                         contentLength = line.substringAfter(':').trim().toIntOrNull() ?: 0
@@ -130,14 +131,15 @@ object MapsBrokerLoopback {
                         fields = mapOf("content_length" to contentLength.toString()),
                     )
                 }
-                val bodyChars = CharArray(contentLength.coerceAtMost(1 shl 20))
+                val toRead = contentLength.coerceAtMost(1 shl 20).coerceAtLeast(0)
+                val bodyBuf = ByteArray(toRead)
                 var read = 0
-                while (read < bodyChars.size) {
-                    val n = reader.read(bodyChars, read, bodyChars.size - read)
+                while (read < bodyBuf.size) {
+                    val n = input.read(bodyBuf, read, bodyBuf.size - read)
                     if (n < 0) break
                     read += n
                 }
-                val body = String(bodyChars, 0, read)
+                val body = String(bodyBuf, 0, read, Charsets.UTF_8)
                 val resp = dispatch.handle(method, path, body)
                 val bodyBytes = resp.body.toByteArray(Charsets.UTF_8)
                 val header =
@@ -157,5 +159,18 @@ object MapsBrokerLoopback {
                 error = e,
             )
         }
+    }
+
+    private fun readAsciiLine(input: java.io.InputStream): String? {
+        val buf = java.io.ByteArrayOutputStream(128)
+        while (true) {
+            val b = input.read()
+            if (b < 0) {
+                return if (buf.size() == 0) null else buf.toString(Charsets.US_ASCII)
+            }
+            if (b == '\n'.code) break
+            if (b != '\r'.code) buf.write(b)
+        }
+        return buf.toString(Charsets.US_ASCII)
     }
 }
