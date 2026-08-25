@@ -57,10 +57,10 @@ class HomeTaskMarkTest {
     }
 
     @Test
-    fun anOrdinaryWorkingTaskCarriesNoMarkAtAll() {
-        // A mark on every row is a mark on none of them. The marks exist to
-        // pick out the states that are easy to misread.
-        assertNull(summary(TaskState.WORKING).toHomeTask().mark)
+    fun anOrdinaryWorkingTaskCarriesTheWorkingMark() {
+        // DESIGN.md: working, waiting, replied, and failed tasks all use
+        // words plus shape. Only INTERRUPTED stays bare.
+        assertEquals(StateMark.WORKING, summary(TaskState.WORKING).toHomeTask().mark)
     }
 
     @Test
@@ -102,7 +102,12 @@ class HomeTaskMarkTest {
                 // this file exists for — easy to misread, and the row is
                 // where it gets misread. See HomeUnresolvedRowTest.
                 TaskState.UNVERIFIED -> assertEquals(StateMark.UNVERIFIED, task.mark)
-                else -> assertNull("$state should carry no mark", task.mark)
+                TaskState.WORKING -> assertEquals(StateMark.WORKING, task.mark)
+                TaskState.WAITING_FOR_APPROVAL,
+                TaskState.WAITING_FOR_ANSWER,
+                -> assertEquals(StateMark.WAITING_FOR_USER, task.mark)
+                TaskState.IDLE_AFTER_REPLY -> assertEquals(StateMark.REPLIED, task.mark)
+                TaskState.INTERRUPTED -> assertNull("$state should carry no mark", task.mark)
             }
         }
     }

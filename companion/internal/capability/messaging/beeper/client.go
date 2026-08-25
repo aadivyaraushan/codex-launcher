@@ -40,12 +40,99 @@ var (
 
 // Chat is one conversation on one bridged network.
 type Chat struct {
-	ID          string `json:"id"`
-	LocalChatID string `json:"localChatID"`
-	AccountID   string `json:"accountID"`
-	Network     string `json:"network"`
-	Title       string `json:"title"`
-	Type        string `json:"type"`
+	ID           string           `json:"id"`
+	LocalChatID  string           `json:"localChatID"`
+	AccountID    string           `json:"accountID"`
+	Network      string           `json:"network"`
+	Title        string           `json:"title"`
+	Type         string           `json:"type"`
+	UnreadCount  int              `json:"unreadCount"`
+	LastActivity string           `json:"lastActivity"`
+	IsArchived   bool             `json:"isArchived"`
+	IsPinned     bool             `json:"isPinned"`
+	IsMuted      bool             `json:"isMuted"`
+	Capabilities ChatCapabilities `json:"capabilities"`
+}
+
+// ChatCapabilities is the per-chat support matrix from Beeper Desktop.
+// Support levels use Beeper's scale: -2 rejected, -1 dropped, 0 unsupported,
+// 1 partial, 2 full. Boolean flags are true when the network advertises the op.
+type ChatCapabilities struct {
+	Reply        int  `json:"reply"`
+	Edit         int  `json:"edit"`
+	Delete       int  `json:"delete"`
+	Reaction     int  `json:"reaction"`
+	Archive      bool `json:"archive"`
+	MarkAsUnread bool `json:"markAsUnread"`
+}
+
+// Supports reports whether a capability level is usable (partial or full).
+func Supports(level int) bool { return level >= 1 }
+
+// Message is one chat message from Beeper Desktop.
+type Message struct {
+	ID          string              `json:"id"`
+	ChatID      string              `json:"chatID"`
+	AccountID   string              `json:"accountID"`
+	SenderID    string              `json:"senderID"`
+	SenderName  string              `json:"senderName"`
+	Timestamp   string              `json:"timestamp"`
+	Text        string              `json:"text"`
+	IsSender    bool                `json:"isSender"`
+	IsUnread    bool                `json:"isUnread"`
+	Attachments []MessageAttachment `json:"attachments"`
+}
+
+// MessageAttachment is a lightweight attachment hint for read previews.
+// Sending attachments is out of scope; reads only describe them.
+type MessageAttachment struct {
+	Type string `json:"type"`
+}
+
+// ChatPage is one cursor page of chats.
+type ChatPage struct {
+	Items        []Chat `json:"items"`
+	HasMore      bool   `json:"hasMore"`
+	OldestCursor string `json:"oldestCursor"`
+	NewestCursor string `json:"newestCursor"`
+}
+
+// MessagePage is one cursor page of messages.
+type MessagePage struct {
+	Items        []Message `json:"items"`
+	HasMore      bool      `json:"hasMore"`
+	OldestCursor string    `json:"oldestCursor"`
+	NewestCursor string    `json:"newestCursor"`
+}
+
+// ListChatsOptions filters GET /v1/chats. Live Desktop 5.0.0 has no unread
+// query filter — callers filter UnreadCount themselves after paging.
+type ListChatsOptions struct {
+	AccountIDs []string
+	Cursor     string
+	Direction  string
+}
+
+// MessageListOptions pages GET /v1/chats/{id}/messages.
+type MessageListOptions struct {
+	Cursor    string
+	Direction string
+}
+
+// SearchMessagesOptions filters GET /v1/messages/search.
+type SearchMessagesOptions struct {
+	Query      string
+	AccountIDs []string
+	ChatIDs    []string
+	Limit      int
+	Cursor     string
+	Direction  string
+}
+
+// UpdateChatOptions is the pin/mute subset of PATCH /v1/chats/{id}.
+type UpdateChatOptions struct {
+	Pinned *bool
+	Muted  *bool
 }
 
 // Account identifies one connected bridge. Account IDs are assigned by
@@ -208,8 +295,13 @@ func (c *Client) ResolveOne(ctx context.Context, name string) (Chat, error) {
 	}
 }
 
-// Send delivers text to one chat. It is the only method that writes.
+// Send delivers text to one chat. Final delivery is pending at this point.
 func (c *Client) Send(ctx context.Context, chatID, text string) (Sent, error) {
+	return c.SendReply(ctx, chatID, text, "")
+}
+
+// SendReply delivers text, optionally as a reply to an existing message.
+func (c *Client) SendReply(ctx context.Context, chatID, text, replyToMessageID string) (Sent, error) {
 	if strings.TrimSpace(text) == "" {
 		return Sent{}, ErrEmptyMessage
 	}
@@ -219,12 +311,16 @@ func (c *Client) Send(ctx context.Context, chatID, text string) (Sent, error) {
 	}
 	var sent Sent
 	path := "/v1/chats/" + url.PathEscape(chatID) + "/messages"
-	if err := c.do(ctx, http.MethodPost, path, map[string]any{"text": text}, &sent); err != nil {
+	body := map[string]any{"text": text}
+	if replyTo := strings.TrimSpace(replyToMessageID); replyTo != "" {
+		body["replyToMessageID"] = replyTo
+	}
+	if err := c.do(ctx, http.MethodPost, path, body, &sent); err != nil {
 		return Sent{}, err
 	}
 	c.logger.Info("[beeper] message accepted",
 		"chat_id", sent.ChatID, "pending_message_id", sent.PendingMessageID,
-		"text_length", len(text))
+		"text_length", len(text), "has_reply_to", strings.TrimSpace(replyToMessageID) != "")
 	return sent, nil
 }
 
@@ -266,7 +362,19 @@ func (c *Client) do(ctx context.Context, method, path string, body, result any) 
 		return fmt.Errorf("beeper: %s %s returned status %s",
 			method, cleanPath, strconv.Itoa(response.StatusCode))
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(result); err != nil {
+	// State ops (archive/delete/reminders) return 204 with an empty body.
+	if result == nil || response.StatusCode == http.StatusNoContent {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
+		return nil
+	}
+	payload, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return fmt.Errorf("beeper: read %s response: %w", method, err)
+	}
+	if len(strings.TrimSpace(string(payload))) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(payload, result); err != nil {
 		return fmt.Errorf("beeper: decode %s response: %w", method, err)
 	}
 	return nil

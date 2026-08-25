@@ -11,6 +11,8 @@ import app.codexlauncher.storage.actions.ActionJournal
 import app.codexlauncher.storage.actions.ActionRecord
 import app.codexlauncher.storage.actions.ActionRecordKind
 import app.codexlauncher.storage.actions.ActionResultCode
+import app.codexlauncher.task.summary.MessageSpeaker
+import app.codexlauncher.task.summary.TaskLastMessage
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary
 import app.codexlauncher.task.summary.TaskQueueState
@@ -68,6 +70,12 @@ class ProjectSessionBridge(
                         activeTurnId = task["activeTurnId"]?.jsonPrimitive?.content,
                         canRedirect = task["canRedirect"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
                         queueState = TaskQueueState.fromWire(task["queueState"]?.jsonPrimitive?.content ?: "none"),
+                        lastMessage =
+                            task["lastMessage"]?.jsonObject?.let { lastMessage ->
+                                val from = lastMessage["from"]?.jsonPrimitive?.content?.let(MessageSpeaker::fromWire)
+                                val text = lastMessage["text"]?.jsonPrimitive?.content
+                                if (from != null && text != null) TaskLastMessage(from, text) else null
+                            },
                     )
                 },
         ).also {

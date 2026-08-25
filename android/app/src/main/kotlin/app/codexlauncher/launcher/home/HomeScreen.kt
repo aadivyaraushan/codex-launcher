@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
 import app.codexlauncher.capability.outcome.StateMark
@@ -301,6 +302,16 @@ private fun OnlineContent(
                         .padding(vertical = 12.dp),
             ) {
                 Text(task.title, style = MaterialTheme.typography.titleMedium)
+                task.preview?.let {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 val mark = task.mark
                 if (mark != null) {
@@ -329,26 +340,54 @@ private fun OnlineContent(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         }
-        if (state.canChangeProject || state.selectedProjectName != null) {
-            item {
-                OutlinedButton(
-                    onClick = onChooseProject,
-                    enabled = state.canChangeProject,
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.fillMaxWidth().height(QuietInstrumentTokens.securityActionHeightDp.dp),
-                ) {
-                    Text(state.selectedProjectName ?: "Choose project")
-                }
-            }
-        }
         item {
             Spacer(Modifier.height(8.dp))
-            PromptDestinationControl(
-                destination = promptDestination,
-                computerName = state.computerName,
-                enabled = !capabilityBusy,
-                onDestinationChange = onPromptDestinationChange,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                NewSessionButton(
+                    label = "on phone",
+                    selected = promptDestination == PromptDestination.AUTO,
+                    enabled = !capabilityBusy,
+                    description = "New session on phone",
+                    onClick = { onPromptDestinationChange(PromptDestination.AUTO) },
+                    modifier = Modifier.weight(1f),
+                )
+                NewSessionButton(
+                    label = "on computer",
+                    selected = promptDestination == PromptDestination.COMPUTER,
+                    enabled = !capabilityBusy,
+                    description = "New session on computer",
+                    onClick = { onPromptDestinationChange(PromptDestination.COMPUTER) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (promptDestination == PromptDestination.COMPUTER) {
+                if (state.canChangeProject || state.selectedProjectName != null) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onChooseProject,
+                        enabled = state.canChangeProject,
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.fillMaxWidth().height(QuietInstrumentTokens.securityActionHeightDp.dp),
+                    ) {
+                        Text(state.selectedProjectName ?: "Choose project")
+                    }
+                }
+                if (newTaskOptions != null && selection != null) {
+                    Spacer(Modifier.height(8.dp))
+                    NewTaskOptionControls(
+                        options = newTaskOptions,
+                        selection = selection,
+                        onSelectionChange = {
+                            selectedModelId = it.modelId
+                            selectedReasoningId = it.reasoningId
+                            selectedPermissionId = it.permissionModeId
+                        },
+                    )
+                }
+            }
             if (state.showLinkLocalRuntime) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
@@ -364,18 +403,6 @@ private fun OnlineContent(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            if (newTaskOptions != null && selection != null) {
-                NewTaskOptionControls(
-                    options = newTaskOptions,
-                    selection = selection,
-                    onSelectionChange = {
-                        selectedModelId = it.modelId
-                        selectedReasoningId = it.reasoningId
-                        selectedPermissionId = it.permissionModeId
-                    },
-                )
-                Spacer(Modifier.height(8.dp))
-            }
             OutlinedTextField(
                 value = composerState.text,
                 onValueChange = onPromptChange,
@@ -470,60 +497,34 @@ private fun OnlineContent(
 private val PromptDestination.displayName: String
     get() = if (this == PromptDestination.AUTO) "Auto" else "Computer"
 
+/**
+ * One of the two new-session buttons (DESIGN.md, Home): "on phone" and "on
+ * computer" are the only place the two kinds of thread differ up front. The
+ * selected destination renders filled; the other outlined — that contrast is
+ * the whole selection indicator, there is no separate label or checkmark.
+ */
 @Composable
-private fun PromptDestinationControl(
-    destination: PromptDestination,
-    computerName: String,
+private fun NewSessionButton(
+    label: String,
+    selected: Boolean,
     enabled: Boolean,
-    onDestinationChange: (PromptDestination) -> Unit,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Text(
-        "Run on",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Spacer(Modifier.height(4.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        PromptDestination.entries.forEach { option ->
-            val selected = destination == option
-            val buttonModifier =
-                Modifier
-                    .weight(1f)
-                    .height(QuietInstrumentTokens.securityActionHeightDp.dp)
-                    .semantics {
-                        contentDescription =
-                            "${option.displayName} destination${if (selected) " selected" else ""}"
-                    }
-            if (selected) {
-                Button(
-                    onClick = { onDestinationChange(option) },
-                    enabled = enabled,
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = buttonModifier,
-                ) { Text(option.displayName) }
-            } else {
-                OutlinedButton(
-                    onClick = { onDestinationChange(option) },
-                    enabled = enabled,
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = buttonModifier,
-                ) { Text(option.displayName) }
-            }
+    val buttonModifier =
+        modifier
+            .height(QuietInstrumentTokens.securityActionHeightDp.dp)
+            .semantics { contentDescription = description }
+    if (selected) {
+        Button(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(6.dp), modifier = buttonModifier) {
+            Text(label)
+        }
+    } else {
+        OutlinedButton(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(6.dp), modifier = buttonModifier) {
+            Text(label)
         }
     }
-    Spacer(Modifier.height(4.dp))
-    Text(
-        if (destination == PromptDestination.AUTO) {
-            "Apps first · Codex on $computerName if none match"
-        } else {
-            "Send directly to Codex on $computerName"
-        },
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 @Composable

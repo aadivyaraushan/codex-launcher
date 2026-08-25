@@ -70,7 +70,7 @@ The product has one visual identity with two modes.
 - Do not use signal orange as a decorative brand wash or large background.
 - Success, warning, and error colors never carry meaning alone; pair them with words and distinct shapes.
 - Commands and sensitive paths use primary text, never low-contrast muted text.
-- Dimmed background content behind approval/question sheets remains recognizable but cannot compete with the decision.
+- A pinned pending ask cannot compete for attention with anything else on the screen; thread content behind it stays readable but subordinate. (Amended 2026-08-12 — this rule previously described the retired approval/question sheets.)
 
 ## Spacing and Sizing
 
@@ -84,14 +84,12 @@ The product has one visual identity with two modes.
 ## Layout
 
 - One left-aligned vertical column.
-- Active tasks appear above recent tasks.
-- The new-prompt composer stays at the bottom within thumb reach.
-- The computer is fixed in V1. The selected project/folder is changeable and appears directly above the Home composer.
-- Sending is disabled until a project/folder is selected.
+- Amended 2026-08-12: Home is a list of task threads. Each row shows the task title, the last message (`Agent: …` / `You: …`), and the state mark — no other chrome. Active tasks appear above recent tasks.
+- Computer threads and phone-agent threads render identically in the list. The distinction lives in exactly one place: two new-session buttons, `on phone` and `on computer`. The computer flow keeps its project/folder pick inside that flow; the fixed project selector is no longer on Home. Sending a computer task is still disabled until a project/folder is selected — the rule moved with the picker.
 - All apps and Android Settings remain visibly reachable on Home and Offline.
 - Swipe up opens the searchable text-first app list.
-- Task transcripts are continuous work logs rather than alternating chat bubbles.
-- Tool activity is compact by default and expands on tap.
+- A task thread is a conversation: the user's messages and the agent's messages, in order. Amended 2026-08-12 — this supersedes "continuous work logs rather than alternating chat bubbles"; the log content survives inside the thread as agent messages and tool activity lines.
+- Tool activity renders as compact mono lines in-thread, compact by default, expanding on tap.
 - Diffs, command output, files, test output, and screenshots use dedicated viewers reached from the task log.
 - Every screen uses Android-reported status, cutout, gesture, keyboard, and navigation insets. Mockup frame measurements are not implementation constants.
 
@@ -118,36 +116,38 @@ The three marks below were added on 2026-07-31 for Operator, which acts inside o
 
 Do not invent new state marks in later screens. Paused, queued, and interrupted states need explicit additions to this mapping before implementation.
 
+**Amended 2026-08-12 — the sheet surfaces are retired, the marks are not.** The approval sheet, the question sheet, the capability sheet, and "one tap left" as a separate surface no longer exist. Their protocol events render as agent messages in the task thread, with the preview inline. Everything those sheets were required to say is still required — it moved into the message and its preview card, it did not get smaller. The six-mark state system itself is unchanged: the marks render on thread rows and on inline preview cards exactly as specified above, including the mandated visual separation between `One tap left` and `Handed off`.
+
 ### Home
 
+- Home is the thread list described under Layout: title, last message, state mark per row.
 - Computer connection is written explicitly: online or offline.
 - Working, waiting, replied, and failed tasks use words plus shape.
 - A waiting-for-user task receives stronger hierarchy than the clock.
 - Ordinary app access is visible but secondary.
-- The project/folder selector shows the fixed computer and current folder above the composer.
-- New tasks expose Model, Reasoning, and Permission mode without crowding the prompt field.
+- Two new-session buttons, `on phone` and `on computer`, are the only place the two kinds of thread differ. New computer tasks expose Model, Reasoning, Permission mode, and the project/folder pick inside that flow.
 - Dictation has a written accessibility label even when represented by a compact icon.
 
-### Active task
+### Task thread
 
-- Header identifies task, computer, current state, and elapsed time.
-- The main action is a follow-up/redirect field.
+Renamed from "Active task" 2026-08-12; the screen is now a conversation.
+
+- Header identifies task, current state, and elapsed time; computer tasks also name the computer.
+- The main action is the composer. On a phone-agent thread, typed text is always steering — it never resolves a pending gate.
 - Stop is a written, 48dp action, not an unexplained square glyph.
 - Queue, redirect, and stop must be distinguishable before implementation is approved.
 - The task overflow menu offers Rename task, Archive task, and Fork task.
 
-### Approval
+### Asks in the thread
 
-- The sheet names the computer, project, requested access, affected paths or `None`, exact redacted command, and permission duration.
-- Only scopes offered by the computer are displayed.
+Replaces the Approval and Question sheets, 2026-08-12. Approval and question events map to agent messages with inline preview cards and tappable suggested replies — messages, but not weaker ones.
+
+- A pending ask cannot be scrolled past: it pins above the composer until resolved, and opening a thread in `Needs your answer` lands on the ask, not the latest message. Home keeps the rule that a waiting-for-user task outranks the clock.
+- The preview card carries every field the approval sheet was required to name: requested access, affected paths or `None`, the exact redacted command or outbound content, permission duration, and (for computer tasks) computer and project.
+- Hard-gate approvals resolve only through the tapped structured Approve/Deny actions; typed text is always steering and the agent re-presents the gate. Non-gate questions may accept typed answers, with a plain-message fallback for structured questions.
+- Only scopes offered by the executing side are displayed.
 - Deny is always present and never visually hidden.
-- Disconnect, timeout, ambiguity, or simultaneous pending questions fail closed.
-
-### Question
-
-- The prompt explains why the task is waiting.
-- Choices are native controls with a typed Other response where supported.
-- Experimental structured-question support requires a plain-message fallback.
+- Disconnect, timeout, ambiguity, or simultaneous pending asks fail closed, same as the sheets did.
 
 ### All apps
 
@@ -214,7 +214,11 @@ Added 2026-07-31. This is the screen that asks for the sensitive permission, so 
 | 2026-07-31 | Three state marks added: one tap left, handed off, unverified | Operator stops in places a launcher never did. Without these marks a user cannot tell a sent message from a drafted one. |
 | 2026-08-03 | Unverified also marks a task whose outcome was lost, and appears on task rows | The row above described it as a standing fact about an adapter, shown only next to a capability. A run whose phone dropped off mid-flight makes the same claim about one task, and a row in a list you are scrolling past has nothing else on it to say something is wrong. Same mark, different words and position. |
 | 2026-08-03 | Unverified's shape is a circle containing a question mark, not a triangle containing a dot | Correcting the document to what shipped, not the other way round: the mark set has no triangle, and every other mark here is a circle, diamond, square or half-circle. **Open for the owner to reverse** — the change was made in code without amending this document first, which is the order this section exists to prevent. |
+| 2026-08-11 | Chat-first collapse: sheets retired, asks become pinned agent messages | Owner approved the three-screen mockup (home as task threads, agent-initiated thread, approval as a chat message). One surface — the thread — instead of four; every mandatory field the sheets carried moves into the inline preview card, and a pending ask pins above the composer so it cannot be scrolled past. |
+| 2026-08-11 | Computer and phone-agent threads are indistinguishable in the list | The distinction is a routing fact, not a reading fact. It lives only in the two new-session buttons; the project/folder pick moves inside the `on computer` flow and the fixed selector leaves Home. |
+| 2026-08-11 | On hard gates, typed text never approves | A gate that a typed "go ahead" could release is a gate a model could talk its way through. Only the tapped structured Approve/Deny actions resolve a hard gate; typed text always routes as steering. |
 
-## Source Artifact
+## Source Artifacts
 
-The approved visual comparison is `outputs/codex-launcher-visual-directions.html`.
+- The approved visual comparison is `outputs/codex-launcher-visual-directions.html`.
+- The approved chat-first interface mockup (confirmed 2026-08-11) is `outputs/agent-chat-interface-mockup.html`.

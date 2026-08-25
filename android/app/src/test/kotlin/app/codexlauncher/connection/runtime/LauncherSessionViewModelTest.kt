@@ -1,7 +1,5 @@
 package app.codexlauncher.connection.runtime
 
-import app.codexlauncher.capability.interaction.CapabilityPhase
-import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.connection.pairing.network.PairedComputer
 import app.codexlauncher.connection.protocol.ProtocolCodec
 import app.codexlauncher.connection.protocol.MessageType
@@ -41,212 +39,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LauncherSessionViewModelTest {
-	@Test
-	fun `unpaired local-runtime connect gives capability send a non-null sink`() = runBlocking {
-		lateinit var observer: SessionObserver
-		val connection = FakeSessionConnection()
-		var connectCalls = 0
-		val viewModel = LauncherSessionViewModel(
-			connect = { paired, _, nextObserver ->
-				connectCalls += 1
-				assertEquals("127.0.0.1", paired.host)
-				observer = nextObserver
-				connection
-			},
-			loadProject = { null },
-			saveProject = { true },
-			clearProject = { true },
-			actionJournal = FakeActionJournal(),
-			workScope = CoroutineScope(Dispatchers.Unconfined),
-		)
-		// Unpaired Mac path: connect the loopback phone-runtime endpoint instead.
-		viewModel.connect(localRuntimePairedComputer())
-		observer.onReady(connection, ByteArray(32))
-		observer.onMessage(welcomeWithCapabilityOptions())
-		viewModel.submitHomePrompt(
-			"Open Maps to coffee nearby",
-			selection = null,
-			draftVersion = DraftVersion(1, 1),
-			forceCapability = true,
-		)
-		val route = ProtocolCodec.decodeText(connection.awaitActionKind("capability_request"))
-		assertEquals(1, connectCalls)
-		assertEquals("capability_request", route.body.getValue("kind").jsonPrimitive.content)
-		assertEquals(CapabilityPhase.ROUTING, viewModel.capabilityInteraction.value.phase)
-	}
-
-	@Test
-	fun `auto home prompt confirms the exact app preview and clears the draft after the result`() = runBlocking {
-		lateinit var observer: SessionObserver
-		val connection = FakeSessionConnection()
-		var cleared: DraftVersion? = null
-		val viewModel = LauncherSessionViewModel(
-			connect = { _, _, nextObserver -> observer = nextObserver; connection },
-			loadProject = { ProjectChoice("main", "Main") },
-			saveProject = { true }, clearProject = { true },
-			actionJournal = FakeActionJournal(),
-			clearConfirmedDraft = { version -> cleared = version; true },
-			workScope = CoroutineScope(Dispatchers.Unconfined),
-		)
-		viewModel.connect(pairedComputer())
-		observer.onReady(connection, ByteArray(32))
-		observer.onMessage(welcomeWithCapabilityOptions())
-		observer.onMessage(onlineSnapshot())
-
-		viewModel.submitHomePrompt(
-			"Add buy oat milk to Todoist tomorrow",
-			NewTaskSelection("codex-1", "medium", "workspace-write"),
-			DraftVersion(4, 2),
-		)
-		val route = ProtocolCodec.decodeText(connection.awaitActionKind("capability_request"))
-		val requestId = route.body.getValue("actionId").jsonPrimitive.content
-		assertEquals(PromptDestination.AUTO, viewModel.capabilityInteraction.value.destination)
-		observer.onMessage(
-			decode(
-				"""{"version":{"major":1,"minor":0},"messageId":"preview-1","sender":"companion","type":"capability_preview","body":{"requestId":"$requestId","adapterId":"todoist","verb":"write","headline":"Create a Todoist task","lines":["Buy oat milk","Tomorrow"],"confirmLabel":"Create task","fingerprint":"${"a".repeat(64)}"}}""",
-			),
-		)
-
-		assertEquals(CapabilityPhase.PREVIEW, viewModel.capabilityInteraction.value.phase)
-		assertEquals(listOf("Buy oat milk", "Tomorrow"), viewModel.capabilityInteraction.value.preview?.lines)
-		assertTrue(viewModel.respondToCapability(confirm = true))
-		val confirmation = ProtocolCodec.decodeText(connection.awaitActionKind("capability_confirm"))
-		assertEquals(requestId, confirmation.body.getValue("requestId").jsonPrimitive.content)
-		assertEquals("a".repeat(64), confirmation.body.getValue("fingerprint").jsonPrimitive.content)
-
-		observer.onMessage(
-			decode(
-				"""{"version":{"major":1,"minor":0},"messageId":"cap-result","sender":"companion","type":"capability_result","seq":2,"body":{"requestId":"$requestId","ceiling":"completes","done":true,"detail":"Created Todoist task","handedOffTo":""}}""",
-			),
-		)
-
-		connection.awaitAcknowledgement(2)
-		assertEquals(CapabilityPhase.RESULT, viewModel.capabilityInteraction.value.phase)
-		assertEquals("Created Todoist task", viewModel.capabilityInteraction.value.outcome?.detail)
-		assertEquals(DraftVersion(4, 2), cleared)
-	}
-
-	@Test
-	fun `auto home prompt falls back to a Codex task only when no app action matches`() = runBlocking {
-		lateinit var observer: SessionObserver
-		val connection = FakeSessionConnection()
-		val viewModel = LauncherSessionViewModel(
-			connect = { _, _, nextObserver -> observer = nextObserver; connection },
-			loadProject = { ProjectChoice("main", "Main") },
-			saveProject = { true }, clearProject = { true },
-			actionJournal = FakeActionJournal(),
-			workScope = CoroutineScope(Dispatchers.Unconfined),
-		)
-		viewModel.connect(pairedComputer())
-		observer.onReady(connection, ByteArray(32))
-		observer.onMessage(welcomeWithCapabilityOptions())
-		observer.onMessage(onlineSnapshot())
-
-		viewModel.submitHomePrompt(
-			"Investigate the flaky Android test",
-			NewTaskSelection("codex-1", "medium", "workspace-write"),
-			DraftVersion(7, 1),
-		)
-		val route = ProtocolCodec.decodeText(connection.awaitActionKind("capability_request"))
-		val requestId = route.body.getValue("actionId").jsonPrimitive.content
-		observer.onMessage(
-			decode(
-				"""{"version":{"major":1,"minor":0},"messageId":"route-miss","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$requestId","state":"failed","error":{"code":"invalid_action","retryable":false}}}""",
-			),
-		)
-
-		val fallback = ProtocolCodec.decodeText(connection.awaitActionKind("start_turn"))
-		assertEquals("Investigate the flaky Android test", fallback.body.getValue("text").jsonPrimitive.content)
-		connection.awaitAcknowledgement(2)
-		assertEquals(PromptDestination.AUTO, viewModel.capabilityInteraction.value.destination)
-	}
-
-	@Test
-	fun `failed app confirmation is acknowledged and never starts a Codex task`() = runBlocking {
-		lateinit var observer: SessionObserver
-		val connection = FakeSessionConnection()
-		val viewModel = LauncherSessionViewModel(
-			connect = { _, _, nextObserver -> observer = nextObserver; connection },
-			loadProject = { ProjectChoice("main", "Main") },
-			saveProject = { true }, clearProject = { true },
-			actionJournal = FakeActionJournal(), workScope = CoroutineScope(Dispatchers.Unconfined),
-		)
-		viewModel.connect(pairedComputer())
-		observer.onReady(connection, ByteArray(32))
-		observer.onMessage(welcomeWithCapabilityOptions())
-		observer.onMessage(onlineSnapshot())
-		viewModel.submitHomePrompt("Add a task", NewTaskSelection("codex-1", "medium", "workspace-write"), DraftVersion(8, 1))
-		val route = ProtocolCodec.decodeText(connection.awaitActionKind("capability_request"))
-		val requestId = route.body.getValue("actionId").jsonPrimitive.content
-		observer.onMessage(
-			decode(
-				"""{"version":{"major":1,"minor":0},"messageId":"preview-failure","sender":"companion","type":"capability_preview","body":{"requestId":"$requestId","adapterId":"todoist","verb":"write","headline":"Create a Todoist task","lines":["A task"],"confirmLabel":"Create task","fingerprint":"${"b".repeat(64)}"}}""",
-			),
-		)
-		assertTrue(viewModel.respondToCapability(confirm = true))
-		val confirm = ProtocolCodec.decodeText(connection.awaitActionKind("capability_confirm"))
-		val confirmId = confirm.body.getValue("actionId").jsonPrimitive.content
-		observer.onMessage(
-			decode(
-				"""{"version":{"major":1,"minor":0},"messageId":"confirm-failed","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$confirmId","state":"failed","error":{"code":"invalid_action","retryable":false}}}""",
-			),
-		)
-
-		connection.awaitAcknowledgement(2)
-		assertEquals(CapabilityPhase.FAILED, viewModel.capabilityInteraction.value.phase)
-		assertFalse(connection.sent.any { ProtocolCodec.decodeText(it).body["kind"]?.jsonPrimitive?.content == "start_turn" })
-	}
-
-	@Test
-	fun `capability result replay after reconnect is shown and acknowledged with the draft retained`() = runBlocking {
-		val observers = mutableListOf<SessionObserver>()
-		val connections = mutableListOf<FakeSessionConnection>()
-		var draftClears = 0
-		val viewModel = LauncherSessionViewModel(
-			connect = { _, _, observer ->
-				observers += observer
-				FakeSessionConnection().also(connections::add)
-			},
-			loadProject = { ProjectChoice("main", "Main") },
-			saveProject = { true }, clearProject = { true },
-			actionJournal = FakeActionJournal(),
-			clearConfirmedDraft = { draftClears += 1; true },
-			retryWait = { CompletableDeferred<Unit>().await() },
-			workScope = CoroutineScope(Dispatchers.Unconfined),
-		)
-		val paired = pairedComputer()
-		viewModel.connect(paired)
-		observers[0].onReady(connections[0], ByteArray(32))
-		observers[0].onMessage(welcomeWithCapabilityOptions())
-		observers[0].onMessage(onlineSnapshot())
-		viewModel.submitHomePrompt("Add a task", NewTaskSelection("codex-1", "medium", "workspace-write"), DraftVersion(9, 1))
-		val route = ProtocolCodec.decodeText(connections[0].awaitActionKind("capability_request"))
-		val requestId = route.body.getValue("actionId").jsonPrimitive.content
-		observers[0].onMessage(
-			decode(
-				"""{"version":{"major":1,"minor":0},"messageId":"preview-reconnect","sender":"companion","type":"capability_preview","body":{"requestId":"$requestId","adapterId":"todoist","verb":"write","headline":"Create a Todoist task","lines":["A task"],"confirmLabel":"Create task","fingerprint":"${"c".repeat(64)}"}}""",
-			),
-		)
-		viewModel.respondToCapability(confirm = true)
-
-		observers[0].onFailure(SessionFailure.CONNECTION_LOST)
-		viewModel.connect(paired, force = true)
-		observers[1].onReady(connections[1], ByteArray(32))
-		observers[1].onMessage(welcomeWithCapabilityOptions())
-		observers[1].onMessage(
-			decode(
-				"""{"version":{"major":1,"minor":0},"messageId":"replayed-result","sender":"companion","type":"capability_result","seq":2,"body":{"requestId":"$requestId","ceiling":"completes","done":true,"detail":"Created Todoist task","handedOffTo":""}}""",
-			),
-		)
-		observers[1].onMessage(onlineSnapshot(sequence = 3))
-
-		connections[1].awaitAcknowledgement(3)
-		assertEquals(CapabilityPhase.RESULT, viewModel.capabilityInteraction.value.phase)
-		assertEquals("Result received after reconnect. Your draft was kept.", viewModel.capabilityInteraction.value.message)
-		assertEquals(0, draftClears)
-		assertEquals(ConnectionPhase.ONLINE, viewModel.state.value.connection.phase)
-	}
-
 	@Test
 	fun `authenticated attachment uploader receives acknowledgements and returns verified ids`() = runBlocking {
 		lateinit var observer: SessionObserver
@@ -329,6 +121,52 @@ class LauncherSessionViewModelTest {
         assertEquals(NewTaskSendOutcome.Complete, pending.await())
         assertEquals(1, draftClears)
         assertFalse(connection.hasAcknowledged(2))
+    }
+
+    // Unit 4 (Phase 8): the predetermined-function pipeline is gone, so a Home
+    // prompt has exactly one route — the agent task path. Even a companion that
+    // still advertises the old capability_actions handshake word must see a
+    // start_turn, never a capability_request: the flag has nothing left to
+    // turn on, and the wire rejects the old kinds anyway (Unit 3).
+    @Test
+    fun `a home prompt starts a task even when the companion advertises capability actions`() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        val viewModel =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { ProjectChoice("main", "Main") },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = FakeActionJournal(),
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"welcome-legacy-flag","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":["set_project","desktop_tasks","new_task_options","capability_actions"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Balanced."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Project changes.","isDefault":true}]}}}""",
+            ),
+        )
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Studio Mac","projects":[{"id":"main","displayName":"Main"}],"tasks":[]}}""",
+            ),
+        )
+
+        val pending = async {
+            viewModel.submitHomePrompt("Reply to Maya that I am on my way", NewTaskSelection("codex-1", "medium", "workspace-write"), DraftVersion(1, 4))
+        }
+        val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+        assertEquals("start_turn", action.body.getValue("kind").jsonPrimitive.content)
+
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"result-2","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed"}}""",
+            ),
+        )
+        pending.await()
     }
 
     @Test
@@ -1040,7 +878,7 @@ class LauncherSessionViewModelTest {
         )
         assertEquals("approval-1", viewModel.decisions.value.active?.requestId)
 
-        val response = async { viewModel.respondToDecision("decline") }
+        val response = async { viewModel.respondToDecision("approval-1", "decline") }
         val action = ProtocolCodec.decodeText(connection.awaitType("action"))
         val actionId = action.body.getValue("actionId").jsonPrimitive.content
         assertEquals("approval-1", action.body.getValue("requestId").jsonPrimitive.content)
@@ -2235,11 +2073,6 @@ class LauncherSessionViewModelTest {
         decode(
             """{"version":{"major":1,"minor":0},"messageId":"welcome-options","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":["set_project","new_task_options"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Balanced."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Project changes.","isDefault":true}]}}}""",
         )
-
-	private fun welcomeWithCapabilityOptions(): ProtocolMessage =
-		decode(
-			"""{"version":{"major":1,"minor":0},"messageId":"welcome-capability-options","sender":"companion","type":"welcome","body":{"sessionId":"session-1","capabilities":["set_project","desktop_tasks","new_task_options","capability_actions"],"limits":{"maxJsonBytes":262144,"maxAttachmentBytes":20971520,"maxDeviceUploads":2,"maxGlobalUploads":4,"maxTemporaryBytes":104857600,"uploadExpirySeconds":900},"newTaskOptions":{"models":[{"id":"codex-1","displayName":"Codex 1","isDefault":true,"defaultReasoningId":"medium","reasoning":[{"id":"medium","displayName":"Medium","description":"Balanced."}]}],"permissionModes":[{"id":"workspace-write","displayName":"Workspace","description":"Project changes.","isDefault":true}]}}}""",
-		)
 
 	private fun onlineSnapshot(sequence: Long = 1): ProtocolMessage =
 		decode(

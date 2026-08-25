@@ -11,27 +11,24 @@ import (
 	"time"
 )
 
-func TestCapabilityFramesCarryOnlyRequestPreviewConfirmationAndOutcome(t *testing.T) {
-	valid := [][]byte{
+// The predetermined-function pipeline is gone (Phase 8), and its five wire
+// names left with it: nothing produces capability_preview or
+// capability_result any more, and nothing answers the three capability
+// action kinds. A frame carrying any of them — including one that was valid
+// for years — must now fail validation exactly like a name that never
+// existed, because a name the validator accepts but nobody handles is a
+// frame that silently disappears.
+func TestCapabilityFramesLeftTheProtocolWithTheirPipeline(t *testing.T) {
+	rejected := [][]byte{
 		[]byte(`{"version":{"major":1,"minor":0},"messageId":"cap-request","sender":"phone","type":"action","body":{"actionId":"cap-action-1","kind":"capability_request","utterance":"Add buy oat milk to Todoist"}}`),
 		[]byte(`{"version":{"major":1,"minor":0},"messageId":"cap-preview","sender":"companion","type":"capability_preview","body":{"requestId":"cap-action-1","adapterId":"todoist","verb":"write","headline":"Create a Todoist task","lines":["Buy oat milk","Before tomorrow"],"confirmLabel":"Create task","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}`),
 		[]byte(`{"version":{"major":1,"minor":0},"messageId":"cap-confirm","sender":"phone","type":"action","body":{"actionId":"cap-confirm-1","kind":"capability_confirm","requestId":"cap-action-1","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","decision":"confirm"}}`),
 		[]byte(`{"version":{"major":1,"minor":0},"messageId":"cap-result","sender":"companion","type":"capability_result","seq":2,"body":{"requestId":"cap-action-1","ceiling":"completes","done":true,"detail":"Created Todoist task","handedOffTo":""}}`),
+		[]byte(`{"version":{"major":1,"minor":0},"messageId":"cap-disconnect","sender":"phone","type":"action","body":{"actionId":"cap-disconnect-1","kind":"capability_disconnect","adapterId":"todoist"}}`),
 	}
-	for _, frame := range valid {
-		if _, err := DecodeText(frame); err != nil {
-			t.Fatalf("valid capability frame was rejected: %v\n%s", err, frame)
-		}
-	}
-
-	invalid := [][]byte{
-		[]byte(`{"version":{"major":1,"minor":0},"messageId":"secret","sender":"companion","type":"capability_preview","body":{"requestId":"cap-action-1","adapterId":"todoist","verb":"write","headline":"Create","lines":[],"confirmLabel":"Create","fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","accessToken":"secret"}}`),
-		[]byte(`{"version":{"major":1,"minor":0},"messageId":"bad-fingerprint","sender":"phone","type":"action","body":{"actionId":"cap-confirm-1","kind":"capability_confirm","requestId":"cap-action-1","fingerprint":"changed","decision":"confirm"}}`),
-		[]byte(`{"version":{"major":1,"minor":0},"messageId":"bad-result","sender":"companion","type":"capability_result","body":{"requestId":"cap-action-1","ceiling":"completes","done":true,"detail":"Created","handedOffTo":""}}`),
-	}
-	for _, frame := range invalid {
+	for _, frame := range rejected {
 		if _, err := DecodeText(frame); err == nil {
-			t.Fatalf("invalid capability frame was accepted:\n%s", frame)
+			t.Fatalf("a capability frame from the deleted pipeline was accepted:\n%s", frame)
 		}
 	}
 }
@@ -320,6 +317,39 @@ func TestSnapshotCarriesOnlySafeComputerAndOpaqueProjectChoices(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := DecodeText([]byte(frame)); !errors.Is(err, ErrInvalidEnvelope) {
+				t.Fatalf("DecodeText() error = %v, want %v", err, ErrInvalidEnvelope)
+			}
+		})
+	}
+}
+
+func TestSnapshotTaskLastMessageIsOptionalAndStrictlyShaped(t *testing.T) {
+	task := `{"taskId":"thread-1","title":"Build launcher","projectLabel":"Launcher","state":"working","lastActivityAt":"2026-07-13T10:02:00Z","queueState":"none","lastMessage":`
+	frame := func(lastMessage string) string {
+		return `{"version":{"major":1,"minor":0},"messageId":"snapshot-last-message","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Mac","projects":[],"tasks":[` + task + lastMessage + `}]}}`
+	}
+	for name, lastMessage := range map[string]string{
+		"agent": `{"from":"agent","text":"Tests pass."}`,
+		"user":  `{"from":"user","text":"archive everything older than 2024"}`,
+		"plain": `{"from":"plain","text":"Comparing flights for Dec 14-18"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := DecodeText([]byte(frame(lastMessage))); err != nil {
+				t.Fatalf("safe lastMessage was rejected: %v", err)
+			}
+		})
+	}
+	for name, lastMessage := range map[string]string{
+		"unknown speaker":   `{"from":"gateway","text":"ok"}`,
+		"missing text":      `{"from":"agent"}`,
+		"missing from":      `{"text":"ok"}`,
+		"extra key":         `{"from":"agent","text":"ok","raw":"payload"}`,
+		"control character": `{"from":"agent","text":"ok\nInjected"}`,
+		"not an object":     `"just text"`,
+		"oversize text":     `{"from":"agent","text":"` + strings.Repeat("a", 513) + `"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := DecodeText([]byte(frame(lastMessage))); !errors.Is(err, ErrInvalidEnvelope) {
 				t.Fatalf("DecodeText() error = %v, want %v", err, ErrInvalidEnvelope)
 			}
 		})

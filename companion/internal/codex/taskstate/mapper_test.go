@@ -71,6 +71,27 @@ func TestMapAppServerThreadUsesRuntimeFlagsAndStableMetadata(t *testing.T) {
 	}
 }
 
+func TestMapAppServerThreadCarriesThePreviewAsAnUnattributedLastMessage(t *testing.T) {
+	raw := json.RawMessage(`{"id":"thread-1","name":"Launcher task","preview":"  Tests pass — writing up the diff now. ","cwd":"/work/project","updatedAt":1783900000,"status":{"type":"idle","activeFlags":[]},"turns":[]}`)
+	task, err := MapAppServerThread(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := LastMessage{From: SpeakerPlain, Text: "Tests pass — writing up the diff now."}
+	if task.LastMessage != want {
+		t.Fatalf("last message = %#v, want %#v", task.LastMessage, want)
+	}
+
+	noPreview := json.RawMessage(`{"id":"thread-2","name":"Launcher task","cwd":"/work/project","updatedAt":1783900000,"status":{"type":"idle","activeFlags":[]},"turns":[]}`)
+	bare, err := MapAppServerThread(noPreview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bare.LastMessage != (LastMessage{}) {
+		t.Fatalf("a thread with no preview must carry no last message, got %#v", bare.LastMessage)
+	}
+}
+
 func TestMapAppServerThreadSanitizesDisplayFieldsForThePhoneContract(t *testing.T) {
 	raw := json.RawMessage("{\"id\":\"thread-1\",\"name\":\"  Multi\\nline\\tname\\u0000  \",\"cwd\":\"/work/ project\\nname \",\"updatedAt\":1783900000,\"status\":{\"type\":\"idle\",\"activeFlags\":[]},\"turns\":[]}")
 	task, err := MapAppServerThread(raw)

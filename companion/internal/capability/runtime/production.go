@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -27,70 +26,10 @@ import (
 	youtubeadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/youtube"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/consent"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/execution"
-	"github.com/codex-launcher/codex-launcher/companion/internal/capability/flow"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/registry"
-	"github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/contacts"
-	"github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage1"
-	"github.com/codex-launcher/codex-launcher/companion/internal/capability/routing/stage2"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/verification"
 )
-
-// ErrMissingProductionDependency is returned when NewProduction has nothing
-// to route with. A companion that starts up with no model cannot classify
-// any request, so it must refuse at startup rather than come up looking
-// healthy and refuse every request later, one at a time, forever.
-var ErrMissingProductionDependency = errors.New("capability runtime: a routing model is required")
-
-// classAddressing is the complete, named declaration of how every class
-// production actually serves is addressed — not a shortlist of exceptions
-// with a fallback for the rest. There is deliberately no default in
-// classMapFor for a class missing from this map: falling back to ToAThing
-// would be the same mistake this whole fix removes, just moved one level
-// up — the next person who adds a class addressed to a person would get a
-// silent, wrong ToAThing instead of a silent, wrong "false", and nothing
-// would force them to make the call. Leaving an unlisted class at the zero
-// value instead means Resolve refuses it by name the first time anyone
-// asks, which is what makes adding the entry here mandatory rather than
-// optional.
-var classAddressing = map[string]stage2.Addressing{
-	"beeper_messaging":             stage2.ResolvedByAdapter,
-	"calendar":                     stage2.ToAThing,
-	"drive":                        stage2.ToAThing,
-	"email":                        stage2.ToAThing,
-	"music":                        stage2.ToAThing,
-	"slack":                        stage2.ToAThing,
-	"messaging":                    stage2.ToAPerson,
-	"money":                        stage2.ToAPerson,
-	notificationreplyadapter.Class: stage2.ResolvedOnTheDevice,
-	"entertainment":                stage2.ToAThing,
-	"finance":                      stage2.ToAThing,
-	"food":                         stage2.ToAThing,
-	"media":                        stage2.ToAThing,
-	"notes":                        stage2.ToAThing,
-	"rides":                        stage2.ToAThing,
-	"services":                     stage2.ToAThing,
-	"shopping":                     stage2.ToAThing,
-	"tasks":                        stage2.ToAThing,
-	"travel":                       stage2.ToAThing,
-}
-
-// classMapFor turns the class-to-adapter-ids map NewProduction built while
-// registering adapters into the declared ClassMap stage 2 needs. A class
-// present in classAddressing gets exactly the Addressing declared there; a
-// class that shows up in byClass but was never added to classAddressing is
-// left at its zero value, AddressingUndeclared, so stage 2 refuses it
-// rather than guessing. It is a package-level function, not inlined into
-// NewProduction, so a test in this package can hold it against the
-// router's rules directly instead of standing up the whole production flow
-// to check one map.
-func classMapFor(byClass map[string][]string) stage2.ClassMap {
-	classes := stage2.ClassMap{}
-	for class, ids := range byClass {
-		classes[class] = stage2.Class{Adapters: ids, Addressing: classAddressing[class]}
-	}
-	return classes
-}
 
 // oauthReason is recorded when no complete, refreshable user connection was
 // loaded at startup. A client id or secret alone is never treated as a signed
@@ -113,7 +52,6 @@ func ConsentGate() *consent.Store {
 // Adapters that need a real OAuth sign-in are not configurable here at all;
 // see oauthReason above.
 type ProductionConfig struct {
-	Model  stage1.ModelFunc
 	Logger *slog.Logger
 
 	// MapsAPIKey is the Google Places/Routes API key (GOOGLE_MAPS_API_KEY).
@@ -129,10 +67,17 @@ type ProductionConfig struct {
 	// feed URL itself is the only thing standing between "nothing to
 	// search" and a working adapter.
 	PodcastsFeedURL string
-	// BeeperAPI is present only when the local or remote Beeper target is
-	// authenticated and write-enabled. It replaces the Instagram, Discord,
-	// and Google Messages hand-offs with confirmed send adapters.
+	// Fact-force (edit): callers=cmd/codex-launcher/production.go,
+	// phoneruntime/runtime.go, beeper_stage2_readonly_test.go; existing file
+	// production.go (not new). User: "Continue OpenAI+Beeper — SLICE 4: B4 + B5".
+	// BeeperAPI is present when the local or remote Beeper target is
+	// authenticated. It replaces the Instagram, Discord, and Google Messages
+	// hand-offs with Beeper network adapters under beeper_messaging.
 	BeeperAPI beepermessage.API
+	// BeeperReadOnly keeps those adapters registered but with Verbs:[read]
+	// only. Callers should also pass a client.ReadOnly() API so writes are
+	// refused at the HTTP layer.
+	BeeperReadOnly bool
 	// Disconnected is the restart-safe set of adapters the user turned off.
 	// PersistDisconnect records a new disconnect before the live adapter is removed.
 	Disconnected      map[string]bool
@@ -177,6 +122,19 @@ type Inventory struct {
 	// does; AdapterIDs and Report below are the only doors the world outside
 	// this package gets onto it.
 	tel *verification.Telemetry
+
+	// runner is the same execution.Runner the flow itself was built with. It
+	// stays unexported for the same reason reg does; Runner below is the
+	// one door the world outside this package gets onto it.
+	runner *execution.Runner
+}
+
+// Runner returns the execution.Runner this inventory's flow was built with,
+// so a second door onto the registry — the phone-runtime agent bridge,
+// today — drives the exact same adapters and telemetry rather than a second,
+// disconnected runner that would never see real traffic.
+func (i Inventory) Runner() *execution.Runner {
+	return i.runner
 }
 
 // ApplyKillList switches adapters on and off to match a remote list. It is
@@ -202,18 +160,13 @@ func (i Inventory) Report(adapterID string) (verification.Report, error) {
 	return i.tel.Report(adapterID)
 }
 
-// NewProduction builds the one capability flow the plain `serve` command
-// runs with. Earlier, `serve` never built a flow at all: every adapter in
-// this repo was reachable only from its own owner-only `serve-<name>-proof`
-// command, so an ordinary phone talking to an ordinary `serve` companion had
-// its capability requests refused outright by handler.go's nil check. This
-// is the fix — one shared registry and one shared router class map spanning
-// every adapter that can come up unattended, plus an honest Inventory
-// explaining what did not make it in.
-func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
-	if config.Model == nil {
-		return nil, Inventory{}, ErrMissingProductionDependency
-	}
+// NewProduction builds the one adapter surface the plain `serve` command
+// runs with: one shared registry, one shared execution runner, and consent,
+// spanning every adapter that can come up unattended, plus an honest
+// Inventory explaining what did not make it in. The agent (via the phone
+// runtime's tool bridge) is the only caller that dispatches through it now;
+// there is no router or flow built here anymore.
+func NewProduction(config ProductionConfig) (Inventory, error) {
 	if config.Logger == nil {
 		config.Logger = slog.Default()
 	}
@@ -276,7 +229,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 			continue
 		}
 		if err := reg.Register(deeplinkadapter.New(spec, logger)); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, spec.ID)
 		byClass[spec.AppClass] = append(byClass[spec.AppClass], spec.ID)
@@ -285,7 +238,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	if config.BeeperAPI == nil {
 		// Without Beeper, Instagram keeps its narrow draft-and-open floor.
 		if err := reg.Register(instagramadapter.New(logger)); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, instagramadapter.ID)
 		byClass["messaging"] = append(byClass["messaging"], instagramadapter.ID)
@@ -302,8 +255,14 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 				}
 				return config.PersistDisconnect(ctx, adapterID)
 			}
-			if err := reg.Register(beepermessage.NewWithRevoke(spec, config.BeeperAPI, revoke, logger)); err != nil {
-				return nil, Inventory{}, err
+			var beeperAdapter *beepermessage.Adapter
+			if config.BeeperReadOnly {
+				beeperAdapter = beepermessage.NewReadOnlyWithRevoke(spec, config.BeeperAPI, revoke, logger)
+			} else {
+				beeperAdapter = beepermessage.NewWithRevoke(spec, config.BeeperAPI, revoke, logger)
+			}
+			if err := reg.Register(beeperAdapter); err != nil {
+				return Inventory{}, err
 			}
 			inv.Registered = append(inv.Registered, spec.ID)
 			byClass["beeper_messaging"] = append(byClass["beeper_messaging"], spec.ID)
@@ -315,7 +274,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	// same reason Instagram is: there is no key or sign-in that could ever
 	// be missing.
 	if err := reg.Register(notificationreplyadapter.New(logger)); err != nil {
-		return nil, Inventory{}, err
+		return Inventory{}, err
 	}
 	inv.Registered = append(inv.Registered, notificationreplyadapter.ID)
 	byClass[notificationreplyadapter.Class] = append(byClass[notificationreplyadapter.Class], notificationreplyadapter.ID)
@@ -329,14 +288,14 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	case mapsAPIKey != "":
 		client := mapsadapter.NewHTTPClient("", "", mapsAPIKey, nil, logger)
 		if err := reg.Register(mapsadapter.New(client, logger)); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, mapsadapter.ID)
 		byClass["travel"] = append(byClass["travel"], mapsadapter.ID)
 	case mapsBrokerURL != "":
 		client := mapsbroker.NewClient(mapsBrokerURL, nil, logger)
 		if err := reg.Register(mapsadapter.New(client, logger)); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, mapsadapter.ID)
 		byClass["travel"] = append(byClass["travel"], mapsadapter.ID)
@@ -362,7 +321,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 			return config.PersistDisconnect(ctx, youtubeadapter.ID)
 		}
 		if err := reg.Register(youtubeadapter.NewWithRevoke(client, revoke, logger)); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, youtubeadapter.ID)
 		byClass["media"] = append(byClass["media"], youtubeadapter.ID)
@@ -377,7 +336,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	} else {
 		a := podcastsadapter.New(podcastsadapter.FeedConfig{URL: feedURL}, podcastsadapter.NewHTTPClient(nil, logger), logger)
 		if err := reg.Register(a); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, podcastsadapter.ID)
 		byClass["media"] = append(byClass["media"], podcastsadapter.ID)
@@ -385,7 +344,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 
 	if config.GoogleCalendarAPI != nil {
 		if err := reg.Register(gcalendar.New(config.GoogleCalendarAPI, logger)); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, gcalendar.ID)
 		byClass["calendar"] = append(byClass["calendar"], gcalendar.ID)
@@ -394,7 +353,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	}
 	if config.GoogleDriveAPI != nil {
 		if err := reg.Register(gdrive.New(config.GoogleDriveAPI, logger)); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, gdrive.ID)
 		byClass["drive"] = append(byClass["drive"], gdrive.ID)
@@ -403,7 +362,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	}
 	if config.SlackAPI != nil {
 		if err := reg.Register(slackadapter.New(config.SlackAPI, logger)); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, slackadapter.ID)
 		byClass["slack"] = append(byClass["slack"], slackadapter.ID)
@@ -412,7 +371,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	}
 	if config.OutlookAPI != nil {
 		if err := reg.Register(outlook.New(config.OutlookAPI, logger)); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, outlook.ID)
 		byClass["email"] = append(byClass["email"], outlook.ID)
@@ -421,7 +380,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	}
 	if config.SpotifyAPI != nil {
 		if err := reg.Register(spotifyadapter.New(config.SpotifyAPI, logger)); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, spotifyadapter.ID)
 		byClass["media"] = append(byClass["media"], spotifyadapter.ID)
@@ -431,7 +390,7 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 	}
 	if config.NotionAdapter != nil {
 		if err := reg.Register(config.NotionAdapter); err != nil {
-			return nil, Inventory{}, err
+			return Inventory{}, err
 		}
 		inv.Registered = append(inv.Registered, notionadapter.ID)
 		byClass["notes"] = append(byClass["notes"], notionadapter.ID)
@@ -455,19 +414,18 @@ func NewProduction(config ProductionConfig) (*flow.Service, Inventory, error) {
 		inv.Skipped[id] = reason
 	}
 
-	classes := classMapFor(byClass)
 	inv.Classes = byClass
 	inv.reg = reg
-	resolver := stage2.New(reg, contacts.NewGraph(time.Now), classes, manifest.PlatformAndroid)
 	runner := execution.New(reg)
 	inv.tel = runner.Telemetry()
+	inv.runner = runner
 
-	logger.Info("[capability-runtime] production flow ready",
+	logger.Info("[capability-runtime] production adapters ready",
 		"registered_count", len(inv.Registered),
 		"skipped_count", len(inv.Skipped),
-		"class_count", len(classes),
+		"class_count", len(byClass),
 		"platform", manifest.PlatformAndroid,
 	)
 
-	return flow.New(stage1.New(config.Model), resolver, runner, ConsentGate(), logger), inv, nil
+	return inv, nil
 }

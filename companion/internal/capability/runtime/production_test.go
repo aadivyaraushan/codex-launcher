@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gcalendar"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gdrive"
@@ -32,24 +33,15 @@ func quietLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// stubModel stands in for the cloud router. Production wiring must be testable
-// without a network call or an API key, or it will not be tested.
-func stubModel(context.Context, string) ([]byte, error) {
-	return []byte(`{"verb":"read","app_class":"tasks","app_named":"","subject":"x","body":"","confidence":0.9}`), nil
-}
-
 // The base case, and the most important one: a brand-new install with no keys
 // for anything. Hand-off adapters need no credential — they only open an app —
-// so the flow must still come up and still be useful. Returning an error here
-// would mean a user with no accounts connected gets nothing at all, when what
-// they should get is every prepare-and-open app.
+// so the inventory must still come up and still be useful. Returning an error
+// here would mean a user with no accounts connected gets nothing at all, when
+// what they should get is every prepare-and-open app.
 func TestProductionFlowComesUpWithNoCredentialsAtAll(t *testing.T) {
-	flow, inv, err := NewProduction(ProductionConfig{Model: stubModel, Logger: quietLogger()})
+	inv, err := NewProduction(ProductionConfig{Logger: quietLogger()})
 	if err != nil {
 		t.Fatalf("NewProduction with no credentials failed: %v", err)
-	}
-	if flow == nil {
-		t.Fatal("no capability flow was built; every capability request would be refused")
 	}
 	if len(inv.Registered) == 0 {
 		t.Fatal("no adapters registered; the phone would have nothing to route to")
@@ -73,7 +65,7 @@ func TestProductionFlowComesUpWithNoCredentialsAtAll(t *testing.T) {
 // chosen by the router, so it is dead weight that still reports itself as
 // available.
 func TestEveryRegisteredAdapterIsReachableFromSomeClass(t *testing.T) {
-	_, inv, err := NewProduction(ProductionConfig{Model: stubModel, Logger: quietLogger()})
+	inv, err := NewProduction(ProductionConfig{Logger: quietLogger()})
 	if err != nil {
 		t.Fatalf("NewProduction failed: %v", err)
 	}
@@ -99,7 +91,7 @@ func TestEveryRegisteredAdapterIsReachableFromSomeClass(t *testing.T) {
 // The router would choose it and the lookup would fail deep inside the run,
 // after the user had already been shown a preview and confirmed it.
 func TestEveryRoutableAdapterWasActuallyRegistered(t *testing.T) {
-	_, inv, err := NewProduction(ProductionConfig{Model: stubModel, Logger: quietLogger()})
+	inv, err := NewProduction(ProductionConfig{Logger: quietLogger()})
 	if err != nil {
 		t.Fatalf("NewProduction failed: %v", err)
 	}
@@ -123,7 +115,7 @@ func TestEveryRoutableAdapterWasActuallyRegistered(t *testing.T) {
 // router because it looked available, and failing only once the user has
 // already confirmed.
 func TestAnAdapterWithNoCredentialIsLeftOutAndTheReasonIsRecorded(t *testing.T) {
-	_, inv, err := NewProduction(ProductionConfig{Model: stubModel, Logger: quietLogger()})
+	inv, err := NewProduction(ProductionConfig{Logger: quietLogger()})
 	if err != nil {
 		t.Fatalf("NewProduction failed: %v", err)
 	}
@@ -148,8 +140,7 @@ func TestAnAdapterWithNoCredentialIsLeftOutAndTheReasonIsRecorded(t *testing.T) 
 // appear, and must be routable. Otherwise connecting an account would silently
 // change nothing.
 func TestSupplyingACredentialAddsThatAdapterAndMakesItRoutable(t *testing.T) {
-	_, inv, err := NewProduction(ProductionConfig{
-		Model:      stubModel,
+	inv, err := NewProduction(ProductionConfig{
 		Logger:     quietLogger(),
 		MapsAPIKey: "test-maps-key",
 	})
@@ -188,8 +179,7 @@ func TestSupplyingACredentialAddsThatAdapterAndMakesItRoutable(t *testing.T) {
 // purpose=MapsBrokerBaseURL path (no duplicate file); no data files;
 // user: "Maps Go→Android Places/Routes RPC"
 func TestMapsBrokerBaseURLRegistersMapsWithoutLinuxAPIKey(t *testing.T) {
-	_, inv, err := NewProduction(ProductionConfig{
-		Model:             stubModel,
+	inv, err := NewProduction(ProductionConfig{
 		Logger:            quietLogger(),
 		MapsBrokerBaseURL: "http://127.0.0.1:9451",
 	})
@@ -255,8 +245,8 @@ func TestPersistedOAuthAPIsReplaceHandoffsAndBecomeRoutable(t *testing.T) {
 	if _, err := notionAdapter.Connect(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	_, inv, err := NewProduction(ProductionConfig{
-		Model: stubModel, Logger: quietLogger(),
+	inv, err := NewProduction(ProductionConfig{
+		Logger:            quietLogger(),
 		GoogleCalendarAPI: apis, GoogleDriveAPI: apis, SlackAPI: apis,
 		OutlookAPI: apis, SpotifyAPI: apis, NotionAdapter: notionAdapter,
 	})
@@ -297,10 +287,45 @@ func (*fakeProductionBeeper) StartChat(context.Context, string, string) (beeper.
 func (*fakeProductionBeeper) Send(context.Context, string, string) (beeper.Sent, error) {
 	return beeper.Sent{ChatID: "chat-1", PendingMessageID: "pending-1"}, nil
 }
+func (f *fakeProductionBeeper) SendReply(ctx context.Context, chatID, text, _ string) (beeper.Sent, error) {
+	return f.Send(ctx, chatID, text)
+}
+func (*fakeProductionBeeper) ListChats(context.Context, beeper.ListChatsOptions) (beeper.ChatPage, error) {
+	return beeper.ChatPage{}, nil
+}
+func (*fakeProductionBeeper) GetChat(context.Context, string) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1", Network: "Discord", Title: "Aadivya"}, nil
+}
+func (*fakeProductionBeeper) ListMessages(context.Context, string, beeper.MessageListOptions) (beeper.MessagePage, error) {
+	return beeper.MessagePage{}, nil
+}
+func (*fakeProductionBeeper) SearchMessages(context.Context, beeper.SearchMessagesOptions) (beeper.MessagePage, error) {
+	return beeper.MessagePage{}, nil
+}
+func (*fakeProductionBeeper) EditMessage(context.Context, string, string, string) (beeper.Message, error) {
+	return beeper.Message{}, nil
+}
+func (*fakeProductionBeeper) DeleteMessage(context.Context, string, string) error { return nil }
+func (*fakeProductionBeeper) React(context.Context, string, string, string) error { return nil }
+func (*fakeProductionBeeper) Unreact(context.Context, string, string, string) error {
+	return nil
+}
+func (*fakeProductionBeeper) MarkRead(context.Context, string, string) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1"}, nil
+}
+func (*fakeProductionBeeper) MarkUnread(context.Context, string, string) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1"}, nil
+}
+func (*fakeProductionBeeper) Archive(context.Context, string, bool) error { return nil }
+func (*fakeProductionBeeper) UpdateChat(context.Context, string, beeper.UpdateChatOptions) (beeper.Chat, error) {
+	return beeper.Chat{ID: "chat-1"}, nil
+}
+func (*fakeProductionBeeper) SetReminder(context.Context, string, time.Time, bool) error { return nil }
+func (*fakeProductionBeeper) ClearReminder(context.Context, string) error                 { return nil }
 
 func TestBeeperConnectionReplacesTheThreeMessagingHandoffsWithConfirmedSendAdapters(t *testing.T) {
-	_, inv, err := NewProduction(ProductionConfig{
-		Model: stubModel, Logger: quietLogger(), BeeperAPI: &fakeProductionBeeper{},
+	inv, err := NewProduction(ProductionConfig{
+		Logger: quietLogger(), BeeperAPI: &fakeProductionBeeper{},
 	})
 	if err != nil {
 		t.Fatalf("NewProduction: %v", err)
@@ -324,8 +349,8 @@ func TestBeeperConnectionReplacesTheThreeMessagingHandoffsWithConfirmedSendAdapt
 
 func TestPersistentlyDisconnectedCredentialedAdaptersStayOutAfterRebuild(t *testing.T) {
 	revoked := []string{}
-	_, inv, err := NewProduction(ProductionConfig{
-		Model: stubModel, Logger: quietLogger(), YouTubeAPIKey: "test-youtube-key", BeeperAPI: &fakeProductionBeeper{},
+	inv, err := NewProduction(ProductionConfig{
+		Logger: quietLogger(), YouTubeAPIKey: "test-youtube-key", BeeperAPI: &fakeProductionBeeper{},
 		Disconnected: map[string]bool{"youtube": true, "discord": true},
 		PersistDisconnect: func(_ context.Context, id string) error {
 			revoked = append(revoked, id)
@@ -344,14 +369,5 @@ func TestPersistentlyDisconnectedCredentialedAdaptersStayOutAfterRebuild(t *test
 	}
 	if !registered["instagram"] || !registered["messages"] {
 		t.Fatalf("one Beeper network disconnect removed its siblings: registered=%v", inv.Registered)
-	}
-}
-
-// A build with no router cannot route, so it must fail loudly at startup
-// rather than come up looking healthy and refuse every request later.
-func TestAFlowWithNoRouterIsRefusedAtStartup(t *testing.T) {
-	_, _, err := NewProduction(ProductionConfig{Logger: quietLogger()})
-	if err == nil {
-		t.Fatal("NewProduction with no model returned no error; it would start up unable to route anything")
 	}
 }

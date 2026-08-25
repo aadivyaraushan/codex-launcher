@@ -38,10 +38,8 @@ import app.codexlauncher.connection.pairing.PairingProgress
 import app.codexlauncher.connection.pairing.PairingScreen
 import app.codexlauncher.connection.pairing.PairingUiState
 import app.codexlauncher.diagnostics.AppLog
-import app.codexlauncher.decision.approval.ApprovalSheet
 import app.codexlauncher.decision.approval.DecisionQuestion
 import app.codexlauncher.decision.approval.DecisionRequest
-import app.codexlauncher.decision.question.QuestionSheet
 import app.codexlauncher.launcher.apps.AppDrawerScreen
 import app.codexlauncher.launcher.apps.InstalledApp
 import app.codexlauncher.launcher.home.HomeTask
@@ -77,6 +75,8 @@ import app.codexlauncher.task.transcript.TranscriptDetailScreen
 import app.codexlauncher.task.transcript.TranscriptEntry
 import app.codexlauncher.task.transcript.TranscriptEntryKind
 import app.codexlauncher.task.transcript.TranscriptFileChange
+import app.codexlauncher.task.thread.ThreadAskCard
+import app.codexlauncher.task.thread.ThreadMessageMapper
 import java.time.Instant
 
 class UiScenarioActivity : ComponentActivity() {
@@ -636,10 +636,13 @@ private fun ApprovalScenario(scenario: ScenarioId) {
     if (outcome != null) {
         Box(Modifier.fillMaxSize().padding(20.dp)) { Text(requireNotNull(outcome)) }
     } else {
-        ApprovalSheet(
-            request = sampleDecisionRequest(commandUnderstandable = scenario != ScenarioId.APPROVAL_REDACTED),
+        ThreadAskCard(
+            ask = ThreadMessageMapper.fromDecision(sampleDecisionRequest(commandUnderstandable = scenario != ScenarioId.APPROVAL_REDACTED)),
             sending = scenario == ScenarioId.APPROVAL_SENDING,
+            actionable = true,
             onDecision = { outcome = "Decision: $it" },
+            onReply = {},
+            onNotNow = {},
         )
     }
 }
@@ -658,10 +661,12 @@ private fun QuestionScenario(scenario: ScenarioId) {
                 ScenarioId.QUESTION_SENDING -> DecisionQuestion("approach", "Approach", "How should the sample continue?", listOf("Use tests"), false)
                 else -> error("not a question scenario")
             }
-        QuestionSheet(
-            request = sampleDecisionRequest(kind = "question", questions = listOf(question)),
+        ThreadAskCard(
+            ask = ThreadMessageMapper.fromDecision(sampleDecisionRequest(kind = "question", questions = listOf(question))),
             sending = scenario == ScenarioId.QUESTION_SENDING,
-            onSubmit = { answers -> outcome = "Answer sent: ${answers.values.flatten().joinToString()}" },
+            actionable = true,
+            onDecision = {},
+            onReply = { text -> outcome = "Answer sent: $text" },
             onNotNow = { outcome = if (question.secret) "Answer on computer" else "Question dismissed" },
         )
     }

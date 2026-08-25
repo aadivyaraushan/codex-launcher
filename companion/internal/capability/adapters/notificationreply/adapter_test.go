@@ -14,7 +14,8 @@ import (
 //
 // Operator can answer a live message thread by using the reply box Android
 // puts in the notification. Every link of that chain exists and has a real
-// caller: handOffToDevice (`handler.go:1062`) sends a `device_action` frame,
+// caller: the bridge's DeviceWorker (`mobilesession.Handler.RunOnDevice`)
+// sends a `device_action` frame,
 // `handleDeviceAction` (`LauncherSessionViewModel.kt:1189`) receives it,
 // `DeviceReplyRequest.carryOut` decides, `AndroidReplyDispatch` fires the
 // RemoteInput. Grepping any one link finds a caller, so link-by-link checking

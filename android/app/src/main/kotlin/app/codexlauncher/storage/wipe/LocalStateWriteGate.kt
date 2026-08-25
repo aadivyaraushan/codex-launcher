@@ -66,6 +66,22 @@ class LocalStateWriteGate {
             }
         }
 
+    /** Back out of Mac pairing without saving — restore STANDALONE writes. */
+    suspend fun abortPairing(): Boolean =
+        operationMutex.withLock {
+            synchronized(stateLock) {
+                if (mode != Mode.PAIRING) return@withLock false
+                generation += 1
+                mode = Mode.STANDALONE
+                AppLog.info(
+                    feature = "local-state-gate",
+                    message = "pairing write gate aborted to standalone",
+                    fields = mapOf("output_shape" to mode.logName, "generation" to generation),
+                )
+                true
+            }
+        }
+
     suspend fun completePairing(save: suspend () -> Boolean): Boolean {
         val ticket = capture(Mode.PAIRING) ?: return false
         return operationMutex.withLock {

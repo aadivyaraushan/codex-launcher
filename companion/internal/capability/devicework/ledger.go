@@ -1,10 +1,13 @@
 // Package devicework is the bookkeeper for capability requests whose work
-// has to finish on the phone instead of the Mac. Everything up to this point
-// runs inside one function call and returns an Outcome directly; once a
-// result has to travel back over the wire, something has to remember which
-// requests are still open and who is expected to answer for them. This file
-// is that memory, and nothing more: it holds no adapters, sends nothing, and
-// carries no user-facing wording.
+// has to finish on the phone instead of the Mac. A notification reply's
+// reply box, and a YouTube player, both live inside apps only the phone can
+// reach — so an adapter that needs one refuses with an
+// *adapter.DeviceWorkError, the agent bridge hands the resulting Ask to
+// mobilesession.Handler.RunOnDevice, and that call blocks until the phone
+// answers. This file is what lets one goroutine send an Ask out to the
+// phone and a different goroutine — the one reading the phone's
+// device_action_result — hand the Result back to it. It holds no adapters,
+// sends nothing itself, and carries no user-facing wording.
 package devicework
 
 import (
@@ -14,134 +17,141 @@ import (
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 )
 
-// Record is one outstanding request: who it was handed to, what kind of
-// work it is, and when the wait for an answer began. StartedAt is what lets
-// the ledger tell a request that is merely slow from one that has genuinely
-// run out of time, without ever consulting a real clock itself.
-//
-// A request carries two names, not one. RequestID is what the phone's
-// capability sheet is keyed on, and what a real answer comes back under, on
-// the capability_result frame. ActionID is what "we could not find out" has
-// to be reported under instead, because that sentence rides the
-// action_result frame, not the capability one. Every one of the three bad
-// endings this package exists for hands the caller only a Record, so a
-// Record missing either name would leave that ending unreportable.
-//
-// AdapterID and Ceiling exist so the answer that eventually comes back can
-// be measured against something. Without them, the code answering the phone
-// has no way to know which adapter asked or what it was ever allowed to
-// claim — Ceiling is stamped in already resolved (never blank; see
-// manifest.Ceiling.OrHandsOff), so nothing downstream has to re-decide what
-// an unset value means.
+// Timeout is how long a caller should wait for the phone to answer an Ask
+// before giving up on it. A notification reply either lands within seconds
+// or it is not going to land at all, and the cost of waiting longer than
+// that is not patience — it is the user's next prompt sitting blocked
+// behind a reply that was never coming. It lives here, not in
+// mobilesession, so agentbridge can share the same number without
+// importing mobilesession.
+const Timeout = 60 * time.Second
+
+// Ask is what an adapter handed back instead of finishing itself: the least
+// a caller needs to hand the same instruction to the phone. Handle and Text
+// are things a real person wrote — a contact's name and the words routed to
+// them — so nothing that carries an Ask may log them. Ceiling is the most
+// this ask will ever claim to have done, the same promise every other
+// adapter makes through execution.Runner's clamp; device work skips that
+// runner, so this is where the promise is written down before the phone
+// answers.
+type Ask struct {
+	AdapterID string
+	Kind      string
+	Handle    string
+	Text      string
+	Ceiling   manifest.Ceiling
+}
+
+// Result is the phone's answer to an Ask, already turned from its one
+// outcome word into what the caller needs. Answered is false for every way
+// an Ask can go unanswered — the wait timed out, the phone disconnected, or
+// a fresh session orphaned it — and Done is always false alongside it: none
+// of those put anything in anybody's chat, so neither "done" nor "failed"
+// would be honest.
+type Result struct {
+	Answered bool
+	Reached  manifest.Ceiling
+	Done     bool
+	Detail   string
+}
+
+// Record is one outstanding request: who it was handed to and what kind of
+// work it is. AdapterID and Ceiling exist so the answer that eventually
+// comes back can be measured against something — Ceiling is stamped in
+// already resolved (never blank; see manifest.Ceiling.OrHandsOff), so
+// nothing downstream has to re-decide what an unset value means.
 type Record struct {
 	RequestID string
 	DeviceID  string
 	Kind      string
-	ActionID  string
 	AdapterID string
 	Ceiling   manifest.Ceiling
-	StartedAt time.Time
 }
 
-// Ledger tracks every request currently waiting on a phone to answer. It has
-// no goroutines of its own — timeouts and disconnects are only noticed when
-// a caller asks about them — because a background sweeper would make the
-// exact deadline a test observes unpredictable. The mutex exists because the
-// same request can be settled, expired, or abandoned from three different
-// places at once (a read loop, a delivery goroutine, a timeout sweep), and
-// only one of those attempts is allowed to win.
+// disconnectedDetail is what a waiter is told when its phone leaves before
+// answering — either a real disconnect or a fresh session that has no
+// memory of the ask (device_action is never replayed). Both are the same
+// honest non-answer: whether the phone sent it before it left is exactly
+// what nobody can find out.
+const disconnectedDetail = "The phone disconnected before answering; whether it went out is unknown."
+
+type waiter struct {
+	record Record
+	result chan Result
+}
+
+// Ledger tracks every Ask currently waiting on a phone to answer. It runs no
+// timeout of its own — the caller that registered the wait owns its own
+// deadline — because the one place that timeout would fire, RunOnDevice,
+// already has a context to watch. The mutex exists because the same request
+// can be settled and given up on from two different places at once (the
+// read loop delivering an answer, a hello handler declaring the phone
+// gone), and only one of those attempts is allowed to win.
 type Ledger struct {
 	mu      sync.Mutex
-	waiting map[string]Record
-	timeout time.Duration
-	now     func() time.Time
+	waiting map[string]waiter
 }
 
-// NewLedger builds a Ledger that gives up on a request after timeout has
-// elapsed since it started waiting. now is injected rather than read from
-// the system clock so that tests can step past a deadline instantly instead
-// of sleeping for it.
-func NewLedger(timeout time.Duration, now func() time.Time) *Ledger {
-	return &Ledger{
-		waiting: make(map[string]Record),
-		timeout: timeout,
-		now:     now,
-	}
+// NewLedger returns an empty Ledger.
+func NewLedger() *Ledger {
+	return &Ledger{waiting: make(map[string]waiter)}
 }
 
 // Wait records that record has been handed to its device and is now
-// awaiting a reply. The caller leaves StartedAt zero; Wait stamps it with
-// the ledger's own clock and stores that stamped copy, so the caller cannot
-// accidentally record a wait that started at the wrong time. It returns
-// false, and records nothing, if that request is already on the books —
-// otherwise a duplicate confirm would put two waits on the same request and
-// cause the same action to be sent to a real person twice.
-func (l *Ledger) Wait(record Record) bool {
+// awaiting a reply, and returns the channel its eventual Result will arrive
+// on. It returns false, and records nothing, if that request id is already
+// on the books — otherwise a duplicate hand-off would put two waits on the
+// same request and risk the same action reaching a real person twice.
+func (l *Ledger) Wait(record Record) (<-chan Result, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	if _, exists := l.waiting[record.RequestID]; exists {
-		return false
+		return nil, false
 	}
-	record.StartedAt = l.now()
-	l.waiting[record.RequestID] = record
-	return true
+	ch := make(chan Result, 1)
+	l.waiting[record.RequestID] = waiter{record: record, result: ch}
+	return ch, true
 }
 
-// Settle claims the result for requestID. Only the first caller for a given
-// request gets true and the Record back; every later caller — including one
-// that arrives after DeviceGone or Expired has already given up on the
-// request — gets false. That second-caller case is not a technicality: a
-// late answer accepted after the request was already reported as
-// outcome_unknown would overwrite an honest "we don't know" with a claim,
-// which is the one direction this ledger must never allow.
-func (l *Ledger) Settle(requestID string) (Record, bool) {
+// Claim removes requestID from the ledger and hands back its Record along
+// with the channel its waiter is listening on, so the caller can compute a
+// Result — which needs the Record's Kind and Ceiling — before delivering
+// it. Only the first caller for a given request id gets true; every later
+// caller, including one that arrives after DeviceGone has already given up
+// on the request, gets false. That second-caller case is not a technicality:
+// a late answer accepted after the request was already reported as
+// unanswered would overwrite an honest "we don't know" with a claim, which
+// is the one direction this ledger must never allow.
+func (l *Ledger) Claim(requestID string) (Record, chan<- Result, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	record, exists := l.waiting[requestID]
+	w, exists := l.waiting[requestID]
 	if !exists {
-		return Record{}, false
+		return Record{}, nil, false
 	}
 	delete(l.waiting, requestID)
-	return record, true
+	return w.record, w.result, true
 }
 
-// DeviceGone removes and returns every request still waiting on deviceID,
-// leaving requests waiting on other devices untouched. Once a phone has
-// disconnected it can never deliver the answer it owed, so every one of
-// those requests has to be reported to the user as an outcome we could not
-// learn — hence the full list of records, not just a count.
-func (l *Ledger) DeviceGone(deviceID string) []Record {
+// DeviceGone fails every request still waiting on deviceID with an
+// unanswered Result, leaving requests waiting on other devices untouched.
+// Once a phone has left it can never deliver the answer it owed, so every
+// one of its waiters has to be told the outcome could not be learned rather
+// than left blocked until their own caller's deadline.
+func (l *Ledger) DeviceGone(deviceID string) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	var abandoned []Record
-	for id, record := range l.waiting {
-		if record.DeviceID == deviceID {
-			abandoned = append(abandoned, record)
+	var abandoned []waiter
+	for id, w := range l.waiting {
+		if w.record.DeviceID == deviceID {
+			abandoned = append(abandoned, w)
 			delete(l.waiting, id)
 		}
 	}
-	return abandoned
-}
+	l.mu.Unlock()
 
-// Expired removes and returns every request that has been waiting longer
-// than the ledger's timeout, as of the injected clock's current time. A
-// caller is expected to call this on a timer; a record is only ever handed
-// back once, on the sweep that first notices it has expired, so the same
-// request is never reported to the user twice.
-func (l *Ledger) Expired() []Record {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	now := l.now()
-	var expired []Record
-	for id, record := range l.waiting {
-		if now.Sub(record.StartedAt) > l.timeout {
-			expired = append(expired, record)
-			delete(l.waiting, id)
-		}
+	for _, w := range abandoned {
+		w.result <- Result{Answered: false, Done: false, Detail: disconnectedDetail}
 	}
-	return expired
 }

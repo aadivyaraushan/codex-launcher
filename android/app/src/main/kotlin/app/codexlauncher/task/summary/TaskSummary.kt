@@ -41,6 +41,19 @@ enum class TaskQueueState(val wireName: String) {
     }
 }
 
+enum class MessageSpeaker(val wireName: String) {
+    AGENT("agent"),
+    USER("user"),
+    PLAIN("plain"),
+    ;
+
+    companion object {
+        fun fromWire(wireName: String): MessageSpeaker? = entries.find { it.wireName == wireName }
+    }
+}
+
+data class TaskLastMessage(val from: MessageSpeaker, val text: String)
+
 data class TaskSummary(
     val id: String,
     val title: String,
@@ -51,6 +64,7 @@ data class TaskSummary(
     val canRedirect: Boolean = false,
     val queueState: TaskQueueState = TaskQueueState.NONE,
     val statusSummary: String? = null,
+    val lastMessage: TaskLastMessage? = null,
 )
 
 /**

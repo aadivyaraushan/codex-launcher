@@ -1,0 +1,12 @@
+{
+  "note": "A late or reordered delta for a run that already terminated must not fabricate a new Working turn.",
+  "events": [
+    {"state": "delta", "deltaText": "Hi", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 1},
+    {"state": "final", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 2},
+    {"state": "delta", "deltaText": "late straggler", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 1}
+  ],
+  "want": [
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "reply", "state": "idle_after_reply", "summary": "Hi", "startsTurn": false}
+  ]
+}

@@ -26,10 +26,10 @@ class DecisionViewModelTest {
         val viewModel = decisionViewModel { payload, boundary -> sent = payload; assertTrue(boundary()); ActionSendResult.SENT_UNKNOWN }
         viewModel.acceptPage(page(commandUnderstandable = false))
         assertFalse(viewModel.state.value.active!!.canApprove)
-		assertEquals(DecisionOutcome.Invalid, viewModel.respond("accept"))
-		assertEquals(DecisionOutcome.Invalid, viewModel.respond("accept_for_session"))
+		assertEquals(DecisionOutcome.Invalid, viewModel.respond("approval-1", "accept"))
+		assertEquals(DecisionOutcome.Invalid, viewModel.respond("approval-1", "accept_for_session"))
 
-        val pending = async { viewModel.respond("decline") }
+        val pending = async { viewModel.respond("approval-1", "decline") }
         yield()
         val action = ProtocolCodec.decodeText(sent)
         assertEquals("approval", action.body.getValue("kind").jsonPrimitive.content)
@@ -45,11 +45,56 @@ class DecisionViewModelTest {
         var sends = 0
         val viewModel = decisionViewModel { _, _ -> sends += 1; ActionSendResult.SENT_UNKNOWN }
         viewModel.acceptPage(questionPage(secret = true))
-        assertTrue(viewModel.dismissQuestion())
+        assertTrue(viewModel.dismissQuestion("question-1"))
         assertEquals(null, viewModel.state.value.active)
         assertTrue(viewModel.reopenQuestion("question-1"))
-        assertEquals(DecisionOutcome.AnswerOnComputer, viewModel.answer(mapOf("password" to listOf("do not send"))))
+        assertEquals(DecisionOutcome.AnswerOnComputer, viewModel.answer("question-1", mapOf("password" to listOf("do not send"))))
         assertEquals(0, sends)
+    }
+
+    @Test
+    fun `a decision acts on exactly the request it names even when it is not first`() = runBlocking {
+        var sent = ""
+        val viewModel = decisionViewModel { payload, boundary -> sent = payload; assertTrue(boundary()); ActionSendResult.SENT_UNKNOWN }
+        viewModel.acceptPage(twoApprovalPage())
+        val pending = async { viewModel.respond("approval-2", "decline") }
+        yield()
+        val action = ProtocolCodec.decodeText(sent)
+        assertEquals("approval-2", action.body.getValue("requestId").jsonPrimitive.content)
+        viewModel.acceptActionResult(result("action-1", "confirmed"))
+        assertEquals(DecisionOutcome.Complete, pending.await())
+        assertEquals(listOf("approval-1"), viewModel.state.value.requests.map { it.requestId })
+    }
+
+    @Test
+    fun `a decision naming an unknown request sends nothing`() = runBlocking {
+        var sends = 0
+        val viewModel = decisionViewModel { _, _ -> sends += 1; ActionSendResult.SENT_UNKNOWN }
+        viewModel.acceptPage(page(commandUnderstandable = true))
+        assertEquals(DecisionOutcome.Invalid, viewModel.respond("approval-9", "decline"))
+        assertEquals(0, sends)
+    }
+
+    @Test
+    fun `an answer reaches the question request it names`() = runBlocking {
+        var sent = ""
+        val viewModel = decisionViewModel { payload, boundary -> sent = payload; assertTrue(boundary()); ActionSendResult.SENT_UNKNOWN }
+        viewModel.acceptPage(twoQuestionPage())
+        val pending = async { viewModel.answer("question-2", mapOf("approach" to listOf("Use tests"))) }
+        yield()
+        val action = ProtocolCodec.decodeText(sent)
+        assertEquals("question-2", action.body.getValue("requestId").jsonPrimitive.content)
+        viewModel.acceptActionResult(result("action-1", "confirmed"))
+        assertEquals(DecisionOutcome.Complete, pending.await())
+    }
+
+    @Test
+    fun `dismissing a question dismisses only the request it names`() = runBlocking {
+        val viewModel = decisionViewModel { _, _ -> ActionSendResult.SENT_UNKNOWN }
+        viewModel.acceptPage(twoQuestionPage())
+        assertTrue(viewModel.dismissQuestion("question-2"))
+        assertEquals("question-1", viewModel.state.value.active?.requestId)
+        assertFalse(viewModel.dismissQuestion("question-9"))
     }
 
     private fun decisionViewModel(send: suspend (String, suspend () -> Boolean) -> ActionSendResult) =
@@ -58,6 +103,16 @@ class DecisionViewModelTest {
     private fun page(commandUnderstandable: Boolean) =
         ProtocolCodec.decodeText(
             """{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"decision_page","body":{"requestId":"read-1","taskId":"thread-1","requests":[{"requestId":"approval-1","turnId":"turn-1","itemId":"item-1","kind":"command","computerName":"Aadi Mac","projectLabel":"Launcher","command":"sh -c <redacted:secret>","commandUnderstandable":$commandUnderstandable,"allowedDecisions":["accept","accept_for_session","decline"],"expiresAt":"2099-07-14T03:00:00Z"}]}}""",
+        )
+
+    private fun twoApprovalPage() =
+        ProtocolCodec.decodeText(
+            """{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"decision_page","body":{"requestId":"read-1","taskId":"thread-1","requests":[{"requestId":"approval-1","turnId":"turn-1","itemId":"item-1","kind":"command","computerName":"Aadi Mac","projectLabel":"Launcher","command":"ls","commandUnderstandable":true,"allowedDecisions":["accept","decline"],"expiresAt":"2099-07-14T03:00:00Z"},{"requestId":"approval-2","turnId":"turn-1","itemId":"item-2","kind":"command","computerName":"Aadi Mac","projectLabel":"Launcher","command":"rm notes.txt","commandUnderstandable":true,"allowedDecisions":["accept","decline"],"expiresAt":"2099-07-14T03:00:00Z"}]}}""",
+        )
+
+    private fun twoQuestionPage() =
+        ProtocolCodec.decodeText(
+            """{"version":{"major":1,"minor":0},"messageId":"page","sender":"companion","type":"decision_page","body":{"requestId":"read-1","taskId":"thread-1","requests":[{"requestId":"question-1","turnId":"turn-1","itemId":"item-1","kind":"question","computerName":"Aadi Mac","projectLabel":"Launcher","questions":[{"id":"topic","header":"Topic","prompt":"Which topic?","options":["A","B"],"secret":false}],"expiresAt":"2099-07-14T03:00:00Z"},{"requestId":"question-2","turnId":"turn-1","itemId":"item-2","kind":"question","computerName":"Aadi Mac","projectLabel":"Launcher","questions":[{"id":"approach","header":"Approach","prompt":"How should this continue?","options":["Use tests"],"secret":false}],"expiresAt":"2099-07-14T03:00:00Z"}]}}""",
         )
 
     private fun questionPage(secret: Boolean) =

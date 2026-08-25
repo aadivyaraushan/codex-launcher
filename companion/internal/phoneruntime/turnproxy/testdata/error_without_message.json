@@ -1,0 +1,9 @@
+{
+  "note": "an error with no errorMessage still fails the turn with a generic line; no Working event is invented first",
+  "events": [
+    {"state": "error", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 1}
+  ],
+  "want": [
+    {"taskId": "phone-agent", "kind": "failure", "state": "failed", "summary": "Codex hit an error", "startsTurn": false}
+  ]
+}

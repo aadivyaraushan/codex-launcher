@@ -6,6 +6,8 @@ import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
 import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
+import app.codexlauncher.task.summary.MessageSpeaker
+import app.codexlauncher.task.summary.TaskLastMessage
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary
 import app.codexlauncher.task.summary.effectiveState
@@ -18,6 +20,9 @@ data class HomeTask(
     // that only ever meant "no mark" keep compiling without being rewritten;
     // toHomeTask() below always supplies it explicitly from real task state.
     val mark: StateMark? = null,
+    // Defaults to null the same way: absent for a task with no known last
+    // message, filled in from lastMessage otherwise.
+    val preview: String? = null,
 )
 
 /**
@@ -38,13 +43,52 @@ private fun TaskState.toStateMark(): StateMark? =
         // in front of you, not for a row in a list you are scrolling past,
         // where nothing else says anything is wrong.
         TaskState.UNVERIFIED -> StateMark.UNVERIFIED
-        TaskState.WORKING,
+        // Working, waiting, and replied tasks use words plus shape
+        // (DESIGN.md, Home): every ordinary lifecycle state carries its
+        // mark. INTERRUPTED alone stays bare — DESIGN.md admits no
+        // interrupted mark, and inventing one is an explicit addition.
+        TaskState.WORKING -> StateMark.WORKING
         TaskState.WAITING_FOR_APPROVAL,
         TaskState.WAITING_FOR_ANSWER,
-        TaskState.INTERRUPTED,
-        TaskState.IDLE_AFTER_REPLY,
-        -> null
+        -> StateMark.WAITING_FOR_USER
+        TaskState.IDLE_AFTER_REPLY -> StateMark.REPLIED
+        TaskState.INTERRUPTED -> null
     }
+
+private fun TaskLastMessage.toPreview(): String =
+    when (from) {
+        MessageSpeaker.AGENT -> "Agent: $text"
+        MessageSpeaker.USER -> "You: $text"
+        MessageSpeaker.PLAIN -> text
+    }
+
+/**
+ * Priority a row's [TaskState] carries when ordering the home list: lower
+ * sorts first. A waiting-for-user task outranks the clock (DESIGN.md,
+ * Home), so it always sorts ahead of every other state regardless of
+ * recency; everything else falls back to how urgently it wants a look.
+ */
+private fun TaskState.homePriority(): Int =
+    when (this) {
+        TaskState.WAITING_FOR_APPROVAL, TaskState.WAITING_FOR_ANSWER -> 0
+        TaskState.ONE_TAP_LEFT -> 1
+        TaskState.FAILED -> 2
+        TaskState.UNVERIFIED -> 3
+        TaskState.WORKING -> 4
+        TaskState.INTERRUPTED -> 5
+        TaskState.HANDED_OFF -> 6
+        TaskState.IDLE_AFTER_REPLY -> 7
+    }
+
+/**
+ * Home's row order: a waiting-for-user task always outranks the clock, and
+ * within any other tie the most recently active task comes first.
+ */
+fun List<TaskSummary>.sortedForHome(): List<TaskSummary> =
+    sortedWith(
+        compareBy<TaskSummary> { it.effectiveState().homePriority() }
+            .thenByDescending { it.lastActivityAt },
+    )
 
 internal fun TaskSummary.toHomeTask(): HomeTask {
     val effective = effectiveState()
@@ -74,6 +118,7 @@ internal fun TaskSummary.toHomeTask(): HomeTask {
         // a status line arriving from off-device is free text and must not
         // get a say in whether the mark for "not actually done yet" is shown.
         mark = effective.toStateMark(),
+        preview = lastMessage?.toPreview(),
     )
 }
 

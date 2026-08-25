@@ -50,10 +50,17 @@ class ResumeCursorStore(
             }
         }
         val stored =
-            when (val result = writeGate?.withPairedWrite { write() }) {
+            when (val paired = writeGate?.withPairedWrite { write() }) {
                 null -> write()
-                is LocalStateWriteResult.Completed -> result.value
-                LocalStateWriteResult.Blocked -> false
+                is LocalStateWriteResult.Completed -> paired.value
+                LocalStateWriteResult.Blocked ->
+                    // Unpaired phone-runtime sessions open the gate as STANDALONE.
+                    // Resume still has to stick or the session disconnects before
+                    // capability actions can send (seen on Pixel dogfood).
+                    when (val standalone = writeGate.withStandaloneWrite { write() }) {
+                        is LocalStateWriteResult.Completed -> standalone.value
+                        LocalStateWriteResult.Blocked -> false
+                    }
             }
         if (stored) {
             AppLog.info(

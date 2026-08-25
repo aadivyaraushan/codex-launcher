@@ -16,7 +16,7 @@ import (
 // requires Done=true and HandedOffTo set. Android maps that to HANDED_OFF
 // without claimsSuccess. Detail must stay free of control characters —
 // safeDisplayString rejects newlines and a bad detail breaks EncodeText
-// (including hello warm-replay of a journaled capability_result).
+// (including hello warm-replay of a journaled frame).
 //
 // Callers: adapters/instagram, adapters/deeplink (and any class-H DraftOutcome user).
 // User ask: follow up on Instagram judge — unblock Pixel proof after serve-instagram-proof.

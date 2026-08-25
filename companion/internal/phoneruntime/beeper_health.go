@@ -44,26 +44,31 @@ func classifyBeeperHealth(probe func(context.Context) ([]BeeperAccountStatus, er
 	return "not_connected"
 }
 
-func beeperAPIFromEnv(logger *slog.Logger) *beeper.Client {
+// Fact-force (edit): importers=phoneruntime.Open/Health; callers=runtime.go
+// NewProduction BeeperAPI + openBeeperAccounts; schemas=BeeperAccountStatus;
+// user: "Continue OpenAI+Beeper — **SLICE 4: B4 + B5**."
+func beeperAPIFromEnv(logger *slog.Logger) (*beeper.Client, bool) {
 	token := loadBeeperAccessToken()
 	if token == "" {
 		logger.Info("[phone-runtime] Beeper API unavailable", "reason", "no_access_token")
-		return nil
-	}
-	if envEnabled(os.Getenv("BEEPER_READONLY")) {
-		logger.Info("[phone-runtime] Beeper API unavailable", "reason", "read_only")
-		return nil
+		return nil, false
 	}
 	baseURL := strings.TrimSpace(os.Getenv("BEEPER_DESKTOP_BASE_URL"))
 	if baseURL == "" {
 		baseURL = beeper.DefaultBaseURL
 	}
-	logger.Info("[phone-runtime] Beeper API enabled", "base_url", baseURL, "token_present", true)
-	return beeper.NewClient(baseURL, beeper.StaticToken(token), nil, logger)
+	client := beeper.NewClient(baseURL, beeper.StaticToken(token), nil, logger)
+	readOnly := envEnabled(os.Getenv("BEEPER_READONLY"))
+	if readOnly {
+		logger.Info("[phone-runtime] Beeper API enabled", "base_url", baseURL, "token_present", true, "write_enabled", false)
+		return client.ReadOnly(), true
+	}
+	logger.Info("[phone-runtime] Beeper API enabled", "base_url", baseURL, "token_present", true, "write_enabled", true)
+	return client, false
 }
 
 func openBeeperAccounts(logger *slog.Logger) func(context.Context) ([]BeeperAccountStatus, error) {
-	api := beeperAPIFromEnv(logger)
+	api, _ := beeperAPIFromEnv(logger)
 	if api == nil {
 		return nil
 	}

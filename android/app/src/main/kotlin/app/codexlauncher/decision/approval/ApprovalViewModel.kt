@@ -129,11 +129,11 @@ class ApprovalViewModel(
         AppLog.info("decision", "live decision page applied", mapOf("thread_id" to taskId, "request_count" to requests.size, "storage" to "memory_only"))
     }
 
-    fun dismissQuestion(): Boolean {
+    fun dismissQuestion(requestId: String): Boolean {
         val current = mutableState.value
-        val active = current.active ?: return false
-        if (active.kind != "question") return false
-        mutableState.value = current.copy(locallyDismissed = current.locallyDismissed + active.requestId)
+        val request = current.requests.firstOrNull { it.requestId == requestId } ?: return false
+        if (request.kind != "question" || requestId in current.locallyDismissed) return false
+        mutableState.value = current.copy(locallyDismissed = current.locallyDismissed + requestId)
         return true
     }
 
@@ -144,14 +144,14 @@ class ApprovalViewModel(
         return true
     }
 
-    suspend fun respond(decision: String): DecisionOutcome {
-        val request = mutableState.value.active ?: return DecisionOutcome.Invalid
+    suspend fun respond(requestId: String, decision: String): DecisionOutcome {
+        val request = mutableState.value.requests.firstOrNull { it.requestId == requestId && it.requestId !in mutableState.value.locallyDismissed } ?: return DecisionOutcome.Invalid
         if (request.kind == "question" || decision !in request.allowedDecisions || decision in setOf("accept", "accept_for_session") && !request.canApprove) return DecisionOutcome.Invalid
         return send(request, decision, null)
     }
 
-    suspend fun answer(answers: Map<String, List<String>>): DecisionOutcome {
-        val request = mutableState.value.active ?: return DecisionOutcome.Invalid
+    suspend fun answer(requestId: String, answers: Map<String, List<String>>): DecisionOutcome {
+        val request = mutableState.value.requests.firstOrNull { it.requestId == requestId && it.requestId !in mutableState.value.locallyDismissed } ?: return DecisionOutcome.Invalid
         if (request.kind != "question" || request.questions.any { it.secret }) return DecisionOutcome.AnswerOnComputer
         if (answers.keys != request.questions.map { it.id }.toSet() || answers.values.any { values -> values.isEmpty() || values.any { it.isEmpty() } }) return DecisionOutcome.Invalid
         return send(request, null, answers)

@@ -1,0 +1,22 @@
+{
+  "name": "operator-tools",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin exposing the Operator capability adapters as agent tools via the on-device agent bridge.",
+  "type": "module",
+  "main": "dist/index.js",
+  "openclaw": {
+    "extensions": ["./dist/index.js"]
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "npm run build && node --test test/plugin.test.mjs",
+    "sync-tools": "node scripts/sync-tools.mjs"
+  },
+  "dependencies": {
+    "typebox": "^1.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

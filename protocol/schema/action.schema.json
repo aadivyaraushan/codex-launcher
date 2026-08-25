@@ -84,38 +84,6 @@
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["actionId", "kind", "utterance"],
-      "properties": {
-        "actionId": { "$ref": "#/$defs/id" },
-        "kind": { "const": "capability_request" },
-        "utterance": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S" }
-      }
-    },
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["actionId", "kind", "requestId", "fingerprint", "decision"],
-      "properties": {
-        "actionId": { "$ref": "#/$defs/id" },
-        "kind": { "const": "capability_confirm" },
-        "requestId": { "$ref": "#/$defs/id" },
-        "fingerprint": { "type": "string", "pattern": "^[0-9A-Fa-f]{64}$" },
-        "decision": { "enum": ["confirm", "cancel"] }
-      }
-    },
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["actionId", "kind", "adapterId"],
-      "properties": {
-        "actionId": { "$ref": "#/$defs/id" },
-        "kind": { "const": "capability_disconnect" },
-        "adapterId": { "$ref": "#/$defs/id" }
-      }
-    },
-    {
-      "type": "object",
-      "additionalProperties": false,
       "required": ["actionId", "kind", "targetActionId"],
       "properties": {
         "actionId": { "$ref": "#/$defs/id" },

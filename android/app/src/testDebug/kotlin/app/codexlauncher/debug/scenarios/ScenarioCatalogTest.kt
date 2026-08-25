@@ -59,16 +59,6 @@ class ScenarioCatalogTest {
                 "reply_access_ask",
                 "reply_stop_offer",
                 "reply_stopped_list",
-                "capability_confirm",
-                // Everything the same sheet shows after the user says yes.
-                // Two of these five exist to say "we do not know", which is
-                // the hardest thing on the screen to get right and the last
-                // thing that should go unseen on a real phone.
-                "capability_running",
-                "capability_result_unknown",
-                "capability_failed",
-                "capability_question",
-                "capability_unresolved_check",
             )
 
         assertEquals(expected, ScenarioCatalog.all.map { it.wireName }.toSet())

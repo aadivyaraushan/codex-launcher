@@ -7,7 +7,6 @@ import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary
 import java.time.Instant
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -106,13 +105,14 @@ class HomeUnresolvedRowTest {
     }
 
     /**
-     * The guard, in both directions: an ordinary task keeps the exact row it
-     * has today. A mark that shows up everywhere means nothing anywhere.
+     * The guard, in both directions: an ordinary working task carries the
+     * ordinary working mark (DESIGN.md: words plus shape), never one of the
+     * warning marks this file exists to protect.
      */
     @Test
     fun `an ordinary task keeps the row it already had`() {
-        assertNull(summary().toHomeTask().mark)
-        assertNull(summary(queueState = TaskQueueState.QUEUED).toHomeTask().mark)
+        assertEquals(StateMark.WORKING, summary().toHomeTask().mark)
+        assertEquals(StateMark.WORKING, summary(queueState = TaskQueueState.QUEUED).toHomeTask().mark)
         assertEquals(
             StateMark.ONE_TAP_LEFT,
             summary(state = TaskState.ONE_TAP_LEFT).toHomeTask().mark,

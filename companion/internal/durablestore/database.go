@@ -133,6 +133,16 @@ CREATE TABLE IF NOT EXISTS journal_events (
 CREATE TABLE IF NOT EXISTS event_acks (
     device_id TEXT PRIMARY KEY,
     sequence INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS gate_known_recipients (
+    adapter TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    first_messaged_at TEXT NOT NULL,
+    PRIMARY KEY (adapter, recipient)
+);
+CREATE TABLE IF NOT EXISTS gate_denials (
+    gate_id TEXT PRIMARY KEY,
+    denied_at TEXT NOT NULL
 );`
 	if _, err := store.db.ExecContext(ctx, schema); err != nil {
 		return err

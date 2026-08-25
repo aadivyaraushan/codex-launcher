@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -30,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +55,9 @@ import app.codexlauncher.task.attachments.AttachmentUploadState
 import app.codexlauncher.task.control.PromptDictationResult
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskQueueState
+import app.codexlauncher.task.thread.TaskThreadUiState
+import app.codexlauncher.task.thread.ThreadAskCard
+import app.codexlauncher.task.thread.ThreadMessage
 
 @Composable
 fun TaskScreen(
@@ -82,9 +87,42 @@ fun TaskScreen(
     attachmentMessage: String? = null,
     onAttach: () -> Unit = {},
     onRemoveAttachment: (String) -> Unit = {},
+    thread: TaskThreadUiState? = null,
+    onAskDecision: (String) -> Unit = {},
+    onAskReply: (String) -> Unit = {},
+    onAskNotNow: () -> Unit = {},
+    typedTextAnswers: Boolean = false,
+    onAnswer: suspend (String) -> Boolean = { false },
 ) {
     var titleExpanded by remember(state.taskId) { mutableStateOf(false) }
     var titleWasTruncated by remember(state.taskId) { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    // Pending asks other than the pinned one still render in the thread,
+    // at the end, right where a fresh reply from Codex would land.
+    val nonPinnedAsks = thread?.messages.orEmpty()
+        .filterIsInstance<ThreadMessage.Ask>()
+        .filter { it.id != thread?.pinnedAsk?.id }
+    // Mirrors the item count the LazyColumn below actually emits, so the
+    // scroll below lands on the true last row instead of overshooting.
+    val transcriptItemCount =
+        (if (state.earlierCursor != null) 1 else 0) +
+            (if (state.truncated) 1 else 0) +
+            state.entries.size +
+            (if (state.loading) 1 else 0) +
+            (if (state.errorCode != null) 1 else 0) +
+            nonPinnedAsks.size
+    // Keyed on the list first becoming non-empty, not just the task id:
+    // entries load after the screen opens, and an effect keyed on the id
+    // alone would run once against an empty list and never scroll.
+    LaunchedEffect(state.taskId, transcriptItemCount > 0) {
+        // The pinned ask (if any) sits above the composer, always visible,
+        // so landing at the bottom of the list is correct whether or not
+        // there is one — see ThreadAskPolicy.initialTarget for the same
+        // rule applied to which row a freshly opened thread targets.
+        if (thread?.messages.orEmpty().isNotEmpty() && transcriptItemCount > 0) {
+            listState.scrollToItem(transcriptItemCount - 1)
+        }
+    }
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -177,6 +215,7 @@ fun TaskScreen(
                 }
             else ->
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -218,8 +257,33 @@ fun TaskScreen(
                             )
                         }
                     }
+                    items(nonPinnedAsks, key = { it.id }) { ask ->
+                        ThreadAskCard(
+                            ask = ask,
+                            sending = thread?.askSending ?: false,
+                            actionable = false,
+                            onDecision = onAskDecision,
+                            onReply = onAskReply,
+                            onNotNow = onAskNotNow,
+                        )
+                    }
                 }
         }
+        }
+        // The pinned ask renders above the composer regardless of whether
+        // this task has controls at all — a hard gate or question is
+        // actionable even on a task the controls pipeline has no opinion
+        // about (taskState == null).
+        thread?.pinnedAsk?.let { pinnedAsk ->
+            ThreadAskCard(
+                ask = pinnedAsk,
+                sending = thread.askSending,
+                actionable = true,
+                onDecision = onAskDecision,
+                onReply = onAskReply,
+                onNotNow = onAskNotNow,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
         }
         // Exactly one thing owns the bottom inset. Normally that is TaskControls
         // (ime ∪ navigationBars, see line 95). A task with no controls has no
@@ -245,6 +309,8 @@ fun TaskScreen(
                 attachmentMessage = attachmentMessage,
                 onAttach = onAttach,
                 onRemoveAttachment = onRemoveAttachment,
+                typedTextAnswers = typedTextAnswers,
+                onAnswer = onAnswer,
             )
         }
     }

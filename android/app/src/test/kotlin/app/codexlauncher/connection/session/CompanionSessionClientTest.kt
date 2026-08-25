@@ -150,7 +150,7 @@ class CompanionSessionClientTest {
     }
 
     @Test
-    fun reconnectSendsTheStoredWarmCursorAndDeliversTheReplayedCapabilityResult() {
+    fun reconnectSendsTheStoredWarmCursorAndDeliversTheReplayedEvent() {
         val hostKey = TestHostCertificate.keyPair()
         val signer = TestSigner()
         val paired = pairedComputer(hostKey.public.encoded)
@@ -167,7 +167,7 @@ class CompanionSessionClientTest {
                 helloReceived = helloReceived,
                 capturedHello = capturedHello,
                 secondCompanionFrame =
-                    """{"version":{"major":1,"minor":0},"messageId":"replayed-capability","sender":"companion","type":"capability_result","seq":10,"body":{"requestId":"request-1","ceiling":"completes","done":true,"detail":"Created Todoist task","handedOffTo":""}}""",
+                    """{"version":{"major":1,"minor":0},"messageId":"replayed-event","sender":"companion","type":"event","seq":10,"body":{"taskId":"task-1","event":"activity","state":"working","summary":"Working"}}""",
                 thirdCompanionFrame =
                     """{"version":{"major":1,"minor":0},"messageId":"snapshot-after-replay","sender":"companion","type":"snapshot","seq":11,"body":{"baseSeq":11,"computerName":"Test computer","projects":[],"tasks":[]}}""",
             ).apply { start() }
@@ -177,7 +177,7 @@ class CompanionSessionClientTest {
                 override fun onReady(connection: SessionConnection, attachmentKey: ByteArray) = Unit
 
                 override fun onMessage(message: ProtocolMessage) {
-                    if (message.type == MessageType.CAPABILITY_RESULT && message.sequence == 10L) resultReceived.countDown()
+                    if (message.type == MessageType.EVENT && message.sequence == 10L) resultReceived.countDown()
                     if (message.type == MessageType.SNAPSHOT && message.sequence == 11L) snapshotReceived.countDown()
                 }
 
@@ -194,7 +194,7 @@ class CompanionSessionClientTest {
         val resume = capturedHello.get()!!.getValue("body").jsonObject.getValue("resume").jsonObject
         assertEquals("warm", resume.getValue("mode").jsonPrimitive.content)
         assertEquals(9L, resume.getValue("lastAck").jsonPrimitive.content.toLong())
-        assertTrue("phone did not deliver replayed capability result", resultReceived.await(3, TimeUnit.SECONDS))
+        assertTrue("phone did not deliver the replayed event", resultReceived.await(3, TimeUnit.SECONDS))
         assertTrue("phone did not deliver the fresh snapshot after replay", snapshotReceived.await(3, TimeUnit.SECONDS))
         connection.close()
     }

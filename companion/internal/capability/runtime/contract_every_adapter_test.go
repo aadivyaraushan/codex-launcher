@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/applenotes"
@@ -193,6 +194,63 @@ func (s stubBeeper) Send(context.Context, string, string) (beeper.Sent, error) {
 	}
 	return beeper.Sent{ChatID: "contract-chat", PendingMessageID: "contract-pending"}, nil
 }
+func (s stubBeeper) SendReply(ctx context.Context, chatID, text, _ string) (beeper.Sent, error) {
+	return s.Send(ctx, chatID, text)
+}
+func (s stubBeeper) ListChats(context.Context, beeper.ListChatsOptions) (beeper.ChatPage, error) {
+	if s.err != nil {
+		return beeper.ChatPage{}, s.err
+	}
+	return beeper.ChatPage{}, nil
+}
+func (s stubBeeper) GetChat(context.Context, string) (beeper.Chat, error) {
+	if s.err != nil {
+		return beeper.Chat{}, s.err
+	}
+	return beeper.Chat{ID: "contract-chat", Network: "Contract Network", Title: "contract suite probe", Capabilities: beeper.ChatCapabilities{Edit: 2, Delete: 2, Reply: 2, Reaction: 2, Archive: true}}, nil
+}
+func (s stubBeeper) ListMessages(context.Context, string, beeper.MessageListOptions) (beeper.MessagePage, error) {
+	if s.err != nil {
+		return beeper.MessagePage{}, s.err
+	}
+	return beeper.MessagePage{Items: []beeper.Message{{ID: "m1", Text: "hi", IsSender: false}}}, nil
+}
+func (s stubBeeper) SearchMessages(context.Context, beeper.SearchMessagesOptions) (beeper.MessagePage, error) {
+	if s.err != nil {
+		return beeper.MessagePage{}, s.err
+	}
+	return beeper.MessagePage{}, nil
+}
+func (s stubBeeper) EditMessage(context.Context, string, string, string) (beeper.Message, error) {
+	if s.err != nil {
+		return beeper.Message{}, s.err
+	}
+	return beeper.Message{ID: "m1"}, nil
+}
+func (s stubBeeper) DeleteMessage(context.Context, string, string) error  { return s.err }
+func (s stubBeeper) React(context.Context, string, string, string) error  { return s.err }
+func (s stubBeeper) Unreact(context.Context, string, string, string) error { return s.err }
+func (s stubBeeper) MarkRead(context.Context, string, string) (beeper.Chat, error) {
+	if s.err != nil {
+		return beeper.Chat{}, s.err
+	}
+	return beeper.Chat{ID: "contract-chat"}, nil
+}
+func (s stubBeeper) MarkUnread(context.Context, string, string) (beeper.Chat, error) {
+	if s.err != nil {
+		return beeper.Chat{}, s.err
+	}
+	return beeper.Chat{ID: "contract-chat"}, nil
+}
+func (s stubBeeper) Archive(context.Context, string, bool) error { return s.err }
+func (s stubBeeper) UpdateChat(context.Context, string, beeper.UpdateChatOptions) (beeper.Chat, error) {
+	if s.err != nil {
+		return beeper.Chat{}, s.err
+	}
+	return beeper.Chat{ID: "contract-chat"}, nil
+}
+func (s stubBeeper) SetReminder(context.Context, string, time.Time, bool) error { return s.err }
+func (s stubBeeper) ClearReminder(context.Context, string) error                 { return s.err }
 
 // ---- building the whole set ----------------------------------------------
 

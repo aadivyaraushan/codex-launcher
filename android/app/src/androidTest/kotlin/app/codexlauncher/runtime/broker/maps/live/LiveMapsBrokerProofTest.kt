@@ -4,6 +4,7 @@
 // phone with durable evidence."
 package app.codexlauncher.runtime.broker.maps.live
 
+import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.codexlauncher.runtime.broker.maps.http.MapsAppIdentity
@@ -24,13 +25,58 @@ class LiveMapsBrokerProofTest {
         val args = InstrumentationRegistry.getArguments()
         val mode = args.getString("maps_mode") ?: "offer"
         val serial = args.getString("device_serial") ?: "unknown"
+        val provider = args.getString("provider") ?: MapsImportSession.PROVIDER_MAPS
         when (mode) {
             "offer" -> {
-                val offer = MapsImportSession.createOffer(ctx, deviceSerial = serial)
+                val offer =
+                    MapsImportSession.createOffer(
+                        ctx,
+                        deviceSerial = serial,
+                        provider = provider,
+                    )
                 val json = MapsImportSession.offerToJson(offer)
-                File(ctx.filesDir, "maps-import-offer.json").writeText(json)
-                runCatching { File("/sdcard/Download/maps-import-offer.json").writeText(json) }
-                File(ctx.filesDir, "live-maps-broker-proof.txt").writeText("mode=offer\nimportId=${offer.importId}\n")
+                val offerName =
+                    if (provider == MapsImportSession.PROVIDER_OPENAI) {
+                        "openai-import-offer.json"
+                    } else {
+                        "maps-import-offer.json"
+                    }
+                File(ctx.filesDir, offerName).writeText(json)
+                runCatching { File("/sdcard/Download/$offerName").writeText(json) }
+                File(ctx.filesDir, "live-maps-broker-proof.txt").writeText(
+                    "mode=offer\nprovider=$provider\nimportId=${offer.importId}\n",
+                )
+            }
+            "import_only" -> {
+                // Prefer sealed_b64 / sealed_json args — release apps cannot
+                // read adb-pushed /sdcard/Download files (scoped storage EACCES).
+                val sealed =
+                    args.getString("sealed_b64")?.let { b64 ->
+                        String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT), Charsets.UTF_8)
+                    }
+                        ?: args.getString("sealed_json")
+                        ?: run {
+                            val envelopePath =
+                                args.getString("envelope_path")
+                                    ?: File(ctx.filesDir, "openai-import-envelope.json").absolutePath
+                            File(envelopePath).readText()
+                        }
+                MapsImportSession.importSealedJson(ctx, sealed)
+                val vault =
+                    if (provider == MapsImportSession.PROVIDER_OPENAI) {
+                        MapsApiKeyVault.androidOpenAi(ctx)
+                    } else {
+                        MapsApiKeyVault.android(ctx)
+                    }
+                assertTrue("vault must hold $provider key after import", vault.hasKey())
+                File(ctx.filesDir, "live-maps-broker-proof.txt").writeText(
+                    "mode=import_only\nprovider=$provider\nhas_key=true\nverdict=PASS\n",
+                )
+                runCatching {
+                    File("/sdcard/Download/live-maps-broker-proof.txt").writeText(
+                        "mode=import_only\nprovider=$provider\nhas_key=true\nverdict=PASS\n",
+                    )
+                }
             }
             "import_and_call" -> {
                 val envelopePath = args.getString("envelope_path")
@@ -73,6 +119,19 @@ class LiveMapsBrokerProofTest {
                     }
                 File(ctx.filesDir, "live-maps-broker-proof.txt").writeText(text)
                 runCatching { File("/sdcard/Download/live-maps-broker-proof.txt").writeText(text) }
+            }
+            "clear_local_runtime" -> {
+                // Dogfood: drop loopback session endpoint prefs so silent
+                // local-pair can re-enroll after phone-runtime paired_devices reset.
+                val cleared =
+                    ctx.getSharedPreferences("local_pair_runtime", Context.MODE_PRIVATE)
+                        .edit()
+                        .clear()
+                        .commit()
+                assertTrue("local_pair_runtime prefs clear", cleared)
+                File(ctx.filesDir, "live-maps-broker-proof.txt").writeText(
+                    "mode=clear_local_runtime\ncleared=true\nverdict=PASS\n",
+                )
             }
             "reject_wrong_package" -> {
                 val vault = MapsApiKeyVault.android(ctx)

@@ -783,11 +783,11 @@ class LauncherSessionViewModel(
         return transcriptRequested && decisionsRequested
     }
 
-    suspend fun respondToDecision(decision: String): DecisionOutcome = decisionViewModel.respond(decision)
+    suspend fun respondToDecision(requestId: String, decision: String): DecisionOutcome = decisionViewModel.respond(requestId, decision)
 
-    suspend fun answerDecision(answers: Map<String, List<String>>): DecisionOutcome = decisionViewModel.answer(answers)
+    suspend fun answerDecision(requestId: String, answers: Map<String, List<String>>): DecisionOutcome = decisionViewModel.answer(requestId, answers)
 
-    fun dismissQuestion(): Boolean = decisionViewModel.dismissQuestion()
+    fun dismissQuestion(requestId: String): Boolean = decisionViewModel.dismissQuestion(requestId)
 
     fun reopenQuestion(requestId: String): Boolean = decisionViewModel.reopenQuestion(requestId)
 

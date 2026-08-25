@@ -36,7 +36,7 @@ import (
 // with nobody having to remember this file exists.
 func productionAdapters(t *testing.T) []adapter.Adapter {
 	t.Helper()
-	_, inv, err := NewProduction(ProductionConfig{Model: stubModel, Logger: quietLogger()})
+	inv, err := NewProduction(ProductionConfig{Logger: quietLogger()})
 	if err != nil {
 		t.Fatalf("NewProduction: %v", err)
 	}

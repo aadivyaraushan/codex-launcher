@@ -2,7 +2,9 @@ package mobilesession
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,11 +17,7 @@ import (
 	"unicode"
 
 	"github.com/codex-launcher/codex-launcher/companion/internal/attachments"
-	capabilityadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapter"
-	"github.com/codex-launcher/codex-launcher/companion/internal/capability/consent"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/devicework"
-	"github.com/codex-launcher/codex-launcher/companion/internal/capability/execution"
-	capabilityflow "github.com/codex-launcher/codex-launcher/companion/internal/capability/flow"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/manifest"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/appserver"
 	"github.com/codex-launcher/codex-launcher/companion/internal/codex/desktopipc"
@@ -37,13 +35,6 @@ import (
 
 type TaskSource interface {
 	ListRecent(context.Context, int) ([]taskstate.Task, error)
-}
-
-type CapabilityFlow interface {
-	Prepare(context.Context, string, string, string) (capabilityflow.Preview, error)
-	Confirm(context.Context, string, string, string) (capabilityadapter.Outcome, error)
-	Cancel(string, string, string) error
-	Disconnect(context.Context, string) error
 }
 
 type TaskTranscriptSource interface {
@@ -117,7 +108,6 @@ type Handler struct {
 	existingTaskSource ExistingTaskSource
 	promptQueue        *promptqueue.Queue
 	decisionRouter     *decisions.Router
-	capabilityFlow     CapabilityFlow
 	deviceWork         *devicework.Ledger
 	nextID             atomic.Uint64
 	publishMu          sync.Mutex
@@ -134,13 +124,6 @@ const (
 	broadcastQueueSize     = 128
 	defaultSendTimeout     = 2 * time.Second
 	maxTaskRefreshAttempts = 3
-
-	// DeviceWorkTimeout is how long the Mac waits for a phone to answer a
-	// device_action before giving up on it. A notification reply either lands
-	// within seconds or it is not going to land at all, and the cost of
-	// waiting longer than that is not patience — it is the user's next
-	// prompt sitting blocked behind a reply that was never coming.
-	DeviceWorkTimeout = 60 * time.Second
 )
 
 type outboundBroadcast struct {
@@ -165,6 +148,10 @@ type snapshotTask struct {
 	CanRedirect    bool   `json:"canRedirect"`
 	QueueState     string `json:"queueState"`
 	LastActivityAt string `json:"lastActivityAt"`
+	LastMessage    *struct {
+		From string `json:"from"`
+		Text string `json:"text"`
+	} `json:"lastMessage,omitempty"`
 }
 
 func New(ctx context.Context, computerName string, projectService *projects.Service, journal *eventjournal.Journal, now func() time.Time) (*Handler, error) {
@@ -227,7 +214,7 @@ func NewWithTaskSourceQueueAndAttachments(
 		active: make(map[string]transport.MessageSender), broadcasts: make(chan outboundBroadcast, broadcastQueueSize), sendTimeout: defaultSendTimeout,
 		taskRefreshWait: waitForTaskRefreshRetry,
 	}
-	handler.deviceWork = devicework.NewLedger(DeviceWorkTimeout, handler.now)
+	handler.deviceWork = devicework.NewLedger()
 	handler.transcriptSource, _ = taskSource.(TaskTranscriptSource)
 	handler.managementSource, _ = taskSource.(TaskManagementSource)
 	handler.optionSource, _ = taskSource.(NewTaskOptionsSource)
@@ -321,19 +308,13 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 			previous.Close()
 			handler.logger.Info("[mobile-session] older device session replaced", "device_id", sender.DeviceID(), "session_id", sender.SessionID(), "decision", "single_active_session")
 		}
-		// device_action is never replayed from the journal, so a phone
-		// starting a fresh session has no memory of any ask it left
-		// outstanding and will never answer it. Whether it sent the reply
-		// before it disconnected is exactly what nobody can find out, so
-		// every one of those requests is given up on now rather than left
-		// to sit until its own timeout. This runs after handler.mu is
-		// released — publishCapabilityActionResult can fall back to
-		// disconnecting a recipient, which needs that lock itself.
-		for _, abandoned := range handler.deviceWork.DeviceGone(sender.DeviceID()) {
-			if err := handler.publishCapabilityActionResult(ctx, sender, abandoned.ActionID, "outcome_unknown"); err != nil {
-				handler.logger.Error("[mobile-session] device action give-up failed", "device_id", sender.DeviceID(), "request_id", abandoned.RequestID, "action_id", abandoned.ActionID, "error_class", fmt.Sprintf("%T", err))
-			}
-		}
+		// device_action is never replayed, so a phone starting a fresh
+		// session has no memory of any ask it left outstanding and will
+		// never answer it. Whether it sent the reply before it disconnected
+		// is exactly what nobody can find out, so every one of those
+		// requests is given up on now rather than left to block whichever
+		// tool call is waiting on it.
+		handler.deviceWork.DeviceGone(sender.DeviceID())
 		return nil
 	}
 	handler.mu.Lock()
@@ -342,7 +323,6 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 	if current == nil || current.ConnectionID() != sender.ConnectionID() {
 		return ErrSessionSuperseded
 	}
-	handler.SweepDeviceWork(ctx)
 	handler.logger.Info("[mobile-session] message received", "device_id", sender.DeviceID(), "message_type", message.Type, "input_shape", "validated_protocol_message")
 	switch message.Type {
 	case "ack":
@@ -369,12 +349,6 @@ func (handler *Handler) Handle(ctx context.Context, sender transport.MessageSend
 func (handler *Handler) EnableDecisions(router *decisions.Router) {
 	if handler != nil && router != nil {
 		handler.decisionRouter = router
-	}
-}
-
-func (handler *Handler) EnableCapabilities(flow CapabilityFlow) {
-	if handler != nil && flow != nil {
-		handler.capabilityFlow = flow
 	}
 }
 
@@ -517,7 +491,7 @@ func (handler *Handler) handleHello(ctx context.Context, sender transport.Messag
 			handler.logger.Info("[mobile-session] new task options ready", "model_count", len(options.Models), "permission_mode_count", len(options.PermissionModes), "output_shape", "safe_option_catalog")
 		}
 	}
-	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, handler.attachmentCapable, handler.decisionRouter != nil, handler.capabilityFlow != nil, options)); err != nil {
+	if err := handler.send(ctx, sender, "welcome", nil, welcomeBody(sender.SessionID(), handler.taskCapable, handler.transcriptSource != nil, handler.managementSource != nil, optionsCapable, handler.attachmentCapable, handler.decisionRouter != nil, options)); err != nil {
 		return err
 	}
 	var body struct {
@@ -610,6 +584,7 @@ func mergeProvisionalTask(tasks []snapshotTask, provisional snapshotTask) []snap
 			tasks[index].CanRedirect = provisional.CanRedirect
 			tasks[index].QueueState = provisional.QueueState
 			tasks[index].LastActivityAt = provisional.LastActivityAt
+			tasks[index].LastMessage = provisional.LastMessage
 			return tasks
 		}
 	}
@@ -707,17 +682,6 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	handler.mu.Unlock()
 	if current == nil || current.ConnectionID() != sender.ConnectionID() {
 		return ErrSessionSuperseded
-	}
-	if action.Kind == "capability_request" || action.Kind == "capability_confirm" || action.Kind == "capability_disconnect" {
-		return handler.handleCapabilityAction(ctx, sender, capabilityActionParams{
-			ActionID:    action.ActionID,
-			Kind:        action.Kind,
-			RequestID:   action.RequestID,
-			Utterance:   action.Utterance,
-			Fingerprint: action.Fingerprint,
-			Decision:    string(action.Decision),
-			AdapterID:   action.AdapterID,
-		})
 	}
 	result := map[string]any{"actionId": action.ActionID, "state": "confirmed"}
 	refreshTasks := false
@@ -911,189 +875,95 @@ func (handler *Handler) handleAction(ctx context.Context, sender transport.Messa
 	return nil
 }
 
-// capabilityActionParams carries the fields handleCapabilityAction needs out
-// of the wire action. It exists so a new capability action kind (like
-// capability_disconnect) can add one field without every call site growing
-// another positional string parameter.
-type capabilityActionParams struct {
-	ActionID    string
-	Kind        string
-	RequestID   string
-	Utterance   string
-	Fingerprint string
-	Decision    string
-	AdapterID   string
-}
-
-func (handler *Handler) handleCapabilityAction(ctx context.Context, sender transport.MessageSender, params capabilityActionParams) error {
-	actionID, kind, requestID, utterance, fingerprint, decision, adapterID :=
-		params.ActionID, params.Kind, params.RequestID, params.Utterance, params.Fingerprint, params.Decision, params.AdapterID
-	if handler.capabilityFlow == nil {
-		// There is no error to map here — this build was simply never given a
-		// capability flow, which happens on a desktop that has not wired one
-		// up. "desktop_incompatible" says exactly that.
-		return handler.publishCapabilityFailure(ctx, sender, actionID, failureDesktopIncompatible)
+// RunOnDevice hands ask to the connected phone as a device_action and
+// blocks until the phone answers with a device_action_result, ctx ends, or
+// the phone disconnects (or starts a fresh session, which looks identical
+// from here — see the hello branch of Handle). It is the agent bridge's
+// only way to finish an adapter that returned a *adapter.DeviceWorkError:
+// the reply box or the video player the ask needs lives on the phone, not
+// on this Mac.
+//
+// A ctx deadline or a disconnected phone both return an unanswered Result
+// with a nil error, never an error: a reply that timed out may already sit
+// in somebody's chat, so reporting "failed" would invite the agent to send
+// it again.
+func (handler *Handler) RunOnDevice(ctx context.Context, ask devicework.Ask) (devicework.Result, error) {
+	sender, ok := handler.connectedDevice()
+	if !ok {
+		return devicework.Result{}, fmt.Errorf("mobile session: no phone is connected to carry out %s", ask.Kind)
 	}
-	switch kind {
-	case "capability_request":
-		ownerID := capabilityOwner(sender)
-		preview, err := handler.capabilityFlow.Prepare(ctx, ownerID, actionID, utterance)
-		if err != nil {
-			// A question is not a failure. The flow returns QuestionError when
-			// it understood the request perfectly well and needs one more word
-			// before it can act — most often which of several people named
-			// "Maya" was meant. Nothing broke and nothing was refused, so
-			// "failed" with a hardcoded "invalid_action" tells the user their
-			// request was wrong when it was not.
-			//
-			// "cancelled" is the honest word the shipped phone will accept.
-			// Its decoder holds a closed set of error codes
-			// (ProtocolCodec.kt:618) and drops the whole envelope on an
-			// unknown one, so a new code like "needs_disambiguation" would
-			// mean the user is told nothing at all. "cancelled" is already a
-			// valid action state there (:601) and carries no error object
-			// (:216 permits one only on failed and outcome_unknown), which is
-			// exactly right: we stopped, we did not act, and nothing is wrong.
-			//
-			// Delivering the question text and routing an answer back is a
-			// wire change on both sides and is not done here.
-			var question *capabilityflow.QuestionError
-			if errors.As(err, &question) {
-				handler.logger.Info("[mobile-session] capability needs an answer before it can act", "device_id", sender.DeviceID(), "request_id", actionID, "question_length", len(question.Question))
-				return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled", question.Question)
-			}
-			code := capabilityFailureCode(err)
-			handler.logger.Error("[mobile-session] capability prepare failed", "device_id", sender.DeviceID(), "request_id", actionID, "error_class", fmt.Sprintf("%T", err), "code", code)
-			return handler.publishCapabilityFailure(ctx, sender, actionID, code)
-		}
-		body, err := json.Marshal(struct {
-			RequestID    string   `json:"requestId"`
-			AdapterID    string   `json:"adapterId"`
-			Verb         string   `json:"verb"`
-			Headline     string   `json:"headline"`
-			Lines        []string `json:"lines"`
-			ConfirmLabel string   `json:"confirmLabel"`
-			Fingerprint  string   `json:"fingerprint"`
-		}{preview.RequestID, preview.AdapterID, string(preview.Verb), preview.Headline, preview.Lines, preview.Confirm, preview.Fingerprint})
-		if err != nil {
-			return err
-		}
-		handler.logger.Info("[mobile-session] capability preview ready", "device_id", sender.DeviceID(), "request_id", actionID, "adapter_id", preview.AdapterID, "verb", preview.Verb, "line_count", len(preview.Lines))
-		return handler.send(ctx, sender, "capability_preview", nil, body)
-	case "capability_confirm":
-		ownerID := capabilityOwner(sender)
-		if decision == "cancel" {
-			if err := handler.capabilityFlow.Cancel(ownerID, requestID, fingerprint); err != nil {
-				code := capabilityFailureCode(err)
-				handler.logger.Error("[mobile-session] capability cancel failed", "device_id", sender.DeviceID(), "request_id", requestID, "error_class", fmt.Sprintf("%T", err), "code", code)
-				return handler.publishCapabilityFailure(ctx, sender, actionID, code)
-			}
-			return handler.publishCapabilityActionResult(ctx, sender, actionID, "cancelled")
-		}
-		outcome, err := handler.capabilityFlow.Confirm(ctx, ownerID, requestID, fingerprint)
-		if err != nil {
-			// Device work is checked first because it is a different
-			// situation from the other two branches below, not because
-			// ordering could make one shadow another — the three error
-			// types are distinct, so any order would type-switch correctly.
-			var deviceWork *capabilityadapter.DeviceWorkError
-			if errors.As(err, &deviceWork) {
-				return handler.handOffToDevice(ctx, sender, actionID, requestID, deviceWork)
-			}
-			var unknown *capabilityadapter.OutcomeUnknownError
-			if errors.As(err, &unknown) {
-				handler.logger.Error("[mobile-session] capability execute outcome unknown", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", unknown.AdapterID, "verb", unknown.Verb)
-				return handler.publishCapabilityActionResult(ctx, sender, actionID, "outcome_unknown")
-			}
-			code := capabilityFailureCode(err)
-			handler.logger.Error("[mobile-session] capability execute failed", "device_id", sender.DeviceID(), "request_id", requestID, "error_class", fmt.Sprintf("%T", err), "code", code)
-			return handler.publishCapabilityFailure(ctx, sender, actionID, code)
-		}
-		body, err := json.Marshal(struct {
-			RequestID   string `json:"requestId"`
-			Ceiling     string `json:"ceiling"`
-			Done        bool   `json:"done"`
-			Detail      string `json:"detail"`
-			HandedOffTo string `json:"handedOffTo"`
-		}{requestID, string(outcome.Reached), outcome.Done, outcome.Detail, outcome.HandedOffTo})
-		if err != nil {
-			return err
-		}
-		event, err := handler.journal.Apply(ctx, "capability_result", body, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) { return current, nil })
-		if err != nil {
-			return err
-		}
-		handler.queueDelivery("capability_result", event.Sequence, body, []transport.MessageSender{sender})
-		handler.logger.Info("[mobile-session] capability result queued", "device_id", sender.DeviceID(), "request_id", requestID, "ceiling", outcome.Reached, "done", outcome.Done)
-		return nil
-	case "capability_disconnect":
-		if err := handler.capabilityFlow.Disconnect(ctx, adapterID); err != nil {
-			// The same rule as the confirm branch above, for the same reason.
-			// A revoke request that went out and lost its reply may already
-			// have killed the token; Google answers a second revoke of a dead
-			// token with a 4xx, so "failed" here would repeat forever while
-			// the access is in fact already gone.
-			var unknown *capabilityadapter.OutcomeUnknownError
-			if errors.As(err, &unknown) {
-				handler.logger.Error("[mobile-session] capability disconnect outcome unknown", "device_id", sender.DeviceID(), "adapter_id", adapterID, "verb", unknown.Verb)
-				return handler.publishCapabilityActionResult(ctx, sender, actionID, "outcome_unknown")
-			}
-			code := capabilityFailureCode(err)
-			handler.logger.Error("[mobile-session] capability disconnect failed", "device_id", sender.DeviceID(), "adapter_id", adapterID, "error_class", fmt.Sprintf("%T", err), "code", code)
-			return handler.publishCapabilityFailure(ctx, sender, actionID, code)
-		}
-		handler.logger.Info("[mobile-session] capability disconnected", "device_id", sender.DeviceID(), "adapter_id", adapterID)
-		return handler.publishCapabilityActionResult(ctx, sender, actionID, "confirmed")
-	default:
-		return ErrUnsupportedMessage
+
+	requestID, err := newDeviceRequestID()
+	if err != nil {
+		return devicework.Result{}, err
 	}
-}
-
-func capabilityOwner(sender transport.MessageSender) string {
-	return fmt.Sprintf("%s/%s/%d", sender.DeviceID(), sender.SessionID(), sender.ConnectionID())
-}
-
-// handOffToDevice records that requestID is now waiting on sender's phone
-// and asks it to carry out deviceWork's instruction. The ask goes out with
-// send, not through the journal: device_action is never replayed, because a
-// request the phone missed while offline has to expire rather than fire
-// late into a conversation that has moved on. No result frame is sent here
-// — until the phone answers, the honest thing to say is nothing at all.
-func (handler *Handler) handOffToDevice(ctx context.Context, sender transport.MessageSender, actionID, requestID string, deviceWork *capabilityadapter.DeviceWorkError) error {
 	// Resolve now, once, so nothing downstream has to ask what a blank
 	// ceiling means. An adapter that named nothing gets read as hands_off —
 	// the most modest claim, not the strongest.
-	ceiling := deviceWork.Ceiling.OrHandsOff()
-	record := devicework.Record{RequestID: requestID, DeviceID: sender.DeviceID(), Kind: deviceWork.Kind, ActionID: actionID, AdapterID: deviceWork.AdapterID, Ceiling: ceiling}
-	if !handler.deviceWork.Wait(record) {
-		// The request is already on the books. Handing it to the phone a
-		// second time would put the same message in front of a real person
-		// twice, so the honest response to a duplicate confirm is silence.
-		handler.logger.Info("[mobile-session] device action already outstanding", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", deviceWork.AdapterID, "kind", deviceWork.Kind, "ceiling", string(ceiling))
-		return nil
+	ceiling := ask.Ceiling.OrHandsOff()
+	record := devicework.Record{RequestID: requestID, DeviceID: sender.DeviceID(), Kind: ask.Kind, AdapterID: ask.AdapterID, Ceiling: ceiling}
+	resultCh, ok := handler.deviceWork.Wait(record)
+	if !ok {
+		// crypto/rand collision on a fresh id is not a real-world path; stay
+		// honest rather than silently overwrite an outstanding wait.
+		return devicework.Result{}, fmt.Errorf("mobile session: device request id %q is already outstanding", requestID)
 	}
+
 	body, err := json.Marshal(struct {
 		RequestID string `json:"requestId"`
 		Kind      string `json:"kind"`
 		Handle    string `json:"handle"`
 		Text      string `json:"text"`
-	}{requestID, deviceWork.Kind, deviceWork.Handle, deviceWork.Text})
+	}{requestID, ask.Kind, ask.Handle, ask.Text})
 	if err != nil {
-		return err
+		return devicework.Result{}, err
 	}
 	// Handle and Text are what a real person wrote — never in the log line.
-	// ceiling is the cap that will be applied to whatever the phone reports
-	// back, so it belongs in this log line rather than a new one.
-	handler.logger.Info("[mobile-session] device action handed to phone", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", deviceWork.AdapterID, "kind", deviceWork.Kind, "ceiling", string(ceiling))
-	return handler.send(ctx, sender, "device_action", nil, body)
+	handler.logger.Info("[mobile-session] device action handed to phone", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", ask.AdapterID, "kind", ask.Kind, "ceiling", string(ceiling))
+	if err := handler.send(ctx, sender, "device_action", nil, body); err != nil {
+		return devicework.Result{}, err
+	}
+
+	select {
+	case result := <-resultCh:
+		return result, nil
+	case <-ctx.Done():
+		handler.logger.Info("[mobile-session] device action wait ended without an answer", "device_id", sender.DeviceID(), "request_id", requestID, "adapter_id", ask.AdapterID, "reason", "ctx_done")
+		return devicework.Result{Answered: false, Done: false, Detail: "The phone did not answer in time; whether it went out is unknown."}, nil
+	}
+}
+
+// connectedDevice returns the one phone currently paired with this Mac, if
+// any. RunOnDevice has no device id of its own to address — an Ask names an
+// adapter and a kind, not a phone — so it always targets whichever device
+// is active.
+func (handler *Handler) connectedDevice() (transport.MessageSender, bool) {
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	for _, sender := range handler.active {
+		return sender, true
+	}
+	return nil, false
+}
+
+// newDeviceRequestID mints the id a device_action is sent under: 16 bytes
+// of crypto/rand, hex-encoded. It has to be unpredictable and never reused,
+// since it is what ties the phone's eventual device_action_result back to
+// the one RunOnDevice call that is blocked waiting for it.
+func newDeviceRequestID() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("mint device request id: %w", err)
+	}
+	return hex.EncodeToString(raw), nil
 }
 
 // handleDeviceActionResult is the phone answering a device_action. Only the
 // first answer for a request is accepted — the ledger enforces that — so a
 // replay, a confused phone, or an answer that arrives after the request was
-// already given up on all land here as silence rather than as a second
-// capability_result.
-func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender transport.MessageSender, message contract.Message) error {
+// already given up on all land here as silence: the Result goes to whatever
+// called RunOnDevice, never back out to the phone.
+func (handler *Handler) handleDeviceActionResult(_ context.Context, sender transport.MessageSender, message contract.Message) error {
 	var body struct {
 		RequestID string `json:"requestId"`
 		Outcome   string `json:"outcome"`
@@ -1101,10 +971,8 @@ func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender tra
 	if err := json.Unmarshal(message.Body, &body); err != nil {
 		return err
 	}
-	handler.publishMu.Lock()
-	defer handler.publishMu.Unlock()
-	record, settled := handler.deviceWork.Settle(body.RequestID)
-	if !settled {
+	record, deliver, claimed := handler.deviceWork.Claim(body.RequestID)
+	if !claimed {
 		handler.logger.Info("[mobile-session] device action result for a request nobody is waiting on", "device_id", sender.DeviceID(), "request_id", body.RequestID)
 		return nil
 	}
@@ -1132,12 +1000,12 @@ func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender tra
 		handler.logger.Error("[mobile-session] device action reported an outcome word nobody defined", "device_id", sender.DeviceID(), "request_id", body.RequestID, "outcome", body.Outcome)
 		return nil
 	}
-	// The ceiling was fixed at hand-off time (handOffToDevice), from what the
-	// adapter actually declared it could do — not from what the phone says
-	// happened here. A refusal or failure still carries that same ceiling;
-	// only "done" changes with the outcome. A record from before this field
-	// existed would carry a blank Ceiling, so resolve it the same way
-	// hand-off does rather than trust it is always already set.
+	// The ceiling was fixed when RunOnDevice registered the ask, from what
+	// the adapter actually declared it could do — not from what the phone
+	// says happened here. A refusal or failure still carries that same
+	// ceiling; only "done" changes with the outcome. A record from before
+	// this field existed would carry a blank Ceiling, so resolve it the same
+	// way registration does rather than trust it is always already set.
 	ceiling := record.Ceiling.OrHandsOff()
 	// A hands_off adapter is never allowed to claim it finished — that is
 	// the one claim its declared ceiling rules out. Device work never names
@@ -1151,51 +1019,9 @@ func (handler *Handler) handleDeviceActionResult(ctx context.Context, sender tra
 	if ceiling == manifest.HandsOff {
 		done = false
 	}
-	resultBody, err := json.Marshal(struct {
-		RequestID   string `json:"requestId"`
-		Ceiling     string `json:"ceiling"`
-		Done        bool   `json:"done"`
-		Detail      string `json:"detail"`
-		HandedOffTo string `json:"handedOffTo"`
-	}{record.RequestID, string(ceiling), done, detail, ""})
-	if err != nil {
-		return err
-	}
-	event, err := handler.journal.Apply(ctx, "capability_result", resultBody, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) { return current, nil })
-	if err != nil {
-		return err
-	}
-	handler.queueDelivery("capability_result", event.Sequence, resultBody, []transport.MessageSender{sender})
-	handler.logger.Info("[mobile-session] device action result closed the request", "device_id", sender.DeviceID(), "request_id", record.RequestID, "adapter_id", record.AdapterID, "outcome", body.Outcome, "ceiling", string(ceiling), "done", done)
+	deliver <- devicework.Result{Answered: true, Reached: ceiling, Done: done, Detail: detail}
+	handler.logger.Info("[mobile-session] device action result delivered to its waiter", "device_id", sender.DeviceID(), "request_id", record.RequestID, "adapter_id", record.AdapterID, "outcome", body.Outcome, "ceiling", string(ceiling), "done", done)
 	return nil
-}
-
-// SweepDeviceWork reports outcome_unknown for every device_action whose wait
-// has run past DeviceWorkTimeout. It is safe to call with nothing
-// outstanding, and it has to be — the caller drives it opportunistically on
-// every message a live session receives, and there is no goroutine or
-// ticker inside the handler, because a background sweeper would make the
-// exact deadline a test observes unpredictable.
-func (handler *Handler) SweepDeviceWork(ctx context.Context) {
-	if handler == nil || handler.deviceWork == nil {
-		return
-	}
-	expired := handler.deviceWork.Expired()
-	if len(expired) == 0 {
-		return
-	}
-	handler.publishMu.Lock()
-	defer handler.publishMu.Unlock()
-	for _, record := range expired {
-		handler.mu.Lock()
-		sender := handler.active[record.DeviceID]
-		handler.mu.Unlock()
-		if err := handler.publishCapabilityActionResult(ctx, sender, record.ActionID, "outcome_unknown"); err != nil {
-			handler.logger.Error("[mobile-session] device action timeout report failed", "device_id", record.DeviceID, "request_id", record.RequestID, "action_id", record.ActionID, "error_class", fmt.Sprintf("%T", err))
-			continue
-		}
-		handler.logger.Info("[mobile-session] device action timed out", "device_id", record.DeviceID, "request_id", record.RequestID, "action_id", record.ActionID)
-	}
 }
 
 // actionFailureCode is one of the eleven words the phone's decoder accepts
@@ -1210,88 +1036,6 @@ const (
 	failureDesktopIncompatible actionFailureCode = "desktop_incompatible"
 	failureInternal            actionFailureCode = "internal"
 )
-
-// capabilityFailureCode turns a Go error into the one word out of the
-// phone's fixed vocabulary that best tells the user what actually happened.
-//
-// "internal" is the default for anything not explicitly recognized below,
-// and that default is deliberate, not lazy: "internal" admits we cannot
-// explain what went wrong, while "invalid_action" claims to know the user
-// did something wrong. Only the errors listed below have actually
-// established that the request itself was the problem; every other error
-// gets the honest, unassuming answer.
-func capabilityFailureCode(err error) actionFailureCode {
-	switch {
-	case errors.Is(err, consent.ErrNotGranted), errors.Is(err, manifest.ErrGateNotCleared):
-		// The request was fine. The one thing missing is something the user
-		// can fix themselves — connect the app, or clear the checkpoint —
-		// and "unauthorized" is the only word in the set that says so.
-		return failureUnauthorized
-	case errors.Is(err, consent.ErrNeverShipped),
-		errors.Is(err, execution.ErrVerbNotOffered),
-		errors.Is(err, execution.ErrPreviewRequired),
-		errors.Is(err, capabilityflow.ErrUnknownRequest),
-		errors.Is(err, capabilityflow.ErrRequestExists),
-		errors.Is(err, capabilityflow.ErrFingerprintMismatch):
-		// These really are the user (or a stale client) asking for something
-		// that does not exist or does not match what was previewed.
-		// "invalid_action" is the truth here.
-		return failureInvalidAction
-	default:
-		return failureInternal
-	}
-}
-
-// publishCapabilityActionResult reports a non-failure outcome: confirmed,
-// cancelled, or outcome_unknown. A "failed" result always needs a caller to
-// say which of the eleven words explains it, so that state is not accepted
-// here — see publishCapabilityFailure.
-// question is variadic so every existing call site is untouched -- an
-// ordinary result must not grow the field just because this function learned
-// a new capability. Only the "cancelled" result that follows a QuestionError
-// passes one.
-func (handler *Handler) publishCapabilityActionResult(ctx context.Context, sender transport.MessageSender, actionID, state string, question ...string) error {
-	result := map[string]any{"actionId": actionID, "state": state}
-	if state == "outcome_unknown" {
-		result["error"] = map[string]any{"code": "outcome_unknown", "retryable": false}
-	}
-	if len(question) > 0 && question[0] != "" {
-		result["question"] = question[0]
-	}
-	return handler.publishCapabilityResult(ctx, sender, result)
-}
-
-// publishCapabilityFailure reports a "failed" result, always naming the
-// error code that explains it — there is no path that publishes "failed"
-// without one.
-func (handler *Handler) publishCapabilityFailure(ctx context.Context, sender transport.MessageSender, actionID string, code actionFailureCode) error {
-	result := map[string]any{"actionId": actionID, "state": "failed", "error": map[string]any{"code": string(code), "retryable": false}}
-	return handler.publishCapabilityResult(ctx, sender, result)
-}
-
-// publishCapabilityResult marshals an already-built action_result body,
-// records it in the journal, and delivers it to sender if one is connected.
-// It is the shared tail of publishCapabilityActionResult and
-// publishCapabilityFailure.
-func (handler *Handler) publishCapabilityResult(ctx context.Context, sender transport.MessageSender, result map[string]any) error {
-	body, err := json.Marshal(result)
-	if err != nil {
-		return err
-	}
-	event, err := handler.journal.Apply(ctx, "action_result", body, handler.now(), func(current json.RawMessage, _ eventjournal.Event) (json.RawMessage, error) { return current, nil })
-	if err != nil {
-		return err
-	}
-	// sender is nil when the device that owed this answer is not currently
-	// connected — SweepDeviceWork hits this when a request times out after
-	// its phone has gone away. The journal has already recorded the event so
-	// the phone learns the outcome on its next reconnect; there is simply no
-	// live connection to push it to right now.
-	if sender != nil {
-		handler.queueDelivery("action_result", event.Sequence, body, []transport.MessageSender{sender})
-	}
-	return nil
-}
 
 func (handler *Handler) pendingDecision(taskID, requestID string) (decisions.Request, bool) {
 	if handler == nil || handler.decisionRouter == nil {
@@ -2161,7 +1905,7 @@ func (handler *Handler) send(ctx context.Context, sender transport.MessageSender
 	return nil
 }
 
-func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable, attachmentCapable, decisionCapable, capabilityCapable bool, options taskoptions.Catalog) json.RawMessage {
+func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCapable, optionsCapable, attachmentCapable, decisionCapable bool, options taskoptions.Catalog) json.RawMessage {
 	capabilities := []string{"set_project"}
 	if taskCapable {
 		capabilities = append(capabilities, "desktop_tasks")
@@ -2180,9 +1924,6 @@ func welcomeBody(sessionID string, taskCapable, transcriptCapable, managementCap
 	}
 	if decisionCapable {
 		capabilities = append(capabilities, "decisions")
-	}
-	if capabilityCapable {
-		capabilities = append(capabilities, "capability_actions")
 	}
 	body, _ := json.Marshal(struct {
 		SessionID      string              `json:"sessionId"`
@@ -2229,12 +1970,19 @@ func loadSnapshotTasks(ctx context.Context, source TaskSource, queue *promptqueu
 			}
 			queueState = string(status)
 		}
-		projected = append(projected, snapshotTask{
+		entry := snapshotTask{
 			TaskID: task.ID, Title: task.Title, ProjectLabel: task.ProjectLabel, State: string(task.State),
 			ActiveTurnID: task.ActiveTurnID, CanRedirect: task.CanRedirect,
 			QueueState:     queueState,
 			LastActivityAt: time.Unix(task.UpdatedAtUnix, 0).UTC().Format(time.RFC3339),
-		})
+		}
+		if task.LastMessage != (taskstate.LastMessage{}) {
+			entry.LastMessage = &struct {
+				From string `json:"from"`
+				Text string `json:"text"`
+			}{From: task.LastMessage.From, Text: task.LastMessage.Text}
+		}
+		projected = append(projected, entry)
 	}
 	return projected, nil
 }

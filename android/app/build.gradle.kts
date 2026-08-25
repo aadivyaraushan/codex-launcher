@@ -55,6 +55,12 @@ android {
         }
     }
 
+    // Dogfood OpenAI key import against the signed release install (same signer as
+    // phone APK). Default stays debug for day-to-day unit/instrument work unless
+    // CODEX_LAUNCHER_TEST_BUILD_TYPE=release is set.
+    testBuildType =
+        providers.environmentVariable("CODEX_LAUNCHER_TEST_BUILD_TYPE").orElse("debug").get()
+
     testOptions {
         unitTests.isReturnDefaultValues = true
     }

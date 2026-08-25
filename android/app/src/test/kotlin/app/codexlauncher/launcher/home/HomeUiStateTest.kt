@@ -1,10 +1,13 @@
 package app.codexlauncher.launcher.home
 
 import app.codexlauncher.capability.interaction.PromptDestination
+import app.codexlauncher.capability.outcome.StateMark
 import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.runtime.standalone.StandaloneRuntimeStatus
+import app.codexlauncher.task.summary.MessageSpeaker
+import app.codexlauncher.task.summary.TaskLastMessage
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskSummary
 import java.time.Instant
@@ -152,7 +155,67 @@ class HomeUiStateTest {
                 statusSummary = "Running integration tests",
             )
 
-        assertEquals(HomeTask("task-1", "Private title", "Running integration tests"), summary.toHomeTask())
+        assertEquals(
+            HomeTask("task-1", "Private title", "Running integration tests", mark = StateMark.WORKING),
+            summary.toHomeTask(),
+        )
+    }
+
+    @Test
+    fun everyRowStateCarriesItsMarkExceptInterrupted() {
+        val expected =
+            mapOf(
+                TaskState.WORKING to StateMark.WORKING,
+                TaskState.WAITING_FOR_APPROVAL to StateMark.WAITING_FOR_USER,
+                TaskState.WAITING_FOR_ANSWER to StateMark.WAITING_FOR_USER,
+                TaskState.IDLE_AFTER_REPLY to StateMark.REPLIED,
+                TaskState.FAILED to StateMark.FAILED,
+                TaskState.ONE_TAP_LEFT to StateMark.ONE_TAP_LEFT,
+                TaskState.HANDED_OFF to StateMark.HANDED_OFF,
+                TaskState.UNVERIFIED to StateMark.UNVERIFIED,
+                TaskState.INTERRUPTED to null,
+            )
+
+        for ((state, mark) in expected) {
+            val summary = TaskSummary("task-1", "Task", "Project", state, Instant.EPOCH)
+            assertEquals("mark for $state", mark, summary.toHomeTask().mark)
+        }
+    }
+
+    @Test
+    fun theLastMessageBecomesTheRowPreviewWithTheSpeakerNamed() {
+        val base = TaskSummary("task-1", "Task", "Project", TaskState.WORKING, Instant.EPOCH)
+
+        assertEquals(
+            "Agent: Archived 41 conversations.",
+            base.copy(lastMessage = TaskLastMessage(MessageSpeaker.AGENT, "Archived 41 conversations.")).toHomeTask().preview,
+        )
+        assertEquals(
+            "You: archive everything older than 2024",
+            base.copy(lastMessage = TaskLastMessage(MessageSpeaker.USER, "archive everything older than 2024")).toHomeTask().preview,
+        )
+        assertEquals(
+            "Tests pass — writing up the diff now.",
+            base.copy(lastMessage = TaskLastMessage(MessageSpeaker.PLAIN, "Tests pass — writing up the diff now.")).toHomeTask().preview,
+        )
+        assertEquals(null, base.toHomeTask().preview)
+    }
+
+    @Test
+    fun rowsWaitingOnTheUserOutrankEverythingElseThenRecencyDecides() {
+        val summaries =
+            listOf(
+                TaskSummary("old-reply", "A", "P", TaskState.IDLE_AFTER_REPLY, Instant.ofEpochSecond(100)),
+                TaskSummary("old-approval", "B", "P", TaskState.WAITING_FOR_APPROVAL, Instant.ofEpochSecond(50)),
+                TaskSummary("new-working", "C", "P", TaskState.WORKING, Instant.ofEpochSecond(300)),
+                TaskSummary("new-question", "D", "P", TaskState.WAITING_FOR_ANSWER, Instant.ofEpochSecond(200)),
+                TaskSummary("one-tap", "E", "P", TaskState.ONE_TAP_LEFT, Instant.ofEpochSecond(10)),
+            )
+
+        assertEquals(
+            listOf("new-question", "old-approval", "one-tap", "new-working", "old-reply"),
+            summaries.sortedForHome().map { it.id },
+        )
     }
 
     @Test

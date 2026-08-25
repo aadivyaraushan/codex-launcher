@@ -67,8 +67,9 @@ import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.connection.stream.CodexConnectionService
 import app.codexlauncher.connection.stream.userWarning
 import app.codexlauncher.diagnostics.AppLog
-import app.codexlauncher.decision.approval.ApprovalSheet
-import app.codexlauncher.decision.question.QuestionSheet
+import app.codexlauncher.task.thread.TaskThreadAssembler
+import app.codexlauncher.task.thread.ThreadAskPolicy
+import app.codexlauncher.task.thread.TypedTextRoute
 import app.codexlauncher.launcher.apps.AppDrawerScreen
 import app.codexlauncher.launcher.apps.InstalledApp
 import app.codexlauncher.launcher.apps.InstalledAppsLoader
@@ -85,6 +86,7 @@ import app.codexlauncher.launcher.home.HomeSendDecision
 import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.launcher.home.HomeUiPolicy
 import app.codexlauncher.launcher.home.lastConnectedLabel
+import app.codexlauncher.launcher.home.sortedForHome
 import app.codexlauncher.launcher.home.toHomeTask
 import app.codexlauncher.launcher.surface.AttachmentChoiceDialog
 import app.codexlauncher.launcher.surface.BackgroundConnectionWarningDialog
@@ -508,6 +510,7 @@ class LauncherActivity : ComponentActivity() {
                 onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
             }
             BackHandler(enabled = destination in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE, LauncherDestination.PROJECT, LauncherDestination.TASK, LauncherDestination.TASK_DETAIL, LauncherDestination.PAIRING)) {
+                val from = destination
                 destination =
                     when (destination) {
                         LauncherDestination.APPEARANCE -> LauncherDestination.APPS
@@ -526,6 +529,9 @@ class LauncherActivity : ComponentActivity() {
                         LauncherDestination.APPS -> rootDestination
                         LauncherDestination.HOME -> destination
                     }
+                if (from == LauncherDestination.PAIRING) {
+                    scope.launch { localState.gate.abortPairing() }
+                }
             }
             QuietInstrumentTheme(mode = appearanceMode) {
                 if (pairingState == PairingRecordState.RecoveryFailed && destination !in setOf(LauncherDestination.APPS, LauncherDestination.APPEARANCE)) {
@@ -559,7 +565,7 @@ class LauncherActivity : ComponentActivity() {
                                     computerName = sessionUiState.snapshot?.computerName ?: "Paired computer",
                                     connection = sessionUiState.connection,
                                     projects = sessionUiState.snapshot?.projects ?: emptyList(),
-                                    tasks = sessionUiState.snapshot?.tasks?.map { it.toHomeTask() } ?: emptyList(),
+                                    tasks = sessionUiState.snapshot?.tasks?.sortedForHome()?.map { it.toHomeTask() } ?: emptyList(),
                                     lastConnectedLabel = lastConnectionEpoch?.let { lastConnectedLabel(applicationContext, it) },
                                     standalone = standaloneStatus,
                                     promptDestination = capabilityState.destination,
@@ -609,6 +615,28 @@ class LauncherActivity : ComponentActivity() {
                                     HomeSendDecision.CapabilityOnPhone -> {
                                         homeRouteMessage = null
                                         scope.launch {
+                                            // AUTO + standalone-ready must use loopback phone-runtime
+                                            // even when a Mac pairing record exists (Mac may be offline
+                                            // and holding activeConnection). HomeSendRouter already
+                                            // chose CapabilityOnPhone; open the local sink first.
+                                            val local = LocalRuntimeEndpoint.load(applicationContext)
+                                            if (local != null) {
+                                                sessionViewModel.connect(local, force = true)
+                                                var online = false
+                                                repeat(50) {
+                                                    if (sessionViewModel.state.value.connection.phase ==
+                                                        ConnectionPhase.ONLINE
+                                                    ) {
+                                                        online = true
+                                                        return@repeat
+                                                    }
+                                                    delay(100)
+                                                }
+                                                if (!online) {
+                                                    homeRouteMessage = "Operator services unavailable."
+                                                    return@launch
+                                                }
+                                            }
                                             sessionViewModel.submitHomePrompt(
                                                 prompt = prompt,
                                                 selection = selection,
@@ -731,6 +759,19 @@ class LauncherActivity : ComponentActivity() {
                     LauncherDestination.TASK ->
                         sessionUiState.transcript?.let { transcript ->
                             val taskSummary = sessionUiState.snapshot?.tasks?.singleOrNull { it.id == transcript.taskId }
+                            val thread = TaskThreadAssembler.assemble(transcript, decisionState)
+                            // Both the tappable "answer this question" flow and typed
+                            // text (routed through TypedTextRoute.ANSWER) resolve a
+                            // pending question the same way: answer its first
+                            // question with the given text. Returns whether an
+                            // answer was actually sent, not the protocol outcome.
+                            val answerPinnedQuestion: suspend (String) -> Boolean = answer@{ text ->
+                                val requestId = thread.pinnedAsk?.requestId ?: return@answer false
+                                val request = decisionState.requests.firstOrNull { it.requestId == requestId } ?: return@answer false
+                                val question = request.questions.firstOrNull() ?: return@answer false
+                                sessionViewModel.answerDecision(requestId, mapOf(question.id to listOf(text)))
+                                true
+                            }
                             TaskScreen(
                                 state = transcript,
                                 onBack = {
@@ -773,6 +814,14 @@ class LauncherActivity : ComponentActivity() {
                                     sessionViewModel.removeAttachment(uploadId)
                                     attachmentMessage = null
                                 },
+                                thread = thread,
+                                onAskDecision = { decision ->
+                                    thread.pinnedAsk?.let { pinned -> scope.launch { sessionViewModel.respondToDecision(pinned.requestId, decision) } }
+                                },
+                                onAskReply = { text -> scope.launch { answerPinnedQuestion(text) } },
+                                onAskNotNow = { thread.pinnedAsk?.let { sessionViewModel.dismissQuestion(it.requestId) } },
+                                typedTextAnswers = ThreadAskPolicy.routeTypedText(thread.pinnedAsk, "") == TypedTextRoute.ANSWER,
+                                onAnswer = answerPinnedQuestion,
                             )
                         } ?: LauncherLoadingScreen()
                     LauncherDestination.TASK_DETAIL ->
@@ -858,22 +907,6 @@ class LauncherActivity : ComponentActivity() {
                         onStop = { scope.launch(Dispatchers.IO) { launcherApplication.durableStops.stop(key) } },
                         onDismiss = { launcherApplication.replyGuard.dismissOffer() },
                     )
-                }
-                decisionState.active?.let { request ->
-                    if (request.kind == "question") {
-                        QuestionSheet(
-                            request = request,
-                            sending = decisionState.sending,
-                            onSubmit = { answers -> scope.launch { sessionViewModel.answerDecision(answers) } },
-                            onNotNow = { sessionViewModel.dismissQuestion() },
-                        )
-                    } else {
-                        ApprovalSheet(
-                            request = request,
-                            sending = decisionState.sending,
-                            onDecision = { decision -> scope.launch { sessionViewModel.respondToDecision(decision) } },
-                        )
-                    }
                 }
                 CapabilitySheet(
                     state = capabilityState,

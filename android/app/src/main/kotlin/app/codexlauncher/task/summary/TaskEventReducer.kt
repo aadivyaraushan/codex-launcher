@@ -27,12 +27,15 @@ object TaskEventReducer {
         }
         val next = tasks.toMutableList()
         val state = TaskState.fromWire(message.body.getValue("state").jsonPrimitive.content)
+        val event = message.body.getValue("event").jsonPrimitive.content
+        val summary = message.body.getValue("summary").jsonPrimitive.content
         next[index] =
             tasks[index].copy(
                 state = state,
                 activeTurnId = if (state in setOf(TaskState.WORKING, TaskState.WAITING_FOR_APPROVAL, TaskState.WAITING_FOR_ANSWER)) tasks[index].activeTurnId else null,
                 canRedirect = state == TaskState.WORKING,
-                statusSummary = message.body.getValue("summary").jsonPrimitive.content,
+                statusSummary = summary,
+                lastMessage = if (event == "reply") TaskLastMessage(MessageSpeaker.AGENT, summary) else tasks[index].lastMessage,
             )
         AppLog.info(
             feature = "task-summary",

@@ -1,0 +1,11 @@
+{
+  "note": "an error mid-run fails the turn and the owner sees the gateway's error message",
+  "events": [
+    {"state": "delta", "deltaText": "Working on it", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 1},
+    {"state": "error", "errorMessage": "rate limited by provider", "errorKind": "rate_limit", "runId": "run-1", "sessionKey": "agent:main:main", "seq": 2}
+  ],
+  "want": [
+    {"taskId": "phone-agent", "kind": "activity", "state": "working", "summary": "Codex is working", "startsTurn": true},
+    {"taskId": "phone-agent", "kind": "failure", "state": "failed", "summary": "rate limited by provider", "startsTurn": false}
+  ]
+}
