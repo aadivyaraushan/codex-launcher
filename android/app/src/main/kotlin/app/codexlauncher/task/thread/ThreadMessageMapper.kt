@@ -74,10 +74,11 @@ object ThreadMessageMapper {
             card = AskPreviewCard(
                 requestedAccess = request.access,
                 affectedPaths = request.affectedPaths,
-                content = request.command,
+                content = if (kind == AskKind.HARD_GATE && !request.canApprove) null else request.command,
                 computerName = request.computerName,
                 projectLabel = request.projectLabel,
                 workingDirectory = request.workingDirectory,
+                expiresAt = request.expiresAt,
             ),
             approveActions = approveActions,
             denyActions = denyActions,

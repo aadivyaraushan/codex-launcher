@@ -124,4 +124,16 @@ class HomeTaskMarkTest {
             summary(TaskState.HANDED_OFF).toHomeTask().stateLabel,
         )
     }
+
+    @Test
+    fun unverifiedTaskRowReadsTheTaskPhraseNotTheCapabilityWord() {
+        // B5-001: DESIGN.md (line 111, amendment 2026-08-03) gives the
+        // Unverified mark different words per surface. On a TASK row it must
+        // read the task phrase, never the capability word "Unverified" that
+        // belongs beside a capability.
+        assertEquals(
+            "Couldn't confirm that happened",
+            summary(TaskState.UNVERIFIED).toHomeTask().stateLabel,
+        )
+    }
 }

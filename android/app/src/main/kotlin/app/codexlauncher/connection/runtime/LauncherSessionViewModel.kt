@@ -23,7 +23,6 @@ import app.codexlauncher.project.selection.ProjectSelectionViewModel
 import app.codexlauncher.project.session.ProjectSessionBridge
 import app.codexlauncher.project.session.ProjectSnapshot
 import app.codexlauncher.storage.actions.ActionJournal
-import app.codexlauncher.storage.capability.unresolved.UnresolvedCapabilityStore
 import app.codexlauncher.storage.connection.lastseen.shouldRecordSuccessfulConnection
 import app.codexlauncher.task.summary.TaskEventReducer
 import app.codexlauncher.task.summary.TaskQueueState
@@ -34,6 +33,7 @@ import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
 import app.codexlauncher.task.control.NewTaskSendOutcome
 import app.codexlauncher.task.control.TaskControlViewModel
+import app.codexlauncher.launcher.home.sortedForHome
 import app.codexlauncher.task.control.ExistingTaskControlOutcome
 import app.codexlauncher.task.control.ExistingTaskSendMode
 import app.codexlauncher.task.composer.DraftVersion
@@ -96,7 +96,6 @@ class LauncherSessionViewModel(
     private val retryWait: suspend (attempt: Int) -> Unit = { attempt -> delay(retryDelayMillis(attempt)) },
     private val transcriptRefreshWait: suspend () -> Unit = { delay(TRANSCRIPT_REFRESH_MILLIS) },
     private val attachmentUploader: AttachmentUploader = AttachmentUploader(),
-    private val unresolvedCapabilityChecks: UnresolvedCapabilityStore? = null,
     workScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(LauncherSessionState())
@@ -144,7 +143,6 @@ class LauncherSessionViewModel(
                 activeConnection?.sendAction(encoded, beforeBoundary)
                     ?: app.codexlauncher.connection.session.ActionSendResult.NOT_SENT
             },
-            unresolvedStore = unresolvedCapabilityChecks,
         )
     val capabilityInteraction = capabilityController.state
     private var pendingHomePrompt: PendingHomePrompt? = null
@@ -166,13 +164,6 @@ class LauncherSessionViewModel(
             afterSelectionApplied = ::acknowledgeProjectResult,
             workScope = submissionScope,
         )
-
-    init {
-        // Restored once, here, before anything else can read capabilityInteraction
-        // for the answer: a process death forgets the in-memory block, but the
-        // store outlives the process, so this is what makes it survive a cold start.
-        submissionScope.launch { capabilityController.restoreUnresolvedCheck() }
-    }
 
     @Synchronized
     fun connect(paired: PairedComputer, force: Boolean = false) {
@@ -496,15 +487,8 @@ class LauncherSessionViewModel(
         }
 
         if (forceCapability) {
-            capabilityController.setComputerFallbackEnabled(false)
-            AppLog.info(
-                feature = "standalone",
-                message = "home prompt forced through phone-runtime capability",
-                fields = mapOf(
-                    "computer_fallback_enabled" to false,
-                    "prompt_length" to prompt.length,
-                ),
-            )
+            submitHomePromptToPhoneAgent(prompt, draftVersion)
+            return
         }
 
         synchronized(this) {
@@ -515,26 +499,53 @@ class LauncherSessionViewModel(
         if (requestId != null) return
         val fallback = synchronized(this) { pendingHomePrompt.also { pendingHomePrompt = null } } ?: return
         val selection = fallback.selection
-        if (forceCapability || !mutableState.value.taskControlsAvailable || selection == null) {
+        if (!mutableState.value.taskControlsAvailable || selection == null) {
             AppLog.info(
                 feature = "capability-interaction",
                 message = "app action route unavailable; kept local on standalone phone",
-                fields = mapOf("prompt_length" to fallback.prompt.length, "force_capability" to forceCapability),
+                fields = mapOf("prompt_length" to fallback.prompt.length),
             )
             return
         }
         startNewTask(fallback.prompt, selection, fallback.draftVersion)
     }
 
-    suspend fun respondToCapability(confirm: Boolean): Boolean =
-        capabilityController.respond(confirm)
-
-    suspend fun disconnectCapability(): Boolean =
-        capabilityController.disconnect()
-
-    fun dismissCapabilityResult() = capabilityController.dismissTerminal()
-
-    fun markCapabilityChecked() = capabilityController.markChecked()
+    /**
+     * On-phone Send. The phone runtime advertises `desktop_tasks` but no project
+     * and no `new_task_options`, so `startNewTask` cannot run here. The prompt
+     * goes to the phone agent's one existing task as a queued start_turn; its id
+     * comes from the same task list Home renders, so it tracks the runtime rather
+     * than hardcoding the runtime's own `"phone-agent"` constant. A durable
+     * confirmation clears the composer draft. (Phase 8 deleted the capability wire
+     * this branch used to take; `capabilityController.request()` self-rejects now.)
+     */
+    private suspend fun submitHomePromptToPhoneAgent(prompt: String, draftVersion: DraftVersion) {
+        val taskId = mutableState.value.snapshot?.tasks?.sortedForHome()?.firstOrNull()?.id
+        if (taskId == null) {
+            AppLog.info(
+                feature = "standalone",
+                message = "home prompt has no phone task to receive it",
+                fields = mapOf(
+                    "task_controls_available" to mutableState.value.taskControlsAvailable,
+                    "prompt_length" to prompt.length,
+                ),
+            )
+            return
+        }
+        val outcome = queueTaskFollowUp(taskId, prompt)
+        val delivered =
+            outcome is ExistingTaskControlOutcome.Accepted || outcome is ExistingTaskControlOutcome.Queued
+        if (delivered) clearConfirmedDraft(draftVersion)
+        AppLog.info(
+            feature = "standalone",
+            message = "home prompt sent to phone agent task",
+            fields = mapOf(
+                "task_id" to taskId,
+                "outcome" to outcome::class.simpleName.orEmpty(),
+                "prompt_length" to prompt.length,
+            ),
+        )
+    }
 
     @Synchronized
     private fun acceptCapabilityActionResult(expectedGeneration: Long, message: ProtocolMessage) {

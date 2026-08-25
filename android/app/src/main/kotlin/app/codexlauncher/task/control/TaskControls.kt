@@ -25,7 +25,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.codexlauncher.capability.outcome.StateMark
 import app.codexlauncher.task.summary.TaskState
 import app.codexlauncher.task.summary.TaskQueueState
 import app.codexlauncher.task.attachments.AttachmentRows
@@ -79,35 +81,33 @@ fun TaskControls(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        when (queueState) {
-            TaskQueueState.QUEUED -> Text("Follow-up queued on your computer")
-            TaskQueueState.OUTCOME_UNKNOWN -> {
-                Text("Queued follow-up outcome unknown. Check Codex on your computer before sending another.")
-                TextButton(
-                    enabled = !sending,
-                    onClick = {
-                        sending = true
-                        scope.launch {
-                            message = if (onDismissUnresolved()) "Review cleared" else "Could not clear review yet"
-                            sending = false
-                        }
-                    },
-                ) { Text("I checked Codex") }
-            }
-            TaskQueueState.NONE -> Unit
+        // The only active state with no pinned ThreadAskCard to carry a mark
+        // (WAITING_FOR_APPROVAL / WAITING_FOR_ANSWER get StateMark.WAITING_FOR_USER
+        // from the pinned ask in TaskScreen.kt) -- without this, a working task
+        // showed only plain transcript text and no state-mark shape at all.
+        if (taskState == TaskState.WORKING) {
+            StateMark(mark = StateMark.WORKING)
         }
+        if (queueState == TaskQueueState.QUEUED) {
+            Text("Follow-up queued on your computer")
+        }
+        // OUTCOME_UNKNOWN is handled by the blocking AlertDialog below, the
+        // same hard-block pattern TaskActionsMenu uses for unresolvedFork --
+        // an inline banner here left the composer/attach/mic/mode-toggle/send
+        // controls all still reachable while a prior follow-up's outcome was
+        // unconfirmed, letting a second one stack on top of it.
         if (active && !typedTextAnswers) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (mode == ExistingTaskSendMode.QUEUE) {
-                    Button(onClick = { mode = ExistingTaskSendMode.QUEUE }, enabled = !sending) { Text("Queue") }
+                    Button(onClick = { mode = ExistingTaskSendMode.QUEUE }, enabled = !sending && !followUpsBlocked, modifier = Modifier.semantics { contentDescription = "Queue" }) { Text("Queue") }
                 } else {
-                    OutlinedButton(onClick = { mode = ExistingTaskSendMode.QUEUE }, enabled = !sending) { Text("Queue") }
+                    OutlinedButton(onClick = { mode = ExistingTaskSendMode.QUEUE }, enabled = !sending && !followUpsBlocked, modifier = Modifier.semantics { contentDescription = "Queue" }) { Text("Queue") }
                 }
                 if (canRedirect && taskState == TaskState.WORKING) {
                     if (mode == ExistingTaskSendMode.REDIRECT) {
-                        Button(onClick = { mode = ExistingTaskSendMode.REDIRECT }, enabled = !sending) { Text("Redirect") }
+                        Button(onClick = { mode = ExistingTaskSendMode.REDIRECT }, enabled = !sending && !followUpsBlocked, modifier = Modifier.semantics { contentDescription = "Redirect" }) { Text("Redirect") }
                     } else {
-                        OutlinedButton(onClick = { mode = ExistingTaskSendMode.REDIRECT }, enabled = !sending) { Text("Redirect") }
+                        OutlinedButton(onClick = { mode = ExistingTaskSendMode.REDIRECT }, enabled = !sending && !followUpsBlocked, modifier = Modifier.semantics { contentDescription = "Redirect" }) { Text("Redirect") }
                     }
                 }
             }
@@ -124,9 +124,20 @@ fun TaskControls(
         if (attachments.isNotEmpty()) AttachmentRows(attachments, onRemoveAttachment)
         attachmentMessage?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onAttach, enabled = !sending && !followUpsBlocked && attachments.size < 2) { Text("Attach") }
+            OutlinedButton(
+                onClick = onAttach,
+                enabled = !sending && !followUpsBlocked && attachments.size < 2,
+                modifier = Modifier.semantics { contentDescription = "Attach" },
+            ) { Text("Attach") }
+            val sendLabel =
+                when {
+                    typedTextAnswers -> "Send answer"
+                    !active -> "Send follow-up"
+                    mode == ExistingTaskSendMode.REDIRECT -> "Redirect now"
+                    else -> "Queue follow-up"
+                }
             Button(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).semantics { contentDescription = sendLabel },
                 enabled = !sending && !followUpsBlocked && !dictationState.isListening && !dictationState.isBusy && text.isNotBlank(),
                 onClick = {
                     val submitted = text
@@ -149,17 +160,17 @@ fun TaskControls(
                 },
             ) {
                 Text(
-                    when {
-                        typedTextAnswers -> "Send answer"
-                        !active -> "Send follow-up"
-                        mode == ExistingTaskSendMode.REDIRECT -> "Redirect now"
-                        else -> "Queue follow-up"
-                    },
-                    maxLines = 1,
+                    sendLabel,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
                 )
             }
             if (active) {
-                OutlinedButton(onClick = { stopDialog = true }, enabled = !sending) { Text("Stop") }
+                OutlinedButton(
+                    onClick = { stopDialog = true },
+                    enabled = !sending,
+                    modifier = Modifier.semantics { contentDescription = "Stop" },
+                ) { Text("Stop") }
             }
             PromptDictationButton(
                 state = dictationState,
@@ -175,6 +186,35 @@ fun TaskControls(
             )
         }
         message?.let { Text(it) }
+    }
+
+    if (followUpsBlocked) {
+        // Same hard-block pattern as TaskActionsMenu's unresolvedFork dialog:
+        // non-dismissable, single "I checked Codex" confirm action, nothing
+        // else reachable until acknowledged.
+        AlertDialog(
+            onDismissRequest = {},
+            // B5-001 (a lost-outcome defect): a lost-outcome state must carry the
+            // Unverified glyph, not read as title text alone. DESIGN.md pairs
+            // this task face of the mark with "Couldn't confirm that happened".
+            title = { StateMark(mark = StateMark.UNVERIFIED, label = "Couldn't confirm that happened") },
+            text = {
+                Text("Queued follow-up outcome unknown. Check Codex on your computer before sending another.")
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !sending,
+                    onClick = {
+                        sending = true
+                        scope.launch {
+                            message = if (onDismissUnresolved()) "Review cleared" else "Could not clear review yet"
+                            sending = false
+                        }
+                    },
+                    modifier = Modifier.semantics { contentDescription = "I checked Codex" },
+                ) { Text("I checked Codex") }
+            },
+        )
     }
 
     if (stopDialog) {
@@ -194,9 +234,16 @@ fun TaskControls(
                             stopDialog = false
                         }
                     },
+                    modifier = Modifier.semantics { contentDescription = "Stop task" },
                 ) { Text("Stop task") }
             },
-            dismissButton = { TextButton(enabled = !sending, onClick = { stopDialog = false }) { Text("Keep working") } },
+            dismissButton = {
+                TextButton(
+                    enabled = !sending,
+                    onClick = { stopDialog = false },
+                    modifier = Modifier.semantics { contentDescription = "Keep working" },
+                ) { Text("Keep working") }
+            },
         )
     }
 }

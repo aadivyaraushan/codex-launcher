@@ -2,6 +2,7 @@ package app.codexlauncher.launcher.home
 
 import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.capability.outcome.StateMark
+import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.connection.state.ConnectionSnapshot
 import app.codexlauncher.project.selection.ProjectChoice
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
@@ -138,6 +139,15 @@ data class HomeUiState(
     val showComposer: Boolean = false,
     val showLinkComputer: Boolean = false,
     val showLinkLocalRuntime: Boolean = false,
+    // Which connection phase produced `headline`, so OfflineContent can pick a
+    // primary action that actually fixes the phase shown (DESIGN.md, Home): a
+    // revoked pairing or an out-of-date Desktop build has no "just retry" fix,
+    // so a generic Retry CTA would be a dead end for those two phases.
+    // Defaults to DISCONNECTED — the ordinary "ask to retry" case — so every
+    // call site with no real connection to report (e.g. a scenario built by
+    // hand) keeps the plain "Try again" behavior it had before this field
+    // existed.
+    val connectionPhase: ConnectionPhase = ConnectionPhase.DISCONNECTED,
 )
 
 object HomeUiPolicy {
@@ -167,15 +177,15 @@ object HomeUiPolicy {
                 PromptDestination.AUTO -> standalone.isReady
                 PromptDestination.COMPUTER -> macReady
             }
-        val title = if (paired) computerName else "Operator"
         val headline =
             when {
                 !paired || !hasCurrentSnapshot -> standalone.headline()
                 else -> connection.headline
             }
         return HomeUiState(
-            computerName = title,
+            computerName = computerName,
             headline = headline,
+            connectionPhase = connection.phase,
             tasks = if (hasCurrentSnapshot) tasks else emptyList(),
             selectedProjectName = selectedProject?.displayName,
             contentBaseSequence = connection.baseSequence.takeIf { hasCurrentSnapshot },

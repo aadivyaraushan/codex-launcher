@@ -98,7 +98,8 @@ class ThreadMessageMapperTest {
 
     @Test
     fun thePreviewCardCarriesEveryMandatorySheetField() {
-        val ask = ThreadMessageMapper.fromDecision(approvalRequest())
+        val request = approvalRequest()
+        val ask = ThreadMessageMapper.fromDecision(request)
         val card = ask.card
         assertEquals("network", card.requestedAccess)
         assertEquals(listOf("/home/user/notes.txt"), card.affectedPaths)
@@ -106,6 +107,7 @@ class ThreadMessageMapperTest {
         assertEquals("Mac mini", card.computerName)
         assertEquals("personal", card.projectLabel)
         assertEquals("/home/user", card.workingDirectory)
+        assertEquals(request.expiresAt, card.expiresAt)
     }
 
     @Test
@@ -166,10 +168,22 @@ class ThreadMessageMapperTest {
         )
         assertTrue(ask.approveActions.isEmpty())
         assertEquals(listOf("decline"), ask.denyActions.map { it.decision })
+        assertNull(ask.card.content)
         assertEquals(
             "Some command details could not be shown safely. Review this request on the computer to allow it.",
             ask.computerFallbackNote,
         )
+    }
+
+    @Test
+    fun aRedactedCommandNeverPrintsTheCommandItDeclaredUnsafeToShow() {
+        // B3-003: the fallback note already says the command couldn't be
+        // shown safely, so the card must not also carry the raw command.
+        // canApprove == false suppresses it; canApprove == true still shows it.
+        val redacted = ThreadMessageMapper.fromDecision(approvalRequest(commandUnderstandable = false))
+        assertNull(redacted.card.content)
+        val ordinary = ThreadMessageMapper.fromDecision(approvalRequest(commandUnderstandable = true))
+        assertEquals("curl -X POST https://api.example.com/send", ordinary.card.content)
     }
 
     @Test
@@ -265,6 +279,7 @@ class ThreadAskPolicyTest {
             computerName = null,
             projectLabel = null,
             workingDirectory = null,
+            expiresAt = Instant.EPOCH.plusSeconds(3600),
         ),
         approveActions = listOf(AskAction(decision = "accept", label = "Approve")),
         denyActions = listOf(AskAction(decision = "decline", label = "Deny")),

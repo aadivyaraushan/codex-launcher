@@ -8,16 +8,16 @@ class RuntimeStatusCopyTest {
     @Test
     fun forceStopNamesAndroidExceptionAndNeverClaimsAutoRecovery() {
         val message = RuntimeStatusCopy.message(RuntimeStatus.TermuxForceStopped)
-        assertEquals("Android has force-stopped Operator services", message)
+        assertEquals("Android has force-stopped Codex services", message)
         assertFalse(message.contains("restarting", ignoreCase = true))
         assertFalse(message.contains("unavailable", ignoreCase = true))
     }
 
     @Test
     fun startingAndAutoRestartStayDistinctFromForceStop() {
-        assertEquals("Starting Operator services…", RuntimeStatusCopy.message(RuntimeStatus.Starting))
+        assertEquals("Starting Codex services…", RuntimeStatusCopy.message(RuntimeStatus.Starting))
         assertEquals(
-            "Operator services stopped and are restarting…",
+            "Codex services stopped and are restarting…",
             RuntimeStatusCopy.message(RuntimeStatus.AutoRestarting),
         )
     }
@@ -25,7 +25,7 @@ class RuntimeStatusCopyTest {
     @Test
     fun unlockAfterRebootAsksForOneUnlock() {
         assertEquals(
-            "Unlock once to start Operator services",
+            "Unlock once to start Codex services",
             RuntimeStatusCopy.message(RuntimeStatus.AwaitingUnlock),
         )
     }

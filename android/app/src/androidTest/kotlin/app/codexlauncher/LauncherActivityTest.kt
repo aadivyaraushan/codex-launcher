@@ -87,7 +87,7 @@ class LauncherActivityTest {
     @Test
     fun freshUnpairedLaunchShowsHomeStandalone() {
         awaitUi { compose.onNodeWithContentDescription("Launcher home").assertIsDisplayed() }
-        compose.onNodeWithText("Operator").assertIsDisplayed()
+        compose.onNodeWithText("Codex").assertIsDisplayed()
         compose.onNodeWithContentDescription("Link computer").assertIsDisplayed()
     }
 
@@ -128,7 +128,7 @@ class LauncherActivityTest {
         compose.onNodeWithContentDescription("Back").performClick()
 
         awaitUi { compose.onNodeWithContentDescription("Launcher home").assertIsDisplayed() }
-        compose.onNodeWithText("Operator").assertIsDisplayed()
+        compose.onNodeWithText("Codex").assertIsDisplayed()
     }
 
     @Test
@@ -171,7 +171,7 @@ class LauncherActivityTest {
         )
 
         awaitUi { compose.onNodeWithContentDescription("Launcher home").assertIsDisplayed() }
-        compose.onNodeWithText("Operator").assertIsDisplayed()
+        compose.onNodeWithText("Codex").assertIsDisplayed()
     }
 
     private fun runShellCommand(command: String): String {

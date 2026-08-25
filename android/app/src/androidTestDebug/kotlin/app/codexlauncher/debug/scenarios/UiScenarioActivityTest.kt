@@ -93,7 +93,10 @@ class UiScenarioActivityTest {
     fun onlineHomeEditsPromptAndShowsEveryTaskState() {
         show(ScenarioId.HOME_ONLINE)
 
-        listOf("Working", "Needs approval", "Needs answer", "Failed", "Interrupted", "Replied").forEach(::waitForText)
+        // Exact literals from the state-mark spec (QuietInstrumentTokens),
+        // not paraphrases -- these six strings must match identically on
+        // Home rows, task lists, notifications, and thread detail (B1-008).
+        listOf("Working", "Approval needed", "Needs your answer", "Failed", "Interrupted", "Replied").forEach(::waitForText)
         compose.onNodeWithContentDescription("Prompt").performTextInput("Run the sample checks")
         compose.onNodeWithContentDescription("Prompt").assertTextContains("Run the sample checks")
         compose.onNodeWithContentDescription("Send prompt using Auto").performClick()
@@ -166,8 +169,13 @@ class UiScenarioActivityTest {
     @Test
     fun homeFailureStatesKeepTheComposerSafeAndEditable() {
         show(ScenarioId.HOME_CHOOSE_PROJECT)
+        // Distinct from HOME_ONLINE: the "on computer" composer state with no
+        // project chosen yet, so the "Choose project" prompt must be on
+        // screen and the send control must read as the computer destination,
+        // not "Auto" (B1-007).
+        compose.onNodeWithText("Choose project").assertIsDisplayed()
         compose.onNodeWithContentDescription("Prompt").performTextInput("Do not send yet")
-        compose.onNodeWithContentDescription("Send prompt using Auto").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Send prompt using Computer").assertIsNotEnabled()
 
         show(ScenarioId.HOME_DRAFT_ERROR)
         compose.onNodeWithContentDescription("Prompt").performTextInput("Keep this draft")
@@ -444,69 +452,6 @@ class UiScenarioActivityTest {
         waitForText("Turn replies back on")
         compose.onNodeWithText("Turn replies back on").performClick()
         compose.onNodeWithText("Replies resumed for Maya").assertIsDisplayed()
-
-        show(ScenarioId.CAPABILITY_CONFIRM)
-        // The product name, never the adapter's programmer id — this screen is
-        // the consent step, and "Notification_reply · send" was the defect.
-        // "This phone" is deliberate: the machine showing this sheet does not
-        // know which app the reply will land in.
-        compose.onNodeWithText("This phone · send").assertIsDisplayed()
-        compose.onNodeWithText("Cancel").performClick()
-        compose.onNodeWithText("Capability declined").assertIsDisplayed()
-
-        show(ScenarioId.CAPABILITY_CONFIRM)
-        compose.onNodeWithText("Send reply").performClick()
-        compose.onNodeWithText("Capability confirmed").assertIsDisplayed()
-    }
-
-    @Test
-    fun everyLaterPhaseOfTheCapabilitySheetRunsItsRealProductionActions() {
-        // The consent step was the easy half. These five are what the same
-        // sheet shows *after* the user says yes, and they are the ones that
-        // have to stay honest: two of them exist specifically to avoid
-        // claiming something happened when nobody knows whether it did.
-
-        show(ScenarioId.CAPABILITY_RUNNING)
-        compose.onNodeWithText("Waiting for the paired computer…").assertIsDisplayed()
-        // No button, and the dialog cannot be dismissed. A run that is in
-        // flight has no honest control to offer: "Cancel" would promise a
-        // stop this screen cannot deliver.
-        compose.onNodeWithText("Done").assertDoesNotExist()
-        compose.onNodeWithText("Cancel").assertDoesNotExist()
-
-        show(ScenarioId.CAPABILITY_RESULT_UNKNOWN)
-        // "Unverified" is the mark's own written label, and it has to be on
-        // screen next to the shape — a bare glyph is not a claim anybody can
-        // read. The detail says we do not know; the recovery line says what
-        // to do about it. Neither may be softened into "sent".
-        compose.onNodeWithText("Unverified").assertIsDisplayed()
-        compose.onNodeWithText("The phone lost touch before it learned whether this landed.").assertIsDisplayed()
-        compose.onNodeWithText("Check WhatsApp before sending it again.").assertIsDisplayed()
-        compose.onNodeWithText("Done").performClick()
-        compose.onNodeWithText("Result dismissed").assertIsDisplayed()
-
-        show(ScenarioId.CAPABILITY_FAILED)
-        compose.onNodeWithText("App action failed").assertIsDisplayed()
-        compose.onNodeWithText("Done").performClick()
-        compose.onNodeWithText("Failure dismissed").assertIsDisplayed()
-
-        show(ScenarioId.CAPABILITY_QUESTION)
-        // Nothing failed here — the router understood the request and needs
-        // one more word. The title must not say "failed"; that word standing
-        // for two opposite truths is the defect this phase exists to fix.
-        compose.onNodeWithText("One more thing").assertIsDisplayed()
-        compose.onNodeWithText("App action failed").assertDoesNotExist()
-        compose.onNodeWithText("Which Maya did you mean?").assertIsDisplayed()
-        compose.onNodeWithText("OK").performClick()
-        compose.onNodeWithText("Question acknowledged").assertIsDisplayed()
-
-        show(ScenarioId.CAPABILITY_UNRESOLVED_CHECK)
-        // Plain text and one button, deliberately not a dialog: dismissing
-        // the sheet does not clear an unresolved check, so this has to be
-        // able to outlive the dialog that raised it.
-        compose.onNodeWithText("Operator could not confirm the reply to Maya.").assertIsDisplayed()
-        compose.onNodeWithText("I checked").performClick()
-        compose.onNodeWithText("Unresolved check cleared").assertIsDisplayed()
     }
 
     private fun show(scenario: ScenarioId) {

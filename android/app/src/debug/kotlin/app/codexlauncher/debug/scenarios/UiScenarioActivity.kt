@@ -24,16 +24,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
+import app.codexlauncher.appearance.theme.QuietInstrumentTokens
 import app.codexlauncher.appearance.settings.AppearanceScreen
-import app.codexlauncher.capability.interaction.CapabilityInteractionState
-import app.codexlauncher.capability.interaction.CapabilityPhase
-import app.codexlauncher.capability.interaction.CapabilityPreview
-import app.codexlauncher.capability.interaction.CapabilitySheet
-import app.codexlauncher.capability.outcome.CapabilityOutcome
-import app.codexlauncher.capability.outcome.Ceiling
+import app.codexlauncher.appearance.settings.StoppedConversationsScreen
+import app.codexlauncher.capability.interaction.PromptDestination
 import app.codexlauncher.capability.outcome.StateMark
 import app.codexlauncher.capability.reply.guard.ThreadKey
 import app.codexlauncher.connection.pairing.PairingInputMode
+import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.connection.pairing.PairingProgress
 import app.codexlauncher.connection.pairing.PairingScreen
 import app.codexlauncher.connection.pairing.PairingUiState
@@ -195,14 +193,7 @@ private fun DebugScenarioHost(scenario: ScenarioId) {
         ScenarioId.REPLY_ACCESS_ASK,
         ScenarioId.REPLY_STOP_OFFER,
         ScenarioId.REPLY_STOPPED_LIST,
-        ScenarioId.CAPABILITY_CONFIRM,
         -> ReplyConsentScenario(scenario)
-        ScenarioId.CAPABILITY_RUNNING,
-        ScenarioId.CAPABILITY_RESULT_UNKNOWN,
-        ScenarioId.CAPABILITY_FAILED,
-        ScenarioId.CAPABILITY_QUESTION,
-        ScenarioId.CAPABILITY_UNRESOLVED_CHECK,
-        -> CapabilitySheetLaterPhaseScenario(scenario)
         ScenarioId.CATALOG -> PlaceholderScenario(scenario)
     }
 }
@@ -269,101 +260,16 @@ private fun ReplyConsentScenario(scenario: ScenarioId) {
                 onDismiss = { status = "Stop offer dismissed" },
             )
         ScenarioId.REPLY_STOPPED_LIST ->
-            AppearanceScreen(
-                mode = AppearanceMode.FOLLOW_SYSTEM,
+            StoppedConversationsScreen(
                 stoppedConversations = listOf(sampleReplyThread),
                 appLabel = { "WhatsApp" },
                 onResume = { key -> status = "Replies resumed for ${key.person}" },
-            )
-        ScenarioId.CAPABILITY_CONFIRM ->
-            CapabilitySheet(
-                state =
-                    CapabilityInteractionState(
-                        phase = CapabilityPhase.PREVIEW,
-                        preview =
-                            CapabilityPreview(
-                                requestId = "sample-request",
-                                // "notification_reply" is the one adapter id that maps to
-                                // "This phone" (AdapterLabel.kt) rather than an app name —
-                                // this sheet cannot know which app the reply will land in
-                                // until after it is confirmed.
-                                adapterId = "notification_reply",
-                                verb = "send",
-                                headline = "Reply to ${sampleReplyThread.person}",
-                                lines = listOf("Sounds good, see you soon!"),
-                                confirmLabel = "Send reply",
-                                fingerprint = "sample-fingerprint",
-                            ),
-                    ),
-                onRespond = { confirmed -> status = if (confirmed) "Capability confirmed" else "Capability declined" },
+                onBack = { status = "Back requested" },
             )
         else -> error("not a reply consent scenario")
     }
 }
 
-// The other half of the same sheet: everything it shows after the user says
-// yes to the CAPABILITY_CONFIRM preview above. Same "Maya" / WhatsApp
-// stand-in story, never a real conversation.
-@Composable
-private fun CapabilitySheetLaterPhaseScenario(scenario: ScenarioId) {
-    var status by remember(scenario) { mutableStateOf<String?>(null) }
-    if (status != null) {
-        Box(Modifier.fillMaxSize().padding(20.dp)) { Text(requireNotNull(status)) }
-        return
-    }
-    val state =
-        when (scenario) {
-            ScenarioId.CAPABILITY_RUNNING ->
-                CapabilityInteractionState(phase = CapabilityPhase.EXECUTING)
-            ScenarioId.CAPABILITY_RESULT_UNKNOWN ->
-                CapabilityInteractionState(
-                    phase = CapabilityPhase.RESULT,
-                    outcome =
-                        CapabilityOutcome(
-                            // Built directly rather than through CapabilityOutcome.of,
-                            // the same way CapabilityInteraction.unverifiedOutcome()
-                            // does for this exact ending: the real ceiling would have
-                            // arrived on the capability_result we never got, so
-                            // HANDS_OFF here is an arbitrary placeholder, not a claim.
-                            // CapabilitySheet never reads `ceiling` off an UNVERIFIED
-                            // outcome -- only `mark` does -- so the placeholder cannot
-                            // leak into what is shown.
-                            ceiling = Ceiling.HANDS_OFF,
-                            mark = StateMark.UNVERIFIED,
-                            label = StateMark.UNVERIFIED.label,
-                            detail = "The phone lost touch before it learned whether this landed.",
-                            handedOffToApp = null,
-                            confirmControl = null,
-                            recoveryAction = "Check WhatsApp before sending it again.",
-                            claimsSuccess = false,
-                            claimsFailure = false,
-                        ),
-                )
-            ScenarioId.CAPABILITY_FAILED ->
-                CapabilityInteractionState(phase = CapabilityPhase.FAILED)
-            ScenarioId.CAPABILITY_QUESTION ->
-                CapabilityInteractionState(phase = CapabilityPhase.QUESTION, message = "Which Maya did you mean?")
-            ScenarioId.CAPABILITY_UNRESOLVED_CHECK ->
-                CapabilityInteractionState(
-                    phase = CapabilityPhase.IDLE,
-                    unresolvedCheck = "Operator could not confirm the reply to Maya.",
-                )
-            else -> error("not a later-phase capability scenario")
-        }
-    CapabilitySheet(
-        state = state,
-        onDismiss = {
-            status =
-                when (scenario) {
-                    ScenarioId.CAPABILITY_RESULT_UNKNOWN -> "Result dismissed"
-                    ScenarioId.CAPABILITY_FAILED -> "Failure dismissed"
-                    ScenarioId.CAPABILITY_QUESTION -> "Question acknowledged"
-                    else -> error("not a dismissible later-phase capability scenario")
-                }
-        },
-        onCheckDone = { status = "Unresolved check cleared" },
-    )
-}
 
 @Composable
 private fun TaskStateScenario(scenario: ScenarioId) {
@@ -398,7 +304,13 @@ private fun TaskStateScenario(scenario: ScenarioId) {
         }
     TaskScreen(
         state = state,
-        taskActionsAvailable = scenario in setOf(ScenarioId.TASK_CONTROLS_IDLE, ScenarioId.TASK_FORK_UNKNOWN),
+        // TASK_CONTROLS_WORKING is the debug equivalent of the real
+        // "live_task_thread" QA evidence (B0-001) -- a fully-loaded thread
+        // with an active composer -- so it belongs in the enabled set
+        // alongside the two states already here. TASK_CONTROL_UNKNOWN (the
+        // outcome-unknown recovery banner) deliberately stays out: that one
+        // is not a normal loaded thread.
+        taskActionsAvailable = scenario in setOf(ScenarioId.TASK_CONTROLS_IDLE, ScenarioId.TASK_FORK_UNKNOWN, ScenarioId.TASK_CONTROLS_WORKING),
         unresolvedFork = unresolvedFork,
         onRenameTask = { title -> actionStatus = "Renamed: $title"; TaskActionOutcome.Complete },
         onArchiveTask = { actionStatus = "Archived"; TaskActionOutcome.Complete },
@@ -449,13 +361,29 @@ private fun OnlineHomeScenario(scenario: ScenarioId) {
     val tasks =
         listOf(
             HomeTask("working", "Sample task", "Working"),
-            HomeTask("approval", "Review a command", "Needs approval"),
-            HomeTask("answer", "Choose an approach", "Needs answer"),
+            // B5-001 coverage: a lost-outcome task row. The other samples pass
+            // mark = null (plain text), so this is the one row that exercises
+            // the home-row StateMark path — and specifically the Unverified
+            // mark, whose task-row words ("Couldn't confirm that happened",
+            // QuietInstrumentTokens.unverifiedLabel) differ from its capability
+            // word. Kept near the top so it renders above the fold in the sweep.
+            HomeTask("unverified", "Lost track of this task", QuietInstrumentTokens.unverifiedLabel, mark = StateMark.UNVERIFIED),
+            HomeTask("approval", "Review a command", QuietInstrumentTokens.approvalLabel),
+            HomeTask("answer", "Choose an approach", QuietInstrumentTokens.waitingLabel),
             HomeTask("failed", "Retry a failed check", "Failed"),
             HomeTask("interrupted", "Stopped sample task", "Interrupted"),
             HomeTask("replied", "Finished sample turn", "Replied"),
         )
     val selectedProject = if (scenario == ScenarioId.HOME_CHOOSE_PROJECT) null else "Sample project"
+    // HOME_CHOOSE_PROJECT exists to show the "on computer, no project chosen
+    // yet" composer state (the "Choose project" prompt below), which only
+    // renders when promptDestination is COMPUTER (HomeScreen.kt) -- without
+    // this the scenario built an identical AUTO/"on phone" composer to
+    // HOME_ONLINE and the two states were indistinguishable.
+    var promptDestination by
+        remember(scenario) {
+            mutableStateOf(if (scenario == ScenarioId.HOME_CHOOSE_PROJECT) PromptDestination.COMPUTER else PromptDestination.AUTO)
+        }
     HomeScreen(
         state =
             HomeUiState(
@@ -470,6 +398,13 @@ private fun OnlineHomeScenario(scenario: ScenarioId) {
                 mustChooseProject = selectedProject == null,
                 showAllApps = true,
                 showAndroidSettings = true,
+                // HomeScreen only renders OnlineContent when this is set (it
+                // defaults to false); HomeUiPolicy.render always sets it for
+                // the real app, but this scenario builds HomeUiState by hand
+                // and had never set it, so the body of all six online Home
+                // scenarios rendered empty — neither OnlineContent's nor
+                // OfflineContent's branch condition was met.
+                showComposer = true,
             ),
         composerState =
             DraftComposerState(
@@ -484,6 +419,8 @@ private fun OnlineHomeScenario(scenario: ScenarioId) {
             ),
         onPromptChange = { prompt = it; message = null },
         onSend = { _, _ -> message = "Sample prompt sent" },
+        promptDestination = promptDestination,
+        onPromptDestinationChange = { promptDestination = it },
         newTaskOptions = sampleNewTaskOptions(),
         newTaskOptionsKey = "sample-session",
         newTaskNeedsReview = reviewNeeded,
@@ -630,6 +567,11 @@ private fun TranscriptScenario() {
                     truncated = true,
                     loading = false,
                 ),
+            // A normal, fully-loaded thread -- the same case as the real
+            // "live_task_thread" QA evidence (B0-001) -- so this scenario has
+            // to show the enabled menu, not the disabled default, or the
+            // debug sweep cannot tell the fixed UI from the still-broken one.
+            taskActionsAvailable = true,
             onViewCommandOutput = { detail = TranscriptDetail.Command(it) },
             onViewFileChange = { entry, change -> detail = TranscriptDetail.File(entry, change) },
         )
@@ -671,7 +613,7 @@ private fun QuestionScenario(scenario: ScenarioId) {
                 ScenarioId.QUESTION_CHOICE -> DecisionQuestion("approach", "Approach", "How should the sample continue?", listOf("Use tests", "Inspect only"), false)
                 ScenarioId.QUESTION_FREE_TEXT -> DecisionQuestion("details", "Details", "What should Codex check?", emptyList(), false)
                 ScenarioId.QUESTION_SECRET -> DecisionQuestion("secret", "Secret", "Enter a secret on the computer", emptyList(), true)
-                ScenarioId.QUESTION_SENDING -> DecisionQuestion("approach", "Approach", "How should the sample continue?", listOf("Use tests"), false)
+                ScenarioId.QUESTION_SENDING -> DecisionQuestion("approach", "Approach", "How should the sample continue?", listOf("Use tests", "Inspect only"), false)
                 else -> error("not a question scenario")
             }
         ThreadAskCard(
@@ -763,12 +705,30 @@ private fun OfflineHomeScenario(scenario: ScenarioId) {
             ScenarioId.HOME_REVOKED -> "Pairing revoked"
             else -> error("not an offline Home scenario")
         }
+    // Drives OfflineContent's primary-action choice (HomeScreen.kt): REVOKED
+    // and INCOMPATIBLE_VERSION each need their own non-generic CTA, so the
+    // scenario has to carry the real phase, not just its headline string.
+    val phase =
+        when (scenario) {
+            ScenarioId.HOME_CONNECTING -> ConnectionPhase.CONNECTING
+            ScenarioId.HOME_SYNCING -> ConnectionPhase.SYNCING
+            ScenarioId.HOME_OFFLINE -> ConnectionPhase.DISCONNECTED
+            ScenarioId.HOME_INCOMPATIBLE -> ConnectionPhase.INCOMPATIBLE_VERSION
+            ScenarioId.HOME_REVOKED -> ConnectionPhase.REVOKED
+            else -> error("not an offline Home scenario")
+        }
     var helpVisible by remember(scenario) { mutableStateOf(false) }
+    var status by remember(scenario) { mutableStateOf<String?>(null) }
+    if (status != null) {
+        Box(Modifier.fillMaxSize().padding(20.dp)) { Text(requireNotNull(status)) }
+        return
+    }
     HomeScreen(
         state =
             HomeUiState(
                 computerName = "Sample computer",
                 headline = headline,
+                connectionPhase = phase,
                 tasks = emptyList(),
                 selectedProjectName = null,
                 contentBaseSequence = null,
@@ -782,6 +742,7 @@ private fun OfflineHomeScenario(scenario: ScenarioId) {
             ),
         connectionHelpVisible = helpVisible,
         onConnectionHelp = { helpVisible = !helpVisible },
+        onLinkComputer = { status = "Re-pair requested" },
     )
 }
 

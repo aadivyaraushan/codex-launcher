@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -352,6 +353,7 @@ private fun TranscriptEntryRow(
                 color = MaterialTheme.colorScheme.surface,
                 shape = RoundedCornerShape(8.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text("Command · ${entry.status.orEmpty()}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -362,16 +364,50 @@ private fun TranscriptEntryRow(
                     }
                 }
             }
+        // B5-002: each file row opens a diff, exactly like the Command block's "View
+        // output" above it — so it must carry the same affordance (card surface + orange
+        // link), not read as static narration text. The whole row is tappable across the
+        // full card width (fillMaxWidth) and stands at least 48dp tall (heightIn) — a bare
+        // clickable, unlike an M3 button, gets no minimum-touch-target of its own — so the
+        // tap zone is the same size for a short path as for a long one. The orange "View
+        // change" cue signals it, matching "View output".
         TranscriptEntryKind.FILE_CHANGE ->
-            Column {
-                Text("Files changed · ${entry.status.orEmpty()}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                entry.changes.forEach { change ->
-                    Text(
-                        change.path,
-                        modifier = Modifier.fillMaxWidth().clickable { onViewFileChange(entry, change) }.padding(vertical = 8.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
-                    )
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Files changed · ${entry.status.orEmpty()}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    entry.changes.forEach { change ->
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .clickable(
+                                        onClickLabel = "View change to ${change.path}",
+                                        role = Role.Button,
+                                    ) { onViewFileChange(entry, change) }
+                                    .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                change.path,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                "View change",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
                 }
             }
         TranscriptEntryKind.ACTIVITY ->

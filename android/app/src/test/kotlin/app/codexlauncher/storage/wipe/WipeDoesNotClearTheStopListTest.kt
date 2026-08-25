@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * A wipe clears ten stores and leaves the reply stop list alone. That is the
+ * A wipe clears nine stores and leaves the reply stop list alone. That is the
  * behaviour today, and this file pins it so it cannot change by accident.
  *
  * This is a record of what the code does, not an argument that it is right.
@@ -40,7 +40,7 @@ import org.junit.Test
 class WipeDoesNotClearTheStopListTest {
 
     @Test
-    fun theWipeClearsTenStoresAndTheStopListIsNotOneOfThem() {
+    fun theWipeClearsNineStoresAndTheStopListIsNotOneOfThem() {
         assertEquals(
             listOf(
                 WipeStep.PROJECT_SELECTION,
@@ -52,7 +52,6 @@ class WipeDoesNotClearTheStopListTest {
                 WipeStep.DEVICE_IDENTITY,
                 WipeStep.PAIRING_KEY,
                 WipeStep.PAIRING_RECORD,
-                WipeStep.CAPABILITY_UNRESOLVED_CHECK,
             ),
             WipeStep.deletions,
         )

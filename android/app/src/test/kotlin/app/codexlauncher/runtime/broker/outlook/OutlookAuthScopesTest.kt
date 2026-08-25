@@ -36,11 +36,6 @@ class OutlookAuthScopesTest {
     }
 
     @Test
-    fun loginHintIsSsdear() {
-        assertEquals("ssdear@gmail.com", OutlookAuthScopes.loginHint)
-    }
-
-    @Test
     fun acquireGateMatchesSilentThenInteractive() {
         assertEquals(
             OutlookAcquireDecision.Silent,

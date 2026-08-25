@@ -12,11 +12,11 @@ enum class RuntimeStatus {
 object RuntimeStatusCopy {
     fun message(status: RuntimeStatus): String =
         when (status) {
-            RuntimeStatus.Starting -> "Starting Operator services…"
-            RuntimeStatus.AwaitingUnlock -> "Unlock once to start Operator services"
-            RuntimeStatus.AutoRestarting -> "Operator services stopped and are restarting…"
-            RuntimeStatus.TermuxForceStopped -> "Android has force-stopped Operator services"
-            RuntimeStatus.Ready -> "Operator services ready"
-            RuntimeStatus.StartFailed -> "Operator services failed to start"
+            RuntimeStatus.Starting -> "Starting Codex services…"
+            RuntimeStatus.AwaitingUnlock -> "Unlock once to start Codex services"
+            RuntimeStatus.AutoRestarting -> "Codex services stopped and are restarting…"
+            RuntimeStatus.TermuxForceStopped -> "Android has force-stopped Codex services"
+            RuntimeStatus.Ready -> "Codex services ready"
+            RuntimeStatus.StartFailed -> "Codex services failed to start"
         }
 }

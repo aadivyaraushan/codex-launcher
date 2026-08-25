@@ -1,9 +1,12 @@
 package app.codexlauncher.task.management
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -14,8 +17,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import app.codexlauncher.capability.outcome.StateMark
 import kotlinx.coroutines.launch
 
 @Composable
@@ -42,7 +48,19 @@ fun TaskActionsMenu(
         enabled = enabled && !busy,
         modifier = Modifier.semantics { contentDescription = "Task actions" },
     ) {
-        Text("···")
+        // Three dots drawn at a fixed dp size (not a text glyph) so they stay
+        // visibly separate at large Android font scales instead of merging
+        // into a single blob.
+        val dotColor = LocalContentColor.current
+        Canvas(modifier = Modifier.size(20.dp)) {
+            val radius = 2.dp.toPx()
+            val gap = 6.dp.toPx()
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            listOf(-gap, 0f, gap).forEach { dx ->
+                drawCircle(color = dotColor, radius = radius, center = Offset(cx + dx, cy))
+            }
+        }
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
         DropdownMenuItem(
@@ -80,7 +98,11 @@ fun TaskActionsMenu(
     if (unresolvedFork) {
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("Previous fork unconfirmed") },
+            // B5-001 (a lost-outcome defect): the lost-outcome state carries the
+            // Unverified glyph, not title text alone.
+            // DESIGN.md pairs this task face of the mark with "Couldn't confirm that
+            // happened"; the specific context stays in the body below.
+            title = { StateMark(mark = StateMark.UNVERIFIED, label = "Couldn't confirm that happened") },
             text = {
                 Text("The connection ended before the computer confirmed the previous fork. Check Codex on your computer before allowing another fork.")
             },
@@ -175,7 +197,8 @@ fun TaskActionsMenu(
     if (unresolvedVisible) {
         AlertDialog(
             onDismissRequest = { unresolvedVisible = false },
-            title = { Text("Task action unconfirmed") },
+            // B5-001 (same lost-outcome defect): Unverified glyph, not title text alone.
+            title = { StateMark(mark = StateMark.UNVERIFIED, label = "Couldn't confirm that happened") },
             text = { Text("The computer did not confirm whether this change happened. Check Codex on your computer before trying again.") },
             confirmButton = {
                 TextButton(onClick = { unresolvedVisible = false }) { Text("OK") }

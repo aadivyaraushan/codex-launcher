@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -211,10 +212,11 @@ private fun ModeButton(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
+    val stateModifier = Modifier.semantics { this.selected = selected }
     if (selected) {
-        Button(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(6.dp)) { Text(label) }
+        Button(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(6.dp), modifier = stateModifier) { Text(label) }
     } else {
-        OutlinedButton(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(6.dp)) { Text(label) }
+        OutlinedButton(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(6.dp), modifier = stateModifier) { Text(label) }
     }
 }
 

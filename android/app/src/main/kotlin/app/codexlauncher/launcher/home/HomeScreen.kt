@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import app.codexlauncher.appearance.theme.QuietInstrumentTokens
 import app.codexlauncher.capability.outcome.StateMark
 import app.codexlauncher.capability.interaction.PromptDestination
+import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.task.configuration.NewTaskOptionControls
 import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
@@ -139,6 +140,7 @@ fun HomeScreen(
                     onDictate = onDictate,
                     onOpenTask = onOpenTask,
                     onLinkLocalRuntime = onLinkLocalRuntime,
+                    onLinkComputer = onLinkComputer,
                     imeBottomPx = imeBottomPx,
                     modifier = Modifier.weight(1f),
                 )
@@ -147,6 +149,7 @@ fun HomeScreen(
                     state = state,
                     onRetry = onRetry,
                     onConnectionHelp = onConnectionHelp,
+                    onLinkComputer = onLinkComputer,
                     connectionHelpVisible = connectionHelpVisible,
                     modifier = Modifier.weight(1f),
                 )
@@ -169,8 +172,12 @@ private fun Header(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // The app's own brand name, shown regardless of pairing state — the
+        // paired computer's name (if any) is the separate "Computer" chip to
+        // the right, and "Operator" is a different feature's name (the
+        // notification-reply persona), never the primary Home brand.
         Text(
-            if (state.showLinkComputer) "Operator" else "Codex",
+            "Codex",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Medium,
         )
@@ -200,14 +207,33 @@ private fun OfflineContent(
     state: HomeUiState,
     onRetry: () -> Unit,
     onConnectionHelp: () -> Unit,
+    onLinkComputer: () -> Unit,
     connectionHelpVisible: Boolean,
     modifier: Modifier,
 ) {
+    // Connecting/Syncing are an attempt actively in flight, not a failure to
+    // recover from: they must not reuse the failure template's "Reconnect to
+    // load a fresh view" body or a live "Try again" (which implies a prior
+    // attempt already failed). Every other phase here is a genuine failure
+    // (offline, unreachable relay, incompatible Desktop build, revoked
+    // pairing) where that copy and action are accurate.
+    val inProgress =
+        state.connectionPhase == ConnectionPhase.CONNECTING || state.connectionPhase == ConnectionPhase.SYNCING
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.Center) {
         Text(state.headline, style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Tasks stay on your computer. Reconnect to load a fresh view.",
+            when (state.connectionPhase) {
+                ConnectionPhase.CONNECTING -> "Connecting to your computer…"
+                ConnectionPhase.SYNCING -> "Syncing your tasks…"
+                // Revoked/removed trust needs a fresh pairing, not a
+                // reconnect — the failure template's "Reconnect to load a
+                // fresh view" body promises a fix ("Try again") that this
+                // phase doesn't have, so it gets its own copy pointing at
+                // the "Re-pair" action below instead.
+                ConnectionPhase.REVOKED -> "This computer's pairing was removed. Re-pair to reconnect."
+                else -> "Tasks stay on your computer. Reconnect to load a fresh view."
+            },
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -218,18 +244,38 @@ private fun OfflineContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(20.dp))
-        OutlinedButton(
-            onClick = onRetry,
-            shape = RoundedCornerShape(6.dp),
-            modifier = Modifier.height(QuietInstrumentTokens.securityActionHeightDp.dp),
-        ) {
-            Text("Try again")
+        if (!inProgress) {
+            // The primary action has to actually fix the phase shown: a revoked
+            // pairing or an out-of-date Desktop build has no "just retry" fix, so
+            // showing the same "Try again" for every phase (as this used to)
+            // sends the user to tap a button that will only fail again. Every
+            // other phase is transient/network-level, where retry is the real
+            // fix.
+            val (primaryLabel, primaryAction) =
+                when (state.connectionPhase) {
+                    ConnectionPhase.REVOKED -> "Re-pair" to onLinkComputer
+                    ConnectionPhase.INCOMPATIBLE_VERSION -> "Update ChatGPT Desktop" to onConnectionHelp
+                    else -> "Try again" to onRetry
+                }
+            OutlinedButton(
+                onClick = primaryAction,
+                shape = RoundedCornerShape(6.dp),
+                modifier =
+                    Modifier
+                        .height(QuietInstrumentTokens.securityActionHeightDp.dp)
+                        .semantics { contentDescription = primaryLabel },
+            ) {
+                Text(primaryLabel)
+            }
+            Spacer(Modifier.height(8.dp))
         }
-        Spacer(Modifier.height(8.dp))
         OutlinedButton(
             onClick = onConnectionHelp,
             shape = RoundedCornerShape(6.dp),
-            modifier = Modifier.height(QuietInstrumentTokens.securityActionHeightDp.dp),
+            modifier =
+                Modifier
+                    .height(QuietInstrumentTokens.securityActionHeightDp.dp)
+                    .semantics { contentDescription = "Connection help" },
         ) {
             Text("Connection help")
         }
@@ -268,6 +314,7 @@ private fun OnlineContent(
     onDictate: () -> Unit,
     onOpenTask: (String) -> Unit,
     onLinkLocalRuntime: () -> Unit = {},
+    onLinkComputer: () -> Unit = {},
     imeBottomPx: Int,
     modifier: Modifier,
 ) {
@@ -329,9 +376,20 @@ private fun OnlineContent(
                     // that reads differently (e.g. "Sent to Maya") carries
                     // real information the mark's fixed label doesn't, so it
                     // stays visible alongside the mark.
+                    //
+                    // B5-001: the Unverified mark is the one whose words change
+                    // by surface. Its enum label is the *capability* word
+                    // ("Unverified"); on a task row DESIGN.md (line 111, amend
+                    // 2026-08-03) pairs it with the *task* phrase "Couldn't
+                    // confirm that happened" (unverifiedLabel). Override the
+                    // glyph's words here, and dedup against that same override
+                    // so the phrase is never both bonded to the glyph and
+                    // repeated as a plain line below it.
+                    val markLabel =
+                        if (mark == StateMark.UNVERIFIED) QuietInstrumentTokens.unverifiedLabel else mark.label
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StateMark(mark = mark)
-                        if (task.stateLabel != mark.label) {
+                        StateMark(mark = mark, label = markLabel)
+                        if (task.stateLabel != markLabel) {
                             Text(
                                 task.stateLabel,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -369,28 +427,58 @@ private fun OnlineContent(
                 )
             }
             if (promptDestination == PromptDestination.COMPUTER) {
-                if (state.canChangeProject || state.selectedProjectName != null) {
+                if (state.showLinkComputer) {
+                    // No computer is paired, so there is no project/model/
+                    // reasoning/permission picker to show here and Send stays
+                    // disabled below — without this, that reads as a silent
+                    // dead end. Explain why and route straight to pairing
+                    // instead of leaving the picker blank.
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Pair your computer first to run tasks on it.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(
-                        onClick = onChooseProject,
-                        enabled = state.canChangeProject,
+                        onClick = onLinkComputer,
                         shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier.fillMaxWidth().height(QuietInstrumentTokens.securityActionHeightDp.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(QuietInstrumentTokens.securityActionHeightDp.dp)
+                                .semantics { contentDescription = "Link computer for this task" },
                     ) {
-                        Text(state.selectedProjectName ?: "Choose project")
+                        Text("Link computer")
                     }
-                }
-                if (newTaskOptions != null && selection != null) {
-                    Spacer(Modifier.height(8.dp))
-                    NewTaskOptionControls(
-                        options = newTaskOptions,
-                        selection = selection,
-                        onSelectionChange = {
-                            selectedModelId = it.modelId
-                            selectedReasoningId = it.reasoningId
-                            selectedPermissionId = it.permissionModeId
-                        },
-                    )
+                } else {
+                    if (state.canChangeProject || state.selectedProjectName != null) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onChooseProject,
+                            enabled = state.canChangeProject,
+                            shape = RoundedCornerShape(6.dp),
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(QuietInstrumentTokens.securityActionHeightDp.dp)
+                                    .semantics { contentDescription = state.selectedProjectName ?: "Choose project" },
+                        ) {
+                            Text(state.selectedProjectName ?: "Choose project")
+                        }
+                    }
+                    if (newTaskOptions != null && selection != null) {
+                        Spacer(Modifier.height(8.dp))
+                        NewTaskOptionControls(
+                            options = newTaskOptions,
+                            selection = selection,
+                            onSelectionChange = {
+                                selectedModelId = it.modelId
+                                selectedReasoningId = it.reasoningId
+                                selectedPermissionId = it.permissionModeId
+                            },
+                        )
+                    }
                 }
             }
             if (state.showLinkLocalRuntime) {
@@ -440,12 +528,22 @@ private fun OnlineContent(
             }
             when {
                 newTaskNeedsReview -> {
+                    // B5-001 (a lost-outcome defect): the Unverified state carries its
+                    // outlined-muted question-mark
+                    // glyph, not text alone — and in its muted tone, because a lost outcome is
+                    // "we don't know", not an error (it was error-red before). DESIGN.md pairs
+                    // this task face with "Couldn't confirm that happened"; the line below says
+                    // only what to do about it.
+                    StateMark(mark = StateMark.UNVERIFIED, label = "Couldn't confirm that happened")
                     Text(
-                        "Outcome unknown. Check Codex on your computer before sending again.",
+                        "Check Codex on your computer before sending again.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    TextButton(onClick = onDismissNewTaskReview) { Text("I checked Codex") }
+                    TextButton(
+                        onClick = onDismissNewTaskReview,
+                        modifier = Modifier.semantics { contentDescription = "I checked Codex" },
+                    ) { Text("I checked Codex") }
                 }
                 newTaskMessage != null ->
                     Text(
@@ -548,12 +646,18 @@ private fun UtilityLinks(
 ) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         if (state.showAllApps) {
-            TextButton(onClick = onAllApps) { Text("All apps") }
+            TextButton(
+                onClick = onAllApps,
+                modifier = Modifier.semantics { contentDescription = "All apps" },
+            ) { Text("All apps") }
         } else {
             Spacer(Modifier.size(1.dp))
         }
         if (state.showAndroidSettings) {
-            TextButton(onClick = onAndroidSettings) { Text("Android Settings") }
+            TextButton(
+                onClick = onAndroidSettings,
+                modifier = Modifier.semantics { contentDescription = "Android Settings" },
+            ) { Text("Android Settings") }
         }
     }
 }

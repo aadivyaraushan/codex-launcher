@@ -16,6 +16,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class BrokerRouterTest {
+    private fun authHeaders(router: BrokerRouter): Map<String, String> =
+        mapOf("Authorization" to "Bearer ${router.sessionToken}")
+
     @Test
     fun statusFlipsFromUnkeyedToKeyedAtCallTimeWithNoRestart() {
         var keyed = false
@@ -29,13 +32,13 @@ class BrokerRouterTest {
                         postToUpstream = { _, _ -> OpenAiBrokerHttpResponse(200, "{}") },
                     ),
             )
-        val before = router.handle("GET", "/v1/broker/openai/status", "")
+        val before = router.handle("GET", "/v1/broker/openai/status", authHeaders(router), "")
         assertEquals(200, before.status)
         assertEquals("""{"keyed":false}""", before.body)
 
         keyed = true // simulates an openai key landing in the vault, no restart
 
-        val after = router.handle("GET", "/v1/broker/openai/status", "")
+        val after = router.handle("GET", "/v1/broker/openai/status", authHeaders(router), "")
         assertEquals(200, after.status)
         assertEquals("""{"keyed":true}""", after.body)
     }
@@ -56,7 +59,13 @@ class BrokerRouterTest {
                         postToUpstream = { _, _ -> fail() },
                     ),
             )
-        val resp = router.handle("POST", "/v1/broker/maps/places:searchText", """{"query":"Ferry"}""")
+        val resp =
+            router.handle(
+                "POST",
+                "/v1/broker/maps/places:searchText",
+                authHeaders(router),
+                """{"query":"Ferry"}""",
+            )
         assertEquals(200, resp.status)
         assertEquals(true, resp.body.contains("\"name\":\"N-Ferry\""))
     }
@@ -68,7 +77,13 @@ class BrokerRouterTest {
                 mapsOps = MapsBrokerOps(search = { throw IllegalStateException("maps_key_missing") }, route = { _, _ -> fail() }),
                 openAiOps = OpenAiBrokerOps(hasKey = { false }, apiKey = { fail() }, postToUpstream = { _, _ -> fail() }),
             )
-        val resp = router.handle("POST", "/v1/broker/maps/places:searchText", """{"query":"Ferry"}""")
+        val resp =
+            router.handle(
+                "POST",
+                "/v1/broker/maps/places:searchText",
+                authHeaders(router),
+                """{"query":"Ferry"}""",
+            )
         assertEquals(502, resp.status)
         assertEquals("""{"error":"search_failed"}""", resp.body)
     }
@@ -80,9 +95,54 @@ class BrokerRouterTest {
                 mapsOps = MapsBrokerOps(search = { fail() }, route = { _, _ -> fail() }),
                 openAiOps = OpenAiBrokerOps(hasKey = { false }, apiKey = { fail() }, postToUpstream = { _, _ -> fail() }),
             )
-        val resp = router.handle("GET", "/v1/nope", "")
+        val resp = router.handle("GET", "/v1/nope", authHeaders(router), "")
         assertEquals(404, resp.status)
         assertFalse(resp.body.isBlank())
+    }
+
+    // B0-007: a request with no bearer token, or the wrong one, must be
+    // rejected with 401 before it ever reaches the maps/openai ops -- and a
+    // request carrying the router's own per-process token must still work.
+    @Test
+    fun requestWithoutTokenIsRejectedBeforeDispatch() {
+        val router =
+            BrokerRouter(
+                mapsOps = MapsBrokerOps(search = { fail() }, route = { _, _ -> fail() }),
+                openAiOps = OpenAiBrokerOps(hasKey = { fail() }, apiKey = { fail() }, postToUpstream = { _, _ -> fail() }),
+            )
+        val resp = router.handle("GET", "/v1/broker/openai/status", emptyMap(), "")
+        assertEquals(401, resp.status)
+        assertEquals("""{"error":"unauthorized"}""", resp.body)
+    }
+
+    @Test
+    fun requestWithWrongTokenIsRejectedBeforeDispatch() {
+        val router =
+            BrokerRouter(
+                mapsOps = MapsBrokerOps(search = { fail() }, route = { _, _ -> fail() }),
+                openAiOps = OpenAiBrokerOps(hasKey = { fail() }, apiKey = { fail() }, postToUpstream = { _, _ -> fail() }),
+            )
+        val resp =
+            router.handle(
+                "GET",
+                "/v1/broker/openai/status",
+                mapOf("Authorization" to "Bearer not-the-real-token"),
+                "",
+            )
+        assertEquals(401, resp.status)
+        assertEquals("""{"error":"unauthorized"}""", resp.body)
+    }
+
+    @Test
+    fun requestWithCorrectTokenDispatchesNormally() {
+        val router =
+            BrokerRouter(
+                mapsOps = MapsBrokerOps(search = { fail() }, route = { _, _ -> fail() }),
+                openAiOps = OpenAiBrokerOps(hasKey = { true }, apiKey = { fail() }, postToUpstream = { _, _ -> fail() }),
+            )
+        val resp = router.handle("GET", "/v1/broker/openai/status", authHeaders(router), "")
+        assertEquals(200, resp.status)
+        assertEquals("""{"keyed":true}""", resp.body)
     }
 
     private fun fail(): Nothing = throw AssertionError("unexpected call in this test")

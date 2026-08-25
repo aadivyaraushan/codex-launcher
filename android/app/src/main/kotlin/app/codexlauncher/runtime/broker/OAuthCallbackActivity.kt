@@ -38,10 +38,17 @@ class OAuthCallbackActivity : Activity() {
         lastCallback = parsed
         val appContext = applicationContext
         Executors.newSingleThreadExecutor().execute {
-            runCatching { exchangeIfPending(appContext, parsed) }
-                .onFailure { err ->
-                    Log.w(TAG, "[broker] oauth_token_exchange_failed reason=${err.message}")
-                }
+            try {
+                runCatching { exchangeIfPending(appContext, parsed) }
+                    .onFailure { err ->
+                        Log.w(TAG, "[broker] oauth_token_exchange_failed reason=${err.message}")
+                    }
+            } finally {
+                // B0-015: the raw code is single-use and consumed above -- do not
+                // let it linger in a process-wide static after this point.
+                lastCallback = null
+                lastTokenAdapter = null
+            }
         }
         finish()
     }
@@ -49,13 +56,15 @@ class OAuthCallbackActivity : Activity() {
     companion object {
         private const val TAG = "OAuthCallback"
 
+        // B4-008: fully private. Nothing outside this class reads these, so a
+        // public getter only widened the window in which the raw single-use code
+        // and state were readable process-wide during the async token exchange.
+        // Kept solely as the internal hand-off/clearing holder below.
         @Volatile
-        var lastCallback: OAuthCallback? = null
-            private set
+        private var lastCallback: OAuthCallback? = null
 
         @Volatile
-        var lastTokenAdapter: String? = null
-            private set
+        private var lastTokenAdapter: String? = null
 
         private fun exchangeIfPending(
             context: Context,

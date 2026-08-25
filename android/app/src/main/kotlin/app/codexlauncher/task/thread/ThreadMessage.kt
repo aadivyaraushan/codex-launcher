@@ -1,5 +1,7 @@
 package app.codexlauncher.task.thread
 
+import java.time.Instant
+
 /**
  * A single row in the task thread.
  *
@@ -61,6 +63,7 @@ data class AskPreviewCard(
     val computerName: String?,
     val projectLabel: String?,
     val workingDirectory: String?,
+    val expiresAt: Instant,
 ) {
     val affectedPathsLabel: String
         get() = if (affectedPaths.isEmpty()) "None" else affectedPaths.joinToString("\n")

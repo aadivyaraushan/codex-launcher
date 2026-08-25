@@ -50,8 +50,6 @@ import app.codexlauncher.appearance.theme.QuietInstrumentTheme
 import app.codexlauncher.appearance.theme.ThemePreferenceStore
 import app.codexlauncher.appearance.theme.themeDataStore
 import app.codexlauncher.appearance.settings.AppearanceScreen
-import app.codexlauncher.capability.interaction.CapabilitySheet
-import app.codexlauncher.capability.handoff.HandOffActions
 import app.codexlauncher.capability.reply.guard.ThreadKey
 import app.codexlauncher.connection.pairing.PairingScreen
 import app.codexlauncher.connection.pairing.PairingViewModel
@@ -740,7 +738,7 @@ class LauncherActivity : ComponentActivity() {
                                                     delay(100)
                                                 }
                                                 if (!online) {
-                                                    homeRouteMessage = "Operator services unavailable."
+                                                    homeRouteMessage = "Codex services unavailable."
                                                     return@launch
                                                 }
                                             }
@@ -1020,23 +1018,6 @@ class LauncherActivity : ComponentActivity() {
                         onDismiss = { launcherApplication.replyGuard.dismissOffer() },
                     )
                 }
-                CapabilitySheet(
-                    state = capabilityState,
-                    onRespond = { confirm -> scope.launch { sessionViewModel.respondToCapability(confirm) } },
-                    onDismiss = sessionViewModel::dismissCapabilityResult,
-                    onCopyDraft = { draft ->
-                        val clipboard = getSystemService(android.content.ClipboardManager::class.java)
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Operator draft", draft))
-                        AppLog.info(
-                            feature = "handoff",
-                            message = "hand-off draft copied",
-                            fields = mapOf("draft_length" to draft.length, "decision" to "copy_to_clipboard"),
-                        )
-                    },
-                    onOpenHandOff = { appName -> HandOffActions.openApp(this@LauncherActivity, appName) },
-                    onDisconnect = { scope.launch { sessionViewModel.disconnectCapability() } },
-                    onCheckDone = sessionViewModel::markCapabilityChecked,
-                )
                 if (unpairConfirmVisible) {
                     UnpairConfirmationDialog(
                         onDismiss = { unpairConfirmVisible = false },

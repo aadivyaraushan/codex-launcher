@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import app.codexlauncher.appearance.theme.AppearanceMode
 import app.codexlauncher.appearance.theme.QuietInstrumentTheme
 import app.codexlauncher.capability.interaction.PromptDestination
+import app.codexlauncher.connection.state.ConnectionPhase
 import app.codexlauncher.task.configuration.NewTaskOptions
 import app.codexlauncher.task.configuration.NewTaskSelection
 import app.codexlauncher.task.configuration.PermissionModeOption
@@ -137,6 +138,92 @@ class HomeScreenTest {
         assertEquals(1, allAppsOpens)
         assertEquals(1, settingsOpens)
         assertEquals(1, helpOpens)
+    }
+
+    @Test
+    fun revokedPairingOffersRePairInsteadOfADeadEndRetry() {
+        var retries = 0
+        var rePairs = 0
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = offlineState(headline = "Pairing revoked", connectionPhase = ConnectionPhase.REVOKED),
+                    onRetry = { retries += 1 },
+                    onLinkComputer = { rePairs += 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Pairing revoked").assertIsDisplayed()
+        compose.onAllNodesWithText("Try again").assertCountEquals(0)
+        compose.onNodeWithText("Re-pair").performClick()
+
+        assertEquals(0, retries)
+        assertEquals(1, rePairs)
+    }
+
+    @Test
+    fun incompatibleDesktopOffersAnUpdatePromptInsteadOfADeadEndRetry() {
+        var retries = 0
+        var helpOpens = 0
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state =
+                        offlineState(
+                            headline = "Desktop integration needs an update",
+                            connectionPhase = ConnectionPhase.INCOMPATIBLE_VERSION,
+                        ),
+                    onRetry = { retries += 1 },
+                    onConnectionHelp = { helpOpens += 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Desktop integration needs an update").assertIsDisplayed()
+        compose.onAllNodesWithText("Try again").assertCountEquals(0)
+        compose.onNodeWithText("Update ChatGPT Desktop").performClick()
+
+        assertEquals(0, retries)
+        assertEquals(1, helpOpens)
+    }
+
+    @Test
+    fun connectingStateShowsInProgressCopyWithNoTryAgain() {
+        var retries = 0
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = offlineState(headline = "Connecting", connectionPhase = ConnectionPhase.CONNECTING),
+                    onRetry = { retries += 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Connecting").assertIsDisplayed()
+        compose.onNodeWithText("Connecting to your computer…").assertIsDisplayed()
+        compose.onAllNodesWithText("Try again").assertCountEquals(0)
+        compose.onAllNodesWithText("Tasks stay on your computer. Reconnect to load a fresh view.").assertCountEquals(0)
+        assertEquals(0, retries)
+    }
+
+    @Test
+    fun syncingStateShowsInProgressCopyWithNoTryAgain() {
+        var retries = 0
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                HomeScreen(
+                    state = offlineState(headline = "Syncing", connectionPhase = ConnectionPhase.SYNCING),
+                    onRetry = { retries += 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Syncing").assertIsDisplayed()
+        compose.onNodeWithText("Syncing your tasks…").assertIsDisplayed()
+        compose.onAllNodesWithText("Try again").assertCountEquals(0)
+        compose.onAllNodesWithText("Tasks stay on your computer. Reconnect to load a fresh view.").assertCountEquals(0)
+        assertEquals(0, retries)
     }
 
     @Test
@@ -507,20 +594,23 @@ class HomeScreenTest {
         return bottom
     }
 
-    private fun offlineState() =
-        HomeUiState(
-            computerName = "studio-mac",
-            headline = "Computer offline",
-            tasks = emptyList(),
-            selectedProjectName = null,
-            contentBaseSequence = null,
-            canChangeComputer = false,
-            canChangeProject = false,
-            canSend = false,
-            mustChooseProject = false,
-            showAllApps = true,
-            showAndroidSettings = true,
-        )
+    private fun offlineState(
+        headline: String = "Computer offline",
+        connectionPhase: ConnectionPhase = ConnectionPhase.DISCONNECTED,
+    ) = HomeUiState(
+        computerName = "studio-mac",
+        headline = headline,
+        connectionPhase = connectionPhase,
+        tasks = emptyList(),
+        selectedProjectName = null,
+        contentBaseSequence = null,
+        canChangeComputer = false,
+        canChangeProject = false,
+        canSend = false,
+        mustChooseProject = false,
+        showAllApps = true,
+        showAndroidSettings = true,
+    )
 
     private fun onlineState(selectedProjectName: String?) =
         HomeUiState(

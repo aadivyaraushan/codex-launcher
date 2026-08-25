@@ -11,7 +11,6 @@ object OutlookAuthScopes {
      * Matches Azure Android platform registration and MSAL's keytool|openssl base64 form.
      */
     const val DEBUG_SIGNATURE_HASH = "96ha9R3kgapcHRIRwPGNGwaDxX8="
-    const val loginHint = "ssdear@gmail.com"
 
     val redirectUri: String = "msauth://$PACKAGE_NAME/$DEBUG_SIGNATURE_HASH"
 

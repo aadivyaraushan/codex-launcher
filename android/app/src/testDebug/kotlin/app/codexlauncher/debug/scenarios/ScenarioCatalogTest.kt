@@ -52,19 +52,13 @@ class ScenarioCatalogTest {
                 "dialog_attach",
                 "dialog_background_warning",
                 "dialog_unpair",
-                // The four consent surfaces of a reply. Each one shipped with
+                // The three consent surfaces of a reply. Each one shipped with
                 // "still unverified — on a real screen" against it in the plan,
                 // because none of them was in this catalogue and the connected
                 // audit only ever walks this catalogue.
                 "reply_access_ask",
                 "reply_stop_offer",
                 "reply_stopped_list",
-                "capability_confirm",
-                "capability_running",
-                "capability_result_unknown",
-                "capability_failed",
-                "capability_question",
-                "capability_unresolved_check",
             )
 
         assertEquals(expected, ScenarioCatalog.all.map { it.wireName }.toSet())

@@ -199,10 +199,18 @@ class ActionRecordStore internal constructor(
     }
 
     private suspend fun guardedWrite(block: suspend () -> Boolean): Boolean =
-        when (val result = writeGate?.withPairedWrite(block)) {
+        when (val paired = writeGate?.withPairedWrite(block)) {
             null -> block()
-            is LocalStateWriteResult.Completed -> result.value
-            LocalStateWriteResult.Blocked -> false
+            is LocalStateWriteResult.Completed -> paired.value
+            LocalStateWriteResult.Blocked ->
+                // Unpaired phone-runtime sessions open the gate as STANDALONE. Action
+                // records must persist there too, or every on-phone send fails closed at
+                // block_send_storage_unavailable (mirrors ResumeCursorStore; Pixel dogfood).
+                // WIPING and STARTUP_BLOCKED are neither mode, so both writes stay blocked.
+                when (val standalone = writeGate.withStandaloneWrite(block)) {
+                    is LocalStateWriteResult.Completed -> standalone.value
+                    LocalStateWriteResult.Blocked -> false
+                }
         }
 
     private fun readState(preferences: Preferences): ActionRecordReadState =

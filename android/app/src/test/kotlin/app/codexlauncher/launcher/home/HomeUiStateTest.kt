@@ -56,6 +56,30 @@ class HomeUiStateTest {
     }
 
     @Test
+    fun connectionPhaseAlwaysPassesThroughUnchanged() {
+        // OfflineContent (HomeScreen.kt) picks its primary action off this
+        // field — REVOKED needs "Re-pair", INCOMPATIBLE_VERSION needs
+        // "Update ChatGPT Desktop", every other phase keeps "Try again". None
+        // of that works if render() ever drops or substitutes the real phase.
+        for (phase in ConnectionPhase.entries) {
+            val state =
+                HomeUiPolicy.render(
+                    computerName = "studio-mac",
+                    connection =
+                        ConnectionSnapshot(
+                            phase = phase,
+                            selectedProjectId = null,
+                            baseSequence = null,
+                        ),
+                    projects = projects,
+                    tasks = tasks,
+                )
+
+            assertEquals(phase, state.connectionPhase)
+        }
+    }
+
+    @Test
     fun onlineSnapshotShowsTasksAndMapsOnlyTheOpaqueProjectChoice() {
         val state =
             HomeUiPolicy.render(
@@ -219,7 +243,7 @@ class HomeUiStateTest {
     }
 
     @Test
-    fun unpairedStandaloneReadyEnablesAutoSendWithOperatorTitle() {
+    fun unpairedStandaloneReadyEnablesAutoSendWithoutInventingAComputerName() {
         val ready =
             StandaloneRuntimeStatus(localPairAcked = true, runtimeServing = true, reachable = true)
         val state =
@@ -238,7 +262,12 @@ class HomeUiStateTest {
                 paired = false,
             )
 
-        assertEquals("Operator", state.computerName)
+        // The app's own brand name is never "Operator" (that's the reply
+        // persona's name, a different feature entirely) — computerName just
+        // passes the caller's value through unchanged, paired or not, since
+        // the Header hides it behind the "Link computer" button while unpaired
+        // anyway.
+        assertEquals("studio-mac", state.computerName)
         assertEquals(ready.headline(), state.headline)
         assertTrue(state.canSend)
         assertTrue(state.showComposer)

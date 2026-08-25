@@ -61,6 +61,14 @@ private fun MarkTone.resolve(palette: QuietPalette): Long =
  * when the mark is purely informational and sits inside a larger control
  * that already owns the touch target, so this composable does not silently
  * inflate that control's hit area.
+ *
+ * [label] overrides the words bonded to the glyph. It defaults to
+ * [StateMark.label], and every caller that shows a mark's own name leaves it
+ * unset. DESIGN.md gives one mark different words on different surfaces — the
+ * Unverified mark reads "Unverified" beside a capability but "Couldn't confirm
+ * that happened" beside a task — so the task surface passes its own phrase
+ * here. The shape still never renders without words: [label] can only swap
+ * which words, never remove them.
  */
 @Composable
 fun StateMark(
@@ -68,6 +76,7 @@ fun StateMark(
     modifier: Modifier = Modifier,
     tappableRow: Boolean = false,
     glyphSize: Dp = 20.dp,
+    label: String = mark.label,
 ) {
     // There is no CompositionLocal for QuietPalette in this codebase yet
     // (QuietInstrumentTheme resolves it internally and only exposes the
@@ -99,11 +108,11 @@ fun StateMark(
                     // A screen reader reads the state off the glyph itself,
                     // the same words a sighted user reads off the label next
                     // to it.
-                    .semantics { contentDescription = mark.label },
+                    .semantics { contentDescription = label },
         ) {
             drawStateMark(shape = mark.shape, fill = mark.fill, color = toneColor)
         }
-        Text(text = mark.label, color = LocalContentColor.current, style = MaterialTheme.typography.bodyMedium)
+        Text(text = label, color = LocalContentColor.current, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

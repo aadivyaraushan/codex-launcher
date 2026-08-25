@@ -41,9 +41,13 @@ import app.codexlauncher.capability.reply.guard.ThreadKey
 fun AppearanceScreen(
     mode: AppearanceMode,
     modifier: Modifier = Modifier,
-    stoppedConversations: List<ThreadKey> = emptyList(),
-    appLabel: (String) -> String = { it },
-    onResume: (ThreadKey) -> Unit = {},
+    // Reply-stop management does not belong on this screen (it is pure theme
+    // settings) — see StoppedConversationsScreen.kt in this same package.
+    // These three params are kept only so existing callers (LauncherActivity,
+    // UiScenarioActivity) still compile; they are unused here.
+    @Suppress("UNUSED_PARAMETER") stoppedConversations: List<ThreadKey> = emptyList(),
+    @Suppress("UNUSED_PARAMETER") appLabel: (String) -> String = { it },
+    @Suppress("UNUSED_PARAMETER") onResume: (ThreadKey) -> Unit = {},
     onModeSelected: (AppearanceMode) -> Unit = {},
     updateStatusMessage: String? = null,
     onCheckForUpdates: (() -> Unit)? = null,
@@ -141,33 +145,6 @@ fun AppearanceScreen(
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
-            }
-            Spacer(Modifier.height(28.dp))
-            Text("Stopped conversations", style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.height(8.dp))
-            if (stoppedConversations.isEmpty()) {
-                Text(
-                    "Operator is not stopped from replying in any conversation.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    stoppedConversations.forEach { key ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(
-                                "${appLabel(key.packageName)} • ${key.displayPerson}",
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.weight(1f),
-                            )
-                            TextButton(onClick = { onResume(key) }) { Text("Turn replies back on") }
-                        }
-                    }
                 }
             }
         }

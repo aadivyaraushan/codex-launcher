@@ -4,8 +4,6 @@
 package app.codexlauncher.runtime.broker.slack
 
 object SlackAuthScopes {
-    const val loginHintUser = "ssdear"
-
     /** Plan Wave-3 Android user scopes (space-delimited for authorize URL). */
     val operatorUser: List<String> =
         listOf(

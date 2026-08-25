@@ -89,7 +89,13 @@ dependencies {
     implementation(libs.zxing.core)
     implementation(libs.tink.android)
     implementation(libs.play.services.auth)
-    implementation(libs.msal)
+    implementation(libs.msal) {
+        // MSAL's transitive `common` library pulls in com.yubico.yubikit (android/core/piv)
+        // for smart-card (YubiKey CBA) sign-in support, which this app's Outlook OAuth flow
+        // never uses. That transitive dep merges an undocumented android.permission.NFC into
+        // the manifest with zero code path exercising it — exclude it at the source.
+        exclude(group = "com.yubico.yubikit")
+    }
     implementation(libs.moonshine.voice)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)

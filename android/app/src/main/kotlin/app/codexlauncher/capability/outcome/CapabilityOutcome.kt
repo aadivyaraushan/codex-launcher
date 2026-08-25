@@ -183,7 +183,16 @@ data class CapabilityOutcome(
                 return CapabilityOutcome(
                     ceiling = ceiling,
                     mark = StateMark.UNVERIFIED,
-                    label = StateMark.UNVERIFIED.label,
+                    // Same mark, different words per surface (DESIGN.md Core
+                    // States, line 111): this is one run whose outcome was lost
+                    // — the phone dropped off before it learned whether the
+                    // action landed — so the mark reads the task phrase, NOT the
+                    // capability-badge word StateMark.UNVERIFIED.label
+                    // ("Unverified"), which stays on CapabilityBadge.of for a
+                    // standing fact about an adapter. This matches the sibling
+                    // wording unverifiedOutcome() arms for the same event
+                    // (CapabilityInteraction.pendingCheck).
+                    label = "Couldn't confirm that happened",
                     detail = detail,
                     handedOffToApp = null,
                     confirmControl = null,

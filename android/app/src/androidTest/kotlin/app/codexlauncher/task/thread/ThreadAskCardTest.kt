@@ -78,6 +78,20 @@ class ThreadAskCardTest {
     }
 
     @Test
+    fun freeTextQuestionTellsTheUserWhereToAnswer() {
+        // A free-text question (no suggested replies, not secret) has no
+        // other affordance on this card — B0-013: without this line the
+        // card gave no hint that the answer goes through the composer.
+        val ask = ThreadMessageMapper.fromDecision(freeTextQuestionRequest())
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.LIGHT) {
+                ThreadAskCard(ask, sending = false, actionable = true, onDecision = {}, onReply = {}, onNotNow = {})
+            }
+        }
+        compose.onNodeWithText("Type your answer in the message box below.").assertIsDisplayed()
+    }
+
+    @Test
     fun tappingASuggestedReplySendsThatExactReply() {
         var reply = ""
         val ask = ThreadMessageMapper.fromDecision(choiceQuestionRequest())
@@ -113,6 +127,47 @@ class ThreadAskCardTest {
         }
         compose.onNodeWithText("Approve once").assertIsNotEnabled()
         compose.onNodeWithText("Deny").assertIsNotEnabled()
+    }
+
+    @Test
+    fun sendingAddsATextualCueNotJustDisabledButtons() {
+        // B1-010: disabled buttons alone are a color/alpha-only signal to
+        // TalkBack. The sending state must also carry its own text so a tap
+        // is confirmed as registered, not just visually dimmed.
+        val ask = ThreadMessageMapper.fromDecision(commandRequest())
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                ThreadAskCard(ask, sending = true, actionable = true, onDecision = {}, onReply = {}, onNotNow = {})
+            }
+        }
+        compose.onNodeWithText("Sending…").assertIsDisplayed()
+    }
+
+    @Test
+    fun restingCardShowsNoSendingCue() {
+        val ask = ThreadMessageMapper.fromDecision(commandRequest())
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.DARK) {
+                ThreadAskCard(ask, sending = false, actionable = true, onDecision = {}, onReply = {}, onNotNow = {})
+            }
+        }
+        compose.onNodeWithText("Sending…").assertDoesNotExist()
+    }
+
+    @Test
+    fun sendingKeepsEveryQuestionChoiceVisibleJustDisabled() {
+        // B1-014: every offered choice must stay in the tree during sending,
+        // just disabled — never dropped, so the user can still see what the
+        // other option was while their answer submits.
+        val ask = ThreadMessageMapper.fromDecision(choiceQuestionRequest())
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.LIGHT) {
+                ThreadAskCard(ask, sending = true, actionable = true, onDecision = {}, onReply = {}, onNotNow = {})
+            }
+        }
+        compose.onNodeWithText("Use tests").assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithText("Inspect only").assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithText("Sending…").assertIsDisplayed()
     }
 
     @Test
@@ -152,6 +207,12 @@ class ThreadAskCardTest {
         baseRequest().copy(
             kind = "question",
             questions = listOf(DecisionQuestion("password", "Secret", "Password?", emptyList(), secret = true)),
+        )
+
+    private fun freeTextQuestionRequest() =
+        baseRequest().copy(
+            kind = "question",
+            questions = listOf(DecisionQuestion("details", "Details", "What should Codex check?", emptyList(), secret = false)),
         )
 
     private fun choiceQuestionRequest() =

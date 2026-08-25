@@ -2,7 +2,6 @@ package app.codexlauncher.storage.wipe
 
 import app.codexlauncher.diagnostics.AppLog
 import app.codexlauncher.storage.actions.ActionRecordStore
-import app.codexlauncher.storage.capability.unresolved.UnresolvedCapabilityDataStore
 import app.codexlauncher.storage.drafts.DraftKeyStore
 import app.codexlauncher.storage.drafts.EncryptedDraftStore
 import app.codexlauncher.storage.connection.lastseen.LastConnectionStore
@@ -24,7 +23,6 @@ enum class WipeStep {
     DEVICE_IDENTITY,
     PAIRING_KEY,
     PAIRING_RECORD,
-    CAPABILITY_UNRESOLVED_CHECK,
     MARKER_FINISH,
     ;
 
@@ -40,7 +38,6 @@ enum class WipeStep {
                 DEVICE_IDENTITY,
                 PAIRING_KEY,
                 PAIRING_RECORD,
-                CAPABILITY_UNRESOLVED_CHECK,
             )
     }
 }
@@ -155,7 +152,6 @@ class LocalStateWiper(
             deviceIdentity: DeviceIdentityStore,
             pairingKeys: PairingKeyStore,
             pairingRecords: PairingRecordStore,
-            capabilityUnresolvedChecks: UnresolvedCapabilityDataStore,
         ): LocalStateWiper =
             LocalStateWiper(
                 gate = gate,
@@ -171,7 +167,6 @@ class LocalStateWiper(
                         WipeStep.DEVICE_IDENTITY to deviceIdentity::clearForWipe,
                         WipeStep.PAIRING_KEY to { deleteKey(pairingKeys::delete) },
                         WipeStep.PAIRING_RECORD to pairingRecords::clearForWipe,
-                        WipeStep.CAPABILITY_UNRESOLVED_CHECK to capabilityUnresolvedChecks::clearForWipe,
                     ),
             )
 

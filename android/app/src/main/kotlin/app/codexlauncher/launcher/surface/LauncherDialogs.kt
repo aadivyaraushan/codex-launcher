@@ -4,9 +4,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -81,10 +86,10 @@ internal fun BackgroundConnectionWarningDialog(
 internal fun NotificationAccessDialog(onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Let Operator reply for you") },
+        title = { Text("Let Codex reply for you") },
         text = {
             Text(
-                "Replying means typing into the reply box Android puts in the notification, and Operator cannot reach that box until you turn on notification access. Nothing was sent.",
+                "Replying means typing into the reply box Android puts in the notification, and Codex cannot reach that box until you turn on notification access. Once it's on, Codex reads the sender, conversation, and message text from the apps you choose, and sends that to a model only to compose a reply — it isn't stored or kept any longer than that. This only happens while composing a reply, and you can revoke access anytime in Android settings. Nothing was sent.",
             )
         },
         confirmButton = { TextButton(onClick = onOpenSettings) { Text("Open settings") } },
@@ -95,10 +100,9 @@ internal fun NotificationAccessDialog(onOpenSettings: () -> Unit, onDismiss: () 
 /**
  * Offers to stop a conversation right after a reply to it actually went out.
  * Not a dialog: it appears after every successful reply, and a modal box
- * that often would be intolerable. It matches the quiet, dismissible banner
- * this app already uses for an outcome it cannot fully vouch for — plain
- * text plus buttons, stacked on top of whatever screen is showing
- * (`CapabilitySheet.kt`'s `unresolvedCheck` banner).
+ * that often would be intolerable. It is a quiet, dismissible banner for an
+ * outcome it cannot fully vouch for — plain text plus buttons, stacked on
+ * top of whatever screen is showing.
  *
  * The wording never says "sent" or "delivered": Operator handed the text to
  * the app, and has no way to know whether the other person ever saw it.
@@ -111,7 +115,10 @@ internal fun ReplyStopOfferRow(
     onDismiss: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(

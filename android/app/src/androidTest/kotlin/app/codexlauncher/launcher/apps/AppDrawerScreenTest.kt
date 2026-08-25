@@ -2,6 +2,7 @@ package app.codexlauncher.launcher.apps
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -18,6 +19,19 @@ import org.junit.Test
 class AppDrawerScreenTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun searchFieldIsFocusedAsSoonAsTheDrawerOpens() {
+        compose.setContent {
+            QuietInstrumentTheme(AppearanceMode.LIGHT) {
+                AppDrawerScreen(
+                    apps = listOf(InstalledApp("auth", "Authenticator"), InstalledApp("camera", "Camera")),
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Search apps").assertIsFocused()
+    }
 
     @Test
     fun searchNarrowsTheVisibleLaunchableApps() {

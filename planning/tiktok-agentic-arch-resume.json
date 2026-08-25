@@ -1,0 +1,165 @@
+{
+  "_note": "Targeted from /Users/aadivyar/Desktop/ml_base.pdf for the supplied TikTok Agentic Arch internship description. Wording and ordering are role-specific; facts and numbers come from the supplied resume.",
+  "name": "AADIVYA RAUSHAN",
+  "contact": {
+    "phone": "+1 (217) 607-4643",
+    "email": "raushan2@illinois.edu",
+    "location": "Urbana, IL",
+    "linkedin": "linkedin.com/in/aadivya-raushan"
+  },
+  "education": [
+    {
+      "org": "University of Illinois Urbana-Champaign",
+      "dates": "August 2025 - May 2028",
+      "title": "B.S. Computer Science",
+      "right": "GPA: 3.9"
+    }
+  ],
+  "skills": {
+    "Languages": "Python, C/C++, Java, Rust, SQL, TypeScript, JavaScript",
+    "Agent Systems / ML": "Multi-agent systems and orchestration, LangGraph, LangChain, Haystack, PyTorch, vLLM, CUDA, FastAPI",
+    "Research / Evaluation / Observability": "Program synthesis, formal verification, evaluation benchmarks, Dafny, Langfuse",
+    "Infrastructure / Tools": "PostgreSQL, AWS, Docker, Linux, Git, Vercel, Playwright"
+  },
+  "experience": [
+    {
+      "id": "focal",
+      "org": "FOCAL Lab, UIUC",
+      "dates": "July 2025 - Present",
+      "title": "Undergraduate Researcher",
+      "location": "Urbana, IL",
+      "stack": "PyTorch, Dafny, vLLM",
+      "bullets": [
+        {
+          "id": "focal-metadecode",
+          "text": "Built metaDecode, a closed-loop program-synthesis system that writes format programs for math, SQL, and chemistry, verifies them with Dafny before execution, scores syntactic and semantic accuracy, and iterates ~20 times toward a target under a token-cost budget."
+        },
+        {
+          "id": "focal-sql",
+          "text": "Reached 84% text-to-SQL execution accuracy (+11pp over baselines) with a 7B model by running autoresearch over search parameters and the synthesizer model."
+        },
+        {
+          "id": "focal-sharding",
+          "text": "Cut data-collection job time ~8x by implementing vLLM worker sharding across the evaluation pipeline."
+        },
+        {
+          "id": "focal-manuscript",
+          "text": "Authored the technical formulation and manuscript for metaDecode, now the lab's reference design for the synthesize -> verify -> reward loop."
+        }
+      ]
+    },
+    {
+      "id": "fermi",
+      "org": "Fermi AI",
+      "dates": "May 2026 - Present",
+      "title": "AI Engineering Intern",
+      "location": "Bangalore, India",
+      "stack": "Python, Haystack, Langfuse",
+      "bullets": [
+        {
+          "id": "fermi-questions",
+          "text": "Shipped a Python and Haystack multi-topic generation pipeline for an AI tutoring platform, cutting STEM question authoring from hours to minutes."
+        },
+        {
+          "id": "fermi-axial",
+          "text": "Improved study-guide, flashcard, and quiz pass rate from ~30% to ~90% on an evaluation benchmark by building an axial-coding error-discovery and remediation loop for multi-agent synthetic-data workflows."
+        },
+        {
+          "id": "fermi-euler",
+          "text": "Extended the tutoring system from a fixed topic catalog to open-ended \"learn anything,\" with explanations grounded in high-school prerequisites."
+        },
+        {
+          "id": "fermi-visualizer",
+          "text": "Cut time-to-diagnose failing evaluation cases from ~25 minutes to under ~3 minutes by shipping a tutoring-system test visualizer that exposes step-level traces for evaluation observability."
+        },
+        {
+          "id": "fermi-voice",
+          "text": "Delivered a live voice problem-solving tutor prototype and demoed it to leadership within one sprint."
+        }
+      ]
+    },
+    {
+      "id": "agentic",
+      "org": "Agentic AI @ UIUC",
+      "dates": "January 2026 - May 2026",
+      "title": "Vice President",
+      "location": "Urbana, IL",
+      "stack": "Python, Voice Agents",
+      "bullets": [
+        {
+          "id": "agentic-programming",
+          "text": "Drove weekly programming for a 300+ member organization over a 14-week semester, teaching voice agents and multi-agent orchestration with consistent standing-room interest."
+        },
+        {
+          "id": "agentic-carle",
+          "text": "Built a voice clinical-intake prototype with Carle collaborators and passed 100+ simulated patient cases before faculty review."
+        },
+        {
+          "id": "agentic-collaboration",
+          "text": "Secured faculty buy-in for a grant-backed voice-agent research track and brought in Claude Builder Club and Gies hackathon partners after a Gies pitch."
+        }
+      ]
+    },
+    {
+      "id": "lessongpt",
+      "org": "LessonGPT",
+      "dates": "May 2023 - October 2024",
+      "title": "Founder & Lead Engineer",
+      "location": "Dubai, UAE",
+      "stack": "Next.js, LangChain, Firebase",
+      "bullets": [
+        {
+          "id": "lessongpt-pipeline",
+          "text": "Designed a teacher-intake UI over 5 iterations with school leadership so teachers could generate a full plan in under ~2 minutes; raised first-draft plan quality from ~10% to ~90% with a multi-step LLM pipeline instead of one-shot generation."
+        },
+        {
+          "id": "lessongpt-scale",
+          "text": "Scaled to 120+ teachers and 1,300+ lesson plans, cutting teacher preparation time by ~70%."
+        }
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "id": "refr",
+      "org": "Refr",
+      "dates": "May 2025 - Present",
+      "title": "Founder",
+      "location": "Urbana, IL",
+      "stack": "Next.js, TypeScript, PostgreSQL, LangGraph",
+      "bullets": [
+        {
+          "id": "refr-agents",
+          "text": "Built LangGraph agents that generate profile-based internship messages from search results, cutting outreach drafting from ~30 minutes to under 5 for 25+ testers."
+        },
+        {
+          "id": "refr-ranking",
+          "text": "Raised reply interest from ~5% to ~18% by ranking referrers on shared school, clubs, and experience similarity instead of unranked cold lists."
+        },
+        {
+          "id": "refr-streaming",
+          "text": "Cut mid-run abandon rate from ~40% to ~10% by streaming real-time AI progress updates during search and outreach generation."
+        }
+      ]
+    },
+    {
+      "id": "plantain",
+      "org": "Plantain",
+      "dates": "August 2025 - Present",
+      "title": "Lead Engineer",
+      "location": "Urbana, IL",
+      "stack": "TypeScript, React, Supabase",
+      "bullets": [
+        {
+          "id": "plantain-optimizer",
+          "text": "Led 3 engineers to ship a class scheduler that scores candidate schedules on preferences (GPA, ratings, proximity) then optimizes under hard conflict constraints."
+        },
+        {
+          "id": "plantain-speed",
+          "text": "Cut term schedule planning from ~4 hours to under ~2 minutes with a score-then-optimize pipeline instead of manual Course Explorer work."
+        }
+      ]
+    }
+  ],
+  "leadership": []
+}

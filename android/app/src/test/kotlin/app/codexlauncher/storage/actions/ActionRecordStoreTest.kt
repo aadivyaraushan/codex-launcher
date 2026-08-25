@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
+import app.codexlauncher.storage.wipe.LocalStateWriteGate
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -233,6 +234,29 @@ class ActionRecordStoreTest {
         assertEquals(0, reporter.completedCount)
         assertEquals(1, reporter.writeFailureCount)
         assertTrue(dataStore.current().asMap().isEmpty())
+    }
+
+    @Test
+    fun savesActionRecordsWhenTheGateIsStandaloneNotPaired() = runBlocking {
+        // A phone with no Mac pairing opens the write gate as STANDALONE. Action
+        // records must still persist there, or every on-phone send fails closed.
+        val gate = LocalStateWriteGate()
+        assertTrue(gate.openAfterStartup(pairingPresent = false))
+        val store = ActionRecordStore(FakeActionDataStore(), NoOpActionRecordReporter, gate) { HOUR }
+        val prepared = record("action-1")
+
+        assertTrue(store.save(prepared))
+        assertEquals(listOf(prepared), availableRecords(store.state.first()))
+    }
+
+    @Test
+    fun blocksSavesUntilTheGateOpensAfterStartup() = runBlocking {
+        // STARTUP_BLOCKED and WIPING are neither PAIRED nor STANDALONE, so the
+        // standalone fallback must still fail closed before startup opens the gate.
+        val gate = LocalStateWriteGate()
+        val store = ActionRecordStore(FakeActionDataStore(), NoOpActionRecordReporter, gate) { HOUR }
+
+        assertFalse(store.save(record("action-1")))
     }
 
     private fun record(actionId: String): ActionRecord =

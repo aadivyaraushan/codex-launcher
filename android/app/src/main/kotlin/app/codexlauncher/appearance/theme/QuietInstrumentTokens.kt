@@ -56,7 +56,14 @@ object QuietInstrumentTokens {
     const val interruptedLabel = "Interrupted"
     const val oneTapLeftLabel = "One tap left"
     const val handedOffLabel = "Handed off"
-    const val unverifiedLabel = "Unverified"
+    // The Unverified mark's TASK-row words. DESIGN.md (Core States, line 111;
+    // amendment 2026-08-03) gives this one mark different words per surface:
+    // beside a capability it reads "Unverified" (the enum's StateMark.label),
+    // but on a task row — a lost run in a list you are scrolling past — it must
+    // read "Couldn't confirm that happened". This constant is used only for the
+    // home task row (HomeUiState.toHomeTask), so it carries the task phrasing;
+    // the capability word stays on StateMark.UNVERIFIED.label.
+    const val unverifiedLabel = "Couldn't confirm that happened"
 
     val spacingDp = listOf(4, 8, 12, 16, 24, 32)
     const val minimumTouchTargetDp = 44

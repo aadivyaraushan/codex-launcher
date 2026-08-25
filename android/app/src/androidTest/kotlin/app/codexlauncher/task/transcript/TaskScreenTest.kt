@@ -11,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -399,20 +400,30 @@ class TaskScreenTest {
     }
 
     @Test
-    fun unknownFollowUpShowsExplicitComputerReviewAction() {
+    fun unknownFollowUpOutcomeBlocksSendingAnotherFollowUpUntilAcknowledged() {
         var dismissed = false
+        var queued = ""
         compose.setContent {
             QuietInstrumentTheme(AppearanceMode.DARK) {
                 TaskScreen(
                     state = populatedState(),
                     taskState = app.codexlauncher.task.summary.TaskState.WORKING,
                     queueState = app.codexlauncher.task.summary.TaskQueueState.OUTCOME_UNKNOWN,
+                    onQueueFollowUp = { queued = it; ExistingTaskControlOutcome.Queued },
                     onDismissUnresolvedControl = { dismissed = true; true },
                 )
             }
         }
 
+        // Same hard-block modal pattern as "Previous fork unconfirmed" --
+        // a named dialog, not an inline banner sitting next to still-live
+        // composer/attach/mic/mode-toggle/send controls.
+        compose.onNodeWithText("Follow-up outcome unconfirmed").assertIsDisplayed()
         compose.onNodeWithText("Queued follow-up outcome unknown. Check Codex on your computer before sending another.").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Follow-up message").assertIsNotEnabled()
+        compose.onNodeWithText("Queue follow-up").assertIsNotEnabled()
+        assertEquals("", queued)
+
         compose.onNodeWithText("I checked Codex").performClick()
         compose.waitUntil { dismissed }
     }

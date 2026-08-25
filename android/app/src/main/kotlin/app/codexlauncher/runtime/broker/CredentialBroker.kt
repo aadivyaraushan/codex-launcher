@@ -261,6 +261,11 @@ data class OAuthCallback(
 object OAuthCallbackParse {
     fun parse(uriString: String): OAuthCallback {
         val uri = java.net.URI(uriString)
+        // The exported callback activity is registered only for the https App Link
+        // (AndroidManifest: scheme="https" host="tryoperator.net"). Gate the scheme
+        // too, so a hostile app cannot reach this parser with http:// or a custom
+        // scheme carrying a forged code/state. Defense in depth behind autoVerify.
+        require(uri.scheme == "https") { "wrong_scheme" }
         require(uri.host == "tryoperator.net") { "wrong_host" }
         val path = uri.path.orEmpty()
         require(path.startsWith("/oauth/android/")) { "wrong_path" }
@@ -396,14 +401,14 @@ enum class RuntimeFailureKind {
 object RuntimeFailureCopy {
     fun message(kind: RuntimeFailureKind): String =
         when (kind) {
-            RuntimeFailureKind.Starting -> "Operator services are starting."
-            RuntimeFailureKind.Healthy -> "Operator services are ready."
-            RuntimeFailureKind.Degraded -> "Operator services are degraded. Retry after recovery finishes."
-            RuntimeFailureKind.SignedOut -> "A service signed out. Open Operator settings to reconnect."
-            RuntimeFailureKind.ServiceOffline -> "A local service is offline. Operator will retry automatically."
+            RuntimeFailureKind.Starting -> "Codex services are starting."
+            RuntimeFailureKind.Healthy -> "Codex services are ready."
+            RuntimeFailureKind.Degraded -> "Codex services are degraded. Retry after recovery finishes."
+            RuntimeFailureKind.SignedOut -> "A service signed out. Open Codex settings to reconnect."
+            RuntimeFailureKind.ServiceOffline -> "A local service is offline. Codex will retry automatically."
             RuntimeFailureKind.NetworkOffline -> "No network connection. Retry when connectivity returns."
-            RuntimeFailureKind.ForceStopped -> "Android has force-stopped Operator services. Open Termux once to restore."
-            RuntimeFailureKind.DeliveryUnknown -> "Delivery is unknown. Operator will not resend automatically."
+            RuntimeFailureKind.ForceStopped -> "Android has force-stopped Codex services. Open Termux once to restore."
+            RuntimeFailureKind.DeliveryUnknown -> "Delivery is unknown. Codex will not resend automatically."
         }
 }
 

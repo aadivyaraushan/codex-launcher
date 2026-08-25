@@ -122,13 +122,12 @@ class OutlookAuthorizeActivity : ComponentActivity() {
     private fun acquireInteractive(application: ISingleAccountPublicClientApplication) {
         persist("awaiting_consent", "interactive_launched")
         label.text =
-            "Allow Operator to access Outlook mail.\n\n" +
-                "Sign in as ${OutlookAuthScopes.loginHint}, then Accept."
+            "Allow Codex to access Outlook mail.\n\n" +
+                "Sign in with your Microsoft account, then Accept."
         val params =
             AcquireTokenParameters.Builder()
                 .startAuthorizationFromActivity(this)
                 .withScopes(OutlookAuthScopes.operatorMail)
-                .withLoginHint(OutlookAuthScopes.loginHint)
                 .withCallback(
                     object : AuthenticationCallback {
                         override fun onSuccess(authenticationResult: IAuthenticationResult) {
@@ -165,10 +164,10 @@ class OutlookAuthorizeActivity : ComponentActivity() {
             status = "granted",
             detail = path,
             accessTokenLen = token.length,
-            accountHint = result.account.username ?: OutlookAuthScopes.loginHint,
+            accountHint = result.account.username ?: "",
         )
         label.text =
-            "Outlook mail access granted for Operator.\nYou can return to chat."
+            "Outlook mail access granted for Codex.\nYou can return to chat."
         AppLog.info(
             feature = "outlook-auth",
             message = "authorization granted",

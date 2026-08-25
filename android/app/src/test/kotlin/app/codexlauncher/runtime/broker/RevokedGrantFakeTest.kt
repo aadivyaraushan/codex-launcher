@@ -15,7 +15,7 @@ class RevokedGrantFakeTest {
             ) as CredentialResponse.Unavailable
         assertEquals("missing_grant", response.reason)
         assertEquals(
-            "A service signed out. Open Operator settings to reconnect.",
+            "A service signed out. Open Codex settings to reconnect.",
             RuntimeFailureCopy.message(RuntimeFailureKind.SignedOut),
         )
         assertTrue(response.recoverable)

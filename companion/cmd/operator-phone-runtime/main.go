@@ -29,6 +29,9 @@ func run(args []string) int {
 	root := fs.String("root", "", "no-backup state root for phone-runtime identities and session store")
 	listen := fs.String("listen", phoneruntime.ListenAddress, "fixed loopback listen address")
 	name := fs.String("name", "Operator phone", "display name shown in the mobile session")
+	gatewayURL := fs.String("gateway-url", "", "OpenClaw gateway WebSocket URL; enables the turn-proxy task source when set (requires -gateway-token-path)")
+	gatewayTokenPath := fs.String("gateway-token-path", "", "path to the OpenClaw gateway auth token file (required with -gateway-url)")
+	beeperBaseURL := fs.String("beeper-base-url", "", "Beeper Desktop base URL for event triggers (requires -gateway-url)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -47,9 +50,12 @@ func run(args []string) int {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	runtime, err := phoneruntime.Open(ctx, phoneruntime.Config{
-		Root:          absRoot,
-		DisplayName:   *name,
-		ListenAddress: *listen,
+		Root:             absRoot,
+		DisplayName:      *name,
+		ListenAddress:    *listen,
+		GatewayURL:       *gatewayURL,
+		GatewayTokenPath: *gatewayTokenPath,
+		BeeperBaseURL:    *beeperBaseURL,
 	}, phoneruntime.Dependencies{Random: rand.Reader, Logger: logger})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "operator-phone-runtime: open: %v\n", err)

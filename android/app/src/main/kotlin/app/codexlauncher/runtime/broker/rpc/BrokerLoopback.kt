@@ -120,8 +120,19 @@ object BrokerLoopback {
         try {
             socket.use { s ->
                 val output = s.getOutputStream()
+                // Belt-and-suspenders (B0-007): the ServerSocket is already bound to
+                // 127.0.0.1, so a non-loopback peer should be unreachable at the OS
+                // level -- reject explicitly anyway rather than trust that alone.
+                if (s.inetAddress?.isLoopbackAddress != true) {
+                    AppLog.error(
+                        feature = "broker-loopback",
+                        message = "rejected non-loopback origin",
+                        error = IllegalStateException("non_loopback_peer"),
+                    )
+                    return
+                }
                 val request = readBrokerHttpRequest(s.getInputStream(), output) ?: return
-                val resp = router.handle(request.method, request.path, request.body)
+                val resp = router.handle(request.method, request.path, request.headers, request.body)
                 val bodyBytes = resp.body.toByteArray(Charsets.UTF_8)
                 val header =
                     "HTTP/1.1 ${resp.status} OK\r\n" +
@@ -141,6 +152,7 @@ object BrokerLoopback {
 internal data class BrokerHttpRequest(
     val method: String,
     val path: String,
+    val headers: Map<String, String>,
     val body: String,
 )
 
@@ -150,9 +162,14 @@ internal fun readBrokerHttpRequest(input: InputStream, output: OutputStream): Br
     if (parts.size < 2) return null
     var contentLength = 0
     var expectContinue = false
+    val headers = mutableMapOf<String, String>()
     while (true) {
         val line = readAsciiLine(input) ?: break
         if (line.isEmpty()) break
+        val separator = line.indexOf(':')
+        if (separator > 0) {
+            headers[line.substring(0, separator).trim()] = line.substring(separator + 1).trim()
+        }
         if (line.startsWith("Content-Length:", ignoreCase = true)) {
             contentLength = line.substringAfter(':').trim().toIntOrNull() ?: 0
         }
@@ -181,6 +198,7 @@ internal fun readBrokerHttpRequest(input: InputStream, output: OutputStream): Br
     return BrokerHttpRequest(
         method = parts[0],
         path = parts[1].substringBefore('?'),
+        headers = headers,
         body = String(bodyBytes, 0, read, Charsets.UTF_8),
     )
 }

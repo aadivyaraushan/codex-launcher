@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -97,7 +98,15 @@ fun NewTaskOptionControls(
 
 @Composable
 private fun OptionButton(description: String, label: String, modifier: Modifier, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick, modifier = modifier.semantics { contentDescription = description }) {
+    // B4-005: three equal-weight buttons share one row; Material3's stock 24dp side
+    // padding left too little room, so even short names like "gpt-5" ellipsized.
+    // Trim the horizontal padding so short labels render in full; genuinely long
+    // names still truncate.
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.semantics { contentDescription = description },
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+    ) {
         Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

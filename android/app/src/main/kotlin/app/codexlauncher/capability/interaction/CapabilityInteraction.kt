@@ -8,14 +8,10 @@ import app.codexlauncher.connection.protocol.ProtocolCodec
 import app.codexlauncher.connection.protocol.ProtocolMessage
 import app.codexlauncher.connection.session.ActionSendResult
 import app.codexlauncher.diagnostics.AppLog
-import app.codexlauncher.storage.capability.unresolved.UnresolvedCapabilityCheck
-import app.codexlauncher.storage.capability.unresolved.UnresolvedCapabilityStore
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -56,12 +52,6 @@ data class CapabilityInteractionState(
     val message: String? = null,
     val handOffDraft: String? = null,
     val disconnectableAdapterId: String? = null,
-    // Non-null exactly while an unverified ending (session lost mid-run) is
-    // waiting to be acknowledged. Carries the full sentence the user needs to
-    // read, because this outlives the sheet that first showed it — dismissing
-    // the sheet does not clear this (see dismissTerminal), so whatever reads
-    // it later has nothing else to go on.
-    val unresolvedCheck: String? = null,
 ) {
     val busy: Boolean get() = phase in setOf(CapabilityPhase.ROUTING, CapabilityPhase.PREVIEW, CapabilityPhase.EXECUTING)
 }
@@ -92,7 +82,6 @@ sealed interface CapabilityEffect {
 class CapabilityInteraction(
     private val sendAction: suspend (String, suspend () -> Boolean) -> ActionSendResult,
     private val nextActionId: () -> String = { UUID.randomUUID().toString() },
-    private val unresolvedStore: UnresolvedCapabilityStore? = null,
     computerFallbackEnabled: Boolean = true,
 ) {
     private val mutableState = MutableStateFlow(CapabilityInteractionState())
@@ -102,88 +91,22 @@ class CapabilityInteraction(
     private var disconnectActionId: String? = null
     private var computerFallbackEnabled = computerFallbackEnabled
 
+    // The utterance behind whichever request most recently started routing --
+    // set only on the path in request() that actually proceeds (never on a
+    // blocked/rejected attempt). This is what "Try again" on a Failed sheet
+    // replays: the same request the user already made, never a new one, and
+    // only on an explicit tap (see retryFailedRequest).
+    private var lastRoutedUtterance: String? = null
+
     fun setComputerFallbackEnabled(enabled: Boolean) {
         computerFallbackEnabled = enabled
     }
-
-    // Lives outside the state object so that no wholesale state replacement
-    // can silently wipe it. Every publish re-applies it onto whatever state
-    // is being set; only markChecked() may set it back to null.
-    private var pendingCheck: String? = null
-
-    // Guards the one-time load of unresolvedStore. request() and
-    // restoreUnresolvedCheck() both funnel through ensureRestored() below, so
-    // whichever gets there first does the actual read and the other just
-    // waits on this lock and finds restored already true. Starts true when
-    // there is no store to read, so an interaction with no store never
-    // touches the lock at all.
-    private val restoreMutex = Mutex()
-
-    @Volatile
-    private var restored = unresolvedStore == null
 
     val state: StateFlow<CapabilityInteractionState> = mutableState.asStateFlow()
 
     /** The single path by which [mutableState] is ever set. */
     private fun publish(next: CapabilityInteractionState) {
-        mutableState.value = next.copy(unresolvedCheck = pendingCheck)
-    }
-
-    /**
-     * Loads whatever [unresolvedStore] holds and applies it to freshly built
-     * state — the durable half of the block, restored once at startup so a
-     * process death (or a cold start of this test) does not forget it. Must
-     * run before anything else reads [state] for the answer to be trusted.
-     *
-     * [UnresolvedCapabilityCheck.Unreadable] blocks rather than starting
-     * clean: a read failure means we cannot tell whether a check is pending,
-     * and refusing costs one tap on "I checked" while wrongly allowing a
-     * prompt through risks a real message sent twice. Same call
-     * [app.codexlauncher.task.management.TaskActionBridge] already makes
-     * when its journal cannot be read.
-     *
-     * Safe to call any number of times, from any number of places: the
-     * actual read happens at most once (see [ensureRestored]). The launcher
-     * calls this explicitly at startup; [request] also calls it so a prompt
-     * fired before that startup read finishes still waits for the same load
-     * instead of racing past it.
-     */
-    suspend fun restoreUnresolvedCheck() {
-        ensureRestored()
-    }
-
-    /**
-     * Runs the store load exactly once for the life of this object, no
-     * matter how many callers ask for it or in what order. [restored] is
-     * checked twice — once outside the lock so an already-restored call
-     * (the overwhelmingly common case) never touches [restoreMutex], and
-     * once inside it in case two callers arrived before either had finished.
-     */
-    private suspend fun ensureRestored() {
-        if (restored) return
-        restoreMutex.withLock {
-            if (restored) return@withLock
-            val store = unresolvedStore
-            if (store != null) {
-                when (val loaded = store.load()) {
-                    is UnresolvedCapabilityCheck.Pending -> applyRestoredCheck(loaded.message, readable = true)
-                    UnresolvedCapabilityCheck.Unreadable -> applyRestoredCheck(unreadableWarning, readable = false)
-                    UnresolvedCapabilityCheck.None -> Unit
-                }
-            }
-            restored = true
-        }
-    }
-
-    @Synchronized
-    private fun applyRestoredCheck(message: String, readable: Boolean) {
-        pendingCheck = message
-        publish(mutableState.value)
-        AppLog.info(
-            feature = "capability-interaction",
-            message = "unresolved check restored from store",
-            fields = mapOf("readable" to readable, "decision" to "block_until_checked"),
-        )
+        mutableState.value = next
     }
 
     @Synchronized
@@ -199,27 +122,15 @@ class CapabilityInteraction(
     }
 
     suspend fun request(utterance: String): String? {
-        // The stored block has to be read before we can trust
-        // current.unresolvedCheck below — see ensureRestored(). No-op once
-        // the launcher's own startup restore (or an earlier request()) has
-        // already done it.
-        ensureRestored()
         val actionId =
             synchronized(this) {
                 val current = mutableState.value
-                // A pending check blocks every new prompt, not just a retry of
-                // the same one: we still do not know whether the last app
-                // action landed, and starting another one before that is
-                // resolved only adds a second unknown on top of the first.
-                if (current.unresolvedCheck != null) {
-                    publish(current.copy(message = current.unresolvedCheck))
-                    return null
-                }
                 if (current.destination != PromptDestination.AUTO || current.busy || utterance.isBlank()) return null
                 nextActionId().also {
                     routeActionId = it
                     confirmationActionId = null
                     pendingDecision = null
+                    lastRoutedUtterance = utterance
                     publish(current.copy(phase = CapabilityPhase.ROUTING, preview = null, outcome = null, message = "Checking app actions…"))
                 }
             }
@@ -231,7 +142,7 @@ class CapabilityInteraction(
                     if (computerFallbackEnabled) {
                         "App actions unavailable. Sending to computer…"
                     } else {
-                        "Operator services unavailable."
+                        "Codex services unavailable."
                     }
                 publish(mutableState.value.copy(phase = CapabilityPhase.IDLE, message = message))
             }
@@ -297,13 +208,49 @@ class CapabilityInteraction(
                     if (computerFallbackEnabled) {
                         "Couldn’t reach the computer. Nothing was changed."
                     } else {
-                        "Couldn’t reach Operator services. Nothing was changed."
+                        "Couldn’t reach Codex services. Nothing was changed."
                     }
                 publish(mutableState.value.copy(phase = CapabilityPhase.PREVIEW, message = unreachable))
             }
             return false
         }
         return true
+    }
+
+    /**
+     * Answers a pending disambiguation ([CapabilityPhase.QUESTION], e.g.
+     * "Which Maya did you mean?"). stage2 understood the original command
+     * and only needs one more word before it can act, and the wire protocol
+     * has no separate "answer a capability question" message kind — ACTION_
+     * RESULT's `question` field is a plain display string with nothing to
+     * answer back into (ProtocolCodec.kt validates its body against a closed
+     * key set with no room for one). The one channel stage2 already
+     * understands is a fresh utterance, so this is [request] under a name
+     * that says what the caller means: [request] itself already treats
+     * QUESTION as free to route (it is not in [CapabilityInteractionState
+     * .busy]), so no new wire plumbing is needed, only this guard that
+     * refuses when there is no pending question to answer.
+     */
+    suspend fun answerQuestion(answer: String): Boolean {
+        if (mutableState.value.phase != CapabilityPhase.QUESTION || answer.isBlank()) return false
+        return request(answer) != null
+    }
+
+    /**
+     * The Failed sheet's "Try again" control: re-sends [lastRoutedUtterance]
+     * through the exact same [request] path as the original attempt. Only
+     * fires on an explicit call from that button's `onClick` -- never on its
+     * own -- and only when the sheet is actually showing a failure; returns
+     * null and sends nothing otherwise (nothing to retry, or the state has
+     * moved on since the failure was shown).
+     */
+    suspend fun retryFailedRequest(): String? {
+        val utterance =
+            synchronized(this) {
+                if (mutableState.value.phase != CapabilityPhase.FAILED) return null
+                lastRoutedUtterance
+            } ?: return null
+        return request(utterance)
     }
 
     /**
@@ -362,17 +309,26 @@ class CapabilityInteraction(
                     publish(mutableState.value.copy(phase = CapabilityPhase.IDLE, message = "No app action matched. Sending to computer…"))
                     CapabilityEffect.FallbackToComputer(requestId)
                 } else {
-                    publish(mutableState.value.copy(phase = CapabilityPhase.FAILED, message = "No supported action matched."))
+                    val unsupportedDetail = "No supported action matched."
+                    publish(
+                        mutableState.value.copy(
+                            phase = CapabilityPhase.FAILED,
+                            outcome = failedOutcome(unsupportedDetail, app = null),
+                            message = unsupportedDetail,
+                        ),
+                    )
                     CapabilityEffect.UnsupportedLocally(requestId)
                 }
             } else if (resultState == "cancelled" && question != null) {
                 publish(mutableState.value.copy(phase = CapabilityPhase.QUESTION, message = question))
                 CapabilityEffect.None
             } else {
+                val unexpectedDetail = "The app router returned an unexpected result. It was not sent to Codex."
                 publish(
                     mutableState.value.copy(
                         phase = CapabilityPhase.FAILED,
-                        message = "The app router returned an unexpected result. It was not sent to Codex.",
+                        outcome = failedOutcome(unexpectedDetail, app = null),
+                        message = unexpectedDetail,
                     ),
                 )
                 CapabilityEffect.UnexpectedRouteResult(requestId)
@@ -396,7 +352,6 @@ class CapabilityInteraction(
             val appLabel = preview?.adapterId?.let { adapterLabel(it).ifEmpty { null } }
             val outcome =
                 unverifiedOutcome(
-                    headline = headline,
                     appLabel = appLabel,
                     detail = "$headline — the computer sent this, but never heard back whether it worked.",
                 )
@@ -418,11 +373,14 @@ class CapabilityInteraction(
         // entry for -- so the lookup falls back to the honest one rather than
         // guessing.
         val failureCode = message.body["error"]?.jsonObject?.get("code")?.jsonPrimitive?.content
+        val failedAppLabel = mutableState.value.preview?.adapterId?.let { adapterLabel(it).ifEmpty { null } }
+        val failureDetail = failureMessages[failureCode] ?: genericFailureMessage
         publish(
             mutableState.value.copy(
                 phase = CapabilityPhase.FAILED,
                 preview = null,
-                message = failureMessages[failureCode] ?: genericFailureMessage,
+                outcome = failedOutcome(failureDetail, app = failedAppLabel),
+                message = failureDetail,
             ),
         )
         AppLog.info(
@@ -479,11 +437,6 @@ class CapabilityInteraction(
         // a set the way it checks a `when`.
         if (mutableState.value.phase !in setOf(CapabilityPhase.RESULT, CapabilityPhase.FAILED, CapabilityPhase.QUESTION)) return
         disconnectActionId = null
-        // Closing the sheet is not the same as going and checking the other
-        // app, so an unresolved check must survive the dismiss. publish()
-        // re-applies pendingCheck onto every state it sets, so the fresh
-        // state below still carries it forward — markChecked() is the only
-        // thing allowed to clear it.
         publish(CapabilityInteractionState(destination = mutableState.value.destination))
     }
 
@@ -491,8 +444,7 @@ class CapabilityInteraction(
      * Called when the connection dies while a capability run is in flight —
      * the one case where the phone knows on its own that it does not know.
      * An action that already left the phone (EXECUTING) may or may not have
-     * landed, so it ends as [StateMark.UNVERIFIED] instead of vanishing, and
-     * every further prompt is refused until [markChecked] clears it.
+     * landed, so it ends as [StateMark.UNVERIFIED] instead of vanishing.
      *
      * Phases before anything left the phone (IDLE, ROUTING, PREVIEW) have
      * nothing to be unsure about — nothing happened in the world yet — so
@@ -510,7 +462,6 @@ class CapabilityInteraction(
                 val appLabel = preview?.adapterId?.let { adapterLabel(it).ifEmpty { null } }
                 val outcome =
                     unverifiedOutcome(
-                        headline = headline,
                         appLabel = appLabel,
                         detail = "$headline — connection lost before the result came back.",
                     )
@@ -535,24 +486,38 @@ class CapabilityInteraction(
     }
 
     /**
+     * Builds the ending every routing/confirmation failure gets outside a
+     * finished [CapabilityPhase.RESULT] run: [StateMark.FAILED] plus the
+     * same "Try again"/"Open <app> and try again" recovery action a finished
+     * run reporting `done = false` already gets from [CapabilityOutcome.of]
+     * (see acceptResult). Before this, [CapabilityPhase.FAILED] carried only
+     * [CapabilityInteractionState.message] — a run that never got past
+     * routing or confirmation showed neither the mark nor a recovery action,
+     * while the same failure reported through a finished run showed both.
+     *
+     * The ceiling passed here is never read for a `done = false` outcome —
+     * [CapabilityOutcome.of]'s failed branch ignores it — so [Ceiling
+     * .HANDS_OFF] is a placeholder, not a claim about how far this request
+     * would have gone.
+     */
+    private fun failedOutcome(detail: String, app: String?): CapabilityOutcome =
+        CapabilityOutcome.of(ceiling = Ceiling.HANDS_OFF, done = false, detail = detail, app = app)
+
+    /**
      * Builds the ending an unverified run always gets: [StateMark.UNVERIFIED],
-     * neither claim flag set, and [pendingCheck] armed so the next prompt is
-     * refused until [markChecked] clears it. The real ceiling arrives on the
+     * neither claim flag set. The real ceiling arrives on the
      * `capability_result` we never got, so it was never learned here —
      * [Ceiling.HANDS_OFF] is an arbitrary placeholder, not a claim: `certain =
      * false` makes [CapabilityOutcome.of] return before `ceiling` affects
-     * anything else in the result, and nothing downstream (toTaskState,
-     * CapabilitySheet) reads `ceiling` off an UNVERIFIED outcome — only `mark`
-     * does.
+     * anything else in the result, and nothing downstream (toTaskState)
+     * reads `ceiling` off an UNVERIFIED outcome — only `mark` does.
      *
      * Shared by [sessionLost]'s EXECUTING branch (the phone worked out for
      * itself that it does not know) and [acceptActionResult]'s
-     * `outcome_unknown` branch (the companion said so directly) — the only
-     * two writers of [pendingCheck]; [markChecked] is the only place that
-     * clears it back out. Both are the same fact about the world, so they
-     * must produce the same ending.
+     * `outcome_unknown` branch (the companion said so directly). Both are the
+     * same fact about the world, so they must produce the same ending.
      */
-    private fun unverifiedOutcome(headline: String, appLabel: String?, detail: String): CapabilityOutcome {
+    private fun unverifiedOutcome(appLabel: String?, detail: String): CapabilityOutcome {
         val outcome =
             CapabilityOutcome.of(
                 ceiling = Ceiling.HANDS_OFF,
@@ -563,28 +528,7 @@ class CapabilityInteraction(
             )
         clearPending()
         disconnectActionId = null
-        pendingCheck = "$headline — outcome unknown. ${outcome.recoveryAction} before sending another."
-        unresolvedStore?.remember(pendingCheck)
-        AppLog.info(
-            feature = "capability-interaction",
-            message = "unresolved check armed",
-            fields = mapOf("decision" to "block_next_prompt"),
-        )
         return outcome
-    }
-
-    /** The "I checked" step. Clears a pending [CapabilityInteractionState.unresolvedCheck]; a no-op when nothing is pending. */
-    @Synchronized
-    fun markChecked() {
-        if (mutableState.value.unresolvedCheck == null) return
-        pendingCheck = null
-        unresolvedStore?.remember(null)
-        publish(mutableState.value)
-        AppLog.info(
-            feature = "capability-interaction",
-            message = "unresolved check cleared",
-            fields = mapOf("decision" to "allow_next_prompt"),
-        )
     }
 
     @Synchronized
@@ -624,12 +568,6 @@ class CapabilityInteraction(
         }
 
     private companion object {
-        // Fail-closed text for a store that could not be read at startup: we
-        // do not know whether a check is pending, so this blocks the same
-        // way a genuine pending check would, until the person taps "I checked".
-        const val unreadableWarning =
-            "Couldn't tell whether a previous app action finished. Check the computer before sending another message."
-
         // The honest default: we cannot explain what went wrong. Used for
         // "internal" itself and for any code this screen has no wording for --
         // a fifth word from a newer computer must fall back here, not guess.

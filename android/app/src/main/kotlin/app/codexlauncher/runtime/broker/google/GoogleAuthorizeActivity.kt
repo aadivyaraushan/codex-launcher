@@ -95,7 +95,7 @@ class GoogleAuthorizeActivity : ComponentActivity() {
         } else {
             label.text =
                 "Waiting for Google consent to finish…\n\n" +
-                    "Pick aadivya.raushan@gmail.com, then Allow."
+                    "Pick your Google account, then Allow."
         }
     }
 
@@ -152,9 +152,9 @@ class GoogleAuthorizeActivity : ComponentActivity() {
             awaitingResolution = true
             persist("awaiting_consent", "resolution_launched")
             label.text =
-                "Allow Operator to access Google Calendar and Drive.\n\n" +
+                "Allow Codex to access Google Calendar and Drive.\n\n" +
                     "Tap Allow / Continue on the next Google screen\n" +
-                    "(account: aadivya.raushan@gmail.com)."
+                    "(the account you're signing in with)."
             resolutionLauncher.launch(
                 IntentSenderRequest.Builder(pendingIntent.intentSender).build(),
             )
@@ -194,7 +194,7 @@ class GoogleAuthorizeActivity : ComponentActivity() {
                     grantedScopeCount = scopeCount,
                 )
                 label.text =
-                    "Google Calendar + Drive access granted for Operator.\nYou can return to chat."
+                    "Google Calendar + Drive access granted for Codex.\nYou can return to chat."
             }
             else -> {
                 persist(

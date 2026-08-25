@@ -169,6 +169,89 @@ class LauncherSessionViewModelTest {
         pending.await()
     }
 
+    // On-phone Send (forceCapability). The phone-runtime advertises desktop_tasks
+    // but no project and no new_task_options, so startNewTask cannot run. The
+    // prompt must reach the phone agent's one existing task as a queued start_turn,
+    // and a durable confirmation clears the composer draft. Before this the branch
+    // dead-ended in capabilityController.request() (the deleted capability wire).
+    @Test
+    fun anOnPhoneHomePromptQueuesAStartTurnToThePhoneAgentTaskAndClearsTheDraft() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        var draftClears = 0
+        val viewModel =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { null },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = FakeActionJournal(),
+                clearConfirmedDraft = { version -> assertEquals(DraftVersion(2, 7), version); draftClears += 1; true },
+                nextSessionId = { "session-1" },
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "desktop_tasks")))
+        observer.onMessage(snapshotWithTask(1, "Phone agent"))
+
+        val pending = async {
+            viewModel.submitHomePrompt(
+                "Reply to Maya that I am on my way",
+                selection = null,
+                DraftVersion(2, 7),
+                forceCapability = true,
+            )
+        }
+        val action = ProtocolCodec.decodeText(connection.awaitType("action"))
+        assertEquals("start_turn", action.body.getValue("kind").jsonPrimitive.content)
+        assertEquals("thread-1", action.body.getValue("taskId").jsonPrimitive.content)
+        assertEquals(0, draftClears)
+
+        val actionId = action.body.getValue("actionId").jsonPrimitive.content
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"phone-result","sender":"companion","type":"action_result","seq":2,"body":{"actionId":"$actionId","state":"confirmed","resultCode":"queued"}}""",
+            ),
+        )
+        pending.await()
+        assertEquals(1, draftClears)
+    }
+
+    // No phone task to receive it: send nothing rather than guessing a taskId,
+    // and leave the draft in place (nothing was delivered).
+    @Test
+    fun anOnPhoneHomePromptWithNoPhoneTaskSendsNothingAndKeepsTheDraft() = runBlocking {
+        lateinit var observer: SessionObserver
+        val connection = FakeSessionConnection()
+        var draftClears = 0
+        val viewModel =
+            LauncherSessionViewModel(
+                connect = { _, _, nextObserver -> observer = nextObserver; connection },
+                loadProject = { null },
+                saveProject = { true },
+                clearProject = { true },
+                actionJournal = FakeActionJournal(),
+                clearConfirmedDraft = { draftClears += 1; true },
+                nextSessionId = { "session-1" },
+                workScope = CoroutineScope(Dispatchers.Unconfined),
+            )
+        viewModel.connect(pairedComputer())
+        observer.onReady(connection, ByteArray(32))
+        observer.onMessage(welcome(capabilities = listOf("set_project", "desktop_tasks")))
+        observer.onMessage(
+            decode(
+                """{"version":{"major":1,"minor":0},"messageId":"snapshot-1","sender":"companion","type":"snapshot","seq":1,"body":{"baseSeq":1,"computerName":"Phone","projects":[],"tasks":[]}}""",
+            ),
+        )
+
+        viewModel.submitHomePrompt("nobody home", selection = null, DraftVersion(3, 1), forceCapability = true)
+        yield()
+
+        assertFalse(connection.sent.any { ProtocolCodec.decodeText(it).body["kind"]?.jsonPrimitive?.content == "start_turn" })
+        assertEquals(0, draftClears)
+    }
+
     @Test
     fun failedNewTaskPublishesAVisibleDraftRetainedMessage() = runBlocking {
         lateinit var observer: SessionObserver

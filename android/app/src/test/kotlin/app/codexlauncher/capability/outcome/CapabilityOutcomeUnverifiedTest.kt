@@ -148,6 +148,33 @@ class CapabilityOutcomeUnverifiedTest {
     }
 
     /**
+     * B5-001 (same bug, capability result card): the Unverified mark carries
+     * different words on different surfaces (DESIGN.md line 111). A lost run
+     * outcome is the task face — "Couldn't confirm that happened" — not the
+     * capability-badge word "Unverified" that belongs on a standing fact about
+     * an adapter (CapabilityBadge.of). The card used to read the badge word,
+     * disagreeing with the lost-run wording `unverifiedOutcome()` builds for the
+     * same event.
+     */
+    @Test
+    fun anUnverifiedRunReadsTheTaskPhraseNotTheCapabilityWord() {
+        val outcome = CapabilityOutcome.of(
+            ceiling = Ceiling.COMPLETES,
+            done = false,
+            detail = "We couldn't confirm this went through",
+            app = null,
+            certain = false,
+        )
+
+        assertEquals("Couldn't confirm that happened", outcome.label)
+        assertNotEquals(
+            "a lost run outcome must not read the capability-badge word",
+            StateMark.UNVERIFIED.label,
+            outcome.label,
+        )
+    }
+
+    /**
      * The home list and the sheet have to agree. Before this, `toTaskState`
      * sent UNVERIFIED down an unreachable branch that answered WORKING — so
      * one event would have shown as still-running in the list and as
