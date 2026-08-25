@@ -45,6 +45,8 @@ fun AppearanceScreen(
     appLabel: (String) -> String = { it },
     onResume: (ThreadKey) -> Unit = {},
     onModeSelected: (AppearanceMode) -> Unit = {},
+    updateStatusMessage: String? = null,
+    onCheckForUpdates: (() -> Unit)? = null,
     onBack: () -> Unit = {},
 ) {
     Scaffold(
@@ -123,6 +125,24 @@ fun AppearanceScreen(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (onCheckForUpdates != null) {
+                Spacer(Modifier.height(28.dp))
+                Text("Updates", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(8.dp))
+                TextButton(
+                    onClick = onCheckForUpdates,
+                    modifier = Modifier.semantics { contentDescription = "Check for updates" },
+                ) {
+                    Text("Check for updates")
+                }
+                if (updateStatusMessage != null) {
+                    Text(
+                        updateStatusMessage,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Spacer(Modifier.height(28.dp))
             Text("Stopped conversations", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(8.dp))

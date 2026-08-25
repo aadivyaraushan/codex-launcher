@@ -116,6 +116,15 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import app.codexlauncher.updater.AlphaReleaseCandidate
+import app.codexlauncher.updater.GitHubAlphaFeed
+import app.codexlauncher.updater.UpdateCheckResult
+import app.codexlauncher.updater.UpdateChecker
+import app.codexlauncher.updater.UpdatePipeline
+import app.codexlauncher.updater.install.ApkUpdateInstaller
+import app.codexlauncher.updater.ui.UpdateAvailableDialog
 import kotlinx.coroutines.withContext
 
 class LauncherActivity : ComponentActivity() {
@@ -150,6 +159,23 @@ class LauncherActivity : ComponentActivity() {
 
     private var homeIntentSequence by mutableLongStateOf(0L)
 
+    private val updatePipeline by lazy {
+        UpdatePipeline(
+            feed = GitHubAlphaFeed(),
+            installedVersionCode = {
+                packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
+            },
+        )
+    }
+    private val apkUpdateInstaller by lazy { ApkUpdateInstaller(this) }
+
+    private fun isNetworkUnmetered(): Boolean {
+        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return false
+        val network = connectivity.activeNetwork ?: return false
+        val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLog.info(
@@ -169,6 +195,107 @@ class LauncherActivity : ComponentActivity() {
             val notificationAccessBlock by launcherApplication.notificationAccessAsk.state.collectAsState()
             val lastRepliedConversation by launcherApplication.replyGuard.lastReplied.collectAsState()
             val scope = rememberCoroutineScope()
+            var availableUpdate by remember { mutableStateOf<AlphaReleaseCandidate?>(null) }
+            var updateBusy by remember { mutableStateOf(false) }
+            var updateStatusMessage by remember { mutableStateOf<String?>(null) }
+
+            fun installAvailableUpdate() {
+                val candidate = availableUpdate ?: return
+                scope.launch {
+                    updateBusy = true
+                    updateStatusMessage = "Downloading…"
+                    runCatching {
+                        if (!packageManager.canRequestPackageInstalls()) {
+                            startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                    Uri.parse("package:$packageName"),
+                                ),
+                            )
+                            updateStatusMessage = "Allow installs from this app, then try again."
+                            return@runCatching
+                        }
+                        val apk =
+                            withContext(Dispatchers.IO) {
+                                apkUpdateInstaller.downloadAndVerify(candidate)
+                            }
+                        updateStatusMessage = "Starting installer…"
+                        withContext(Dispatchers.IO) { apkUpdateInstaller.installApk(apk) }
+                    }.onFailure { error ->
+                        AppLog.error(feature = "updater", message = "update install failed", error = error)
+                        updateStatusMessage = "Update failed. Try again."
+                    }
+                    updateBusy = false
+                }
+            }
+            fun runUpdateCheck(manual: Boolean) {
+                scope.launch {
+                    updateBusy = true
+                    updateStatusMessage = if (manual) "Checking…" else updateStatusMessage
+                    val outcome =
+                        withContext(Dispatchers.IO) { updatePipeline.checkForUpdate() }
+                    when (outcome) {
+                        UpdateCheckResult.Unavailable -> {
+                            updateStatusMessage =
+                                if (manual) "Couldn’t check for updates. Try again." else null
+                            availableUpdate = null
+                            updateBusy = false
+                            return@launch
+                        }
+                        UpdateCheckResult.UpToDate -> {
+                            updateStatusMessage = if (manual) "You’re on the latest alpha." else null
+                            availableUpdate = null
+                            updateBusy = false
+                            return@launch
+                        }
+                        is UpdateCheckResult.Available -> {
+                            val candidate = outcome.candidate
+                            availableUpdate = candidate
+                            updateStatusMessage = "Update alpha-${candidate.versionCode} available"
+                            val mayDownload =
+                                UpdateChecker.shouldAutoDownload(
+                                    networkUnmetered = isNetworkUnmetered(),
+                                    manualRequest = manual,
+                                )
+                            updateBusy = false
+                            if (mayDownload) {
+                                installAvailableUpdate()
+                            } else {
+                                updateStatusMessage = "Update available. Connect to Wi‑Fi or tap Install."
+                            }
+                        }
+                    }
+                }
+            }
+
+            LaunchedEffect(Unit) {
+                withContext(Dispatchers.IO) {
+                    apkUpdateInstaller.clearStaleCache()
+                    val outcome = updatePipeline.checkForUpdate()
+                    val candidate =
+                        (outcome as? UpdateCheckResult.Available)?.candidate ?: return@withContext
+                    withContext(Dispatchers.Main) {
+                        availableUpdate = candidate
+                        updateStatusMessage = "Update alpha-${candidate.versionCode} available"
+                    }
+                    val unmetered = isNetworkUnmetered()
+                    if (!UpdateChecker.shouldAutoDownload(networkUnmetered = unmetered, manualRequest = false)) {
+                        AppLog.info(
+                            feature = "updater",
+                            message = "update available but auto-download skipped on metered network",
+                            fields = mapOf("version_code" to candidate.versionCode),
+                        )
+                        return@withContext
+                    }
+                    AppLog.info(
+                        feature = "updater",
+                        message = "auto-download on unmetered network",
+                        fields = mapOf("version_code" to candidate.versionCode),
+                    )
+                    withContext(Dispatchers.Main) { installAvailableUpdate() }
+                }
+            }
+
             val appsRepository = remember { InstalledAppsRepository(applicationContext) }
             val appsLoader = remember { InstalledAppsLoader(appsRepository) }
             var pairingState by remember { mutableStateOf<PairingRecordState>(PairingRecordState.Loading) }
@@ -869,6 +996,8 @@ class LauncherActivity : ComponentActivity() {
                                 scope.launch(Dispatchers.IO) { launcherApplication.durableStops.resume(key) }
                             },
                             onModeSelected = { mode -> scope.launch { themePreferences.setMode(mode) } },
+                            updateStatusMessage = updateStatusMessage,
+                            onCheckForUpdates = { runUpdateCheck(manual = true) },
                             onBack = { destination = LauncherDestination.APPS },
                         )
                 }
@@ -882,6 +1011,20 @@ class LauncherActivity : ComponentActivity() {
                         onFile = {
                             attachmentChoiceVisible = false
                             documentPicker.launch(arrayOf("image/*", "text/*", "application/pdf", "application/json", "application/zip"))
+                        },
+                    )
+                }
+                availableUpdate?.let { candidate ->
+                    UpdateAvailableDialog(
+                        candidate = candidate,
+                        busy = updateBusy,
+                        statusMessage = updateStatusMessage,
+                        onInstall = { installAvailableUpdate() },
+                        onDismiss = {
+                            availableUpdate = null
+                            if (updateStatusMessage?.startsWith("Update alpha-") == true) {
+                                updateStatusMessage = null
+                            }
                         },
                     )
                 }

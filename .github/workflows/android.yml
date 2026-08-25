@@ -26,6 +26,7 @@ jobs:
       - name: Test and lint
         run: |
           node release/checks/android-debug-surface.test.mjs
+          node release/checks/public-alpha-release.test.mjs
           ./android/gradlew -p android --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug assembleRelease
           node release/checks/android-debug-apk-isolation.test.mjs
       - name: Upload lint report
@@ -56,3 +57,92 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: ./android/gradlew -p android --no-daemon --stacktrace connectedDebugAndroidTest
+
+  publish-alpha:
+    if: github.ref == 'refs/heads/main'
+    needs: [unit-and-lint, android-16-emulator]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@90ddb51e90a5fd9ba75f40cf85156b7b41bf76a3 # v6
+      - name: Prepare release signing key
+        env:
+          STORE_BASE64: ${{ secrets.CODEX_LAUNCHER_STORE_BASE64 }}
+          CODEX_LAUNCHER_STORE_PASSWORD: ${{ secrets.CODEX_LAUNCHER_STORE_PASSWORD }}
+          CODEX_LAUNCHER_KEY_ALIAS: ${{ secrets.CODEX_LAUNCHER_KEY_ALIAS }}
+          CODEX_LAUNCHER_KEY_PASSWORD: ${{ secrets.CODEX_LAUNCHER_KEY_PASSWORD }}
+        run: |
+          test -n "${STORE_BASE64}"
+          test -n "${CODEX_LAUNCHER_STORE_PASSWORD}"
+          test -n "${CODEX_LAUNCHER_KEY_ALIAS}"
+          test -n "${CODEX_LAUNCHER_KEY_PASSWORD}"
+          printf '%s' "${STORE_BASE64}" | base64 --decode > "${RUNNER_TEMP}/codex-launcher-release.keystore"
+      - name: Build signed alpha APK
+        env:
+          CODEX_LAUNCHER_STORE_FILE: ${{ runner.temp }}/codex-launcher-release.keystore
+          CODEX_LAUNCHER_STORE_PASSWORD: ${{ secrets.CODEX_LAUNCHER_STORE_PASSWORD }}
+          CODEX_LAUNCHER_KEY_ALIAS: ${{ secrets.CODEX_LAUNCHER_KEY_ALIAS }}
+          CODEX_LAUNCHER_KEY_PASSWORD: ${{ secrets.CODEX_LAUNCHER_KEY_PASSWORD }}
+        run: |
+          VERSION_CODE="$(git rev-list --count HEAD)"
+          VERSION_NAME="0.1.0-alpha.${VERSION_CODE}"
+          echo "VERSION_CODE=${VERSION_CODE}" >> "${GITHUB_ENV}"
+          echo "VERSION_NAME=${VERSION_NAME}" >> "${GITHUB_ENV}"
+          ./android/gradlew -p android --no-daemon --stacktrace assembleRelease \
+            -PalphaVersionCode="${VERSION_CODE}" \
+            -PalphaVersionName="${VERSION_NAME}"
+      - name: Remove temporary signing key
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/codex-launcher-release.keystore"
+      - name: Publish immutable alpha prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="alpha-${VERSION_CODE}"
+          mkdir -p dist/alpha
+          APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
+          APK_DST="dist/alpha/codex-launcher-${VERSION_NAME}.apk"
+          cp "${APK_SRC}" "${APK_DST}"
+          SHA256="$(sha256sum "${APK_DST}" | awk '{print $1}')"
+          printf '%s\n' "{\"versionCode\":${VERSION_CODE},\"versionName\":\"${VERSION_NAME}\",\"sha256\":\"${SHA256}\"}" \
+            > dist/alpha/version.json
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; refusing to mutate an immutable alpha tag"
+            exit 1
+          fi
+          gh release create "${TAG}" \
+            "${APK_DST}" \
+            dist/alpha/version.json \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --prerelease \
+            --latest=false \
+            --title "Codex Launcher ${VERSION_NAME}" \
+            --notes "Phone alpha build ${VERSION_NAME} (versionCode ${VERSION_CODE})."
+      - name: Prune alpha releases older than newest 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t TAGS < <(
+            gh release list --repo "${GITHUB_REPOSITORY}" --limit 200 --json tagName \
+              --jq '.[].tagName' \
+              | grep -E '^alpha-[1-9][0-9]*$' \
+              | sort -t- -k2,2nr
+          )
+          if ((${#TAGS[@]} <= 10)); then
+            echo "Keeping all ${#TAGS[@]} alpha releases"
+            exit 0
+          fi
+          for tag in "${TAGS[@]:10}"; do
+            echo "Deleting stale alpha release ${tag}"
+            gh release delete "${tag}" --repo "${GITHUB_REPOSITORY}" --yes --cleanup-tag
+          done
