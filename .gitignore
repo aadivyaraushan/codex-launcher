@@ -1,6 +1,8 @@
 # Local agent and scratch state
 .gstack/
 work/
+.claude/
+companion/operator-phone-runtime
 
 # Android and Gradle output
 .gradle/
@@ -44,3 +46,6 @@ coverage.out
 .DS_Store
 Thumbs.db
 .vercel
+
+# Screen recordings (keep the still-frame montage instead)
+*.mp4

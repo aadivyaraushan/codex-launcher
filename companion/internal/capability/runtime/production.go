@@ -13,6 +13,7 @@ import (
 	deeplinkadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/deeplink"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gcalendar"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/gdrive"
+	getlocationadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/getlocation"
 	instagramadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/instagram"
 	mapsadapter "github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/maps"
 	"github.com/codex-launcher/codex-launcher/companion/internal/capability/adapters/msteams"
@@ -278,6 +279,15 @@ func NewProduction(config ProductionConfig) (Inventory, error) {
 	}
 	inv.Registered = append(inv.Registered, notificationreplyadapter.ID)
 	byClass[notificationreplyadapter.Class] = append(byClass[notificationreplyadapter.Class], notificationreplyadapter.ID)
+
+	// Location needs no credential either — it reads the phone's own GPS,
+	// which is Android's to grant or refuse, not something this Mac holds a
+	// key for.
+	if err := reg.Register(getlocationadapter.New(logger)); err != nil {
+		return Inventory{}, err
+	}
+	inv.Registered = append(inv.Registered, getlocationadapter.ID)
+	byClass["location"] = append(byClass["location"], getlocationadapter.ID)
 
 	// Maps: Places/Routes via Linux API key, or Android Keystore broker over
 	// loopback (phone-runtime). With neither, leave it out rather than fail
