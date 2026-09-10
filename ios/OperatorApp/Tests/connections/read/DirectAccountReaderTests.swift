@@ -268,6 +268,10 @@ final class DirectAccountReaderTests: XCTestCase {
 
     func testGmailRidesTheGoogleClient() {
         XCTAssertEqual(AccountReadOperation.gmailMessages.provider, .google)
+        XCTAssertTrue(OAuthProvider.google.scopes.contains("https://www.googleapis.com/auth/gmail.readonly"))
+        // Read-only, and nothing else. If a send or modify scope ever
+        // appears here it should be because someone argued for it.
+        XCTAssertFalse(OAuthProvider.google.scopes.contains { $0.contains("gmail") && !$0.hasSuffix("gmail.readonly") })
         // Lower than the shared limit on purpose: each row costs a request.
         XCTAssertEqual(DirectAccountReader.gmailMaximumLimit, 10)
     }

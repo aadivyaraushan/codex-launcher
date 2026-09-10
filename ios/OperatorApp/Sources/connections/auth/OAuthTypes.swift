@@ -13,6 +13,10 @@ enum OAuthProvider: String, Codable, CaseIterable, Sendable {
             [
                 "https://www.googleapis.com/auth/calendar.events",
                 "https://www.googleapis.com/auth/drive.file",
+                // Restricted scope. Works today because the project is in
+                // Testing mode with named test users; a public release would
+                // need a CASA security assessment first.
+                "https://www.googleapis.com/auth/gmail.readonly",
             ]
         case .microsoftOutlook:
             ["openid", "offline_access", "User.Read", "Mail.ReadWrite", "Mail.Send", "Calendars.Read"]
