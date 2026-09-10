@@ -2,11 +2,11 @@ import Foundation
 import OSLog
 
 enum AccountReadOperation: String, Sendable {
-    case googleCalendarEvents, googleDriveFiles, outlookInbox, slackChannels, slackHistory, spotifySearch, spotifyPlayback
+    case googleCalendarEvents, googleDriveFiles, outlookInbox, outlookCalendarEvents, slackChannels, slackHistory, spotifySearch, spotifyPlayback
     var provider: OAuthProvider {
         switch self {
         case .googleCalendarEvents, .googleDriveFiles: .google
-        case .outlookInbox: .microsoftOutlook
+        case .outlookInbox, .outlookCalendarEvents: .microsoftOutlook
         case .slackChannels, .slackHistory: .slack
         case .spotifySearch, .spotifyPlayback: .spotify
         }
@@ -53,7 +53,7 @@ actor DirectAccountReader {
         if (r.operation == .spotifySearch || r.operation == .spotifyPlayback) && r.limit > 10 { return false }
         if let cursor = r.cursor, cursor.contains("://") { return false }
         switch r.operation {
-        case .googleCalendarEvents:
+        case .googleCalendarEvents, .outlookCalendarEvents:
             guard let minText = r.timeMin, let maxText = r.timeMax, r.channel == nil,
                   let min = Self.rfc3339(minText), let max = Self.rfc3339(maxText) else { return false }
             return min < max
@@ -82,6 +82,8 @@ actor DirectAccountReader {
             base = "https://www.googleapis.com"; path = "/drive/v3/files"; let safe = r.query!.replacingOccurrences(of:"\\",with:"\\\\").replacingOccurrences(of:"'",with:"\\'"); items=[.init(name:"q",value:"name contains '\(safe)' and trashed = false"),.init(name:"spaces",value:"drive"),.init(name:"pageSize",value:String(r.limit)),.init(name:"fields",value:"nextPageToken,files(id,name,mimeType)")]; if let c=r.cursor { items.append(.init(name:"pageToken",value:c)) }
         case .outlookInbox:
             base = "https://graph.microsoft.com"; path = "/v1.0/me/mailFolders/inbox/messages"; items=[.init(name:"$top",value:String(r.limit)),.init(name:"$select",value:"id,subject,from,receivedDateTime,bodyPreview")]; if let c=r.cursor { items.append(.init(name:"$skip",value:c)) }
+        case .outlookCalendarEvents:
+            base = "https://graph.microsoft.com"; path = "/v1.0/me/calendarView"; items=[.init(name:"startDateTime",value:r.timeMin),.init(name:"endDateTime",value:r.timeMax),.init(name:"$top",value:String(r.limit)),.init(name:"$orderby",value:"start/dateTime"),.init(name:"$select",value:"id,subject,start,end,location,isAllDay,webLink,organizer")]; if let c=r.cursor { items.append(.init(name:"$skip",value:c)) }
         case .slackChannels:
             base="https://slack.com"; path="/api/conversations.list"; items=[.init(name:"exclude_archived",value:"true"),.init(name:"types",value:"public_channel,private_channel"),.init(name:"limit",value:String(r.limit))]; if let c=r.cursor { items.append(.init(name:"cursor",value:c)) }
         case .slackHistory:
@@ -103,6 +105,8 @@ actor DirectAccountReader {
         case .googleDriveFiles: array=object["files"] as? [Any]; next=object["nextPageToken"] as? String
         case .outlookInbox:
             array=object["value"] as? [Any]; next=try self.microsoftCursor(object["@odata.nextLink"] as? String, path:"/v1.0/me/mailFolders/inbox/messages")
+        case .outlookCalendarEvents:
+            array=object["value"] as? [Any]; next=try self.microsoftCursor(object["@odata.nextLink"] as? String, path:"/v1.0/me/calendarView")
         case .slackChannels: array=object["channels"] as? [Any]; next=((object["response_metadata"] as? [String:Any])?["next_cursor"] as? String)
         case .slackHistory: array=object["messages"] as? [Any]; next=((object["response_metadata"] as? [String:Any])?["next_cursor"] as? String)
         case .spotifySearch: let tracks=object["tracks"] as? [String:Any]; array=tracks?["items"] as? [Any]; let offset=tracks?["offset"] as? Int ?? 0; next=(tracks?["next"] as? String) == nil ? nil : String(offset + input.limit)
@@ -130,6 +134,7 @@ actor DirectAccountReader {
         case .googleCalendarEvents: keys = ["id", "summary", "description", "start", "end", "htmlLink"]
         case .googleDriveFiles: keys = ["id", "name", "mimeType"]
         case .outlookInbox: keys = ["id", "subject", "from", "receivedDateTime", "bodyPreview"]
+        case .outlookCalendarEvents: keys = ["id", "subject", "start", "end", "location", "isAllDay", "webLink", "organizer"]
         case .slackChannels: keys = ["id", "name", "is_private", "is_archived", "topic", "purpose"]
         case .slackHistory: keys = ["ts", "user", "text", "thread_ts"]
         case .spotifySearch: keys = ["id", "name", "artists", "album", "duration_ms", "external_urls"]

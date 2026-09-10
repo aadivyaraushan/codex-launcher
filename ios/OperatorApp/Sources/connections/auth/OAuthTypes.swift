@@ -15,7 +15,7 @@ enum OAuthProvider: String, Codable, CaseIterable, Sendable {
                 "https://www.googleapis.com/auth/drive.file",
             ]
         case .microsoftOutlook:
-            ["openid", "offline_access", "User.Read", "Mail.ReadWrite", "Mail.Send"]
+            ["openid", "offline_access", "User.Read", "Mail.ReadWrite", "Mail.Send", "Calendars.Read"]
         case .slack:
             ["chat:write", "channels:read", "channels:history", "groups:read", "groups:history", "im:write", "im:history", "users:read"]
         case .spotify:
