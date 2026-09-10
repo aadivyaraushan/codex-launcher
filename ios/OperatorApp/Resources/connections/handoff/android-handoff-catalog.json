@@ -606,5 +606,69 @@
     "sourceURL": "companion/internal/capability/adapters/deeplink/adapter.go:216",
     "verification": "officialSearchVerified",
     "provesOnly": "Official HTTPS landing page only; does not prove native app availability or any action completion."
+  },
+  {
+    "id": "gmail",
+    "displayName": "Gmail",
+    "url": "https://mail.google.com",
+    "sourceURL": "companion/internal/capability/adapters/deeplink/adapter.go:233",
+    "verification": "webOpenedOfficial",
+    "provesOnly": "Official HTTPS landing page only; does not prove native app availability or any action completion."
+  },
+  {
+    "id": "gcalendar",
+    "displayName": "Google Calendar",
+    "url": "https://calendar.google.com",
+    "sourceURL": "companion/internal/capability/adapters/deeplink/adapter.go:234",
+    "verification": "webOpenedOfficial",
+    "provesOnly": "Official HTTPS landing page only; does not prove native app availability or any action completion."
+  },
+  {
+    "id": "slack",
+    "displayName": "Slack",
+    "url": "https://slack.com",
+    "sourceURL": "companion/internal/capability/adapters/deeplink/adapter.go:235",
+    "verification": "webOpenedOfficial",
+    "provesOnly": "Official HTTPS landing page only; does not prove native app availability or any action completion."
+  },
+  {
+    "id": "notion",
+    "displayName": "Notion",
+    "url": "https://www.notion.so",
+    "sourceURL": "companion/internal/capability/adapters/deeplink/adapter.go:236",
+    "verification": "webOpenedOfficial",
+    "provesOnly": "Official HTTPS landing page only; does not prove native app availability or any action completion."
+  },
+  {
+    "id": "waze",
+    "displayName": "Waze",
+    "url": "https://www.waze.com",
+    "sourceURL": "companion/internal/capability/adapters/deeplink/adapter.go:237",
+    "verification": "webOpenedOfficial",
+    "provesOnly": "Official HTTPS landing page only; does not prove native app availability or any action completion."
+  },
+  {
+    "id": "zoom",
+    "displayName": "Zoom",
+    "url": "https://zoom.us",
+    "sourceURL": "companion/internal/capability/adapters/deeplink/adapter.go:238",
+    "verification": "webOpenedOfficial",
+    "provesOnly": "Official HTTPS landing page only; does not prove native app availability or any action completion."
+  },
+  {
+    "id": "ticketmaster",
+    "displayName": "Ticketmaster",
+    "url": "https://www.ticketmaster.com",
+    "sourceURL": "companion/internal/capability/adapters/deeplink/adapter.go:239",
+    "verification": "webOpenedOfficial",
+    "provesOnly": "Official HTTPS landing page only; does not prove native app availability or any action completion."
+  },
+  {
+    "id": "instacart",
+    "displayName": "Instacart",
+    "url": "https://www.instacart.com",
+    "sourceURL": "companion/internal/capability/adapters/deeplink/adapter.go:240",
+    "verification": "webOpenedOfficial",
+    "provesOnly": "Official HTTPS landing page only; does not prove native app availability or any action completion."
   }
 ]

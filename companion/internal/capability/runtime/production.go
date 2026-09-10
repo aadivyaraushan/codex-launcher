@@ -37,6 +37,18 @@ import (
 // in account.
 const oauthReason = "no complete refreshable OAuth connection was loaded from macOS Keychain"
 
+// handOffInPlace explains a skip that is not a hole. Some ids carry two
+// adapters: a credentialed one that needs a browser sign-in, and a
+// credential-free hand-off that only opens the app. The registry is keyed by
+// id so only one can be in it, and the hand-off is what ships until the
+// sign-in exists. Reading "registered" beside "skipped, needs OAuth" for the
+// same id tells whoever is debugging it nothing true, so the reason has to
+// say which one was left out. signin_accounted_for_test.go enforces it.
+func handOffInPlace(app string) string {
+	return oauthReason + "; the hand-off adapter of the same id is registered in its place, so " +
+		app + " still opens on the phone — it just cannot be driven"
+}
+
 // ConsentGate builds the gate a runtime hands its flow. Every adapter that
 // ships today is consent class A, which passes with nothing granted, so
 // there is no registered copy and no vault to revoke against yet. The gate
@@ -359,7 +371,7 @@ func NewProduction(config ProductionConfig) (Inventory, error) {
 		inv.Registered = append(inv.Registered, gcalendar.ID)
 		byClass["calendar"] = append(byClass["calendar"], gcalendar.ID)
 	} else {
-		inv.Skipped[gcalendar.ID] = oauthReason
+		inv.Skipped[gcalendar.ID] = handOffInPlace("Google Calendar")
 	}
 	if config.GoogleDriveAPI != nil {
 		if err := reg.Register(gdrive.New(config.GoogleDriveAPI, logger)); err != nil {
@@ -377,7 +389,7 @@ func NewProduction(config ProductionConfig) (Inventory, error) {
 		inv.Registered = append(inv.Registered, slackadapter.ID)
 		byClass["slack"] = append(byClass["slack"], slackadapter.ID)
 	} else {
-		inv.Skipped[slackadapter.ID] = oauthReason
+		inv.Skipped[slackadapter.ID] = handOffInPlace("Slack")
 	}
 	if config.OutlookAPI != nil {
 		if err := reg.Register(outlook.New(config.OutlookAPI, logger)); err != nil {
@@ -395,8 +407,7 @@ func NewProduction(config ProductionConfig) (Inventory, error) {
 		inv.Registered = append(inv.Registered, spotifyadapter.ID)
 		byClass["media"] = append(byClass["media"], spotifyadapter.ID)
 	} else {
-		inv.Skipped[spotifyadapter.ID] = oauthReason +
-			"; the hand-off adapter of the same id is registered in its place, so Spotify still opens on the phone — it just cannot be driven"
+		inv.Skipped[spotifyadapter.ID] = handOffInPlace("Spotify")
 	}
 	if config.NotionAdapter != nil {
 		if err := reg.Register(config.NotionAdapter); err != nil {
@@ -405,7 +416,7 @@ func NewProduction(config ProductionConfig) (Inventory, error) {
 		inv.Registered = append(inv.Registered, notionadapter.ID)
 		byClass["notes"] = append(byClass["notes"], notionadapter.ID)
 	} else {
-		inv.Skipped[notionadapter.ID] = oauthReason
+		inv.Skipped[notionadapter.ID] = handOffInPlace("Notion")
 	}
 
 	// These remaining adapters still have no persisted production connection.

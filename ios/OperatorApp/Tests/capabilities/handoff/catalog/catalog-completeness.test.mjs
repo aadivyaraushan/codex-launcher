@@ -12,9 +12,9 @@ const sourceIds = [...source.matchAll(/\{ID:\s*"([^"]+)"/g)].map((match) => matc
 const catalogIds = catalog.map((row) => row.id);
 const sortedUnique = (ids) => [...new Set(ids)].sort();
 assert.deepEqual(sortedUnique(catalogIds), sortedUnique(sourceIds));
-assert.equal(sourceIds.length, 76);
-assert.equal(catalog.length, 76);
-assert.equal(new Set(catalogIds).size, 76);
+assert.equal(sourceIds.length, 84);
+assert.equal(catalog.length, 84);
+assert.equal(new Set(catalogIds).size, 84);
 
 const expectedStates = {
   messages: "nativeHandled",
@@ -36,7 +36,7 @@ for (const row of catalog) {
   }
 }
 assert.equal(catalog.find((row) => row.id === "instagram"), undefined, "Instagram is separately excluded, not an Android Wave1 ID");
-assert.equal(catalog.filter((row) => row.verification === "webOpenedOfficial").length, 66);
+assert.equal(catalog.filter((row) => row.verification === "webOpenedOfficial").length, 74);
 assert.equal(catalog.filter((row) => row.verification === "officialSearchVerified").length, 7);
 assert.equal(catalog.filter((row) => row.verification === "officialDomainUnchecked").length, 0);
 console.log(`PASS: ${catalog.length} Wave1Specs IDs mapped; ${catalog.filter((row) => row.url).length} URL rows; explicit states=${Object.keys(expectedStates).length}`);
