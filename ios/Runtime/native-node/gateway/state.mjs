@@ -1,0 +1,23 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {randomBytes} from 'node:crypto';
+
+export function prepareState(state) {
+  fs.mkdirSync(state, {recursive: true, mode: 0o700});
+  const workspace = path.join(state, 'workspace');
+  fs.mkdirSync(workspace, {recursive: true, mode: 0o700});
+  const configPath = path.join(state, 'openclaw.json');
+  const config = {
+    gateway: {mode: 'local', bind: 'loopback', auth: {mode: 'token', token: randomBytes(32).toString('hex')}, controlUi: {enabled: false}},
+    agents: {defaults: {workspace}}
+  };
+  try {
+    // Exclusive creation: reopening must never replace settings or saved sign-in.
+    fs.writeFileSync(configPath, JSON.stringify(config), {flag: 'wx', mode: 0o600});
+    return {configPath, created: true};
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    // OpenClaw owns parsing and validating existing configuration, including JSON5.
+    return {configPath, created: false};
+  }
+}

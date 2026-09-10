@@ -1,0 +1,1017 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+        F90300000000000000000001 /* NotionLoopbackCallbackServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90400000000000000000001; };
+        F90100000000000000000001 /* PublicMediaHTTPTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90200000000000000000001 /* PublicMediaHTTPTransport.swift */; };
+        F90100000000000000000002 /* PublicMediaURLPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90200000000000000000002 /* PublicMediaURLPolicy.swift */; };
+        F90100000000000000000003 /* ForegroundMediaNodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90200000000000000000003 /* ForegroundMediaNodeService.swift */; };
+        F90100000000000000000004 /* PodcastMediaServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90200000000000000000004 /* PodcastMediaServices.swift */; };
+        F90100000000000000000005 /* InAppMediaOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90200000000000000000005 /* InAppMediaOpener.swift */; };
+        F90100000000000000000006 /* YouTubeMediaServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90200000000000000000006 /* YouTubeMediaServices.swift */; };
+        D90100000000000000000001 /* ForegroundConnectionDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D90200000000000000000001; };
+        E90100000000000000000021 /* DirectAccountWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E90200000000000000000021; };
+        E90100000000000000000022 /* ForegroundAccountWriteConfirmationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E90200000000000000000022; };
+        E90100000000000000000023 /* SystemAccountWriteConfirmationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E90200000000000000000023; };
+        C90100000000000000000014 /* OAuthTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000014; };
+        C90100000000000000000015 /* OAuthTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000015; };
+        C90100000000000000000016 /* PhoneOAuthClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000016; };
+        C90100000000000000000017 /* DirectAccountReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000017; };
+        C90100000000000000000018 /* ForegroundAccountReadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000018; };
+        C90100000000000000000019 /* NativeAccountSetupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000019; };
+        C90100000000000000000021 /* NotionMCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000021; };
+        C90100000000000000000022 /* NativeNotionSetupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000022; };
+        C90100000000000000000023 /* ForegroundNotionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000023; };
+        C90100000000000000000024 /* SystemNotionToolConfirmationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000024; };
+        C90100000000000000000020 /* NativeAccountConnectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000020; };
+        C90100000000000000000009 /* NativeWhatsAppReadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000009; };
+        C90100000000000000000010 /* ForegroundWhatsAppReadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000010; };
+        C90100000000000000000011 /* ForegroundWhatsAppComposeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000011; };
+        C90100000000000000000012 /* NativeWhatsAppSendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000012; };
+        C90100000000000000000013 /* SystemWhatsAppComposePresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000013; };
+        C90100000000000000000008 /* LoopbackPort.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000008; };
+        C90100000000000000000005 /* NativeWhatsAppLinkClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000005; };
+        C90100000000000000000006 /* libWacliBridge.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C90200000000000000000006; };
+        C90100000000000000000007 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = C90200000000000000000007; };
+        C90100000000000000000001 /* ForegroundMapsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000001; };
+        C90100000000000000000002 /* ForegroundAppHandoffService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000002; };
+        C90100000000000000000003 /* SystemAppHandoffOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000003; };
+        C90100000000000000000004 /* android-handoff-catalog.json in Resources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000004; };
+        A90100000000000000000001 /* EmbeddedRuntimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90200000000000000000001; };
+        A90100000000000000000002 /* EmbeddedNodeBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = A90200000000000000000002; };
+        A90100000000000000000003 /* runtime in Resources */ = {isa = PBXBuildFile; fileRef = A90200000000000000000003; };
+        A90100000000000000000004 /* NodeMobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A90200000000000000000004; };
+        A90100000000000000000005 /* NodeMobile.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A90200000000000000000004; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		13411FA22DB973F4F833DD9E /* ChatSessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F9676D6F9E8AD88AAAC40E2 /* ChatSessionModel.swift */; };
+		21ED022EAD1A55D2D1865494 /* CoreChatPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = A79432C188DAA9E5D86A5896 /* CoreChatPersistence.swift */; };
+		49892E375D6B50BFCC40736B /* ModelSetupFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6353F222861E64E1856902 /* ModelSetupFlow.swift */; };
+		5F8D5118B87FA4BADFB5C490 /* ModelSetupContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 421FA479133137B163DDDE9C /* ModelSetupContracts.swift */; };
+		6C9023EB6B08D517592E775B /* ChatSessionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1593E68D6DA83F3D5323D640 /* ChatSessionModelTests.swift */; };
+		A90700000000000000000001 /* NativeAccountSetupCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90800000000000000000001 /* NativeAccountSetupCoordinatorTests.swift */; };
+		79D6EEA191EB7EA5D764E9F0 /* OperatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 243883C3810544B3A49A5C08 /* OperatorApp.swift */; };
+		7ED39EDE3514AAB3E5876E9B /* OperatorCore in Frameworks */ = {isa = PBXBuildFile; productRef = 9C8D80636F955AF766371DC4 /* OperatorCore */; };
+		8CA2E8E840C22B680681DD6E /* LocalModelSetupGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C13CFDD2D788E106F260D4B /* LocalModelSetupGateway.swift */; };
+		8DAA325B2CE2A7D6BB1A96AC /* ChatScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996961BE0B62984DE5354052 /* ChatScreen.swift */; };
+		9FFAEA362A6B83E9C383E7A4 /* LocalOpenClawChatGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB89572B23DFFD774B38433 /* LocalOpenClawChatGateway.swift */; };
+		BC959E4E9FE0DBFFE44077B1 /* KeychainCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06DA0E953B0B9B01FFEE8D10 /* KeychainCredentialStore.swift */; };
+		EF86947BAF2338DA9D9AD674 /* ModelSetupModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03755826A1F5F57F5FD3EA1B /* ModelSetupModelTests.swift */; };
+		E10100000000000000000001 /* OfflineDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20100000000000000000001 /* OfflineDictation.swift */; };
+		E10200000000000000000001 /* OfflineDictationModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20200000000000000000001 /* OfflineDictationModelTests.swift */; };
+		E10300000000000000000001 /* AVFAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E20300000000000000000001 /* AVFAudio.framework */; };
+		E10400000000000000000001 /* Speech.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E20400000000000000000001 /* Speech.framework */; };
+		E10500000000000000000001 /* ForegroundLocationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20500000000000000000001 /* ForegroundLocationServiceTests.swift */; };
+		E10600000000000000000001 /* ForegroundLocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20600000000000000000001 /* ForegroundLocationService.swift */; };
+		E10700000000000000000001 /* LocalLocationNodeGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20700000000000000000001 /* LocalLocationNodeGateway.swift */; };
+		E10800000000000000000001 /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E20800000000000000000001 /* CoreLocation.framework */; };
+		E10900000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E20900000000000000000001 /* Assets.xcassets */; };
+		E11000000000000000000001 /* EventKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E21000000000000000000001 /* EventKit.framework */; };
+		E11100000000000000000001 /* ForegroundCalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10100000000000000000001 /* ForegroundCalendarService.swift */; };
+		E11200000000000000000001 /* ForegroundNodeCommandRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10200000000000000000001 /* ForegroundNodeCommandRouter.swift */; };
+		E11300000000000000000001 /* ForegroundCalendarServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10300000000000000000001 /* ForegroundCalendarServiceTests.swift */; };
+		E21100000000000000000001 /* OperatorWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E21200000000000000000001 /* OperatorWidget.swift */; };
+		E21300000000000000000001 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E21400000000000000000001 /* WidgetKit.framework */; };
+		E21500000000000000000001 /* OperatorWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = E21600000000000000000001 /* OperatorWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F0A1B2C3D4E5F60718293A4D /* OperatorChatAppIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F60718293A4C /* OperatorChatAppIntent.swift */; };
+		F0A1B2C3D4E5F60718293A4B /* OperatorChatAppIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F60718293A4A /* OperatorChatAppIntentTests.swift */; };
+		EFB337E1E8C679ED7DB3FE70 /* OperatorCore in Frameworks */ = {isa = PBXBuildFile; productRef = 051ADE6419DBFF89743CCF5F /* OperatorCore */; };
+		FD66FBAF132FD1B8830F9CF4 /* ChatContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4D32786B344D6642DF4CC5 /* ChatContracts.swift */; };
+        E30100000000000000000001 /* WhatsAppLinkFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30200000000000000000001 /* WhatsAppLinkFlow.swift */; };
+        E30300000000000000000001 /* WhatsAppLinkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30400000000000000000001 /* WhatsAppLinkSheet.swift */; };
+        E30500000000000000000001 /* WhatsAppLinkFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30600000000000000000001 /* WhatsAppLinkFlowTests.swift */; };
+        E30700000000000000000001 /* ForegroundMessageComposeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30800000000000000000001 /* ForegroundMessageComposeService.swift */; };
+        66C6F0160F4E93E519B60517 /* SystemMessageComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E31000000000000000000001 /* SystemMessageComposer.swift */; };
+        E31100000000000000000001 /* NativeNodePolicySetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = E31200000000000000000001 /* NativeNodePolicySetup.swift */; };
+/* End PBXBuildFile section */
+/* Additional native action sources are built in the standalone target too. */
+
+
+/* Begin PBXContainerItemProxy section */
+		7F8192DAF9A291A0CFAA9718 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CA536F080C540217B1C33959 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2C77B42CF625095C3400192A;
+			remoteInfo = OperatorApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+        F90400000000000000000001 /* NotionLoopbackCallbackServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/notion/callback/NotionLoopbackCallbackServer.swift; sourceTree = SOURCE_ROOT; };
+        F90200000000000000000001 /* PublicMediaHTTPTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/media/network/PublicMediaHTTPTransport.swift; sourceTree = SOURCE_ROOT; };
+        F90200000000000000000002 /* PublicMediaURLPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/media/network/PublicMediaURLPolicy.swift; sourceTree = SOURCE_ROOT; };
+        F90200000000000000000003 /* ForegroundMediaNodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/media/node/ForegroundMediaNodeService.swift; sourceTree = SOURCE_ROOT; };
+        F90200000000000000000004 /* PodcastMediaServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/media/podcasts/PodcastMediaServices.swift; sourceTree = SOURCE_ROOT; };
+        F90200000000000000000005 /* InAppMediaOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/media/presentation/InAppMediaOpener.swift; sourceTree = SOURCE_ROOT; };
+        F90200000000000000000006 /* YouTubeMediaServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/media/youtube/YouTubeMediaServices.swift; sourceTree = SOURCE_ROOT; };
+        D90200000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/discovery/ForegroundConnectionDiscoveryService.swift; sourceTree = SOURCE_ROOT; };
+        E90200000000000000000021 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/services/write/DirectAccountWriter.swift; sourceTree = SOURCE_ROOT; };
+        E90200000000000000000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/services/confirmation/ForegroundAccountWriteConfirmationService.swift; sourceTree = SOURCE_ROOT; };
+        E90200000000000000000023 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/services/confirmation/SystemAccountWriteConfirmationPresenter.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000014 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/auth/OAuthTransport.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000015 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/auth/OAuthTypes.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000016 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/auth/PhoneOAuthClient.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000017 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/services/read/DirectAccountReader.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000018 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/services/read/ForegroundAccountReadService.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000019 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/setup/NativeAccountSetupCoordinator.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000020 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/setup/NativeAccountConnectionSheet.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000021 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/notion/NotionMCPClient.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/notion/setup/NativeNotionSetupCoordinator.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000023 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/notion/node/ForegroundNotionService.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000024 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/notion/node/SystemNotionToolConfirmationPresenter.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000009 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/whatsapp/read/NativeWhatsAppReadClient.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000010 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/whatsapp/read/ForegroundWhatsAppReadService.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/whatsapp/send/ForegroundWhatsAppComposeService.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000012 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/whatsapp/send/NativeWhatsAppSendClient.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000013 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/whatsapp/send/SystemWhatsAppComposePresenter.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000008 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/runtime/embedded/endpoint/LoopbackPort.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/whatsapp/link/NativeWhatsAppLinkClient.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000006 = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = build/native-whatsapp/libWacliBridge.a; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.text-based-dylib-definition; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
+        C90200000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/maps/ForegroundMapsService.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/handoff/ForegroundAppHandoffService.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/handoff/SystemAppHandoffOpener.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000004 = {isa = PBXFileReference; lastKnownFileType = text.json; path = OperatorApp/Resources/connections/handoff/android-handoff-catalog.json; sourceTree = SOURCE_ROOT; };
+        A90200000000000000000001 /* EmbeddedRuntimeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/runtime/embedded/EmbeddedRuntimeHost.swift; sourceTree = SOURCE_ROOT; };
+        A90200000000000000000002 /* EmbeddedNodeBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = OperatorApp/Sources/runtime/embedded/EmbeddedNodeBridge.mm; sourceTree = SOURCE_ROOT; };
+        A90200000000000000000003 /* runtime */ = {isa = PBXFileReference; lastKnownFileType = folder; path = build/native-node/runtime; sourceTree = SOURCE_ROOT; };
+        A90200000000000000000004 /* NodeMobile.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = build/native-node/NodeMobile.xcframework; sourceTree = SOURCE_ROOT; };
+		03755826A1F5F57F5FD3EA1B /* ModelSetupModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSetupModelTests.swift; sourceTree = "<group>"; };
+		06DA0E953B0B9B01FFEE8D10 /* KeychainCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCredentialStore.swift; sourceTree = "<group>"; };
+		1593E68D6DA83F3D5323D640 /* ChatSessionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSessionModelTests.swift; sourceTree = "<group>"; };
+		A90800000000000000000001 /* NativeAccountSetupCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = connections/setup/NativeAccountSetupCoordinatorTests.swift; sourceTree = "<group>"; };
+		243883C3810544B3A49A5C08 /* OperatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp.swift; sourceTree = "<group>"; };
+		3F9676D6F9E8AD88AAAC40E2 /* ChatSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSessionModel.swift; sourceTree = "<group>"; };
+		421FA479133137B163DDDE9C /* ModelSetupContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSetupContracts.swift; sourceTree = "<group>"; };
+		4B5FC7EA600C4548A7C2F0A1 /* OperatorCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = OperatorCore; path = OperatorCore; sourceTree = SOURCE_ROOT; };
+		4CB89572B23DFFD774B38433 /* LocalOpenClawChatGateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalOpenClawChatGateway.swift; sourceTree = "<group>"; };
+		4F4D32786B344D6642DF4CC5 /* ChatContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatContracts.swift; sourceTree = "<group>"; };
+		5C13CFDD2D788E106F260D4B /* LocalModelSetupGateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelSetupGateway.swift; sourceTree = "<group>"; };
+		7B6B78E57281CB1165544712 /* OperatorAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OperatorAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		996961BE0B62984DE5354052 /* ChatScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScreen.swift; sourceTree = "<group>"; };
+		A79432C188DAA9E5D86A5896 /* CoreChatPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreChatPersistence.swift; sourceTree = "<group>"; };
+		C51BA6701E49DA24B88ABD88 /* OperatorApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OperatorApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EE6353F222861E64E1856902 /* ModelSetupFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSetupFlow.swift; sourceTree = "<group>"; };
+		E20100000000000000000001 /* OfflineDictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineDictation.swift; sourceTree = "<group>"; };
+		E20200000000000000000001 /* OfflineDictationModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineDictationModelTests.swift; sourceTree = "<group>"; };
+		E20300000000000000000001 /* AVFAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFAudio.framework; path = System/Library/Frameworks/AVFAudio.framework; sourceTree = SDKROOT; };
+		E20400000000000000000001 /* Speech.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Speech.framework; path = System/Library/Frameworks/Speech.framework; sourceTree = SDKROOT; };
+		E20500000000000000000001 /* ForegroundLocationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundLocationServiceTests.swift; sourceTree = "<group>"; };
+		E20600000000000000000001 /* ForegroundLocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundLocationService.swift; sourceTree = "<group>"; };
+		E20700000000000000000001 /* LocalLocationNodeGateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLocationNodeGateway.swift; sourceTree = "<group>"; };
+		E20800000000000000000001 /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
+		E20900000000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = OperatorApp/Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		E21000000000000000000001 /* EventKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = EventKit.framework; path = System/Library/Frameworks/EventKit.framework; sourceTree = SDKROOT; };
+		C10100000000000000000001 /* ForegroundCalendarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundCalendarService.swift; sourceTree = "<group>"; };
+		C10200000000000000000001 /* ForegroundNodeCommandRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundNodeCommandRouter.swift; sourceTree = "<group>"; };
+		C10300000000000000000001 /* ForegroundCalendarServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundCalendarServiceTests.swift; sourceTree = "<group>"; };
+		E21200000000000000000001 /* OperatorWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorWidget.swift; sourceTree = "<group>"; };
+		E21400000000000000000001 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		E21600000000000000000001 /* OperatorWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = OperatorWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0A1B2C3D4E5F60718293A4A /* OperatorChatAppIntentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorChatAppIntentTests.swift; sourceTree = "<group>"; };
+		F0A1B2C3D4E5F60718293A4C /* OperatorChatAppIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorChatAppIntent.swift; sourceTree = "<group>"; };
+        E30200000000000000000001 /* WhatsAppLinkFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/whatsapp/link/WhatsAppLinkFlow.swift; sourceTree = SOURCE_ROOT; };
+        E30400000000000000000001 /* WhatsAppLinkSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/whatsapp/link/WhatsAppLinkSheet.swift; sourceTree = SOURCE_ROOT; };
+        E30600000000000000000001 /* WhatsAppLinkFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Tests/capabilities/whatsapp/link/WhatsAppLinkFlowTests.swift; sourceTree = SOURCE_ROOT; };
+        E30800000000000000000001 /* ForegroundMessageComposeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/messages/ForegroundMessageComposeService.swift; sourceTree = SOURCE_ROOT; };
+        E31000000000000000000001 /* SystemMessageComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/messages/SystemMessageComposer.swift; sourceTree = SOURCE_ROOT; };
+        E31200000000000000000001 /* NativeNodePolicySetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/node/policy/NativeNodePolicySetup.swift; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+        A90300000000000000000001 /* Embed Frameworks */ = {
+            isa = PBXCopyFilesBuildPhase;
+            buildActionMask = 2147483647;
+            dstPath = "";
+            dstSubfolderSpec = 10;
+            files = (A90100000000000000000005 /* NodeMobile.xcframework in Embed Frameworks */, );
+            name = "Embed Frameworks";
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+		E21700000000000000000001 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				E21500000000000000000001 /* OperatorWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D26E126A1DCDDAD88D3CF941 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7ED39EDE3514AAB3E5876E9B /* OperatorCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FCD6348BCAA1D60EB7E2B6DB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+                C90100000000000000000006,
+                C90100000000000000000007,
+				EFB337E1E8C679ED7DB3FE70 /* OperatorCore in Frameworks */,
+                A90100000000000000000004 /* NodeMobile.xcframework in Frameworks */,
+				E10300000000000000000001 /* AVFAudio.framework in Frameworks */,
+				E10800000000000000000001 /* CoreLocation.framework in Frameworks */,
+				E11000000000000000000001 /* EventKit.framework in Frameworks */,
+				E10400000000000000000001 /* Speech.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E21800000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E21300000000000000000001 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		264D586B3C27B881141B7B2C /* model-setup */ = {
+			isa = PBXGroup;
+			children = (
+                D90200000000000000000001,
+				5C13CFDD2D788E106F260D4B /* LocalModelSetupGateway.swift */,
+				421FA479133137B163DDDE9C /* ModelSetupContracts.swift */,
+				EE6353F222861E64E1856902 /* ModelSetupFlow.swift */,
+			);
+			path = "model-setup";
+			sourceTree = "<group>";
+		};
+		4F0F2AB53CCD9BD6EB0CF220 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				4B5FC7EA600C4548A7C2F0A1 /* OperatorCore */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		60BC69FA3B69A0B54C169B7B /* app */ = {
+			isa = PBXGroup;
+			children = (
+				243883C3810544B3A49A5C08 /* OperatorApp.swift */,
+			);
+			path = app;
+			sourceTree = "<group>";
+		};
+		681B59BDBBB3F248205874DD /* persistence */ = {
+			isa = PBXGroup;
+			children = (
+				A79432C188DAA9E5D86A5896 /* CoreChatPersistence.swift */,
+				06DA0E953B0B9B01FFEE8D10 /* KeychainCredentialStore.swift */,
+			);
+			path = persistence;
+			sourceTree = "<group>";
+		};
+		7BC76D0F707AB82E358943BB /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				60BC69FA3B69A0B54C169B7B /* app */,
+				E40300000000000000000001 /* capabilities */,
+				F9B65EEEE49D12C4CC113B90 /* chat */,
+				E40100000000000000000001 /* dictation */,
+				264D586B3C27B881141B7B2C /* model-setup */,
+				681B59BDBBB3F248205874DD /* persistence */,
+				8091DDD5E2D006C579D0D689 /* runtime */,
+				F0A1B2C3D4E5F60718293A4E /* system-entry-points */,
+			);
+			name = Sources;
+			path = OperatorApp/Sources;
+			sourceTree = "<group>";
+		};
+		F0A1B2C3D4E5F60718293A4E /* system-entry-points */ = {
+			isa = PBXGroup;
+			children = (
+				F0A1B2C3D4E5F60718293A4C /* OperatorChatAppIntent.swift */,
+			);
+			path = "system-entry-points";
+			sourceTree = "<group>";
+		};
+		8091DDD5E2D006C579D0D689 /* runtime */ = {
+			isa = PBXGroup;
+			children = (
+				4F4D32786B344D6642DF4CC5 /* ChatContracts.swift */,
+				4CB89572B23DFFD774B38433 /* LocalOpenClawChatGateway.swift */,
+			);
+			path = runtime;
+			sourceTree = "<group>";
+		};
+		9090AE00C417009AD5D6DFD1 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				1593E68D6DA83F3D5323D640 /* ChatSessionModelTests.swift */,
+				A90800000000000000000001 /* NativeAccountSetupCoordinatorTests.swift */,
+				03755826A1F5F57F5FD3EA1B /* ModelSetupModelTests.swift */,
+				E40200000000000000000001 /* dictation */,
+				E40500000000000000000001 /* capabilities */,
+				E41000000000000000000001 /* persistence */,
+				F0A1B2C3D4E5F60718293A49 /* system-entry-points */,
+			);
+			name = Tests;
+			path = OperatorApp/Tests;
+			sourceTree = "<group>";
+		};
+		E41000000000000000000001 /* persistence */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = persistence;
+			sourceTree = "<group>";
+		};
+		F0A1B2C3D4E5F60718293A49 /* system-entry-points */ = {
+			isa = PBXGroup;
+			children = (
+				F0A1B2C3D4E5F60718293A4A /* OperatorChatAppIntentTests.swift */,
+			);
+			path = "system-entry-points";
+			sourceTree = "<group>";
+		};
+		9736DB1FB0F81B10E69978A7 = {
+			isa = PBXGroup;
+			children = (
+                F90200000000000000000001 /* PublicMediaHTTPTransport.swift */,
+                F90400000000000000000001 /* NotionLoopbackCallbackServer.swift */,
+                F90200000000000000000002 /* PublicMediaURLPolicy.swift */,
+                F90200000000000000000003 /* ForegroundMediaNodeService.swift */,
+                F90200000000000000000004 /* PodcastMediaServices.swift */,
+                F90200000000000000000005 /* InAppMediaOpener.swift */,
+                F90200000000000000000006 /* YouTubeMediaServices.swift */,
+                C90200000000000000000001,
+                C90200000000000000000002,
+                C90200000000000000000003,
+                C90200000000000000000004,
+                C90200000000000000000005,
+                C90200000000000000000006,
+                C90200000000000000000007,
+                C90200000000000000000008,
+                C90200000000000000000009,
+                C90200000000000000000010,
+                C90200000000000000000011,
+                C90200000000000000000012,
+                C90200000000000000000013,
+                C90200000000000000000014,
+                C90200000000000000000015,
+                C90200000000000000000016,
+                C90200000000000000000017,
+                C90200000000000000000018,
+                C90200000000000000000019,
+                C90200000000000000000020,
+                E90200000000000000000021,
+                E90200000000000000000022,
+                E90200000000000000000023,
+                C90200000000000000000021,
+                C90200000000000000000022,
+                C90200000000000000000023,
+                C90200000000000000000024,
+                A90200000000000000000001 /* EmbeddedRuntimeHost.swift */,
+                A90200000000000000000002 /* EmbeddedNodeBridge.mm */,
+                A90200000000000000000003 /* runtime */,
+                A90200000000000000000004 /* NodeMobile.xcframework */,
+                E30800000000000000000001 /* ForegroundMessageComposeService.swift */,
+                E31000000000000000000001 /* SystemMessageComposer.swift */,
+                E31200000000000000000001 /* NativeNodePolicySetup.swift */,
+                E30200000000000000000001 /* WhatsAppLinkFlow.swift */,
+                E30400000000000000000001 /* WhatsAppLinkSheet.swift */,
+                E30600000000000000000001 /* WhatsAppLinkFlowTests.swift */,
+				E20900000000000000000001 /* Assets.xcassets */,
+				E21900000000000000000001 /* OperatorWidget */,
+				4F0F2AB53CCD9BD6EB0CF220 /* Packages */,
+				7BC76D0F707AB82E358943BB /* Sources */,
+				9090AE00C417009AD5D6DFD1 /* Tests */,
+				EDD568DFC70D0FD1E032EB1A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EDD568DFC70D0FD1E032EB1A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C51BA6701E49DA24B88ABD88 /* OperatorApp.app */,
+				7B6B78E57281CB1165544712 /* OperatorAppTests.xctest */,
+				E21600000000000000000001 /* OperatorWidget.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F9B65EEEE49D12C4CC113B90 /* chat */ = {
+			isa = PBXGroup;
+			children = (
+				996961BE0B62984DE5354052 /* ChatScreen.swift */,
+				3F9676D6F9E8AD88AAAC40E2 /* ChatSessionModel.swift */,
+			);
+			path = chat;
+			sourceTree = "<group>";
+		};
+		E40100000000000000000001 /* dictation */ = {
+			isa = PBXGroup;
+			children = (
+				E20100000000000000000001 /* OfflineDictation.swift */,
+			);
+			path = dictation;
+			sourceTree = "<group>";
+		};
+		E40200000000000000000001 /* dictation */ = {
+			isa = PBXGroup;
+			children = (
+				E20200000000000000000001 /* OfflineDictationModelTests.swift */,
+			);
+			path = dictation;
+			sourceTree = "<group>";
+		};
+		E40300000000000000000001 /* capabilities */ = {
+			isa = PBXGroup;
+			children = (
+				E40400000000000000000001 /* location */,
+				C10400000000000000000001 /* calendar */,
+				C10500000000000000000001 /* node */,
+			);
+			path = capabilities;
+			sourceTree = "<group>";
+		};
+		C10400000000000000000001 /* calendar */ = {
+			isa = PBXGroup;
+			children = (C10100000000000000000001 /* ForegroundCalendarService.swift */, );
+			path = calendar;
+			sourceTree = "<group>";
+		};
+		C10500000000000000000001 /* node */ = {
+			isa = PBXGroup;
+			children = (C10200000000000000000001 /* ForegroundNodeCommandRouter.swift */, );
+			path = node;
+			sourceTree = "<group>";
+		};
+		E40400000000000000000001 /* location */ = {
+			isa = PBXGroup;
+			children = (
+				E20600000000000000000001 /* ForegroundLocationService.swift */,
+				E20700000000000000000001 /* LocalLocationNodeGateway.swift */,
+			);
+			path = location;
+			sourceTree = "<group>";
+		};
+		E40500000000000000000001 /* capabilities */ = {
+			isa = PBXGroup;
+			children = (
+				E40600000000000000000001 /* location */,
+				C10600000000000000000001 /* calendar */,
+			);
+			path = capabilities;
+			sourceTree = "<group>";
+		};
+		C10600000000000000000001 /* calendar */ = {
+			isa = PBXGroup;
+			children = (C10300000000000000000001 /* ForegroundCalendarServiceTests.swift */, );
+			path = calendar;
+			sourceTree = "<group>";
+		};
+		E40600000000000000000001 /* location */ = {
+			isa = PBXGroup;
+			children = (
+				E20500000000000000000001 /* ForegroundLocationServiceTests.swift */,
+			);
+			path = location;
+			sourceTree = "<group>";
+		};
+		E21900000000000000000001 /* OperatorWidget */ = {
+			isa = PBXGroup;
+			children = (
+				E21200000000000000000001 /* OperatorWidget.swift */,
+			);
+			path = OperatorWidget/Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2C77B42CF625095C3400192A /* OperatorApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3E080D4F232DD078947F21DB /* Build configuration list for PBXNativeTarget "OperatorApp" */;
+			buildPhases = (
+				9D9CC9E99A4E70A1227C023E /* Sources */,
+				FCD6348BCAA1D60EB7E2B6DB /* Frameworks */,
+				E30900000000000000000001 /* Resources */,
+				E21700000000000000000001 /* Embed App Extensions */,
+                A90300000000000000000001 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E22000000000000000000001 /* PBXTargetDependency */,
+			);
+			name = OperatorApp;
+			packageProductDependencies = (
+				051ADE6419DBFF89743CCF5F /* OperatorCore */,
+			);
+			productName = OperatorApp;
+			productReference = C51BA6701E49DA24B88ABD88 /* OperatorApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E22100000000000000000001 /* OperatorWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E22200000000000000000001 /* Build configuration list for PBXNativeTarget "OperatorWidget" */;
+			buildPhases = (
+				E22300000000000000000001 /* Sources */,
+				E21800000000000000000001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OperatorWidget;
+			productName = OperatorWidget;
+			productReference = E21600000000000000000001 /* OperatorWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		48E39B356A47F7FBFF9D8F14 /* OperatorAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6B15B30798ECF6B5913E2373 /* Build configuration list for PBXNativeTarget "OperatorAppTests" */;
+			buildPhases = (
+				9D019F96E0EF6DB78ED61454 /* Sources */,
+				D26E126A1DCDDAD88D3CF941 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6498B43981FA1D1A084D1953 /* PBXTargetDependency */,
+			);
+			name = OperatorAppTests;
+			packageProductDependencies = (
+				9C8D80636F955AF766371DC4 /* OperatorCore */,
+			);
+			productName = OperatorAppTests;
+			productReference = 7B6B78E57281CB1165544712 /* OperatorAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CA536F080C540217B1C33959 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = A2A553ADEA75E812BE36CA1C /* Build configuration list for PBXProject "Operator" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 9736DB1FB0F81B10E69978A7;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DBDF73B2BCFADFB57EF97E92 /* XCLocalSwiftPackageReference "OperatorCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = EDD568DFC70D0FD1E032EB1A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2C77B42CF625095C3400192A /* OperatorApp */,
+				48E39B356A47F7FBFF9D8F14 /* OperatorAppTests */,
+				E22100000000000000000001 /* OperatorWidget */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E30900000000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+                C90100000000000000000004,
+				E10900000000000000000001 /* Assets.xcassets in Resources */,
+                A90100000000000000000003 /* runtime in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9D019F96E0EF6DB78ED61454 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6C9023EB6B08D517592E775B /* ChatSessionModelTests.swift in Sources */,
+				A90700000000000000000001 /* NativeAccountSetupCoordinatorTests.swift in Sources */,
+                E30500000000000000000001 /* WhatsAppLinkFlowTests.swift in Sources */,
+				EF86947BAF2338DA9D9AD674 /* ModelSetupModelTests.swift in Sources */,
+				F0A1B2C3D4E5F60718293A4B /* OperatorChatAppIntentTests.swift in Sources */,
+				E10200000000000000000001 /* OfflineDictationModelTests.swift in Sources */,
+				E10500000000000000000001 /* ForegroundLocationServiceTests.swift in Sources */,
+				E11300000000000000000001 /* ForegroundCalendarServiceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9D9CC9E99A4E70A1227C023E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+                F90100000000000000000001 /* PublicMediaHTTPTransport.swift in Sources */,
+                F90300000000000000000001 /* NotionLoopbackCallbackServer.swift in Sources */,
+                F90100000000000000000002 /* PublicMediaURLPolicy.swift in Sources */,
+                F90100000000000000000003 /* ForegroundMediaNodeService.swift in Sources */,
+                F90100000000000000000004 /* PodcastMediaServices.swift in Sources */,
+                F90100000000000000000005 /* InAppMediaOpener.swift in Sources */,
+                F90100000000000000000006 /* YouTubeMediaServices.swift in Sources */,
+				FD66FBAF132FD1B8830F9CF4 /* ChatContracts.swift in Sources */,
+                D90100000000000000000001 /* ForegroundConnectionDiscoveryService.swift in Sources */,
+                C90100000000000000000001,
+                C90100000000000000000002,
+                C90100000000000000000003,
+                C90100000000000000000005,
+                C90100000000000000000008,
+                C90100000000000000000009,
+                C90100000000000000000010,
+                C90100000000000000000011,
+                C90100000000000000000012,
+                C90100000000000000000013,
+                C90100000000000000000014,
+                C90100000000000000000015,
+                C90100000000000000000016,
+                C90100000000000000000017,
+                C90100000000000000000018,
+                C90100000000000000000019,
+                C90100000000000000000020,
+                E90100000000000000000021,
+                E90100000000000000000022,
+                E90100000000000000000023,
+                C90100000000000000000021,
+                C90100000000000000000022,
+                C90100000000000000000023,
+                C90100000000000000000024,
+                A90100000000000000000001 /* EmbeddedRuntimeHost.swift in Sources */,
+                A90100000000000000000002 /* EmbeddedNodeBridge.mm in Sources */,
+                E30700000000000000000001 /* ForegroundMessageComposeService.swift in Sources */,
+                66C6F0160F4E93E519B60517 /* SystemMessageComposer.swift in Sources */,
+                E31100000000000000000001 /* NativeNodePolicySetup.swift in Sources */,
+                E30100000000000000000001 /* WhatsAppLinkFlow.swift in Sources */,
+                E30300000000000000000001 /* WhatsAppLinkSheet.swift in Sources */,
+				8DAA325B2CE2A7D6BB1A96AC /* ChatScreen.swift in Sources */,
+				13411FA22DB973F4F833DD9E /* ChatSessionModel.swift in Sources */,
+				21ED022EAD1A55D2D1865494 /* CoreChatPersistence.swift in Sources */,
+				BC959E4E9FE0DBFFE44077B1 /* KeychainCredentialStore.swift in Sources */,
+				8CA2E8E840C22B680681DD6E /* LocalModelSetupGateway.swift in Sources */,
+				9FFAEA362A6B83E9C383E7A4 /* LocalOpenClawChatGateway.swift in Sources */,
+				5F8D5118B87FA4BADFB5C490 /* ModelSetupContracts.swift in Sources */,
+				49892E375D6B50BFCC40736B /* ModelSetupFlow.swift in Sources */,
+				79D6EEA191EB7EA5D764E9F0 /* OperatorApp.swift in Sources */,
+				F0A1B2C3D4E5F60718293A4D /* OperatorChatAppIntent.swift in Sources */,
+				E10100000000000000000001 /* OfflineDictation.swift in Sources */,
+				E10600000000000000000001 /* ForegroundLocationService.swift in Sources */,
+				E10700000000000000000001 /* LocalLocationNodeGateway.swift in Sources */,
+				E11100000000000000000001 /* ForegroundCalendarService.swift in Sources */,
+				E11200000000000000000001 /* ForegroundNodeCommandRouter.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E22300000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E21100000000000000000001 /* OperatorWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		6498B43981FA1D1A084D1953 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2C77B42CF625095C3400192A /* OperatorApp */;
+			targetProxy = 7F8192DAF9A291A0CFAA9718 /* PBXContainerItemProxy */;
+		};
+		E22000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E22100000000000000000001 /* OperatorWidget */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		08BFA50099FBCE99E28D0C3C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		28DC5C6F8F34A893F7693223 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		4899D914E4F3677EEF4F4E03 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OperatorApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.operator.ios;
+				PRODUCT_MODULE_NAME = OperatorApp;
+				SWIFT_OBJC_BRIDGING_HEADER = OperatorApp/Sources/runtime/embedded/EmbeddedNodeBridge.h;
+                LIBRARY_SEARCH_PATHS = ("$(inherited)", "$(SRCROOT)/build/native-whatsapp", );
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = OperatorApp/Sources/runtime/embedded/signing/Simulator.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				PRODUCT_NAME = Operator;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		AEF96B42CF1226398EBC1A98 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OperatorApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.operator.ios;
+				PRODUCT_MODULE_NAME = OperatorApp;
+				SWIFT_OBJC_BRIDGING_HEADER = OperatorApp/Sources/runtime/embedded/EmbeddedNodeBridge.h;
+                LIBRARY_SEARCH_PATHS = ("$(inherited)", "$(SRCROOT)/build/native-whatsapp", );
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = OperatorApp/Sources/runtime/embedded/signing/Simulator.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				PRODUCT_NAME = Operator;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		BD609EB898A62B222A3F4179 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Operator.app/Operator";
+			};
+			name = Release;
+		};
+		D3E13ED7BC10DFFB0A7D52F1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Operator.app/Operator";
+			};
+			name = Debug;
+		};
+		E22400000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OperatorWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.operator.ios.widget;
+				PRODUCT_MODULE_NAME = OperatorWidget;
+				PRODUCT_NAME = OperatorWidget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		E22500000000000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OperatorWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.operator.ios.widget;
+				PRODUCT_MODULE_NAME = OperatorWidget;
+				PRODUCT_NAME = OperatorWidget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3E080D4F232DD078947F21DB /* Build configuration list for PBXNativeTarget "OperatorApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AEF96B42CF1226398EBC1A98 /* Debug */,
+				4899D914E4F3677EEF4F4E03 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6B15B30798ECF6B5913E2373 /* Build configuration list for PBXNativeTarget "OperatorAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D3E13ED7BC10DFFB0A7D52F1 /* Debug */,
+				BD609EB898A62B222A3F4179 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E22200000000000000000001 /* Build configuration list for PBXNativeTarget "OperatorWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E22400000000000000000001 /* Debug */,
+				E22500000000000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A2A553ADEA75E812BE36CA1C /* Build configuration list for PBXProject "Operator" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				28DC5C6F8F34A893F7693223 /* Debug */,
+				08BFA50099FBCE99E28D0C3C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		DBDF73B2BCFADFB57EF97E92 /* XCLocalSwiftPackageReference "OperatorCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = OperatorCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		051ADE6419DBFF89743CCF5F /* OperatorCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OperatorCore;
+		};
+		9C8D80636F955AF766371DC4 /* OperatorCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OperatorCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = CA536F080C540217B1C33959 /* Project object */;
+}

@@ -1,0 +1,84 @@
+import OperatorCore
+
+@MainActor
+final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
+    private let location: any GatewayNodeCommandHandler
+    private let calendar: any GatewayNodeCommandHandler
+    private let messages: any GatewayNodeCommandHandler
+    private let maps: any GatewayNodeCommandHandler
+    private let handoff: any GatewayNodeCommandHandler
+    private let whatsapp: any GatewayNodeCommandHandler
+    private let whatsappCompose: any GatewayNodeCommandHandler
+    private let accounts: any GatewayNodeCommandHandler
+    private let accountWrite: any GatewayNodeCommandHandler
+    private let discovery: (any GatewayNodeCommandHandler)?
+    private let notion: any GatewayNodeCommandHandler
+    private let media: (any GatewayNodeCommandHandler)?
+
+    init(
+        location: any GatewayNodeCommandHandler,
+        calendar: any GatewayNodeCommandHandler,
+        messages: any GatewayNodeCommandHandler,
+        maps: any GatewayNodeCommandHandler,
+        handoff: any GatewayNodeCommandHandler,
+        whatsapp: any GatewayNodeCommandHandler,
+        whatsappCompose: any GatewayNodeCommandHandler,
+        accounts: any GatewayNodeCommandHandler,
+        accountWrite: any GatewayNodeCommandHandler,
+        discovery: (any GatewayNodeCommandHandler)? = nil,
+        media: (any GatewayNodeCommandHandler)? = nil,
+        notion: any GatewayNodeCommandHandler)
+    {
+        self.location = location
+        self.calendar = calendar
+        self.messages = messages
+        self.maps = maps
+        self.handoff = handoff
+        self.whatsapp = whatsapp
+        self.whatsappCompose = whatsappCompose
+        self.accounts = accounts
+        self.accountWrite = accountWrite
+        self.discovery = discovery
+        self.media = media
+        self.notion = notion
+    }
+
+    func handleNodeCommand(_ command: String, paramsJSON: String?, timeoutMilliseconds: Int?) async -> GatewayNodeCommandResult {
+        switch command {
+        case "location.get":
+            await self.location.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "calendar.events":
+            await self.calendar.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "sms.compose":
+            await self.messages.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "maps.search", "maps.directions":
+            await self.maps.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "apps.open":
+            await self.handoff.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "whatsapp.chats", "whatsapp.messages", "whatsapp.sync":
+            await self.whatsapp.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "whatsapp.compose":
+            await self.whatsappCompose.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "connections.read":
+            await self.accounts.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "connections.write":
+            await self.accountWrite.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "connections.describe":
+            if let discovery {
+                await discovery.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+            } else {
+                .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
+            }
+        case "notion.tools", "notion.call":
+            await self.notion.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "youtube.search", "youtube.open", "podcasts.search", "podcasts.open":
+            if let media {
+                await media.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+            } else {
+                .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
+            }
+        default:
+            .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
+        }
+    }
+}

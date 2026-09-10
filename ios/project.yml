@@ -1,0 +1,88 @@
+name: Operator
+options:
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1"
+packages:
+  OperatorCore:
+    path: OperatorCore
+schemes:
+  OperatorApp:
+    build:
+      targets:
+        OperatorApp: all
+        OperatorAppTests: [test]
+    test:
+      targets:
+        - OperatorAppTests
+targets:
+  OperatorApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: OperatorApp/Sources
+    resources:
+      - path: OperatorApp/Assets.xcassets
+      - path: OperatorApp/Resources/connections/handoff/android-handoff-catalog.json
+      - path: build/native-node/runtime
+        type: folder
+    dependencies:
+      - framework: build/native-whatsapp/libWacliBridge.a
+        embed: false
+      - framework: build/native-node/NodeMobile.xcframework
+        embed: true
+      - package: OperatorCore
+      - target: OperatorWidget
+        embed: true
+      - sdk: AVFAudio.framework
+      - sdk: CoreLocation.framework
+      - sdk: EventKit.framework
+      - sdk: MessageUI.framework
+      - sdk: MapKit.framework
+      - sdk: CoreFoundation.framework
+      - sdk: Security.framework
+      - sdk: libresolv.tbd
+      - sdk: Speech.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.operator.ios
+        SWIFT_OBJC_BRIDGING_HEADER: OperatorApp/Sources/runtime/embedded/EmbeddedNodeBridge.h
+        LIBRARY_SEARCH_PATHS: ['$(inherited)', '$(SRCROOT)/build/native-whatsapp']
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": OperatorApp/Sources/runtime/embedded/signing/Simulator.entitlements
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        CLANG_CXX_LANGUAGE_STANDARD: c++17
+        PRODUCT_MODULE_NAME: OperatorApp
+        PRODUCT_NAME: Operator
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: OperatorApp/Info.plist
+        SUPPORTS_MACCATALYST: NO
+  OperatorWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: OperatorWidget/Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.operator.ios.widget
+        PRODUCT_MODULE_NAME: OperatorWidget
+        PRODUCT_NAME: OperatorWidget
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: OperatorWidget/Info.plist
+  OperatorAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: OperatorApp/Tests
+    dependencies:
+      - target: OperatorApp
+      - package: OperatorCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES

@@ -13,6 +13,12 @@ local.properties
 *.iml
 .kotlin/
 
+# Apple and Swift output
+**/.build/
+DerivedData/
+**/xcuserdata/
+*.xcuserstate
+
 # Go output and test artifacts
 bin/
 *.test
