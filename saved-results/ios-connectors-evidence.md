@@ -2,6 +2,10 @@
 
 Updated 2026-09-10. Branch `codex/ios-connectors`.
 
+Phases 0, 2, 3 and 4 of the plan are written and locally verified. Phase 1 (live
+authorization) and Phase 5 (writes) are untouched — Phase 1 needs the Mac, and
+Phase 5 is gated on Phase 1 by the reads-before-writes rule.
+
 **Read the columns literally.** "Fixtures" means a test suite passes. "Live"
 means a person watched a real account answer through Operator. Nothing in the
 second column is claimed by anything in the first, and no row below has a live
@@ -31,6 +35,37 @@ committed suites and they are not evidence that the committed suites pass.
 | Contacts (`contacts.resolve`) | 0 — no OAuth | yes | **no** | n/a — permission prompt only | **no** | iOS 18 partial access is reported, not hidden |
 | Microsoft Calendar (`outlookCalendarEvents`) | 1 — scope only | yes | **no** | **no** | **no** | Forces Microsoft re-consent; see below |
 | Gmail (`gmailMessages`) | 1 — scope only | yes | **no** | **no** | **no** | Forces Google re-consent; see below |
+
+## Hand-off connectors (Phase 4)
+
+Eight added, taking the pack from 76 to 84: Gmail, Google Calendar, Slack,
+Notion, Waze, Zoom, Ticketmaster, Instacart. These are a different kind of
+thing from the four above — they open an app or its website and can never do
+more, so "live authorization" does not apply to them. What *was* verified:
+
+| Check | Result |
+| --- | --- |
+| Play Store id resolves | all 8 answer 200 |
+| The check discriminates | a fake id answers 404, and the run reproduced the two 404s already recorded in the source (`com.lyft.android`, `com.viator.mobile.consumer`) |
+| Destination answers over HTTPS | 8 of 9 candidates; Yelp answers 403 to any non-browser request and was left out rather than recorded as unverified |
+| Go, Kotlin and iOS catalog agree | `catalog-completeness` pins the id sets to each other and passes |
+| No prohibited service or commerce path | `commerce-safety` passes |
+
+Still unproven: that any of them actually opens on a device. That needs the
+Mac, like everything else in the second column.
+
+## Reproducibility (Phase 0)
+
+`ios/Runtime/bootstrap.sh` now exists, with `--check` and `--pin` modes that
+work without Xcode, and [DEPENDENCIES.md](../ios/Runtime/DEPENDENCIES.md)
+records all three artifacts.
+
+**NodeMobile is still unpinned.** The script refuses to stage it until someone
+runs `--pin` against an artifact they downloaded themselves and records the
+hash. That is the one remaining step before a second machine can build.
+
+A CI workflow (`.github/workflows/ios.yml`) runs every check that does not need
+Xcode. The Swift suites are still a Mac step.
 
 ## Two things the first Mac run will hit
 

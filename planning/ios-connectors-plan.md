@@ -3,7 +3,11 @@
 **Date:** 2026-09-10
 **Branch:** `codex/ios-connectors`, cut from `codex/ios-operator`.
 **Follows:** [saved-results/ios-connectors-handoff.md](../saved-results/ios-connectors-handoff.md).
-**Status:** plan only. Nothing in here is implemented yet, and no connector below is proven.
+**Status:** Phases 0, 2, 3 and 4 are implemented and locally verified. Phase 1
+(live authorization) and Phase 5 (writes) are not started — Phase 1 needs the
+Mac, and Phase 5 is gated on it. No connector has been proven against a real
+account. Per-connector state lives in
+[saved-results/ios-connectors-evidence.md](../saved-results/ios-connectors-evidence.md).
 
 ## Decisions this plan was written under
 
