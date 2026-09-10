@@ -5,6 +5,7 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
     private let location: any GatewayNodeCommandHandler
     private let calendar: any GatewayNodeCommandHandler
     private let reminders: (any GatewayNodeCommandHandler)?
+    private let contacts: (any GatewayNodeCommandHandler)?
     private let messages: any GatewayNodeCommandHandler
     private let maps: any GatewayNodeCommandHandler
     private let handoff: any GatewayNodeCommandHandler
@@ -20,6 +21,7 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
         location: any GatewayNodeCommandHandler,
         calendar: any GatewayNodeCommandHandler,
         reminders: (any GatewayNodeCommandHandler)? = nil,
+        contacts: (any GatewayNodeCommandHandler)? = nil,
         messages: any GatewayNodeCommandHandler,
         maps: any GatewayNodeCommandHandler,
         handoff: any GatewayNodeCommandHandler,
@@ -34,6 +36,7 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
         self.location = location
         self.calendar = calendar
         self.reminders = reminders
+        self.contacts = contacts
         self.messages = messages
         self.maps = maps
         self.handoff = handoff
@@ -55,6 +58,12 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
         case "reminders.list":
             if let reminders {
                 await reminders.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+            } else {
+                .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
+            }
+        case "contacts.resolve":
+            if let contacts {
+                await contacts.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
             } else {
                 .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
             }

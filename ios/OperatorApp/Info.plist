@@ -38,6 +38,8 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <key>NSContactsUsageDescription</key>
+    <string>Operator looks up a contact only when you ask the agent to reach someone by name.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Operator reads your reminders only when you ask the agent what is on your list.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>

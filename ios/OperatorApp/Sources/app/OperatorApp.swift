@@ -155,6 +155,7 @@ struct OperatorApp: App {
                 location: ForegroundLocationService(),
                 calendar: ForegroundCalendarService(),
                 reminders: ForegroundRemindersService(),
+                contacts: ForegroundContactsService(),
                 messages: ForegroundMessageComposeService(
                     presenter: SystemMessageComposer(),
                     isAppActive: { UIApplication.shared.applicationState == .active }),

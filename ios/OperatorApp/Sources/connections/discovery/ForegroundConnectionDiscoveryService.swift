@@ -93,6 +93,9 @@ final class ForegroundConnectionDiscoveryService: GatewayNodeCommandHandler {
         case "reminders.list":
             parameters = schema(required: [], optional: ["limit"], limits: ["limit": "1...25"])
             note = "Reads incomplete on-device reminders. It cannot create, complete or delete one."
+        case "contacts.resolve":
+            parameters = schema(required: ["query"], optional: ["limit"], limits: ["query": "1...100 characters", "limit": "1...10"])
+            note = "Looks up contacts matching a name. A query is required; the address book cannot be listed."
         case "sms.compose":
             parameters = schema(required: ["recipients", "body"], optional: [])
             note = "Opens the native message composer; the owner must tap Send."
