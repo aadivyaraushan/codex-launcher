@@ -4,6 +4,7 @@ import OperatorCore
 final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
     private let location: any GatewayNodeCommandHandler
     private let calendar: any GatewayNodeCommandHandler
+    private let reminders: (any GatewayNodeCommandHandler)?
     private let messages: any GatewayNodeCommandHandler
     private let maps: any GatewayNodeCommandHandler
     private let handoff: any GatewayNodeCommandHandler
@@ -18,6 +19,7 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
     init(
         location: any GatewayNodeCommandHandler,
         calendar: any GatewayNodeCommandHandler,
+        reminders: (any GatewayNodeCommandHandler)? = nil,
         messages: any GatewayNodeCommandHandler,
         maps: any GatewayNodeCommandHandler,
         handoff: any GatewayNodeCommandHandler,
@@ -31,6 +33,7 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
     {
         self.location = location
         self.calendar = calendar
+        self.reminders = reminders
         self.messages = messages
         self.maps = maps
         self.handoff = handoff
@@ -49,6 +52,12 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
             await self.location.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
         case "calendar.events":
             await self.calendar.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+        case "reminders.list":
+            if let reminders {
+                await reminders.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+            } else {
+                .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
+            }
         case "sms.compose":
             await self.messages.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
         case "maps.search", "maps.directions":

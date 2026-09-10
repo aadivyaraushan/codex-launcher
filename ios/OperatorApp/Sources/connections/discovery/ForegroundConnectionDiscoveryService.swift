@@ -90,6 +90,9 @@ final class ForegroundConnectionDiscoveryService: GatewayNodeCommandHandler {
         case "calendar.events":
             parameters = schema(required: [], optional: ["start", "end"])
             note = "Reads on-device calendar events in an optional time range."
+        case "reminders.list":
+            parameters = schema(required: [], optional: ["limit"], limits: ["limit": "1...25"])
+            note = "Reads incomplete on-device reminders. It cannot create, complete or delete one."
         case "sms.compose":
             parameters = schema(required: ["recipients", "body"], optional: [])
             note = "Opens the native message composer; the owner must tap Send."

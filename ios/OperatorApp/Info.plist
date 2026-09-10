@@ -38,6 +38,8 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>Operator reads your reminders only when you ask the agent what is on your list.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Operator reads your calendar only when you ask the agent for upcoming events.</string>
     <key>NSLocationWhenInUseUsageDescription</key>

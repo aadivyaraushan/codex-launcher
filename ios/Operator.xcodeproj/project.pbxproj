@@ -39,6 +39,7 @@
         C90100000000000000000006 /* libWacliBridge.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C90200000000000000000006; };
         C90100000000000000000007 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = C90200000000000000000007; };
         C90100000000000000000001 /* ForegroundMapsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000001; };
+        C90100000000000000000025 /* ForegroundRemindersService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000025; };
         C90100000000000000000002 /* ForegroundAppHandoffService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000002; };
         C90100000000000000000003 /* SystemAppHandoffOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000003; };
         C90100000000000000000004 /* android-handoff-catalog.json in Resources */ = {isa = PBXBuildFile; fileRef = C90200000000000000000004; };
@@ -133,6 +134,7 @@
         C90200000000000000000006 = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = build/native-whatsapp/libWacliBridge.a; sourceTree = SOURCE_ROOT; };
         C90200000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.text-based-dylib-definition; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
         C90200000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/maps/ForegroundMapsService.swift; sourceTree = SOURCE_ROOT; };
+        C90200000000000000000025 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/reminders/ForegroundRemindersService.swift; sourceTree = SOURCE_ROOT; };
         C90200000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/handoff/ForegroundAppHandoffService.swift; sourceTree = SOURCE_ROOT; };
         C90200000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/capabilities/handoff/SystemAppHandoffOpener.swift; sourceTree = SOURCE_ROOT; };
         C90200000000000000000004 = {isa = PBXFileReference; lastKnownFileType = text.json; path = OperatorApp/Resources/connections/handoff/android-handoff-catalog.json; sourceTree = SOURCE_ROOT; };
@@ -350,6 +352,7 @@
                 F90200000000000000000005 /* InAppMediaOpener.swift */,
                 F90200000000000000000006 /* YouTubeMediaServices.swift */,
                 C90200000000000000000001,
+                C90200000000000000000025,
                 C90200000000000000000002,
                 C90200000000000000000003,
                 C90200000000000000000004,
@@ -632,6 +635,7 @@
 				FD66FBAF132FD1B8830F9CF4 /* ChatContracts.swift in Sources */,
                 D90100000000000000000001 /* ForegroundConnectionDiscoveryService.swift in Sources */,
                 C90100000000000000000001,
+                C90100000000000000000025,
                 C90100000000000000000002,
                 C90100000000000000000003,
                 C90100000000000000000005,

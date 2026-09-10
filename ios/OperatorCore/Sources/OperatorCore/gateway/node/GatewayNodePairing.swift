@@ -3,8 +3,8 @@ import OSLog
 
 public enum GatewayNativeNodeSurface {
     public static let messageComposeCommand = "sms.compose"
-    public static let capabilities = ["location", "calendar", "sms", "maps", "apps", "whatsapp", "accounts", "notion", "media"]
-    public static let commands = ["location.get", "calendar.events", Self.messageComposeCommand, "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"]
+    public static let capabilities = ["location", "calendar", "sms", "maps", "apps", "whatsapp", "accounts", "notion", "media", "reminders"]
+    public static let commands = ["location.get", "calendar.events", "reminders.list", Self.messageComposeCommand, "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"]
     public static let commandPolicyAllow = [Self.messageComposeCommand, "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"]
 
     static func matches(_ surface: GatewayNodePairingSurface) -> Bool {

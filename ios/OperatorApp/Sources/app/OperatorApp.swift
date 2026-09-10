@@ -154,6 +154,7 @@ struct OperatorApp: App {
             handler: ForegroundNodeCommandRouter(
                 location: ForegroundLocationService(),
                 calendar: ForegroundCalendarService(),
+                reminders: ForegroundRemindersService(),
                 messages: ForegroundMessageComposeService(
                     presenter: SystemMessageComposer(),
                     isAppActive: { UIApplication.shared.applicationState == .active }),
