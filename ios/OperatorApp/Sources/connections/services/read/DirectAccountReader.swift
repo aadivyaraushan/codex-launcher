@@ -2,10 +2,10 @@ import Foundation
 import OSLog
 
 enum AccountReadOperation: String, Sendable {
-    case googleCalendarEvents, googleDriveFiles, outlookInbox, outlookCalendarEvents, slackChannels, slackHistory, spotifySearch, spotifyPlayback
+    case googleCalendarEvents, googleDriveFiles, gmailMessages, outlookInbox, outlookCalendarEvents, slackChannels, slackHistory, spotifySearch, spotifyPlayback
     var provider: OAuthProvider {
         switch self {
-        case .googleCalendarEvents, .googleDriveFiles: .google
+        case .googleCalendarEvents, .googleDriveFiles, .gmailMessages: .google
         case .outlookInbox, .outlookCalendarEvents: .microsoftOutlook
         case .slackChannels, .slackHistory: .slack
         case .spotifySearch, .spotifyPlayback: .spotify
@@ -34,6 +34,9 @@ actor DirectAccountReader {
 
     func read(_ input: AccountReadRequest) async throws -> AccountReadPage {
         guard self.valid(input) else { throw AccountReadError.invalidRequest }
+        // Gmail is the one operation a single request cannot answer, so it
+        // has its own path. See gmailPage.
+        if input.operation == .gmailMessages { return try await self.gmailPage(input) }
         let url = try self.url(for: input)
         let token: String
         do { token = try await self.bearer(input.operation.provider) } catch { throw AccountReadError.notConnected }
@@ -58,6 +61,11 @@ actor DirectAccountReader {
                   let min = Self.rfc3339(minText), let max = Self.rfc3339(maxText) else { return false }
             return min < max
         case .googleDriveFiles: return !(r.query?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) && r.channel == nil
+        case .gmailMessages:
+            guard r.channel == nil, r.timeMin == nil, r.timeMax == nil else { return false }
+            guard r.limit <= Self.gmailMaximumLimit else { return false }
+            if let query = r.query, query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
+            return true
         case .spotifySearch:
             guard !(r.query?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true), r.channel == nil else { return false }
             guard let cursor = r.cursor else { return true }
@@ -73,6 +81,124 @@ actor DirectAccountReader {
         }
     }
 
+    /// The most Gmail messages one call may return. Lower than the shared
+    /// limit on purpose: unlike every other operation here, each row costs a
+    /// request of its own.
+    static let gmailMaximumLimit = 10
+
+    /// Gmail is the one operation a single request cannot answer.
+    /// users.messages.list returns nothing but ids, and there is no list
+    /// endpoint that carries a subject or a sender, so a useful read is one
+    /// list call plus one metadata call per id. The metadata calls overlap:
+    /// this is an actor, and an actor releases at every await, so the child
+    /// tasks below genuinely interleave rather than queueing.
+    ///
+    /// Order is restored explicitly afterwards. Gmail returns newest first
+    /// and the whole value of the read is that ordering, which a task group
+    /// does not preserve on its own.
+    private func gmailPage(_ input: AccountReadRequest) async throws -> AccountReadPage {
+        let listData = try await self.fetch(try self.url(for: input), provider: .google)
+        guard let listObject = try? JSONSerialization.jsonObject(with: listData) as? [String: Any] else {
+            throw AccountReadError.invalidResponse
+        }
+        // Gmail omits "messages" entirely when nothing matches, which is an
+        // empty result and not a malformed one.
+        let rawMessages = listObject["messages"] as? [Any] ?? []
+        guard rawMessages.count <= input.limit else { throw AccountReadError.invalidResponse }
+        let ids = rawMessages.compactMap { ($0 as? [String: Any])?["id"] as? String }
+        guard ids.count == rawMessages.count else { throw AccountReadError.invalidResponse }
+
+        // The child tasks carry Data, not a parsed row: [String: Any] is not
+        // Sendable and cannot cross a task-group boundary under Swift 6.
+        // Parsing happens after collection, on the way to building rows.
+        var fetched: [(Int, Data)] = []
+        if !ids.isEmpty {
+            fetched = try await withThrowingTaskGroup(of: (Int, Data).self) { group in
+                for (offset, id) in ids.enumerated() {
+                    group.addTask {
+                        (offset, try await self.fetch(try Self.metadataURL(id: id), provider: .google))
+                    }
+                }
+                var collected: [(Int, Data)] = []
+                for try await item in group { collected.append(item) }
+                return collected
+            }
+        }
+        let ordered = try fetched.sorted { $0.0 < $1.0 }.map { try Self.gmailRow($0.1) }
+        guard let encoded = try? JSONSerialization.data(withJSONObject: ordered, options: [.sortedKeys]),
+              encoded.count <= 256_000
+        else { throw AccountReadError.invalidResponse }
+        let next = listObject["nextPageToken"] as? String
+        return .init(
+            payloadJSON: String(decoding: encoded, as: UTF8.self),
+            count: ordered.count,
+            nextCursor: next?.isEmpty == true ? nil : next)
+    }
+
+    private static func metadataURL(id: String) throws -> URL {
+        // The id came from Gmail's own list response and is placed in the
+        // path, so it is percent-encoded rather than interpolated raw.
+        guard let escaped = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
+              !escaped.isEmpty, escaped.count <= 256
+        else { throw AccountReadError.invalidResponse }
+        var components = URLComponents(string: "https://gmail.googleapis.com")!
+        components.path = "/gmail/v1/users/me/messages/\(escaped)"
+        components.queryItems = [
+            .init(name: "format", value: "metadata"),
+            .init(name: "metadataHeaders", value: "Subject"),
+            .init(name: "metadataHeaders", value: "From"),
+            .init(name: "metadataHeaders", value: "Date"),
+        ]
+        guard let url = components.url else { throw AccountReadError.invalidResponse }
+        return url
+    }
+
+    /// Builds a row field by field. Nothing is copied across from the
+    /// response wholesale, so the shape of what reaches the agent is fixed
+    /// here rather than filtered downstream. format=metadata already means
+    /// Gmail never sends a body; snippet is its own truncated preview and is
+    /// the only message content included.
+    private static func gmailRow(_ data: Data) throws -> [String: Any] {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = object["id"] as? String
+        else { throw AccountReadError.invalidResponse }
+        let headers = ((object["payload"] as? [String: Any])?["headers"] as? [Any] ?? [])
+            .compactMap { $0 as? [String: Any] }
+        func header(_ name: String) -> String? {
+            headers.first { ($0["name"] as? String)?.caseInsensitiveCompare(name) == .orderedSame }?["value"] as? String
+        }
+        var row: [String: Any] = ["id": id]
+        if let threadID = object["threadId"] as? String { row["threadId"] = threadID }
+        if let snippet = object["snippet"] as? String { row["snippet"] = snippet }
+        if let subject = header("Subject") { row["subject"] = subject }
+        if let from = header("From") { row["from"] = from }
+        if let date = header("Date") { row["date"] = date }
+        return row
+    }
+
+    /// One authenticated GET, with the same status mapping the single-request
+    /// path applies inline.
+    private func fetch(_ url: URL, provider: OAuthProvider) async throws -> Data {
+        let token: String
+        do { token = try await self.bearer(provider) } catch { throw AccountReadError.notConnected }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let data: Data
+        let response: URLResponse
+        do { (data, response) = try await self.transport.data(for: request) } catch { throw AccountReadError.unavailable }
+        guard let http = response as? HTTPURLResponse else { throw AccountReadError.unavailable }
+        guard data.count <= 512_000 else { throw AccountReadError.invalidResponse }
+        switch http.statusCode {
+        case 200: return data
+        case 401: throw AccountReadError.notConnected
+        case 403: throw AccountReadError.permissionDenied
+        case 429: throw AccountReadError.rateLimited(
+            retryAfterSeconds: max(1, Int(http.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 1))
+        default: throw AccountReadError.unavailable
+        }
+    }
+
     private func url(for r: AccountReadRequest) throws -> URL {
         let base: String; var path: String; var items: [URLQueryItem] = []
         switch r.operation {
@@ -80,6 +206,8 @@ actor DirectAccountReader {
             base = "https://www.googleapis.com"; path = "/calendar/v3/calendars/primary/events"; items = [.init(name:"singleEvents",value:"true"),.init(name:"orderBy",value:"startTime"),.init(name:"timeMin",value:r.timeMin),.init(name:"timeMax",value:r.timeMax),.init(name:"maxResults",value:String(r.limit))]; if let q=r.query { items.append(.init(name:"q",value:q)) }; if let c=r.cursor { items.append(.init(name:"pageToken",value:c)) }
         case .googleDriveFiles:
             base = "https://www.googleapis.com"; path = "/drive/v3/files"; let safe = r.query!.replacingOccurrences(of:"\\",with:"\\\\").replacingOccurrences(of:"'",with:"\\'"); items=[.init(name:"q",value:"name contains '\(safe)' and trashed = false"),.init(name:"spaces",value:"drive"),.init(name:"pageSize",value:String(r.limit)),.init(name:"fields",value:"nextPageToken,files(id,name,mimeType)")]; if let c=r.cursor { items.append(.init(name:"pageToken",value:c)) }
+        case .gmailMessages:
+            base = "https://gmail.googleapis.com"; path = "/gmail/v1/users/me/messages"; items=[.init(name:"maxResults",value:String(r.limit))]; if let q=r.query { items.append(.init(name:"q",value:q)) }; if let c=r.cursor { items.append(.init(name:"pageToken",value:c)) }
         case .outlookInbox:
             base = "https://graph.microsoft.com"; path = "/v1.0/me/mailFolders/inbox/messages"; items=[.init(name:"$top",value:String(r.limit)),.init(name:"$select",value:"id,subject,from,receivedDateTime,bodyPreview")]; if let c=r.cursor { items.append(.init(name:"$skip",value:c)) }
         case .outlookCalendarEvents:
@@ -103,6 +231,8 @@ actor DirectAccountReader {
         switch input.operation {
         case .googleCalendarEvents: array=object["items"] as? [Any]; next=object["nextPageToken"] as? String
         case .googleDriveFiles: array=object["files"] as? [Any]; next=object["nextPageToken"] as? String
+        // Unreachable: read() routes .gmailMessages to gmailPage before here.
+        case .gmailMessages: throw AccountReadError.invalidResponse
         case .outlookInbox:
             array=object["value"] as? [Any]; next=try self.microsoftCursor(object["@odata.nextLink"] as? String, path:"/v1.0/me/mailFolders/inbox/messages")
         case .outlookCalendarEvents:
@@ -133,6 +263,9 @@ actor DirectAccountReader {
         switch operation {
         case .googleCalendarEvents: keys = ["id", "summary", "description", "start", "end", "htmlLink"]
         case .googleDriveFiles: keys = ["id", "name", "mimeType"]
+        // Unreachable for the same reason; Gmail rows are constructed field
+        // by field in gmailRow rather than filtered from a response.
+        case .gmailMessages: keys = []
         case .outlookInbox: keys = ["id", "subject", "from", "receivedDateTime", "bodyPreview"]
         case .outlookCalendarEvents: keys = ["id", "subject", "start", "end", "location", "isAllDay", "webLink", "organizer"]
         case .slackChannels: keys = ["id", "name", "is_private", "is_archived", "topic", "purpose"]

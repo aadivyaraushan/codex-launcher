@@ -151,6 +151,162 @@ final class DirectAccountReaderTests: XCTestCase {
         XCTAssertFalse(OAuthProvider.microsoftOutlook.requiredAccessTokenScopes.contains("openid"))
         XCTAssertFalse(OAuthProvider.microsoftOutlook.requiredAccessTokenScopes.contains("offline_access"))
     }
+    // --- gmailMessages ----------------------------------------------------
+
+    func testGmailListsThenFetchesMetadataForEachID() async throws {
+        let transport = GmailFixtureTransport(listBody: Self.threeGmailIDs)
+        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
+
+        let page = try await reader.read(.init(operation: .gmailMessages, query: "is:unread", channel: nil, timeMin: nil, timeMax: nil, limit: 3, cursor: "page-1"))
+
+        // One list call plus one metadata call per id. users.messages.list
+        // returns nothing but ids and there is no list endpoint carrying a
+        // subject or a sender, so this shape is Gmail's, not a choice.
+        XCTAssertEqual(await transport.listCalls, 1)
+        XCTAssertEqual(await transport.metadataCalls, 3)
+        XCTAssertEqual(page.count, 3)
+        XCTAssertEqual(page.nextCursor, "page-2")
+
+        let list = try XCTUnwrap(await transport.urls.first { $0.path == "/gmail/v1/users/me/messages" })
+        let listQuery = URLComponents(url: list, resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(listQuery?.value(for: "maxResults"), "3")
+        XCTAssertEqual(listQuery?.value(for: "q"), "is:unread")
+        XCTAssertEqual(listQuery?.value(for: "pageToken"), "page-1")
+
+        let metadata = try XCTUnwrap(await transport.urls.first { $0.path.hasPrefix("/gmail/v1/users/me/messages/") })
+        let items = try XCTUnwrap(URLComponents(url: metadata, resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertEqual(items.value(for: "format"), "metadata")
+        XCTAssertEqual(Set(items.filter { $0.name == "metadataHeaders" }.compactMap(\.value)), ["Subject", "From", "Date"])
+    }
+
+    // The stub answers metadata calls out of order on purpose. Gmail returns
+    // newest first and that ordering is most of the value of the read; a task
+    // group does not preserve it.
+    func testGmailPreservesListOrderDespiteConcurrentReplies() async throws {
+        for _ in 0 ..< 8 {
+            let transport = GmailFixtureTransport(listBody: Self.threeGmailIDs)
+            let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
+
+            let page = try await reader.read(.init(operation: .gmailMessages, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 3, cursor: nil))
+
+            let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(page.payloadJSON.utf8)) as? [[String: Any]])
+            XCTAssertEqual(rows.compactMap { $0["id"] as? String }, ["m1", "m2", "m3"])
+        }
+    }
+
+    func testGmailBuildsRowsFieldByFieldRatherThanCopyingTheResponse() async throws {
+        let transport = GmailFixtureTransport(listBody: #"{"messages":[{"id":"m1"}]}"#)
+        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
+
+        let page = try await reader.read(.init(operation: .gmailMessages, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 1, cursor: nil))
+
+        let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(page.payloadJSON.utf8)) as? [[String: Any]])
+        XCTAssertEqual(Set(rows[0].keys), ["id", "threadId", "snippet", "subject", "from", "date"])
+        // The fixture spells it "subject"; Gmail spells it "Subject".
+        XCTAssertEqual(rows[0]["subject"] as? String, "Subject m1")
+        XCTAssertEqual(rows[0]["from"] as? String, "a@example.com")
+        // All present in the response and none of them reach the agent.
+        XCTAssertNil(rows[0]["labelIds"])
+        XCTAssertNil(rows[0]["internalDate"])
+        XCTAssertNil(rows[0]["payload"])
+        XCTAssertNil(rows[0]["bcc"])
+    }
+
+    func testGmailTreatsAnAbsentMessagesKeyAsAnEmptyResult() async throws {
+        let transport = GmailFixtureTransport(listBody: #"{"resultSizeEstimate":0}"#)
+        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
+
+        let page = try await reader.read(.init(operation: .gmailMessages, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 5, cursor: nil))
+
+        // Gmail omits "messages" entirely when nothing matches. That is an
+        // empty inbox view, not a malformed response.
+        XCTAssertEqual(page.count, 0)
+        XCTAssertEqual(page.payloadJSON, "[]")
+        XCTAssertNil(page.nextCursor)
+        XCTAssertEqual(await transport.metadataCalls, 0)
+    }
+
+    func testGmailRefusesMoreIDsThanWereAskedFor() async {
+        let transport = GmailFixtureTransport(listBody: #"{"messages":[{"id":"a"},{"id":"b"},{"id":"c"}]}"#)
+        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
+
+        await XCTAssertThrowsErrorAsync(try await reader.read(.init(operation: .gmailMessages, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 2, cursor: nil))) { error in
+            XCTAssertEqual(error as? AccountReadError, .invalidResponse)
+        }
+    }
+
+    func testGmailRefusesRequestShapesItCannotServe() async {
+        let shapes: [(String, AccountReadRequest)] = [
+            ("limit above the Gmail cap", .init(operation: .gmailMessages, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 11, cursor: nil)),
+            ("limit of zero", .init(operation: .gmailMessages, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 0, cursor: nil)),
+            ("blank query", .init(operation: .gmailMessages, query: "   ", channel: nil, timeMin: nil, timeMax: nil, limit: 3, cursor: nil)),
+            ("a channel", .init(operation: .gmailMessages, query: nil, channel: "C1", timeMin: nil, timeMax: nil, limit: 3, cursor: nil)),
+            ("a time window", .init(operation: .gmailMessages, query: nil, channel: nil, timeMin: "2026-09-01T00:00:00Z", timeMax: nil, limit: 3, cursor: nil)),
+        ]
+        for (label, request) in shapes {
+            let transport = GmailFixtureTransport(listBody: Self.threeGmailIDs)
+            let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
+
+            await XCTAssertThrowsErrorAsync(try await reader.read(request)) { error in
+                XCTAssertEqual(error as? AccountReadError, .invalidRequest, label)
+            }
+            let seen = await transport.urls
+            XCTAssertTrue(seen.isEmpty, "\(label): a refused request must never reach the network")
+        }
+    }
+
+    // A partial page is worse than no page: it silently omits mail. One bad
+    // metadata call has to fail the whole read.
+    func testGmailFailsTheWholeReadWhenOneMetadataCallFails() async {
+        let transport = GmailFixtureTransport(listBody: Self.threeGmailIDs, messageStatus: 403)
+        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
+
+        await XCTAssertThrowsErrorAsync(try await reader.read(.init(operation: .gmailMessages, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 3, cursor: nil))) { error in
+            XCTAssertEqual(error as? AccountReadError, .permissionDenied)
+        }
+    }
+
+    func testGmailRidesTheGoogleClient() {
+        XCTAssertEqual(AccountReadOperation.gmailMessages.provider, .google)
+        // Lower than the shared limit on purpose: each row costs a request.
+        XCTAssertEqual(DirectAccountReader.gmailMaximumLimit, 10)
+    }
+
+    private static let threeGmailIDs = #"{"messages":[{"id":"m1"},{"id":"m2"},{"id":"m3"}],"nextPageToken":"page-2"}"#
+}
+
+private actor GmailFixtureTransport: PhoneHTTPTransport {
+    private(set) var urls: [URL] = []
+    private let listBody: String
+    private let messageStatus: Int
+
+    init(listBody: String, messageStatus: Int = 200) {
+        self.listBody = listBody
+        self.messageStatus = messageStatus
+    }
+
+    var listCalls: Int { self.urls.filter { $0.path == "/gmail/v1/users/me/messages" }.count }
+    var metadataCalls: Int { self.urls.filter { $0.path.hasPrefix("/gmail/v1/users/me/messages/") }.count }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        let url = request.url!
+        self.urls.append(url)
+        if url.path == "/gmail/v1/users/me/messages" {
+            return (Data(self.listBody.utf8), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let id = url.lastPathComponent
+        // Answered out of order relative to the list, on purpose.
+        try? await Task.sleep(nanoseconds: UInt64.random(in: 1_000 ... 200_000))
+        let body = """
+        {"id":"\(id)","threadId":"T\(id)","snippet":"preview of \(id)",
+         "payload":{"headers":[{"name":"From","value":"a@example.com"},
+                               {"name":"subject","value":"Subject \(id)"},
+                               {"name":"Date","value":"Tue, 2 Sep 2026 09:00:00 +0000"},
+                               {"name":"Bcc","value":"private@example.com"}]},
+         "internalDate":"1756800000000","labelIds":["INBOX"]}
+        """
+        return (Data(body.utf8), HTTPURLResponse(url: url, statusCode: self.messageStatus, httpVersion: nil, headerFields: nil)!)
+    }
 }
 
 private actor TokenCalls { private var count = 0; func called() { self.count += 1 }; var value: Int { self.count } }
