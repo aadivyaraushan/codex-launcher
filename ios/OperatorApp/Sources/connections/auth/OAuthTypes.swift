@@ -17,6 +17,14 @@ enum OAuthProvider: String, Codable, CaseIterable, Sendable {
                 // Testing mode with named test users; a public release would
                 // need a CASA security assessment first.
                 "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/tasks.readonly",
+                // contacts.readonly and both chat scopes are restricted, like
+                // gmail.readonly above: fine under the project's Testing mode
+                // with named test users, and each one widens what a public
+                // release has to clear a security assessment for.
+                "https://www.googleapis.com/auth/contacts.readonly",
+                "https://www.googleapis.com/auth/chat.spaces.readonly",
+                "https://www.googleapis.com/auth/chat.messages.readonly",
             ]
         case .microsoftOutlook:
             ["openid", "offline_access", "User.Read", "Mail.ReadWrite", "Mail.Send", "Calendars.Read"]

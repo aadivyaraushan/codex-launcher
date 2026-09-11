@@ -2,10 +2,13 @@ import Foundation
 import OSLog
 
 enum AccountReadOperation: String, Sendable {
-    case googleCalendarEvents, googleDriveFiles, gmailMessages, outlookInbox, outlookCalendarEvents, slackChannels, slackHistory, spotifySearch, spotifyPlayback
+    case googleCalendarEvents, googleDriveFiles, gmailMessages, googleTasks, googleContactsSearch,
+         googleChatSpaces, googleChatMessages, outlookInbox, outlookCalendarEvents, slackChannels,
+         slackHistory, spotifySearch, spotifyPlayback
     var provider: OAuthProvider {
         switch self {
-        case .googleCalendarEvents, .googleDriveFiles, .gmailMessages: .google
+        case .googleCalendarEvents, .googleDriveFiles, .gmailMessages, .googleTasks,
+             .googleContactsSearch, .googleChatSpaces, .googleChatMessages: .google
         case .outlookInbox, .outlookCalendarEvents: .microsoftOutlook
         case .slackChannels, .slackHistory: .slack
         case .spotifySearch, .spotifyPlayback: .spotify
@@ -61,6 +64,24 @@ actor DirectAccountReader {
                   let min = Self.rfc3339(minText), let max = Self.rfc3339(maxText) else { return false }
             return min < max
         case .googleDriveFiles: return !(r.query?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) && r.channel == nil
+        case .googleTasks:
+            guard r.query == nil, r.timeMin == nil, r.timeMax == nil else { return false }
+            // The task list id lands in the URL path, so it is checked here
+            // and percent-encoded there. Absent means the default list.
+            if let list = r.channel, !Self.isSafePathSegment(list) { return false }
+            return true
+        case .googleContactsSearch:
+            // Same rule the iPhone's own contacts lookup keeps: a query is
+            // required and the address book is never listable. searchContacts
+            // has no pageToken at all, so a cursor is refused rather than
+            // silently dropped.
+            guard r.channel == nil, r.timeMin == nil, r.timeMax == nil, r.cursor == nil else { return false }
+            return !(r.query?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        case .googleChatSpaces:
+            return r.query == nil && r.channel == nil && r.timeMin == nil && r.timeMax == nil
+        case .googleChatMessages:
+            guard r.query == nil, r.timeMin == nil, r.timeMax == nil, let space = r.channel else { return false }
+            return Self.isSafePathSegment(space)
         case .gmailMessages:
             guard r.channel == nil, r.timeMin == nil, r.timeMax == nil else { return false }
             guard r.limit <= Self.gmailMaximumLimit else { return false }
@@ -199,6 +220,61 @@ actor DirectAccountReader {
         }
     }
 
+    /// At most this many phone numbers or addresses per contact. It matches
+    /// ForegroundContactsService.maximumHandlesPerContact deliberately: the
+    /// same rule should hold whether a contact came off the phone or out of
+    /// Google, and someone with nine numbers has one useful number and eight
+    /// the agent should not be guessing between.
+    static let contactHandleLimit = 5
+
+    /// A value that is about to be placed in a URL path rather than a query.
+    /// Checked before use rather than trusted, because a path segment that
+    /// escapes its position changes which endpoint is called. The leading "@"
+    /// is allowed for aliases such as Tasks' "@default".
+    static func isSafePathSegment(_ value: String) -> Bool {
+        guard (1 ... 128).contains(value.count) else { return false }
+        var rest = Substring(value)
+        if rest.hasPrefix("@") { rest = rest.dropFirst() }
+        guard !rest.isEmpty else { return false }
+        return rest.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == ".") }
+    }
+
+    private static let pathSegmentAllowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._@"))
+
+    private static func pathSegment(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: Self.pathSegmentAllowed) ?? ""
+    }
+
+    /// People search answers with results[].person, and a person carries far
+    /// more than the readMask asked for once metadata is counted. Rows are
+    /// built field by field so what reaches the agent is fixed here, the same
+    /// way Gmail rows are built.
+    private static func contactsPage(_ object: [String: Any], limit: Int) throws -> AccountReadPage {
+        let results = object["results"] as? [Any] ?? []
+        guard results.count <= limit else { throw AccountReadError.invalidResponse }
+        var rows: [[String: Any]] = []
+        for entry in results {
+            guard let wrapper = entry as? [String: Any],
+                  let person = wrapper["person"] as? [String: Any]
+            else { throw AccountReadError.invalidResponse }
+            func values(_ key: String, _ field: String) -> [String] {
+                ((person[key] as? [Any]) ?? []).compactMap { ($0 as? [String: Any])?[field] as? String }
+            }
+            var row: [String: Any] = [
+                "emails": Array(values("emailAddresses", "value").prefix(Self.contactHandleLimit)),
+                "phones": Array(values("phoneNumbers", "value").prefix(Self.contactHandleLimit)),
+            ]
+            if let name = values("names", "displayName").first { row["name"] = name }
+            if let resource = person["resourceName"] as? String { row["resourceName"] = resource }
+            rows.append(row)
+        }
+        guard let encoded = try? JSONSerialization.data(withJSONObject: rows, options: [.sortedKeys]),
+              encoded.count <= 256_000
+        else { throw AccountReadError.invalidResponse }
+        // searchContacts has no pageToken, so there is never a next page.
+        return .init(payloadJSON: String(decoding: encoded, as: UTF8.self), count: rows.count, nextCursor: nil)
+    }
+
     private func url(for r: AccountReadRequest) throws -> URL {
         let base: String; var path: String; var items: [URLQueryItem] = []
         switch r.operation {
@@ -208,6 +284,14 @@ actor DirectAccountReader {
             base = "https://www.googleapis.com"; path = "/drive/v3/files"; let safe = r.query!.replacingOccurrences(of:"\\",with:"\\\\").replacingOccurrences(of:"'",with:"\\'"); items=[.init(name:"q",value:"name contains '\(safe)' and trashed = false"),.init(name:"spaces",value:"drive"),.init(name:"pageSize",value:String(r.limit)),.init(name:"fields",value:"nextPageToken,files(id,name,mimeType)")]; if let c=r.cursor { items.append(.init(name:"pageToken",value:c)) }
         case .gmailMessages:
             base = "https://gmail.googleapis.com"; path = "/gmail/v1/users/me/messages"; items=[.init(name:"maxResults",value:String(r.limit))]; if let q=r.query { items.append(.init(name:"q",value:q)) }; if let c=r.cursor { items.append(.init(name:"pageToken",value:c)) }
+        case .googleTasks:
+            base = "https://tasks.googleapis.com"; path = "/tasks/v1/lists/\(Self.pathSegment(r.channel ?? "@default"))/tasks"; items=[.init(name:"maxResults",value:String(r.limit)),.init(name:"showCompleted",value:"false"),.init(name:"showDeleted",value:"false"),.init(name:"showHidden",value:"false")]; if let c=r.cursor { items.append(.init(name:"pageToken",value:c)) }
+        case .googleContactsSearch:
+            base = "https://people.googleapis.com"; path = "/v1/people:searchContacts"; items=[.init(name:"query",value:r.query),.init(name:"readMask",value:"names,emailAddresses,phoneNumbers"),.init(name:"pageSize",value:String(r.limit))]
+        case .googleChatSpaces:
+            base = "https://chat.googleapis.com"; path = "/v1/spaces"; items=[.init(name:"pageSize",value:String(r.limit))]; if let c=r.cursor { items.append(.init(name:"pageToken",value:c)) }
+        case .googleChatMessages:
+            base = "https://chat.googleapis.com"; path = "/v1/spaces/\(Self.pathSegment(r.channel ?? ""))/messages"; items=[.init(name:"pageSize",value:String(r.limit)),.init(name:"orderBy",value:"createTime desc")]; if let c=r.cursor { items.append(.init(name:"pageToken",value:c)) }
         case .outlookInbox:
             base = "https://graph.microsoft.com"; path = "/v1.0/me/mailFolders/inbox/messages"; items=[.init(name:"$top",value:String(r.limit)),.init(name:"$select",value:"id,subject,from,receivedDateTime,bodyPreview")]; if let c=r.cursor { items.append(.init(name:"$skip",value:c)) }
         case .outlookCalendarEvents:
@@ -226,11 +310,22 @@ actor DirectAccountReader {
 
     private func page(_ data: Data, input: AccountReadRequest) throws -> AccountReadPage {
         guard let object = try? JSONSerialization.jsonObject(with:data) as? [String:Any] else { throw AccountReadError.invalidResponse }
+        // Contacts is shaped differently from everything else here: the people
+        // sit under results[].person and carry far more than was asked for, so
+        // the rows are built rather than filtered. Same reasoning as Gmail.
+        if input.operation == .googleContactsSearch { return try Self.contactsPage(object, limit: input.limit) }
         if input.operation == .slackChannels || input.operation == .slackHistory { guard object["ok"] as? Bool == true else { throw AccountReadError.unavailable } }
         let array: [Any]?; let next: String?
         switch input.operation {
         case .googleCalendarEvents: array=object["items"] as? [Any]; next=object["nextPageToken"] as? String
         case .googleDriveFiles: array=object["files"] as? [Any]; next=object["nextPageToken"] as? String
+        // All three omit their array entirely when there is nothing to return,
+        // which is an empty result rather than a malformed one.
+        case .googleTasks: array=(object["items"] as? [Any]) ?? []; next=object["nextPageToken"] as? String
+        case .googleChatSpaces: array=(object["spaces"] as? [Any]) ?? []; next=object["nextPageToken"] as? String
+        case .googleChatMessages: array=(object["messages"] as? [Any]) ?? []; next=object["nextPageToken"] as? String
+        // Unreachable: handled above, before this switch.
+        case .googleContactsSearch: throw AccountReadError.invalidResponse
         // Unreachable: read() routes .gmailMessages to gmailPage before here.
         case .gmailMessages: throw AccountReadError.invalidResponse
         case .outlookInbox:
@@ -263,6 +358,11 @@ actor DirectAccountReader {
         switch operation {
         case .googleCalendarEvents: keys = ["id", "summary", "description", "start", "end", "htmlLink"]
         case .googleDriveFiles: keys = ["id", "name", "mimeType"]
+        case .googleTasks: keys = ["id", "title", "notes", "due", "status", "updated", "webViewLink"]
+        case .googleChatSpaces: keys = ["name", "displayName", "spaceType", "createTime", "lastActiveTime"]
+        case .googleChatMessages: keys = ["name", "sender", "createTime", "text", "thread"]
+        // Unreachable; contacts rows are constructed in contactsPage.
+        case .googleContactsSearch: keys = []
         // Unreachable for the same reason; Gmail rows are constructed field
         // by field in gmailRow rather than filtered from a response.
         case .gmailMessages: keys = []
