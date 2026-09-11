@@ -40,18 +40,46 @@ committed suites and they are not evidence that the committed suites pass.
 | Google Chat spaces (`googleChatSpaces`) | 1 — scope only | yes | **no** | **no** | **no** | `chat.spaces.readonly` is restricted |
 | Google Chat messages (`googleChatMessages`) | 1 — scope only | yes | **no** | **no** | **no** | `chat.messages.readonly` is restricted |
 
-### Restricted-scope debt
+### Google scope debt
 
-Five of the Google scopes now requested are **restricted**: `gmail.readonly`,
-`contacts.readonly`, `chat.spaces.readonly`, `chat.messages.readonly`, plus
-`drive.file` which was already there. Each works today under the project's
-Testing mode with named test users. Each also widens what a public release must
-clear a CASA security assessment for, and that assessment is money and months.
-`tasks.readonly` is sensitive rather than restricted, so it is the only one of
-the four added here that does not add to that bill.
+**Correction, 2026-09-11.** An earlier version of this section, and the commit
+message for the Google connectors, stated flatly that `gmail.readonly`,
+`contacts.readonly` and both chat scopes are *restricted* and that `drive.file`
+is among them. That was asserted from memory, not checked, and `drive.file` in
+particular is the deliberately narrow per-file scope — Google's own reference
+describes it as "only the specific Google Drive files you use with this app",
+which is the cheap alternative to the broad Drive scopes, not a costly one.
 
-This is worth deciding before launch planning, not during it: the cheapest
-version of Operator ships with fewer Google scopes, not more.
+What was actually verified on 2026-09-11, by reading the pages:
+
+- Google's public OAuth scope reference carries **no** sensitive/restricted
+  labels at all. The classification is not there to be read.
+- The API Services User Data Policy confirms "Sensitive and Restricted Scopes"
+  exist and carry **Limited Use** obligations, and that apps requesting
+  restricted-scope data need **annual re-verification**.
+- The per-scope classification lives in each product's own policy and in the
+  OAuth Application Verification FAQ. It was not confirmed for these scopes.
+
+So: the exact tier of each scope is **unconfirmed** and should be settled from
+the verification FAQ before any launch planning depends on it. What is not in
+doubt is the direction — more Google scopes means more verification work, and
+four of the scopes now requested reach personal content.
+
+### The Limited Use question this raises
+
+The User Data Policy requires that use of scope data be limited to user-facing
+features, that transfers to third parties are prohibited except to provide
+those features with the user's consent, and that humans must not read the data
+without the user's affirmative agreement.
+
+Operator sends message and contact content to **OpenAI** for inference
+(`LocalModelSetupGateway.swift:109`, `openai-device-code`). That is a transfer
+to a third party. It is plausibly inside the "to provide your user-facing
+feature, with consent" exception — it is how any assistant works — but it is a
+live compliance question, it needs a lawyer's read rather than an engineer's,
+and it needs a consent flow that actually says so. It is the same shape as the
+Apple DPLA §3.3.3(J) collision already recorded in
+[phase0-ios-capability-ceiling.md](phase0-ios-capability-ceiling.md).
 
 ## Hand-off connectors (Phase 4)
 
