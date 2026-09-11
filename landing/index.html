@@ -383,102 +383,270 @@ body{
   max-width: 620px; margin-inline: auto;
 }
 
-/* ---------- device mockups (light) ---------- */
 
-.mock{
-  width: 100%;
-  background: #fff;
-  border: 1px solid rgba(0,0,0,.08);
-  border-radius: 14px;
-  box-shadow: 0 6px 20px rgba(0,0,0,.05);
+/* ================================================================
+   iOS surface — a real-scale phone screen, cropped by its frame.
+   Hyperagent fills every art box with a dense cover-crop of real
+   product UI. The first pass here floated a small complete wireframe
+   in a grey box, which is why it read as a diagram rather than a
+   product. These render at phone scale and get clipped instead.
+   ================================================================ */
+
+.shot{
+  position: relative;
+  width: 100%; height: 100%;
+  display: flex; justify-content: center;
   overflow: hidden;
-  font-size: 11px;
-  line-height: 1.4;
+}
+.ios{
+  position: absolute; top: 0;
+  width: 300px; flex: 0 0 auto;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(0,0,0,.09);
+  box-shadow: 0 12px 34px rgba(0,0,0,.10), 0 1px 3px rgba(0,0,0,.05);
+  overflow: hidden;
+  text-align: left;
+  font-size: 13px; line-height: 1.35;
   color: var(--ink);
 }
-.mock--phone{ max-width: 220px; }
-.mock__bar{
+.shot--mid  .ios{ top: -64px; }
+.shot--low  .ios{ top: -132px; }
+.shot--peek .ios{ top: 18px; }
+.shot--bridge{ align-items: flex-start; padding-left: 18px; }
+
+.ios__status{
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--hairline-2);
-  font-size: 10px; font-weight: 600; color: var(--faint);
+  padding: 10px 16px 4px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .01em;
+  color: var(--muted-2);
 }
-.mock__brand{ display: inline-flex; align-items: center; gap: 5px; color: var(--ink); }
-.dot{ width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
-.dot--work{ background: var(--signal); }
-.dot--idle{ background: #c9c9c9; }
-.mock__body{ padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-.mock__label{
-  font-size: 9px; font-weight: 600; letter-spacing: .08em;
+.ios__signal{ display: inline-flex; align-items: center; gap: 4px; }
+.ios__signal i{ display: block; width: 3px; border-radius: 1px; background: var(--ink); }
+.ios__batt{
+  width: 20px; height: 10px; border-radius: 3px;
+  border: 1.2px solid rgba(0,0,0,.4); position: relative;
+}
+.ios__batt::after{
+  content: ""; position: absolute; inset: 1.5px;
+  width: 72%; border-radius: 1.5px; background: var(--ink);
+}
+.ios__nav{
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px 10px;
+  border-bottom: 1px solid rgba(0,0,0,.07);
+}
+.ios__title{ font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.ios__pill{
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; color: var(--muted-2);
+  background: #f1f1f1; border-radius: 999px; padding: 4px 9px;
+}
+.ios__screen{ padding: 14px 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+.ios__kicker{
+  font-size: 11px; font-weight: 700; letter-spacing: .07em;
   text-transform: uppercase; color: var(--faint);
 }
 
-.row{
-  display: flex; gap: 9px; align-items: flex-start;
-  padding: 9px 10px;
-  border: 1px solid var(--hairline-2);
-  border-radius: 9px;
+/* live dot */
+.live-dot{
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ok); flex: 0 0 auto;
+  box-shadow: 0 0 0 0 rgba(47,158,95,.5);
+  animation: pulse 2.4s ease-out infinite;
+}
+.live-dot--work{ background: var(--signal); box-shadow: 0 0 0 0 rgba(255,89,52,.5); }
+@keyframes pulse{
+  0%   { box-shadow: 0 0 0 0 currentColor; }
+  70%  { box-shadow: 0 0 0 7px rgba(0,0,0,0); }
+  100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+}
+
+/* message thread */
+.bubble{
+  max-width: 84%;
+  padding: 9px 13px;
+  border-radius: 18px;
+  font-size: 13.5px; line-height: 1.35;
+}
+.bubble--me{
+  align-self: flex-end;
+  background: var(--signal); color: #fff;
+  border-bottom-right-radius: 6px;
+}
+.bubble--it{
+  align-self: flex-start;
+  background: #f1f1f1; color: var(--ink);
+  border-bottom-left-radius: 6px;
+}
+.typing{ display: inline-flex; gap: 4px; align-items: center; padding: 2px 0; }
+.typing i{
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #a8a8a8; display: block;
+  animation: blink 1.3s ease-in-out infinite;
+}
+.typing i:nth-child(2){ animation-delay: .18s; }
+.typing i:nth-child(3){ animation-delay: .36s; }
+@keyframes blink{ 0%,60%,100%{ opacity:.28; transform:translateY(0);} 30%{ opacity:1; transform:translateY(-2px);} }
+
+/* task rows */
+.trow{
+  display: flex; gap: 11px; align-items: flex-start;
+  padding: 11px 12px;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 13px;
   background: #fff;
 }
-.row__dot{ width: 7px; height: 7px; border-radius: 50%; margin-top: 4px; flex: 0 0 auto; background: var(--signal); }
-.row__dot--ok{ background: var(--ok); }
-.row__dot--idle{ background: #cfcfcf; }
-.row__title{ font-weight: 600; font-size: 11px; }
-.row__meta{ font-size: 10px; color: var(--faint); font-weight: 500; margin-top: 2px; }
+.trow--tint{ background: #fafafa; }
+.trow__glyph{
+  width: 26px; height: 26px; border-radius: 8px;
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #f0f0f0; color: var(--muted-2);
+  font-size: 13px;
+}
+.trow__glyph--warm{ background: #ffe9e3; color: var(--rust); }
+.trow__glyph--cool{ background: #e4eefb; color: #2b6fc4; }
+.trow__glyph--mint{ background: #e3f3ea; color: #1f7a4a; }
+.trow__glyph--plum{ background: #efe8f8; color: #6b48a8; }
+.trow__body{ min-width: 0; flex: 1; }
+.trow__title{ font-size: 13.5px; font-weight: 600; letter-spacing: -.005em; }
+.trow__meta{
+  font-size: 12px; color: var(--faint); font-weight: 500;
+  margin-top: 2px; display: flex; align-items: center; gap: 6px;
+}
+.trow__tail{ margin-left: auto; font-size: 12px; color: var(--faint); font-weight: 500; }
 
-.field{
-  display: flex; align-items: center; gap: 8px;
+/* progress */
+.prog{ height: 3px; border-radius: 2px; background: #ededed; overflow: hidden; margin-top: 8px; }
+.prog i{ display: block; height: 100%; border-radius: 2px; background: var(--signal); width: 38%; animation: fill 4.5s ease-in-out infinite; }
+@keyframes fill{ 0%{ width: 12%; } 55%{ width: 78%; } 100%{ width: 12%; } }
+
+/* composer */
+.composer{
+  display: flex; align-items: center; gap: 9px;
   border: 1px solid rgba(0,0,0,.12);
   border-radius: 999px;
-  padding: 8px 8px 8px 12px;
-  font-size: 10px; color: var(--faint);
+  padding: 9px 9px 9px 15px;
+  font-size: 13.5px; color: var(--faint);
+  background: #fff;
 }
-.field__send{
+.composer__caret{
+  display: inline-block; width: 1.5px; height: 15px;
+  background: var(--signal); vertical-align: -3px; margin-left: 1px;
+  animation: caret 1.1s step-end infinite;
+}
+@keyframes caret{ 0%,100%{ opacity: 1; } 50%{ opacity: 0; } }
+.composer__go{
   margin-left: auto; flex: 0 0 auto;
-  width: 20px; height: 20px; border-radius: 50%;
+  width: 27px; height: 27px; border-radius: 50%;
   background: var(--ink); color: var(--on-dark);
   display: inline-flex; align-items: center; justify-content: center;
 }
-.field__send svg{ width: 10px; height: 10px; }
+.composer__go svg{ width: 13px; height: 13px; }
 
-.tagline{ display: flex; gap: 6px; flex-wrap: wrap; }
-.tagline span{
-  font-size: 9px; font-weight: 500; color: var(--muted-2);
-  background: var(--panel); border-radius: 999px; padding: 3px 8px;
+/* chips */
+.pills{ display: flex; gap: 6px; flex-wrap: wrap; }
+.pills span{
+  font-size: 11.5px; font-weight: 500; color: var(--muted-2);
+  background: #f1f1f1; border-radius: 999px; padding: 5px 10px;
 }
+.pills span.on{ background: var(--ink); color: var(--on-dark); }
 
-.term{
-  background: #fff; border: 1px solid var(--hairline-2); border-radius: 9px;
-  padding: 10px; font-size: 10px; line-height: 1.7;
+/* refusal */
+.refuse{
+  display: flex; gap: 9px; align-items: center;
+  border: 1px dashed rgba(0,0,0,.2);
+  border-radius: 13px; padding: 10px 12px;
+  font-size: 12px; color: var(--muted-2); font-weight: 500;
+}
+.refuse b{ color: var(--ink); font-weight: 600; }
+
+/* home-screen app grid */
+.apps{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 14px; }
+.apps i{
+  display: block; aspect-ratio: 1; border-radius: 13px;
+  background: linear-gradient(160deg, #e9e9ea, #dcdcde);
+}
+.apps i:nth-child(4n+1){ background: linear-gradient(160deg, #ffd9cf, #ffb9a5); }
+.apps i:nth-child(4n+2){ background: linear-gradient(160deg, #d9e6fb, #b6cdf3); }
+.apps i:nth-child(4n+3){ background: linear-gradient(160deg, #dff0e6, #bcdfcb); }
+.apps i:nth-child(4n+4){ background: linear-gradient(160deg, #eee3fa, #d5c4ef); }
+
+/* photo grid */
+.frames{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.frames i{ display: block; aspect-ratio: 1; border-radius: 7px; background: #e8e8e8; }
+.frames i:nth-child(5n+1){ background: linear-gradient(160deg, #cfd9e4, #aebccd); }
+.frames i:nth-child(5n+2){ background: linear-gradient(160deg, #e6ddd3, #cbbaa8); }
+.frames i:nth-child(5n+3){ background: linear-gradient(160deg, #d6e2d8, #b3c7b7); }
+.frames i:nth-child(5n+4){ background: linear-gradient(160deg, #e4d7da, #c6a9af); }
+.frames i:nth-child(5n+5){ background: linear-gradient(160deg, #dcdce4, #b8b8c8); }
+
+/* now playing */
+.np{ display: flex; gap: 12px; align-items: center; }
+.np__art{
+  width: 54px; height: 54px; border-radius: 10px; flex: 0 0 auto;
+  background: linear-gradient(150deg, #2b2f45, #6d5c8a 60%, #c98a72);
+}
+.np__scrub{ height: 3px; border-radius: 2px; background: #ededed; margin-top: 9px; overflow: hidden; }
+.np__scrub i{ display: block; height: 100%; width: 46%; background: var(--ink); border-radius: 2px; }
+.wave{ display: flex; align-items: flex-end; gap: 3px; height: 26px; margin-top: 2px; }
+.wave i{ flex: 1; background: #d8d8d8; border-radius: 2px 2px 0 0; display: block; animation: bounce 1.4s ease-in-out infinite; }
+.wave i:nth-child(2n){ animation-delay: .18s; }
+.wave i:nth-child(3n){ animation-delay: .36s; }
+.wave i:nth-child(5n){ animation-delay: .54s; }
+@keyframes bounce{ 0%,100%{ transform: scaleY(.45); } 50%{ transform: scaleY(1); } }
+
+/* run log */
+.log{
+  border: 1px solid rgba(0,0,0,.08); border-radius: 13px;
+  padding: 12px; background: #fcfcfc;
+  font-size: 12.5px; line-height: 1.85;
   font-variant-numeric: tabular-nums;
 }
-.term b{ color: var(--signal); font-weight: 600; }
-.term i{ color: var(--ok); font-style: normal; font-weight: 600; }
-.term span{ color: var(--faint); }
+.log div{ display: flex; gap: 8px; align-items: baseline; }
+.log b{ color: var(--signal); font-weight: 700; }
+.log i{ color: var(--ok); font-style: normal; font-weight: 700; }
+.log s{ color: var(--faint); text-decoration: none; }
 
-.duo{ display: flex; align-items: flex-start; gap: 10px; width: 100%; }
-.duo__link{ flex: 1; height: 1px; margin-top: 34px; background: linear-gradient(90deg, var(--signal), rgba(0,0,0,.12)); position: relative; }
-.duo__link::after{
-  content: ""; position: absolute; right: -3px; top: -2.5px;
-  width: 6px; height: 6px; border-radius: 50%; background: rgba(0,0,0,.2);
+/* phone → computer */
+.bridge{ display: flex; align-items: stretch; gap: 0; width: 100%; height: 100%; }
+.bridge__mac{
+  flex: 1; min-width: 0;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.1);
+  border-radius: 12px;
+  margin: 26px -10px 0 -34px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.12);
+  overflow: hidden;
+  text-align: left;
 }
-.duo .mock--phone{ max-width: 112px; }
-.duo .mock--wide{ flex: 1.5; }
-.duo .term{ font-size: 9px; line-height: 1.8; white-space: nowrap; }
+.bridge__bar{
+  display: flex; align-items: center; gap: 5px;
+  padding: 9px 12px; border-bottom: 1px solid rgba(0,0,0,.07);
+}
+.bridge__bar em{ width: 8px; height: 8px; border-radius: 50%; background: #e0e0e0; display: block; }
+.bridge__bar span{ margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--faint); }
+.bridge__body{ padding: 12px; }
 
-.grid-apps{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.grid-apps i{
-  display: block; aspect-ratio: 1; border-radius: 8px;
-  background: #ededed;
+/* ---------- art boxes: full-bleed, no dead space ---------- */
+
+.card__art{ height: 216px; padding: 0; background: #f0f0f0; }
+.feature__art{ height: 340px; padding: 0; background: #f0f0f0; }
+.pillar__art{ margin-top: 24px; height: 250px; position: relative; }
+.tabpanel__art{ height: 380px; position: relative; }
+.tabpanel__art .ios{ top: 0; }
+
+/* where a crop meets open space rather than a card edge, fade it out so the
+   cut reads as intentional instead of as a truncated element */
+.tabpanel__art .shot, .pillar__art .shot{
+  -webkit-mask-image: linear-gradient(180deg, #000 74%, transparent 100%);
+          mask-image: linear-gradient(180deg, #000 74%, transparent 100%);
 }
 
-.thumbs{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.thumbs i{ display: block; aspect-ratio: 1; border-radius: 6px; background: #e9e9e9; }
-.thumbs i:nth-child(3n+1){ background: #e4e7ea; }
-.thumbs i:nth-child(3n+2){ background: #ece7e3; }
-
-.bars{ display: flex; align-items: flex-end; gap: 4px; height: 46px; }
-.bars i{ flex: 1; background: #dcdcdc; border-radius: 3px 3px 0 0; display: block; }
+.card:hover .ios{ transform: translateY(-4px); }
+.ios{ transition: transform .25s ease; }
 
 /* ---------- responsive ---------- */
 
@@ -486,9 +654,9 @@ body{
   :root{ --inner: 40px; }
   .duo-grid{ grid-template-columns: 1fr; }
   .trio{ grid-template-columns: 1fr; }
-  .pillar{ min-height: 0; padding-bottom: 0; }
+  .pillar{ min-height: 0; }
   .tabpanel{ grid-template-columns: 1fr; gap: 28px; }
-  .tabpanel__art{ display: flex; justify-content: center; }
+  .tabpanel__art{ height: 320px; }
 }
 
 @media (max-width: 640px){
@@ -496,13 +664,15 @@ body{
   .hero{ padding-top: 56px; }
   .plain{ padding-block: 48px; }
   .panel{ padding-block: 56px; }
-  .card{ width: 280px; }
+  .card{ width: 286px; }
   .rail{ gap: 16px; }
-  .feature__art{ height: 240px; }
+  .card__art{ height: 196px; }
+  .feature__art{ height: 290px; }
   .nav__link{ font-size: 15px; }
   .btn{ font-size: 16px; }
   .waitlist__row input[type="email"]{ font-size: 17px; }
   .footer{ padding-inline: 20px; }
+  .bridge__mac{ margin-left: -30px; }
 }
 </style>
 </head>
@@ -548,24 +718,47 @@ body{
 
             <article class="card" role="listitem">
               <div class="card__art">
-                <div class="mock mock--phone">
-                  <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> Operator</span><span>9:41</span></div>
-                  <div class="mock__body">
-                    <p class="mock__label">Active</p>
-                    <div class="row">
-                      <span class="row__dot"></span>
-                      <div><p class="row__title">Reorder weekly groceries</p><p class="row__meta">running on phone</p></div>
+                <div class="shot shot--mid">
+                  <div class="ios" aria-hidden="true">
+                    <div class="ios__status">
+                      <span>9:41</span>
+                      <span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span>
                     </div>
-                    <div class="row">
-                      <span class="row__dot row__dot--ok"></span>
-                      <div><p class="row__title">Pay the electricity bill</p><p class="row__meta">waiting for your tap</p></div>
+                    <div class="ios__nav">
+                      <span class="ios__title">Operator</span>
+                      <span class="ios__pill"><span class="live-dot live-dot--work"></span> 2 running</span>
+                    </div>
+                    <div class="ios__screen">
+                      <p class="ios__kicker">Active</p>
+                      <div class="trow">
+                        <span class="trow__glyph trow__glyph--mint">&#9679;</span>
+                        <div class="trow__body">
+                          <p class="trow__title">Reorder weekly groceries</p>
+                          <p class="trow__meta">28 items matched &middot; on phone</p>
+                          <div class="prog"><i></i></div>
+                        </div>
+                      </div>
+                      <div class="trow">
+                        <span class="trow__glyph trow__glyph--warm">&#9888;</span>
+                        <div class="trow__body">
+                          <p class="trow__title">Pay the electricity bill</p>
+                          <p class="trow__meta">$84.20 &middot; waiting for your tap</p>
+                        </div>
+                      </div>
+                      <div class="trow trow--tint">
+                        <span class="trow__glyph trow__glyph--cool">&#10003;</span>
+                        <div class="trow__body">
+                          <p class="trow__title">Renewed the parking permit</p>
+                          <p class="trow__meta">done 8 min ago</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
               <div class="card__text">
                 <h3 class="card__title">Run the weekly errands</h3>
-                <p class="small">Groceries reordered, bills queued, the one risky step held back for a tap.</p>
+                <p class="small">Groceries reordered, the permit renewed, the one risky step held back for a tap.</p>
                 <div class="card__meta">
                   <span class="chip"><span class="chip__dot"></span> on phone</span>
                   <span class="chip">one tap to confirm</span>
@@ -575,19 +768,25 @@ body{
 
             <article class="card" role="listitem">
               <div class="card__art">
-                <div class="duo">
-                  <div class="mock mock--phone">
-                    <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> Phone</span></div>
-                    <div class="mock__body"><div class="row"><div><p class="row__title">Finish the slides on my laptop.</p></div></div></div>
-                  </div>
-                  <div class="duo__link" aria-hidden="true"></div>
-                  <div class="mock mock--wide">
-                    <div class="mock__bar"><span class="mock__brand">Computer</span></div>
-                    <div class="mock__body">
-                      <div class="term">
-                        <span>opening</span> deck.pptx<br/>
-                        <b>&rarr;</b> rewriting section 3<br/>
-                        <i>&check;</i> attached to draft
+                <div class="shot shot--peek">
+                  <div class="bridge" aria-hidden="true">
+                    <div class="ios" style="position:relative; width:150px; top:0">
+                      <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:8px"></i></span></div>
+                      <div class="ios__nav" style="padding:6px 12px 8px"><span class="ios__title" style="font-size:14px">Operator</span></div>
+                      <div class="ios__screen" style="padding:10px">
+                        <div class="bubble bubble--me" style="font-size:12px; max-width:100%">Finish the slides on my laptop and email them to Priya.</div>
+                        <div class="bubble bubble--it" style="font-size:12px"><span class="typing"><i></i><i></i><i></i></span></div>
+                      </div>
+                    </div>
+                    <div class="bridge__mac">
+                      <div class="bridge__bar"><em></em><em></em><em></em><span>MacBook Pro</span></div>
+                      <div class="bridge__body">
+                        <div class="log">
+                          <div><s>open</s> <span>deck.pptx</span></div>
+                          <div><i>&check;</i> <span>rewrote section 3</span></div>
+                          <div><i>&check;</i> <span>rebuilt the chart</span></div>
+                          <div><b>&rarr;</b> <span>attaching to draft&hellip;</span></div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -604,19 +803,53 @@ body{
 
             <article class="card" role="listitem">
               <div class="card__art">
-                <div class="mock mock--phone">
-                  <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> Operator</span><span>9:41</span></div>
-                  <div class="mock__body">
-                    <p class="mock__label">Today</p>
-                    <div class="row"><span class="row__dot row__dot--idle"></span><div><p class="row__title">Standup &mdash; 9:30</p><p class="row__meta">Calendar</p></div></div>
-                    <div class="row"><span class="row__dot row__dot--idle"></span><div><p class="row__title">Renew passport</p><p class="row__meta">Reminders &middot; due today</p></div></div>
-                    <div class="row"><span class="row__dot row__dot--idle"></span><div><p class="row__title">Rain from 4pm</p><p class="row__meta">Weather</p></div></div>
+                <div class="shot shot--mid">
+                  <div class="ios" aria-hidden="true">
+                    <div class="ios__status">
+                      <span>9:41</span>
+                      <span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span>
+                    </div>
+                    <div class="ios__nav">
+                      <span class="ios__title">Today</span>
+                      <span class="ios__pill">Thu 11</span>
+                    </div>
+                    <div class="ios__screen">
+                      <div class="trow">
+                        <span class="trow__glyph trow__glyph--cool">&#9635;</span>
+                        <div class="trow__body">
+                          <p class="trow__title">Standup</p>
+                          <p class="trow__meta">9:30 &ndash; 9:45 &middot; Calendar</p>
+                        </div>
+                        <span class="trow__tail">now</span>
+                      </div>
+                      <div class="trow">
+                        <span class="trow__glyph trow__glyph--warm">&#9873;</span>
+                        <div class="trow__body">
+                          <p class="trow__title">Renew passport</p>
+                          <p class="trow__meta">due today &middot; Reminders</p>
+                        </div>
+                      </div>
+                      <div class="trow">
+                        <span class="trow__glyph trow__glyph--plum">&#9788;</span>
+                        <div class="trow__body">
+                          <p class="trow__title">Rain from 4pm</p>
+                          <p class="trow__meta">take the earlier train</p>
+                        </div>
+                      </div>
+                      <div class="trow trow--tint">
+                        <span class="trow__glyph trow__glyph--mint">&#9993;</span>
+                        <div class="trow__body">
+                          <p class="trow__title">3 mails need a reply</p>
+                          <p class="trow__meta">read, not answered</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
               <div class="card__text">
                 <h3 class="card__title">Answer &ldquo;what&rsquo;s on my plate?&rdquo;</h3>
-                <p class="small">One ask, pulled from calendar, reminders and the forecast at once.</p>
+                <p class="small">One ask, pulled from calendar, reminders, mail and the forecast at once.</p>
                 <div class="card__meta">
                   <span class="chip"><span class="chip__dot chip__dot--ok"></span> read only</span>
                   <span class="chip">stays on device</span>
@@ -626,16 +859,25 @@ body{
 
             <article class="card" role="listitem">
               <div class="card__art">
-                <div class="mock mock--phone">
-                  <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> Operator</span><span>9:41</span></div>
-                  <div class="mock__body">
-                    <p class="mock__label">New ask</p>
-                    <div class="tagline"><span>On this phone</span><span>Or on my computer</span></div>
-                    <div class="field">
-                      Text what you want done&hellip;
-                      <span class="field__send"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6H10M10 6L6.5 2.5M10 6L6.5 9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                <div class="shot shot--mid">
+                  <div class="ios" aria-hidden="true">
+                    <div class="ios__status">
+                      <span>9:41</span>
+                      <span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span>
                     </div>
-                    <div class="row"><span class="row__dot"></span><div><p class="row__title">Clean up the project folder</p><p class="row__meta">running on laptop</p></div></div>
+                    <div class="ios__nav">
+                      <span class="ios__title">Operator</span>
+                      <span class="ios__pill"><span class="live-dot"></span> ready</span>
+                    </div>
+                    <div class="ios__screen">
+                      <div class="bubble bubble--me">Text Sam I&rsquo;m running 20 late, and push my 2pm.</div>
+                      <div class="bubble bubble--it">Found Sam Ortiz. Drafted the text and moved Design review to 2:30 &mdash; send it?</div>
+                      <div class="pills"><span class="on">Send</span><span>Edit</span><span>Cancel</span></div>
+                      <div class="composer">
+                        Text what you want done<span class="composer__caret"></span>
+                        <span class="composer__go"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6H10M10 6L6.5 2.5M10 6L6.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -644,6 +886,7 @@ body{
                 <p class="small">Text your phone like you&rsquo;d text a person. No app to find first.</p>
                 <div class="card__meta">
                   <span class="chip">plain language</span>
+                  <span class="chip">you send it</span>
                 </div>
               </div>
             </article>
@@ -669,17 +912,26 @@ body{
         <div class="duo-grid">
           <article class="feature">
             <div class="feature__art">
-              <div class="mock mock--phone">
-                <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> Operator</span><span>9:41</span></div>
-                <div class="mock__body">
-                  <p class="mock__label">New ask</p>
-                  <div class="field">
-                    Handle tonight. Don&rsquo;t open an app.
-                    <span class="field__send"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6H10M10 6L6.5 2.5M10 6L6.5 9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <div class="shot shot--peek">
+                <div class="ios" aria-hidden="true">
+                  <div class="ios__status">
+                    <span>9:41</span>
+                    <span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span>
                   </div>
-                  <div class="tagline"><span>Reminders</span><span>Calendar</span><span>Messages</span><span>Music</span></div>
-                  <div class="grid-apps" aria-hidden="true">
-                    <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                  <div class="ios__nav">
+                    <span class="ios__title">Operator</span>
+                    <span class="ios__pill"><span class="live-dot"></span> ready</span>
+                  </div>
+                  <div class="ios__screen">
+                    <div class="bubble bubble--me">Handle tonight. I don&rsquo;t want to open a single app.</div>
+                    <div class="bubble bubble--it">Checked your calendar &mdash; you&rsquo;re free after 6:30. Booking the usual table and texting Alex?</div>
+                    <div class="pills"><span class="on">Go ahead</span><span>Pick another time</span></div>
+                    <div class="composer">
+                      Text what you want done<span class="composer__caret"></span>
+                      <span class="composer__go"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6H10M10 6L6.5 2.5M10 6L6.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                    </div>
+                    <p class="ios__kicker">Your apps, untouched</p>
+                    <div class="apps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
                   </div>
                 </div>
               </div>
@@ -695,17 +947,40 @@ body{
 
           <article class="feature">
             <div class="feature__art">
-              <div class="mock" style="max-width:340px">
-                <div class="mock__bar"><span class="mock__brand"><span class="dot dot--work"></span> Agent run</span><span>live</span></div>
-                <div class="mock__body">
-                  <div class="term">
-                    <span>$</span> plan the evening<br/>
-                    <i>&check;</i> checked your calendar<br/>
-                    <i>&check;</i> found the table at 7:30<br/>
-                    <b>&rarr;</b> drafting the text to Sam&hellip;
+              <div class="shot shot--peek">
+                <div class="ios" aria-hidden="true">
+                  <div class="ios__status">
+                    <span>9:41</span>
+                    <span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span>
                   </div>
-                  <div class="row"><span class="row__dot"></span><div><p class="row__title">Rewriting the deck</p><p class="row__meta">on your computer</p></div></div>
-                  <div class="row"><span class="row__dot row__dot--ok"></span><div><p class="row__title">Inbox triage done</p><p class="row__meta">14 read, 0 sent</p></div></div>
+                  <div class="ios__nav">
+                    <span class="ios__title">Agent run</span>
+                    <span class="ios__pill"><span class="live-dot live-dot--work"></span> live &middot; 0:07</span>
+                  </div>
+                  <div class="ios__screen">
+                    <div class="log">
+                      <div><s>read</s> <span>calendar &middot; tonight</span></div>
+                      <div><i>&check;</i> <span>free after 6:30</span></div>
+                      <div><s>read</s> <span>contacts &middot; &ldquo;alex&rdquo;</span></div>
+                      <div><i>&check;</i> <span>held a table for 7:30</span></div>
+                      <div><b>&rarr;</b> <span>drafting the text&hellip;</span></div>
+                    </div>
+                    <div class="trow">
+                      <span class="trow__glyph trow__glyph--warm">&#9679;</span>
+                      <div class="trow__body">
+                        <p class="trow__title">Rewriting the deck</p>
+                        <p class="trow__meta">on your computer</p>
+                        <div class="prog"><i></i></div>
+                      </div>
+                    </div>
+                    <div class="trow trow--tint">
+                      <span class="trow__glyph trow__glyph--mint">&#10003;</span>
+                      <div class="trow__body">
+                        <p class="trow__title">Inbox triage done</p>
+                        <p class="trow__meta">14 read &middot; 0 sent</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -748,19 +1023,23 @@ body{
               <h3 class="h3">&ldquo;What&rsquo;s still open today?&rdquo;</h3>
               <p class="body">It reads the reminders you already keep &mdash; no new list to maintain, no re-entering anything.</p>
               <ul class="tabpanel__list">
-                <li>Only what&rsquo;s still incomplete, newest first</li>
+                <li>Only what&rsquo;s still incomplete, soonest first</li>
                 <li>Capped at a handful, never the whole database</li>
                 <li>Reading is free; adding one asks you first</li>
               </ul>
             </div>
             <div class="tabpanel__art">
-              <div class="mock mock--phone">
-                <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> Reminders</span><span>9:41</span></div>
-                <div class="mock__body">
-                  <p class="mock__label">Open</p>
-                  <div class="row"><span class="row__dot row__dot--idle"></span><div><p class="row__title">Renew passport</p><p class="row__meta">due today</p></div></div>
-                  <div class="row"><span class="row__dot row__dot--idle"></span><div><p class="row__title">Call the landlord</p><p class="row__meta">no date</p></div></div>
-                  <div class="row"><span class="row__dot row__dot--idle"></span><div><p class="row__title">Book dentist</p><p class="row__meta">Thu</p></div></div>
+              <div class="shot">
+                <div class="ios" aria-hidden="true">
+                  <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span></div>
+                  <div class="ios__nav"><span class="ios__title">Reminders</span><span class="ios__pill">3 open</span></div>
+                  <div class="ios__screen">
+                    <div class="bubble bubble--me">What&rsquo;s still open today?</div>
+                    <div class="trow"><span class="trow__glyph trow__glyph--warm">&#9873;</span><div class="trow__body"><p class="trow__title">Renew passport</p><p class="trow__meta">due today</p></div></div>
+                    <div class="trow"><span class="trow__glyph">&#9679;</span><div class="trow__body"><p class="trow__title">Call the landlord</p><p class="trow__meta">no date</p></div></div>
+                    <div class="trow"><span class="trow__glyph">&#9679;</span><div class="trow__body"><p class="trow__title">Book the dentist</p><p class="trow__meta">Thursday</p></div></div>
+                    <div class="refuse"><b>&ldquo;add one&rdquo;</b> &mdash; asks you first</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -777,12 +1056,17 @@ body{
               </ul>
             </div>
             <div class="tabpanel__art">
-              <div class="mock mock--phone">
-                <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> Calendar</span><span>Thu</span></div>
-                <div class="mock__body">
-                  <div class="row"><span class="row__dot row__dot--idle"></span><div><p class="row__title">Standup</p><p class="row__meta">9:30 &ndash; 9:45</p></div></div>
-                  <div class="row"><span class="row__dot row__dot--idle"></span><div><p class="row__title">Design review</p><p class="row__meta">11:00 &ndash; 12:00</p></div></div>
-                  <div class="row"><span class="row__dot row__dot--ok"></span><div><p class="row__title">Free until 5</p><p class="row__meta">nothing booked</p></div></div>
+              <div class="shot">
+                <div class="ios" aria-hidden="true">
+                  <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span></div>
+                  <div class="ios__nav"><span class="ios__title">Thursday</span><span class="ios__pill">Sep 11</span></div>
+                  <div class="ios__screen">
+                    <div class="bubble bubble--me">Am I free Thursday afternoon?</div>
+                    <div class="bubble bubble--it">Clear from 12 to 5. Two things in the morning.</div>
+                    <div class="trow"><span class="trow__glyph trow__glyph--cool">&#9635;</span><div class="trow__body"><p class="trow__title">Standup</p><p class="trow__meta">9:30 &ndash; 9:45</p></div></div>
+                    <div class="trow"><span class="trow__glyph trow__glyph--plum">&#9635;</span><div class="trow__body"><p class="trow__title">Design review</p><p class="trow__meta">11:00 &ndash; 12:00</p></div></div>
+                    <div class="trow trow--tint"><span class="trow__glyph trow__glyph--mint">&#10003;</span><div class="trow__body"><p class="trow__title">Free until 5</p><p class="trow__meta">nothing booked</p></div></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -799,12 +1083,16 @@ body{
               </ul>
             </div>
             <div class="tabpanel__art">
-              <div class="mock mock--phone">
-                <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> Contacts</span><span>&ldquo;sam&rdquo;</span></div>
-                <div class="mock__body">
-                  <div class="row"><span class="row__dot row__dot--ok"></span><div><p class="row__title">Sam Ortiz</p><p class="row__meta">mobile &middot; home</p></div></div>
-                  <div class="row"><span class="row__dot row__dot--idle"></span><div><p class="row__title">Samira Khan</p><p class="row__meta">work</p></div></div>
-                  <div class="row" style="border-style:dashed"><div><p class="row__meta">&ldquo;list all my contacts&rdquo; &mdash; refused</p></div></div>
+              <div class="shot">
+                <div class="ios" aria-hidden="true">
+                  <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span></div>
+                  <div class="ios__nav"><span class="ios__title">Contacts</span><span class="ios__pill">&ldquo;sam&rdquo;</span></div>
+                  <div class="ios__screen">
+                    <div class="bubble bubble--me">Text Sam I&rsquo;m running late.</div>
+                    <div class="trow"><span class="trow__glyph trow__glyph--mint">SO</span><div class="trow__body"><p class="trow__title">Sam Ortiz</p><p class="trow__meta">mobile &middot; home</p></div><span class="trow__tail">match</span></div>
+                    <div class="trow"><span class="trow__glyph trow__glyph--cool">SK</span><div class="trow__body"><p class="trow__title">Samira Khan</p><p class="trow__meta">work</p></div></div>
+                    <div class="refuse"><b>&ldquo;list all my contacts&rdquo;</b> &mdash; refused</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -821,11 +1109,16 @@ body{
               </ul>
             </div>
             <div class="tabpanel__art">
-              <div class="mock mock--phone">
-                <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> Photos</span><span>recent</span></div>
-                <div class="mock__body">
-                  <div class="thumbs" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                  <div class="row"><div><p class="row__title">6 photos, Aug 12 &ndash; Sep 2</p><p class="row__meta">descriptions only &middot; no image data</p></div></div>
+              <div class="shot">
+                <div class="ios" aria-hidden="true">
+                  <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span></div>
+                  <div class="ios__nav"><span class="ios__title">Photos</span><span class="ios__pill">recent</span></div>
+                  <div class="ios__screen">
+                    <div class="bubble bubble--me">When did I last photograph the car?</div>
+                    <div class="frames"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                    <div class="trow"><span class="trow__glyph trow__glyph--cool">&#9635;</span><div class="trow__body"><p class="trow__title">Sep 2 &mdash; car, driveway</p><p class="trow__meta">9 photos scanned &middot; Aug 12 &ndash; Sep 2</p></div></div>
+                    <div class="refuse">descriptions only &mdash; <b>no image data leaves the phone</b></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -842,12 +1135,23 @@ body{
               </ul>
             </div>
             <div class="tabpanel__art">
-              <div class="mock mock--phone">
-                <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> Music</span><span>now</span></div>
-                <div class="mock__body">
-                  <div class="bars" aria-hidden="true"><i style="height:40%"></i><i style="height:70%"></i><i style="height:55%"></i><i style="height:90%"></i><i style="height:45%"></i><i style="height:65%"></i><i style="height:30%"></i></div>
-                  <div class="row"><span class="row__dot"></span><div><p class="row__title">Weightless &mdash; Marconi Union</p><p class="row__meta">playing since 8:12</p></div></div>
-                  <div class="row" style="border-style:dashed"><div><p class="row__meta">&ldquo;skip this&rdquo; &mdash; refused</p></div></div>
+              <div class="shot">
+                <div class="ios" aria-hidden="true">
+                  <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span></div>
+                  <div class="ios__nav"><span class="ios__title">Music</span><span class="ios__pill"><span class="live-dot live-dot--work"></span> playing</span></div>
+                  <div class="ios__screen">
+                    <div class="bubble bubble--me">What was that song this morning?</div>
+                    <div class="np">
+                      <span class="np__art"></span>
+                      <div class="trow__body">
+                        <p class="trow__title">Weightless</p>
+                        <p class="trow__meta">Marconi Union &middot; since 8:12</p>
+                        <div class="np__scrub"><i></i></div>
+                      </div>
+                    </div>
+                    <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                    <div class="refuse"><b>&ldquo;skip this&rdquo;</b> &mdash; refused, there is no play verb</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -875,12 +1179,15 @@ body{
               buying, moving money &mdash; stops and asks, or isn&rsquo;t possible at all.
             </p>
             <div class="pillar__art">
-              <div class="mock">
-                <div class="mock__bar"><span class="mock__brand">Ceilings</span></div>
-                <div class="mock__body">
-                  <div class="row"><span class="row__dot row__dot--ok"></span><div><p class="row__title">Read your reminders</p><p class="row__meta">completes on its own</p></div></div>
-                  <div class="row"><span class="row__dot"></span><div><p class="row__title">Send the message</p><p class="row__meta">one tap from you</p></div></div>
-                  <div class="row" style="border-style:dashed"><span class="row__dot row__dot--idle"></span><div><p class="row__title">Check out a cart</p><p class="row__meta">not a thing it can do</p></div></div>
+              <div class="shot">
+                <div class="ios" aria-hidden="true">
+                  <div class="ios__nav"><span class="ios__title">Ceilings</span><span class="ios__pill">per action</span></div>
+                  <div class="ios__screen">
+                    <div class="trow"><span class="trow__glyph trow__glyph--mint">&#10003;</span><div class="trow__body"><p class="trow__title">Read your reminders</p><p class="trow__meta">completes on its own</p></div></div>
+                    <div class="trow"><span class="trow__glyph trow__glyph--warm">&#9888;</span><div class="trow__body"><p class="trow__title">Send the message</p><p class="trow__meta">one tap from you</p></div></div>
+                    <div class="refuse"><b>Check out a cart</b> &mdash; not a verb it has</div>
+                    <div class="refuse"><b>Move money</b> &mdash; deep link only, forever</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -893,14 +1200,17 @@ body{
               touched is on the screen while it happens.
             </p>
             <div class="pillar__art">
-              <div class="mock">
-                <div class="mock__bar"><span class="mock__brand"><span class="dot dot--work"></span> Live</span><span>0:07</span></div>
-                <div class="mock__body">
-                  <div class="term">
-                    <span>read</span> calendar &middot; Thu<br/>
-                    <span>read</span> contacts &middot; &ldquo;sam&rdquo;<br/>
-                    <b>&rarr;</b> drafted 1 message<br/>
-                    <span>waiting for your tap</span>
+              <div class="shot">
+                <div class="ios" aria-hidden="true">
+                  <div class="ios__nav"><span class="ios__title">Live</span><span class="ios__pill"><span class="live-dot live-dot--work"></span> 0:07</span></div>
+                  <div class="ios__screen">
+                    <div class="log">
+                      <div><s>read</s> <span>calendar &middot; Thu</span></div>
+                      <div><s>read</s> <span>contacts &middot; &ldquo;sam&rdquo;</span></div>
+                      <div><i>&check;</i> <span>drafted 1 message</span></div>
+                      <div><b>&rarr;</b> <span>waiting for your tap</span></div>
+                    </div>
+                    <div class="trow"><span class="trow__glyph trow__glyph--cool">&#9635;</span><div class="trow__body"><p class="trow__title">Nothing sent yet</p><p class="trow__meta">0 writes this run</p></div></div>
                   </div>
                 </div>
               </div>
@@ -914,12 +1224,14 @@ body{
               signed in there. Your data isn&rsquo;t warehoused to make it work.
             </p>
             <div class="pillar__art">
-              <div class="mock">
-                <div class="mock__bar"><span class="mock__brand"><span class="dot"></span> On device</span></div>
-                <div class="mock__body">
-                  <div class="row"><span class="row__dot row__dot--ok"></span><div><p class="row__title">Reminders, Photos, Music</p><p class="row__meta">never leave the phone</p></div></div>
-                  <div class="row"><span class="row__dot row__dot--ok"></span><div><p class="row__title">Tokens in the Keychain</p><p class="row__meta">not on our servers</p></div></div>
-                  <div class="row"><span class="row__dot row__dot--ok"></span><div><p class="row__title">Apache 2.0</p><p class="row__meta">read the source yourself</p></div></div>
+              <div class="shot">
+                <div class="ios" aria-hidden="true">
+                  <div class="ios__nav"><span class="ios__title">On device</span><span class="ios__pill"><span class="live-dot"></span> local</span></div>
+                  <div class="ios__screen">
+                    <div class="trow"><span class="trow__glyph trow__glyph--mint">&#10003;</span><div class="trow__body"><p class="trow__title">Reminders, Photos, Music</p><p class="trow__meta">never leave the phone</p></div></div>
+                    <div class="trow"><span class="trow__glyph trow__glyph--cool">&#9919;</span><div class="trow__body"><p class="trow__title">Tokens in the Keychain</p><p class="trow__meta">not on our servers</p></div></div>
+                    <div class="trow"><span class="trow__glyph trow__glyph--plum">&#9881;</span><div class="trow__body"><p class="trow__title">Apache 2.0</p><p class="trow__meta">read the source yourself</p></div></div>
+                  </div>
                 </div>
               </div>
             </div>
