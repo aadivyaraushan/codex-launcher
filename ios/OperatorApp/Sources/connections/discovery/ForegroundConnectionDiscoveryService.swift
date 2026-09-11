@@ -76,8 +76,7 @@ final class ForegroundConnectionDiscoveryService: GatewayNodeCommandHandler {
     }
 
     private static let readOperations: [AccountReadOperation] = [
-        .googleCalendarEvents, .googleDriveFiles, .gmailMessages, .googleTasks, .googleContactsSearch,
-        .googleChatSpaces, .googleChatMessages, .outlookInbox, .outlookCalendarEvents, .slackChannels,
+        .googleCalendarEvents, .googleDriveFiles, .gmailMessages, .googleTasks, .outlookInbox, .outlookCalendarEvents, .slackChannels,
         .slackHistory, .spotifySearch, .spotifyPlayback,
     ]
 
@@ -164,9 +163,6 @@ final class ForegroundConnectionDiscoveryService: GatewayNodeCommandHandler {
         "googleDriveFiles": ["query?", "limit?", "cursor?"],
         "gmailMessages": ["query?", "limit?", "cursor?"],
         "googleTasks": ["channel?", "limit?", "cursor?"],
-        "googleContactsSearch": ["query", "limit?"],
-        "googleChatSpaces": ["limit?", "cursor?"],
-        "googleChatMessages": ["channel", "limit?", "cursor?"],
         "outlookInbox": ["query?", "limit?", "cursor?"],
         "outlookCalendarEvents": ["timeMin", "timeMax", "limit?", "cursor?"],
         "slackChannels": ["limit?", "cursor?"],

@@ -35,10 +35,22 @@ committed suites and they are not evidence that the committed suites pass.
 | Contacts (`contacts.resolve`) | 0 — no OAuth | yes | **no** | n/a — permission prompt only | **no** | iOS 18 partial access is reported, not hidden |
 | Microsoft Calendar (`outlookCalendarEvents`) | 1 — scope only | yes | **no** | **no** | **no** | Forces Microsoft re-consent; see below |
 | Gmail (`gmailMessages`) | 1 — scope only | yes | **no** | **no** | **no** | Forces Google re-consent; see below |
-| Google Tasks (`googleTasks`) | 1 — scope only | yes | **no** | **no** | **no** | `tasks.readonly` is sensitive, not restricted — the cheap one |
-| Google Contacts (`googleContactsSearch`) | 1 — scope only | yes | **no** | **no** | **no** | Query required, never listable. `contacts.readonly` is restricted |
-| Google Chat spaces (`googleChatSpaces`) | 1 — scope only | yes | **no** | **no** | **no** | `chat.spaces.readonly` is restricted |
-| Google Chat messages (`googleChatMessages`) | 1 — scope only | yes | **no** | **no** | **no** | `chat.messages.readonly` is restricted |
+| Google Tasks (`googleTasks`) | 1 — scope only | yes | **no** | **no** | **no** | Kept |
+
+### Google Contacts and Chat were dropped, 2026-09-11
+
+Built, then removed before anyone authorized them, on the principle that the
+phone already supplies the same data for free:
+
+- **Google Contacts** duplicated `contacts.resolve`, which reads the phone's own
+  address book with no OAuth, no review and no annual re-verification — and on a
+  consumer iPhone that book is usually already synced from Google.
+- **Google Chat** is a Workspace product with thin consumer use: two scopes
+  reaching message content, for the narrowest audience of anything on the list.
+
+The remaining Google scopes are `calendar.events`, `drive.file` (the narrow
+per-file scope), `gmail.readonly` and `tasks.readonly`. A test pins the two
+dropped families out so reinstating either has to be an argument.
 
 ### Google scope debt
 

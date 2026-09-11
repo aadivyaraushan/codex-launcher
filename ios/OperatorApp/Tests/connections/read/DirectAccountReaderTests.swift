@@ -362,137 +362,42 @@ private actor GmailFixtureTransport: PhoneHTTPTransport {
                        "/tasks/v1/lists/MTIzNDU2/tasks")
     }
 
-    // --- googleContactsSearch ---------------------------------------------
 
-    func testGoogleContactsBuildsRowsAndNeverCopiesThePerson() async throws {
-        let body = #"""
-        {"results":[{"person":{"resourceName":"people/c1","names":[{"displayName":"Maya","metadata":{"primary":true}}],"emailAddresses":[{"value":"maya@example.com"}],"phoneNumbers":[{"value":"+12175550100"}],"birthdays":[{"text":"private"}]}}]}
-        """#
-        let transport = ReadFixtureTransport(body: body)
-        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
 
-        let page = try await reader.read(.init(operation: .googleContactsSearch, query: "Maya", channel: nil, timeMin: nil, timeMax: nil, limit: 5, cursor: nil))
 
-        let request = try XCTUnwrap(await transport.request)
-        let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-        XCTAssertEqual(components?.host, "people.googleapis.com")
-        XCTAssertEqual(components?.path, "/v1/people:searchContacts")
-        XCTAssertEqual(components?.queryItems?.value(for: "readMask"), "names,emailAddresses,phoneNumbers")
 
-        let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(page.payloadJSON.utf8)) as? [[String: Any]])
-        XCTAssertEqual(Set(rows[0].keys), ["name", "emails", "phones", "resourceName"])
-        XCTAssertNil(rows[0]["birthdays"], "a person carries far more than the readMask asked for")
-        // searchContacts has no pageToken in the API at all.
-        XCTAssertNil(page.nextCursor)
+
+
+
+    // Tasks omits items entirely when the list is empty. That is an empty
+    // result, not a broken one.
+    func testAbsentItemsReadAsAnEmptyResult() async throws {
+        let reader = DirectAccountReader(transport: ReadFixtureTransport(body: "{}"), bearer: { _ in "token" })
+
+        let page = try await reader.read(.init(operation: .googleTasks, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 5, cursor: nil))
+
+        XCTAssertEqual(page.count, 0)
+        XCTAssertEqual(page.payloadJSON, "[]")
     }
 
-    // The same rule the phone's own contacts lookup keeps: a query is
-    // required, and there is no shape of this request that lists everyone.
-    func testGoogleContactsIsNeverListable() async {
-        let shapes: [(String, AccountReadRequest)] = [
-            ("no query", .init(operation: .googleContactsSearch, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 5, cursor: nil)),
-            ("blank query", .init(operation: .googleContactsSearch, query: "   ", channel: nil, timeMin: nil, timeMax: nil, limit: 5, cursor: nil)),
-            ("a cursor the API has no way to honour", .init(operation: .googleContactsSearch, query: "Maya", channel: nil, timeMin: nil, timeMax: nil, limit: 5, cursor: "abc")),
-            ("a channel", .init(operation: .googleContactsSearch, query: "Maya", channel: "x", timeMin: nil, timeMax: nil, limit: 5, cursor: nil)),
-        ]
-        for (label, request) in shapes {
-            let transport = ReadFixtureTransport(body: "{}")
-            let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
-
-            await XCTAssertThrowsErrorAsync(try await reader.read(request)) { error in
-                XCTAssertEqual(error as? AccountReadError, .invalidRequest, label)
-            }
-            let seen = await transport.request
-            XCTAssertNil(seen, label)
-        }
-    }
-
-    func testGoogleContactsCapsHandlesPerPersonLikeThePhoneDoes() async throws {
-        let many = (0 ..< 9).map { "{\"value\":\"v\($0)\"}" }.joined(separator: ",")
-        let transport = ReadFixtureTransport(body: "{\"results\":[{\"person\":{\"emailAddresses\":[\(many)],\"phoneNumbers\":[\(many)]}}]}")
-        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
-
-        let page = try await reader.read(.init(operation: .googleContactsSearch, query: "x", channel: nil, timeMin: nil, timeMax: nil, limit: 5, cursor: nil))
-
-        let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(page.payloadJSON.utf8)) as? [[String: Any]])
-        XCTAssertEqual((rows[0]["emails"] as? [String])?.count, DirectAccountReader.contactHandleLimit)
-        XCTAssertEqual((rows[0]["phones"] as? [String])?.count, DirectAccountReader.contactHandleLimit)
-    }
-
-    // --- googleChat -------------------------------------------------------
-
-    func testGoogleChatListsSpacesWithAllowlistedKeys() async throws {
-        let transport = ReadFixtureTransport(body: #"{"spaces":[{"name":"spaces/AAA","displayName":"Design","spaceType":"SPACE","membershipCount":{"joinedDirectHumanUserCount":4}}],"nextPageToken":"n"}"#)
-        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
-
-        let page = try await reader.read(.init(operation: .googleChatSpaces, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 5, cursor: nil))
-
-        let request = try XCTUnwrap(await transport.request)
-        let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-        XCTAssertEqual(components?.host, "chat.googleapis.com")
-        XCTAssertEqual(components?.path, "/v1/spaces")
-
-        let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(page.payloadJSON.utf8)) as? [[String: Any]])
-        XCTAssertEqual(Set(rows[0].keys), ["name", "displayName", "spaceType"])
-        XCTAssertNil(rows[0]["membershipCount"])
-        XCTAssertEqual(page.nextCursor, "n")
-    }
-
-    func testGoogleChatMessagesNeedASpaceAndItGoesInThePath() async throws {
-        let transport = ReadFixtureTransport(body: #"{"messages":[{"name":"spaces/AAA/messages/1","text":"hi","createTime":"2026-09-01T00:00:00Z","sender":{"name":"users/1"},"annotations":[{"x":1}]}]}"#)
-        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
-
-        let page = try await reader.read(.init(operation: .googleChatMessages, query: nil, channel: "AAA", timeMin: nil, timeMax: nil, limit: 5, cursor: nil))
-
-        let request = try XCTUnwrap(await transport.request)
-        XCTAssertEqual(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.path,
-                       "/v1/spaces/AAA/messages")
-        let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(page.payloadJSON.utf8)) as? [[String: Any]])
-        XCTAssertEqual(Set(rows[0].keys), ["name", "text", "createTime", "sender"])
-        XCTAssertNil(rows[0]["annotations"])
-
-        for channel in [nil, "a/../b"] as [String?] {
-            let blocked = ReadFixtureTransport(body: "{}")
-            let guarded = DirectAccountReader(transport: blocked, bearer: { _ in "token" })
-            await XCTAssertThrowsErrorAsync(try await guarded.read(.init(operation: .googleChatMessages, query: nil, channel: channel, timeMin: nil, timeMax: nil, limit: 5, cursor: nil))) { error in
-                XCTAssertEqual(error as? AccountReadError, .invalidRequest, "channel=\(String(describing: channel))")
-            }
-            let seen = await blocked.request
-            XCTAssertNil(seen)
-        }
-    }
-
-    // Tasks, Chat spaces and Chat messages all omit their array entirely when
-    // there is nothing to return. That is an empty result, not a broken one.
-    func testAbsentArraysReadAsEmptyResults() async throws {
-        let cases: [(AccountReadOperation, String?)] = [
-            (.googleTasks, nil), (.googleChatSpaces, nil), (.googleChatMessages, "AAA"),
-        ]
-        for (operation, channel) in cases {
-            let reader = DirectAccountReader(transport: ReadFixtureTransport(body: "{}"), bearer: { _ in "token" })
-
-            let page = try await reader.read(.init(operation: operation, query: nil, channel: channel, timeMin: nil, timeMax: nil, limit: 5, cursor: nil))
-
-            XCTAssertEqual(page.count, 0, "\(operation)")
-            XCTAssertEqual(page.payloadJSON, "[]", "\(operation)")
-        }
-    }
-
-    // Scopes checked against the live discovery documents on 2026-09-10, not
-    // from memory. Every one is the readonly variant.
-    func testEveryNewGoogleScopeIsReadOnlyAndOnTheExistingClient() {
+    func testGoogleTasksScopeIsReadOnlyAndOnTheExistingClient() {
         let scopes = OAuthProvider.google.scopes
-        for scope in ["tasks.readonly", "contacts.readonly", "chat.spaces.readonly", "chat.messages.readonly"] {
-            XCTAssertTrue(scopes.contains("https://www.googleapis.com/auth/\(scope)"), scope)
-        }
-        XCTAssertFalse(scopes.contains { scope in
-            (scope.contains("tasks") || scope.contains("contacts") || scope.contains("chat"))
-                && !scope.hasSuffix(".readonly")
-        }, "nothing wider than readonly may sit beside them")
+        XCTAssertTrue(scopes.contains("https://www.googleapis.com/auth/tasks.readonly"))
+        XCTAssertFalse(scopes.contains { $0.contains("tasks") && !$0.hasSuffix(".readonly") })
         XCTAssertEqual(OAuthProvider.allCases.count, 4, "no new OAuth client was introduced")
-        for operation: AccountReadOperation in [.googleTasks, .googleContactsSearch, .googleChatSpaces, .googleChatMessages] {
-            XCTAssertEqual(operation.provider, .google)
+        XCTAssertEqual(AccountReadOperation.googleTasks.provider, .google)
+    }
+
+    // Dropped deliberately rather than forgotten. Google Contacts duplicated
+    // the phone's own address book, which costs no OAuth and no review, and
+    // Google Chat is a Workspace product with thin consumer use - two scopes
+    // reaching message content for the narrowest audience on the list. If
+    // either is ever reinstated it should be an argument, not a reflex.
+    func testDroppedGoogleScopesStayDropped() {
+        for scope in ["contacts.readonly", "chat.spaces.readonly", "chat.messages.readonly"] {
+            XCTAssertFalse(OAuthProvider.google.scopes.contains("https://www.googleapis.com/auth/\(scope)"), scope)
         }
+        XCTAssertFalse(OAuthProvider.google.scopes.contains { $0.contains("/chat.") || $0.contains("/contacts") })
     }
 }
 
