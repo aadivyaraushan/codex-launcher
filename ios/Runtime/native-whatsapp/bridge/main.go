@@ -1,3 +1,11 @@
+//go:build wacli
+
+// These files are not part of this module's build. build.sh copies them into
+// a pinned wacli source tree, where their github.com/openclaw/wacli/internal
+// imports resolve; here they cannot compile at all, and without this tag they
+// break `go test ./...` — the command the README documents — for the whole
+// repository. The tag is what build.sh passes once they are in the right tree.
+
 package main
 
 /*

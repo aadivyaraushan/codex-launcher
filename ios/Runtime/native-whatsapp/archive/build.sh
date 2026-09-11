@@ -44,7 +44,7 @@ cp "$send_dir/send.go" "$send_dir/send_test.go" "$staged_source/cmd/wacli-ios-br
 
 (
   cd "$staged_source"
-  GOTOOLCHAIN=go1.26.6 go test ./cmd/wacli-ios-bridge
+  GOTOOLCHAIN=go1.26.6 go test -tags wacli ./cmd/wacli-ios-bridge
 )
 
 sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
@@ -55,7 +55,7 @@ mkdir -p "$work_dir/output"
   GOOS=ios GOARCH=arm64 CGO_ENABLED=1 GOTOOLCHAIN=go1.26.6 CC="$clang" \
     CGO_CFLAGS="-isysroot $sdk -target arm64-apple-ios18.0-simulator -Wno-error=missing-braces" \
     CGO_LDFLAGS="-isysroot $sdk -target arm64-apple-ios18.0-simulator" \
-    go build -tags sqlite_fts5 -buildmode=c-archive \
+    go build -tags sqlite_fts5,wacli -buildmode=c-archive \
       -trimpath -ldflags='-s -w -buildid=' \
       -o "$work_dir/output/libWacliBridge.a" ./cmd/wacli-ios-bridge
 )
