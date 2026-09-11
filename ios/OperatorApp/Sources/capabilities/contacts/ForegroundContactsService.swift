@@ -78,14 +78,14 @@ final class ForegroundContactsService: GatewayNodeCommandHandler {
         paramsJSON: String?,
         timeoutMilliseconds: Int?) async -> GatewayNodeCommandResult
     {
-        guard command == "contacts.resolve" else {
+        guard command == "contacts.search" else {
             return .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
         }
         guard let request = Self.request(from: paramsJSON) else {
             self.logger.info("[contacts] refused branch=invalid_params")
             return .failure(
                 code: "INVALID_REQUEST",
-                message: "contacts.resolve requires a nonempty query and an optional limit between 1 and \(Self.maximumLimit)")
+                message: "contacts.search requires a nonempty query and an optional limit between 1 and \(Self.maximumLimit)")
         }
         guard self.isAppActive() else {
             self.logger.info("[contacts] refused branch=app_not_active")

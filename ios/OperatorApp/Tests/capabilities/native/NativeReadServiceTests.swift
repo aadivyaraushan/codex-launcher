@@ -18,7 +18,7 @@ final class ForegroundPhotosServiceTests: XCTestCase {
         ])
         let service = ForegroundPhotosService(library: library, isAppActive: { true })
 
-        let result = await service.handleNodeCommand("photos.search", paramsJSON: "{}", timeoutMilliseconds: nil)
+        let result = await service.handleNodeCommand("photos.latest", paramsJSON: "{}", timeoutMilliseconds: nil)
 
         let payload = try payloadObject(result)
         let photos = try XCTUnwrap(payload["photos"] as? [[String: Any]])
@@ -36,7 +36,7 @@ final class ForegroundPhotosServiceTests: XCTestCase {
         let service = ForegroundPhotosService(library: library, isAppActive: { true })
 
         _ = await service.handleNodeCommand(
-            "photos.search",
+            "photos.latest",
             paramsJSON: #"{"album":"  Receipts  ","from":"2026-09-01T00:00:00Z","to":"2026-09-08T00:00:00Z","limit":3}"#,
             timeoutMilliseconds: nil)
 
@@ -50,7 +50,7 @@ final class ForegroundPhotosServiceTests: XCTestCase {
         let many = (0 ..< 25).map { PhotoItem(id: "\($0)", created: nil, isVideo: false, isFavorite: false, albumName: nil) }
         let service = ForegroundPhotosService(library: StubPhotoLibrary(access: .full, items: many), isAppActive: { true })
 
-        let result = await service.handleNodeCommand("photos.search", paramsJSON: #"{"limit":2}"#, timeoutMilliseconds: nil)
+        let result = await service.handleNodeCommand("photos.latest", paramsJSON: #"{"limit":2}"#, timeoutMilliseconds: nil)
 
         XCTAssertEqual((try payloadObject(result)["photos"] as? [[String: Any]])?.count, 2)
     }
@@ -65,11 +65,11 @@ final class ForegroundPhotosServiceTests: XCTestCase {
             let library = StubPhotoLibrary(access: .full, items: [])
             let service = ForegroundPhotosService(library: library, isAppActive: { true })
 
-            let result = await service.handleNodeCommand("photos.search", paramsJSON: paramsJSON, timeoutMilliseconds: nil)
+            let result = await service.handleNodeCommand("photos.latest", paramsJSON: paramsJSON, timeoutMilliseconds: nil)
 
             XCTAssertEqual(result, .failure(
                 code: "INVALID_REQUEST",
-                message: "photos.search accepts an optional album, from, to and a limit between 1 and 25"),
+                message: "photos.latest accepts an optional album, from, to and a limit between 1 and 25"),
                 "params=\(paramsJSON)")
             XCTAssertEqual(library.searchCount, 0, "params=\(paramsJSON)")
         }
@@ -77,12 +77,12 @@ final class ForegroundPhotosServiceTests: XCTestCase {
 
     func testReportsPartialAccessAndRefusesDenied() async throws {
         let limited = ForegroundPhotosService(library: StubPhotoLibrary(access: .limited, items: []), isAppActive: { true })
-        let granted = await limited.handleNodeCommand("photos.search", paramsJSON: "{}", timeoutMilliseconds: nil)
+        let granted = await limited.handleNodeCommand("photos.latest", paramsJSON: "{}", timeoutMilliseconds: nil)
         XCTAssertEqual(try payloadObject(granted)["partialAccess"] as? Bool, true)
 
         let library = StubPhotoLibrary(access: .denied, items: [])
         let denied = await ForegroundPhotosService(library: library, isAppActive: { true })
-            .handleNodeCommand("photos.search", paramsJSON: "{}", timeoutMilliseconds: nil)
+            .handleNodeCommand("photos.latest", paramsJSON: "{}", timeoutMilliseconds: nil)
         XCTAssertEqual(denied, .failure(code: "PERMISSION_DENIED", message: "Photos permission was denied"))
         XCTAssertEqual(library.searchCount, 0)
     }
@@ -236,7 +236,7 @@ final class NativeReadDeadlineTests: XCTestCase {
         let service = ForegroundPhotosService(library: library, isAppActive: { true })
 
         let started = Date()
-        let result = await service.handleNodeCommand("photos.search", paramsJSON: "{}", timeoutMilliseconds: 50)
+        let result = await service.handleNodeCommand("photos.latest", paramsJSON: "{}", timeoutMilliseconds: 50)
 
         XCTAssertEqual(result, .failure(code: "TIMEOUT", message: "Looking through your photos took too long"))
         XCTAssertLessThan(Date().timeIntervalSince(started), 1.0, "waited well past the deadline")
@@ -247,7 +247,7 @@ final class NativeReadDeadlineTests: XCTestCase {
         library.delayNanoseconds = 2_000_000_000
         let service = ForegroundPhotosService(library: library, isAppActive: { true })
 
-        let result = await service.handleNodeCommand("photos.search", paramsJSON: "{}", timeoutMilliseconds: 50)
+        let result = await service.handleNodeCommand("photos.latest", paramsJSON: "{}", timeoutMilliseconds: 50)
 
         XCTAssertEqual(result, .failure(
             code: "TIMEOUT", message: "Photos permission was not answered in time"))

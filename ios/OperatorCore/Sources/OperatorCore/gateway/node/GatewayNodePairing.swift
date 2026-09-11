@@ -1,12 +1,25 @@
 import Foundation
 import OSLog
 
+// openclaw resolves a node's allowlist from its own per-platform defaults
+// plus gateway.nodes.commands.allow, and silently *withholds* any declared
+// command in neither - which makes the pending pairing surface differ from
+// what was advertised, and pairing then fails closed. Measured against
+// openclaw 2026.9.1, the iOS defaults are: location.get, device.info,
+// device.status, contacts.search, calendar.events, reminders.list,
+// photos.latest, motion.activity, motion.pedometer and the camera commands.
+//
+// So two rules hold here. Names that openclaw already has must match it
+// exactly - contacts.search and photos.latest, not the contacts.resolve and
+// photos.search this once used. And anything openclaw has no default for -
+// music and weather - must appear in commandPolicyAllow or it cannot be
+// reached at all.
 public enum GatewayNativeNodeSurface {
     public static let messageComposeCommand = "sms.compose"
     public static let capabilities = ["location", "calendar", "sms", "maps", "apps", "whatsapp", "accounts", "notion", "media", "reminders", "contacts", "photos", "music", "weather", "device"]
-    public static let commands = ["location.get", "calendar.events", "reminders.list", "contacts.resolve", "photos.search", "music.nowPlaying", "music.search",
+    public static let commands = ["location.get", "calendar.events", "reminders.list", "contacts.search", "photos.latest", "music.nowPlaying", "music.search",
                                   "weather.forecast", "device.status", Self.messageComposeCommand, "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"]
-    public static let commandPolicyAllow = ["weather.forecast", "device.status", Self.messageComposeCommand, "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"]
+    public static let commandPolicyAllow = ["weather.forecast", "device.status", "music.nowPlaying", "music.search", Self.messageComposeCommand, "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"]
 
     static func matches(_ surface: GatewayNodePairingSurface) -> Bool {
         Self.matches(

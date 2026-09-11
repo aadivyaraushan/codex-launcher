@@ -73,13 +73,13 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
             } else {
                 .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
             }
-        case "contacts.resolve":
+        case "contacts.search":
             if let contacts {
                 await contacts.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
             } else {
                 .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
             }
-        case "photos.search":
+        case "photos.latest":
             if let photos {
                 await photos.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
             } else {

@@ -45,7 +45,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
         XCTAssertEqual(params["role"] as? String, "node")
         XCTAssertEqual(params["scopes"] as? [String], [])
         XCTAssertEqual(params["caps"] as? [String], ["location", "calendar", "sms", "maps", "apps", "whatsapp", "accounts", "notion", "media", "reminders", "contacts", "photos", "music", "weather", "device"])
-        XCTAssertEqual(params["commands"] as? [String], ["location.get", "calendar.events", "reminders.list", "contacts.resolve", "photos.search", "music.nowPlaying", "music.search", "weather.forecast", "device.status", "sms.compose", "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"])
+        XCTAssertEqual(params["commands"] as? [String], ["location.get", "calendar.events", "reminders.list", "contacts.search", "photos.latest", "music.nowPlaying", "music.search", "weather.forecast", "device.status", "sms.compose", "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"])
         XCTAssertEqual(client["id"] as? String, "node-host")
         XCTAssertEqual(client["mode"] as? String, "node")
         XCTAssertEqual(client["platform"] as? String, "ios")

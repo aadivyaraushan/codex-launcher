@@ -79,14 +79,14 @@ final class ForegroundPhotosService: GatewayNodeCommandHandler {
         paramsJSON: String?,
         timeoutMilliseconds: Int?) async -> GatewayNodeCommandResult
     {
-        guard command == "photos.search" else {
+        guard command == "photos.latest" else {
             return .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
         }
         guard let request = Self.request(from: paramsJSON) else {
             self.logger.info("[photos] refused branch=invalid_params")
             return .failure(
                 code: "INVALID_REQUEST",
-                message: "photos.search accepts an optional album, from, to and a limit between 1 and \(Self.maximumLimit)")
+                message: "photos.latest accepts an optional album, from, to and a limit between 1 and \(Self.maximumLimit)")
         }
         guard self.isAppActive() else {
             self.logger.info("[photos] refused branch=app_not_active")

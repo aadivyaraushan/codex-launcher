@@ -12,7 +12,7 @@ final class ForegroundContactsServiceTests: XCTestCase {
         let service = ForegroundContactsService(directory: directory, isAppActive: { true })
 
         let result = await service.handleNodeCommand(
-            "contacts.resolve", paramsJSON: #"{"query":"  Mom  "}"#, timeoutMilliseconds: nil)
+            "contacts.search", paramsJSON: #"{"query":"  Mom  "}"#, timeoutMilliseconds: nil)
 
         let payload = try payload(result)
         let matches = try XCTUnwrap(payload["matches"] as? [[String: Any]])
@@ -53,11 +53,11 @@ final class ForegroundContactsServiceTests: XCTestCase {
             let service = ForegroundContactsService(directory: directory, isAppActive: { true })
 
             let result = await service.handleNodeCommand(
-                "contacts.resolve", paramsJSON: paramsJSON, timeoutMilliseconds: nil)
+                "contacts.search", paramsJSON: paramsJSON, timeoutMilliseconds: nil)
 
             XCTAssertEqual(result, .failure(
                 code: "INVALID_REQUEST",
-                message: "contacts.resolve requires a nonempty query and an optional limit between 1 and 10"),
+                message: "contacts.search requires a nonempty query and an optional limit between 1 and 10"),
                 "params=\(String(describing: paramsJSON))")
             XCTAssertEqual(directory.searchCount, 0, "params=\(String(describing: paramsJSON))")
         }
@@ -74,7 +74,7 @@ final class ForegroundContactsServiceTests: XCTestCase {
         let service = ForegroundContactsService(directory: directory, isAppActive: { true })
 
         let result = await service.handleNodeCommand(
-            "contacts.resolve", paramsJSON: #"{"query":"Person","limit":2}"#, timeoutMilliseconds: nil)
+            "contacts.search", paramsJSON: #"{"query":"Person","limit":2}"#, timeoutMilliseconds: nil)
 
         let matches = try XCTUnwrap(try payload(result)["matches"] as? [[String: Any]])
         XCTAssertEqual(matches.count, 2)
@@ -89,7 +89,7 @@ final class ForegroundContactsServiceTests: XCTestCase {
         let service = ForegroundContactsService(directory: directory, isAppActive: { true })
 
         let result = await service.handleNodeCommand(
-            "contacts.resolve", paramsJSON: #"{"query":"Mom"}"#, timeoutMilliseconds: nil)
+            "contacts.search", paramsJSON: #"{"query":"Mom"}"#, timeoutMilliseconds: nil)
 
         XCTAssertEqual(try payload(result)["partialAccess"] as? Bool, true)
         XCTAssertEqual(directory.permissionRequestCount, 0)
@@ -100,7 +100,7 @@ final class ForegroundContactsServiceTests: XCTestCase {
         let service = ForegroundContactsService(directory: directory, isAppActive: { false })
 
         let result = await service.handleNodeCommand(
-            "contacts.resolve", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: nil)
+            "contacts.search", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: nil)
 
         XCTAssertEqual(result, .failure(code: "APP_NOT_ACTIVE", message: "Open Operator to look up a contact"))
         XCTAssertEqual(directory.searchCount, 0)
@@ -111,7 +111,7 @@ final class ForegroundContactsServiceTests: XCTestCase {
         let service = ForegroundContactsService(directory: directory, isAppActive: { true })
 
         let result = await service.handleNodeCommand(
-            "contacts.resolve", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: nil)
+            "contacts.search", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: nil)
 
         XCTAssertEqual(result, .failure(code: "PERMISSION_DENIED", message: "Contacts permission was denied"))
         XCTAssertEqual(directory.permissionRequestCount, 0)
@@ -127,7 +127,7 @@ final class ForegroundContactsServiceTests: XCTestCase {
         directory.onPermissionRequest = { active = false }
 
         let result = await service.handleNodeCommand(
-            "contacts.resolve", paramsJSON: #"{"query":"x"}"#, timeoutMilliseconds: nil)
+            "contacts.search", paramsJSON: #"{"query":"x"}"#, timeoutMilliseconds: nil)
 
         XCTAssertEqual(result, .failure(code: "APP_NOT_ACTIVE", message: "Open Operator to look up a contact"))
         XCTAssertEqual(directory.searchCount, 0)
@@ -147,9 +147,9 @@ final class ForegroundContactsServiceTests: XCTestCase {
     }
 
     func testContactsIsAdvertisedButNeverAutoAllowed() {
-        XCTAssertTrue(GatewayNativeNodeSurface.commands.contains("contacts.resolve"))
+        XCTAssertTrue(GatewayNativeNodeSurface.commands.contains("contacts.search"))
         XCTAssertTrue(GatewayNativeNodeSurface.capabilities.contains("contacts"))
-        XCTAssertFalse(GatewayNativeNodeSurface.commandPolicyAllow.contains("contacts.resolve"))
+        XCTAssertFalse(GatewayNativeNodeSurface.commandPolicyAllow.contains("contacts.search"))
     }
 
     private func payload(_ result: GatewayNodeCommandResult) throws -> [String: Any] {
@@ -173,7 +173,7 @@ final class ContactsDeadlineTests: XCTestCase {
 
         let started = Date()
         let result = await service.handleNodeCommand(
-            "contacts.resolve", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: 50)
+            "contacts.search", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: 50)
 
         XCTAssertEqual(result, .failure(code: "TIMEOUT", message: "Looking up that contact took too long"))
         XCTAssertLessThan(Date().timeIntervalSince(started), 1.0)
@@ -185,7 +185,7 @@ final class ContactsDeadlineTests: XCTestCase {
         let service = ForegroundContactsService(directory: directory, isAppActive: { true })
 
         let result = await service.handleNodeCommand(
-            "contacts.resolve", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: 50)
+            "contacts.search", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: 50)
 
         XCTAssertEqual(result, .failure(code: "TIMEOUT", message: "Contacts permission was not answered in time"))
         XCTAssertEqual(directory.searchCount, 0)
