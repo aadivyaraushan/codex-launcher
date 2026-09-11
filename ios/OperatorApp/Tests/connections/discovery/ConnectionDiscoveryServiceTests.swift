@@ -22,8 +22,9 @@ final class ConnectionDiscoveryServiceTests: XCTestCase {
         XCTAssertEqual(object["appHandoffIDs"] as? [String], ["spotify"])
         let account = try XCTUnwrap(object["accountOperations"] as? [String: Any])
         XCTAssertEqual(Set(account["read"] as? [String] ?? []), Set([
-            "googleCalendarEvents", "googleDriveFiles", "outlookInbox", "slackChannels",
-            "slackHistory", "spotifySearch", "spotifyPlayback",
+            "googleCalendarEvents", "googleDriveFiles", "gmailMessages", "googleTasks",
+            "outlookInbox", "outlookCalendarEvents", "slackChannels", "slackHistory",
+            "spotifySearch", "spotifyPlayback",
         ]))
         XCTAssertEqual(Set(account["write"] as? [String] ?? []), Set(AccountWriteOperation.allCases.map(\.rawValue)))
 

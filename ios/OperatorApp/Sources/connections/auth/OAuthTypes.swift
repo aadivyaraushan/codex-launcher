@@ -97,6 +97,7 @@ enum PhoneOAuthError: String, Error, Equatable, Sendable {
     case randomGenerationFailed
     case tokenRequestFailed
     case invalidTokenResponse
+    case reauthorizationRequired
     case credentialStoreCorrupt
 }
 

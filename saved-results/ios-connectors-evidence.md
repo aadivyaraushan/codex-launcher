@@ -1,5 +1,60 @@
 # iPhone connectors — evidence
 
+## Repair and live check — September 11, 2026
+
+Final regression batch all exit0: native15, reminders14, node-policy3, read23, discovery4, write9, media17, confirmation6, notion15, notion-callback7, notion-node9, spotify-loopback6. Loop completed; no live process remains. Node checks23/23, three plist/project validations OK, diff check clean. Invalid helper shell attempts and a stopped duplicate are excluded from these passing results. Reminders consent, other live native reads, account logins/reads and merge still await completion.
+
+Auth follow-up: partial saved scope sets now throw reauthorizationRequired without refreshing or deleting credentials; system browser cancelled-login errors become CancellationError. Behavioral red in isolated copied old implementations: auth 17 tests/1 failure (Expected error); setup 6 tests/1 failure (cancellation type assertion). Current green auth17/setup6, zero failures. Combined Simulator build succeeded12.6s; strict signing passed. Build not installed while Reminders consent prompt awaits user.
+
+Latest: four-command policy fix is installed. Policy regression red 1/1; green 5/5. Full Core **71/71**, exit 0, 77.561 seconds (corrected from helper's mistaken 70 count by inspecting the final log). Contacts conflicting test red 1/9, then green 9/9 after requiring bounded lookup routing while still rejecting listing. Build 13.2s, signature verification exit 0, install/launch exit 0. Logs verify exact native approval and connected surface. **device.status now succeeds live**, confirmed by response and native log. Reminders limit-1 check reached iOS permission prompt; owner consent requested. Earlier node-failure statements below are the reproduced failure, not current state.
+
+Supersedes original failures below. Test-only repairs passed: native 15/15, account reads 23/23, OAuth 15/15 (including rejection of old incomplete Google scopes), discovery 4/4, Core 70/70 (exit 0, 77.613s), Notion node 9/9 on three consecutive runs. The Notion timing bug was reproduced with a 20ms credential-store delay before fixing synchronization. Exact change details are in the HTML report.
+
+XcodeBuildMCP Simulator build succeeded in 30.6s; install/launch exited 0, PID 75827. Initial post-install conversation file matched pre-install SHA256 exactly: 82 messages, no queued messages, unchanged draft. Existing public native Node/OpenClaw and WhatsApp build inputs were copied, not private account state.
+
+Live result: device.status returned `node not connected`. Simulator logs repeatedly report `rejected unexpected pending surface` then `invalidFrame`. Read-only inspection of the OpenClaw SQLite pending command list found 22 commands, missing `contacts.resolve`, `photos.search`, `music.nowPlaying`, `music.search`. The current explicit policy omits these names; actual bundled OpenClaw defaults differ. Regression/fix work is underway; no live database changes or relaxed approval checks.
+
+Google showed Connected before update, Connect afterwards. Sign-in reached Google's email entry and was cancelled; no credentials entered. Logs report only PhoneOAuthError, insufficient to establish the cause. No live account read is proven.
+
+UI test incident: accessibility setValue changed displayed text but Send used the persisted original draft. Stopped immediately; one copy of the draft was added to local chat. Restored the exact unsent draft using normal typing and verified its saved hash. Subsequent test input was checked against persisted draft before Send. No history deleted or external write performed. Further testing must use normal typing and verify persisted input.
+
+Merge, native permission checks, account reads, dependency pinning and physical-device checks remain incomplete. Goal remains active. Android is unchanged.
+
+## Fresh Mac run — September 11, 2026
+
+Tested commit `d1c3cc52717218302aafaa11150c86a5659d4174` in a separate `ios-connectors` worktree. These results supersede “not run on Mac” statements below, but do not establish any live connection. No source fixes, commits, pushes, Simulator install or account actions were performed.
+
+| Command / suite | Exact result |
+| --- | --- |
+| `bash ios/OperatorApp/Tests/capabilities/reminders/run.sh` | exit 0; 14 passed |
+| `bash ios/OperatorApp/Tests/capabilities/contacts/run.sh` | exit 0; 9 passed |
+| `bash ios/OperatorApp/Tests/capabilities/native/run.sh` | exit 1; compile error, no tests ran |
+| `bash ios/OperatorApp/Tests/connections/read/run.sh` | exit 1; compile errors, no tests ran |
+| `bash ios/OperatorApp/Tests/connections/discovery/run.sh` | exit 1; 4 tests, 1 failure |
+| `swift test --package-path ios/OperatorCore` | exit 1; 70 tests, 8 failures |
+| `connections/auth/run.sh` (with `bash ios/OperatorApp/Tests/` prefix) | exit 1; 14 tests, 3 failures |
+| `connections/write/run.sh` | exit 0; 9 passed |
+| `connections/media/run.sh` | exit 0; 17 passed |
+| `connections/confirmation/run.sh` | exit 0; 6 passed |
+| `connections/setup/run.sh` | exit 0; 5 passed |
+| `connections/notion/run.sh` | exit 0; 15 passed |
+| `connections/notion-node/run.sh` | exit 1; 9 tests, 1 failure |
+| `connections/notion-callback/run.sh` | exit 0; 7 passed |
+| `connections/spotify-loopback/run.sh` | exit 0; 6 passed |
+| Clean-clone Node suites from `.github/workflows/ios.yml` | exit 0; 23 passed |
+| `plutil -lint` on app plist, widget plist, Xcode project | exit 0; all three OK |
+
+Failure details:
+
+- `Tests/capabilities/native/NativeReadServiceTests.swift:216`: awaited call inside `XCTAssertEqual`; XCTest's assertion cannot await it.
+- `Tests/connections/read/DirectAccountReaderTests.swift`: the same assertion problem at lines 59, 165–166, 170, 176, 226, 322 and 360. Await values into local variables before asserting (suggestion only, not changed).
+- Discovery `ConnectionDiscoveryServiceTests.swift:24`: old read-operation expectation omits added Gmail, Tasks and Outlook Calendar entries.
+- Core: policy expectations at `GatewayNativeNodePolicyTests.swift:19,53` do not include the expanded allow-list; pairing tests get `invalidFrame` (three thrown errors plus a rejection mismatch); `OpenClawNodeConnectionTests.swift:47–48` expects the old families/commands. These failures require reconciliation with the intended command surface, not automatic weakening of tests.
+- Auth: code-exchange, Google callback and Microsoft token-response tests throw `invalidTokenResponse` at `PhoneOAuthClient.swift:70`. The branch added required scopes; fixture response scope lists need investigation. This does not prove the live Google login cause.
+- Notion setup: `NotionNodeTests.swift:18`, `testSetupMissingRedirectUsesLocalCallbackBeforeDiscovery`, sees 0 instead of expected 1. Cause not determined; do not dismiss as flaky without evidence.
+
+Tool access is now available: installed XcodeBuildMCP 2.7.0 and added a global Codex stdio entry with telemetry disabled. `xcodebuildmcp simulator list --output json` exited 0 and found the booted Operator iPhone 14 Pro, iOS 18.6. No device state was changed. The current chat can use its CLI; the newly configured native MCP tools have not been hot-loaded into this chat. Build/install/live stages were not run after the failing Stage 0 suites. See the local [HTML test report](ios-connectors-mac-test-review.html) for the full human handoff.
+
 Updated 2026-09-10. Branch `codex/ios-connectors`.
 
 Phases 0, 2, 3 and 4 of the plan are written and locally verified. Phase 1 (live

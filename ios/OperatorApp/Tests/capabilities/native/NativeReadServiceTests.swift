@@ -212,8 +212,10 @@ final class ForegroundDeviceServiceTests: XCTestCase {
             batteryLevel: nil, charging: nil, lowPowerMode: false, networkAvailable: false,
             networkIsExpensive: false, localeIdentifier: "en_US", timeZoneIdentifier: "UTC")))
 
+        let result = await service.handleNodeCommand("device.status", paramsJSON: #"{"x":1}"#, timeoutMilliseconds: nil)
+
         XCTAssertEqual(
-            await service.handleNodeCommand("device.status", paramsJSON: #"{"x":1}"#, timeoutMilliseconds: nil),
+            result,
             .failure(code: "INVALID_REQUEST", message: "device.status does not accept parameters"))
     }
 }

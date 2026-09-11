@@ -38,7 +38,7 @@ final class PhoneOAuthClientTests: XCTestCase {
     }
 
     func testGoogleCallbackIgnoresDocumentedMetadataAndCompletesExchange() async throws {
-        let transport = FixtureTransport(response: .json(#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file"}"#))
+        let transport = FixtureTransport(response: .json(#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/tasks.readonly"}"#))
         let client = self.client(provider: .google, transport: transport)
         let request = try await client.makeAuthorizationRequest()
         var callback = URLComponents(string: "app.operator.ios:/oauth")!
@@ -132,7 +132,7 @@ final class PhoneOAuthClientTests: XCTestCase {
     }
 
     func testCodeExchangePostsPublicClientFormAndStoresSeparatedAccountToken() async throws {
-        let transport = FixtureTransport(response: .json(#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file"}"#))
+        let transport = FixtureTransport(response: .json(#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/tasks.readonly"}"#))
         let store = MemoryCredentialStore()
         let client = self.client(provider: .google, accountID: "person-a", store: store, transport: transport)
         let request = try await client.makeAuthorizationRequest()
@@ -162,7 +162,7 @@ final class PhoneOAuthClientTests: XCTestCase {
     }
 
     func testMicrosoftTokenResponseOnlyRequiresAccessTokenScopes() async throws {
-        let transport = FixtureTransport(response: .json(#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"User.Read Mail.ReadWrite Mail.Send"}"#))
+        let transport = FixtureTransport(response: .json(#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"User.Read Mail.ReadWrite Mail.Send Calendars.Read"}"#))
         let client = self.client(provider: .microsoftOutlook, transport: transport)
         let request = try await client.makeAuthorizationRequest()
 
@@ -170,7 +170,52 @@ final class PhoneOAuthClientTests: XCTestCase {
 
         XCTAssertEqual(tokens.accessToken, "access")
         XCTAssertEqual(tokens.refreshToken, "refresh")
-        XCTAssertEqual(tokens.grantedScopes, ["Mail.ReadWrite", "Mail.Send", "User.Read"])
+        XCTAssertEqual(tokens.grantedScopes, ["Calendars.Read", "Mail.ReadWrite", "Mail.Send", "User.Read"])
+    }
+
+    func testGoogleTokenResponseRejectsFormerScopeSetMissingNewReadScopes() async throws {
+        let transport = FixtureTransport(response: .json(#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file"}"#))
+        let client = self.client(provider: .google, transport: transport)
+        let request = try await client.makeAuthorizationRequest()
+
+        await XCTAssertThrowsErrorAsync(try await client.completeAuthorizationCallback(URL(string: "app.operator.ios:/oauth?code=code&state=\(request.state)")!)) { error in
+            XCTAssertEqual(error as? PhoneOAuthError, .invalidTokenResponse)
+        }
+    }
+
+    func testStoredGoogleTokenWithCurrentScopesRemainsAvailableWithoutRefreshing() async throws {
+        let transport = FixtureTransport()
+        let client = self.client(provider: .google, transport: transport)
+        try await client.storeForTesting(.init(
+            accessToken: "stored-access", refreshToken: "stored-refresh",
+            expiresAt: .distantFuture, grantedScopes: OAuthProvider.google.scopes))
+
+        let token = try await client.accessToken()
+        let requests = await transport.requests
+
+        XCTAssertEqual(token, "stored-access")
+        XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testStoredGoogleTokenMissingCurrentScopesRequiresReauthorizationWithoutRefreshing() async throws {
+        let transport = FixtureTransport()
+        let store = MemoryCredentialStore()
+        let client = self.client(provider: .google, store: store, transport: transport)
+        try await client.storeForTesting(.init(
+            accessToken: "stored-access", refreshToken: "stored-refresh",
+            expiresAt: .distantFuture,
+            grantedScopes: [
+                "https://www.googleapis.com/auth/calendar.events",
+                "https://www.googleapis.com/auth/drive.file",
+            ]))
+
+        await XCTAssertThrowsErrorAsync(try await client.accessToken()) { error in
+            XCTAssertEqual(error as? PhoneOAuthError, .reauthorizationRequired)
+        }
+        let stored = await store.value
+        let requests = await transport.requests
+        XCTAssertNotNil(stored)
+        XCTAssertTrue(requests.isEmpty)
     }
 
     func testRefreshKeepsExistingRefreshTokenWhenProviderOmitsReplacement() async throws {

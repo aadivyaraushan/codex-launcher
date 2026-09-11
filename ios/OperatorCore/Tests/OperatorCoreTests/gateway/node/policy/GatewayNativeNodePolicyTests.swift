@@ -5,7 +5,7 @@ import XCTest
 final class GatewayNativeNodePolicyTests: XCTestCase {
     func testReadsReadyWaitingAndMissingStatesWithoutWriting() async throws {
         let cases: [(String, GatewayNativeNodePolicyState)] = [
-            (#"{"valid":true,"hash":"raw-1","configRevisionHash":"rev-1","appliedConfigHash":"rev-1","config":{"gateway":{"nodes":{"commands":{"allow":["other","sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}}}}}"#, .ready),
+            (#"{"valid":true,"hash":"raw-1","configRevisionHash":"rev-1","appliedConfigHash":"rev-1","config":{"gateway":{"nodes":{"commands":{"allow":["other","sms.compose","contacts.resolve","photos.search","music.nowPlaying","music.search","weather.forecast","device.status","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}}}}}"#, .ready),
             (#"{"valid":true,"hash":"raw-1","configRevisionHash":"rev-2","appliedConfigHash":"rev-1","config":{"gateway":{"nodes":{"commands":{"allow":["sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call"]}}}}}"#, .waitingForApply),
             (#"{"valid":true,"hash":"raw-1","configRevisionHash":"rev-2","appliedConfigHash":"rev-1","config":{}}"#, .waitingForApply),
             (#"{"valid":true,"hash":"raw-1","configRevisionHash":"rev-2","appliedConfigHash":null,"config":{}}"#, .waitingForApply),
@@ -42,6 +42,27 @@ final class GatewayNativeNodePolicyTests: XCTestCase {
         }
     }
 
+    func testPolicyRequiresEveryAdvertisedCommandMissingFromRuntimeDefaults() async throws {
+        let runtimeDefaultAllow = [
+            "weather.forecast", "device.status", "sms.compose", "maps.search", "maps.directions",
+            "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose",
+            "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call",
+            "youtube.search", "youtube.open", "podcasts.search", "podcasts.open",
+        ]
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "valid": true,
+            "hash": "raw-1",
+            "configRevisionHash": "rev-1",
+            "appliedConfigHash": "rev-1",
+            "config": ["gateway": ["nodes": ["commands": ["allow": runtimeDefaultAllow]]]],
+        ])
+        let fixture = try await PolicyFixture.make(payloads: [String(decoding: payload, as: UTF8.self)])
+
+        let state = try await fixture.connection.nativeNodePolicyState()
+
+        XCTAssertEqual(state, .missing(baseHash: "raw-1", existingAllow: runtimeDefaultAllow))
+    }
+
     func testInstallsMissingCommandsWithExactBaseHashWithoutDroppingOtherAllows() async throws {
         let fixture = try await PolicyFixture.make(payloads: [#"{"ok":true,"hash":"new"}"#])
         try await fixture.connection.installNativeNodeAllowPolicy(baseHash: "raw-1", existingAllow: ["other", "sms.compose"])
@@ -50,7 +71,7 @@ final class GatewayNativeNodePolicyTests: XCTestCase {
         XCTAssertEqual(request["method"] as? String, "config.patch")
         let params = try XCTUnwrap(request["params"] as? [String: Any])
         XCTAssertEqual(params["baseHash"] as? String, "raw-1")
-        XCTAssertEqual(params["raw"] as? String, #"{"gateway":{"nodes":{"commands":{"allow":["other","sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}}}}"#)
+        XCTAssertEqual(params["raw"] as? String, #"{"gateway":{"nodes":{"commands":{"allow":["other","sms.compose","contacts.resolve","photos.search","music.nowPlaying","music.search","weather.forecast","device.status","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}}}}"#)
     }
 
     func testPatchRejectsEmptyHashAndInvalidOrRejectedResponse() async throws {

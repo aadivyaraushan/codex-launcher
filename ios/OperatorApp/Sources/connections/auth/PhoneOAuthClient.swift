@@ -116,6 +116,10 @@ actor PhoneOAuthClient {
     func accessToken() async throws -> String {
         try self.validateSetup()
         guard let tokens = try await self.loadConnection()?.tokens else { throw PhoneOAuthError.notConnected }
+        guard Set(self.provider.requiredAccessTokenScopes).isSubset(of: Set(tokens.grantedScopes)) else {
+            self.logger.info("[phone-oauth] saved authorization needs renewal provider=\(self.provider.rawValue, privacy: .public) errorCode=\(PhoneOAuthError.reauthorizationRequired.rawValue, privacy: .public)")
+            throw PhoneOAuthError.reauthorizationRequired
+        }
         guard tokens.expiresAt > self.now().addingTimeInterval(Self.refreshLeeway) else {
             return try await self.refresh().accessToken
         }

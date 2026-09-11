@@ -146,10 +146,13 @@ final class ForegroundContactsServiceTests: XCTestCase {
         XCTAssertEqual(directory.searchCount, 0)
     }
 
-    func testContactsIsAdvertisedButNeverAutoAllowed() {
+    func testBoundedContactLookupIsRoutableButListingIsNot() {
         XCTAssertTrue(GatewayNativeNodeSurface.commands.contains("contacts.resolve"))
         XCTAssertTrue(GatewayNativeNodeSurface.capabilities.contains("contacts"))
-        XCTAssertFalse(GatewayNativeNodeSurface.commandPolicyAllow.contains("contacts.resolve"))
+        // This permits routing, not access to Contacts. The permission-denied
+        // and bounded-query tests above still require the native checks.
+        XCTAssertTrue(GatewayNativeNodeSurface.commandPolicyAllow.contains("contacts.resolve"))
+        XCTAssertFalse(GatewayNativeNodeSurface.commandPolicyAllow.contains("contacts.list"))
     }
 
     private func payload(_ result: GatewayNodeCommandResult) throws -> [String: Any] {

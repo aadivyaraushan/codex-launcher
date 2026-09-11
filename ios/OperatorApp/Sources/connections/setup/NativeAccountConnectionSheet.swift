@@ -30,7 +30,7 @@ struct NativeAccountConnectionSheet: View {
             generation += 1; let run = generation
             self.continuation = continuation
             let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackScheme) { [weak self] callback, error in
-                Task { @MainActor in guard let self, self.generation == run else { return }; if let callback { self.finish(.success(callback)) } else { self.finish(.failure(error ?? CancellationError())) } }
+                Task { @MainActor in guard let self, self.generation == run else { return }; if let callback { self.finish(.success(callback)) } else { self.finish(.failure(OAuthSessionCancellation.normalized(error ?? CancellationError()))) } }
             }
             session.presentationContextProvider = self; session.prefersEphemeralWebBrowserSession = true; self.session = session
             if !session.start() { finish(.failure(PhoneOAuthError.authorizationDenied)) }
