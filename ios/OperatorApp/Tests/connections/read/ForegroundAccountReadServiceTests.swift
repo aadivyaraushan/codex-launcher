@@ -57,6 +57,66 @@ final class ForegroundAccountReadServiceTests: XCTestCase {
         let result = await task.value
         XCTAssertEqual(result, .failure(code: "CANCELLED", message: "Connection read was cancelled"))
     }
+    // Every account read is a network call and gmailMessages is up to eleven
+    // of them. Before this the caller's only bound was URLSession's own
+    // per-request default, which is a minute and applies per request rather
+    // than to the operation.
+    @MainActor
+    func testASlowAccountReadTimesOutRatherThanWaiting() async {
+        let transport = ServiceTransport(body: #"{"items":[]}"#, beforeResponse: {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+        })
+        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
+        let service = ForegroundAccountReadService(reader: reader, isAppActive: { true })
+
+        let started = Date()
+        let result = await service.handleNodeCommand(
+            "connections.read",
+            paramsJSON: #"{"operation":"googleCalendarEvents","timeMin":"2026-09-01T00:00:00Z","timeMax":"2026-09-08T00:00:00Z","limit":5}"#,
+            timeoutMilliseconds: 50)
+
+        XCTAssertEqual(result, .failure(code: "TIMEOUT", message: "This account did not answer in time"))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1.5, "waited well past the deadline")
+    }
+
+    @MainActor
+    func testAnAbsentDeadlineStillCompletesNormally() async {
+        let transport = ServiceTransport(body: #"{"items":[]}"#)
+        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
+        let service = ForegroundAccountReadService(reader: reader, isAppActive: { true })
+
+        let result = await service.handleNodeCommand(
+            "connections.read",
+            paramsJSON: #"{"operation":"googleCalendarEvents","timeMin":"2026-09-01T00:00:00Z","timeMax":"2026-09-08T00:00:00Z","limit":5}"#,
+            timeoutMilliseconds: nil)
+
+        guard case .success = result else { return XCTFail("a nil deadline must mean the default, not zero") }
+    }
+
+    // A timeout and a refusal are different things to tell an agent: one is
+    // worth retrying, the other is not.
+    @MainActor
+    func testATimeoutIsDistinctFromAnAccountRefusal() async {
+        let transport = ServiceTransport(body: #"{"ok":false,"error":"not_authed"}"#)
+        let reader = DirectAccountReader(transport: transport, bearer: { _ in "token" })
+        let service = ForegroundAccountReadService(reader: reader, isAppActive: { true })
+
+        let result = await service.handleNodeCommand(
+            "connections.read", paramsJSON: #"{"operation":"slackChannels","limit":2}"#, timeoutMilliseconds: 5_000)
+
+        XCTAssertEqual(result, .failure(
+            code: "ACCOUNT_UNAVAILABLE", message: "This account could not complete the read request"))
+    }
+
+    // A single request needs its own ceiling well inside the operation's, or
+    // one hung call consumes the whole deadline on its own.
+    func testASingleRequestCarriesItsOwnCeiling() {
+        XCTAssertEqual(URLSessionPhoneHTTPTransport.requestTimeoutSeconds, 15)
+        XCTAssertLessThan(
+            URLSessionPhoneHTTPTransport.requestTimeoutSeconds,
+            TimeInterval(GatewayDeadline.maximumMilliseconds) / 1_000,
+            "a per-request ceiling at or above the operation deadline bounds nothing")
+    }
 }
 
 private actor ServiceTransport: PhoneHTTPTransport {

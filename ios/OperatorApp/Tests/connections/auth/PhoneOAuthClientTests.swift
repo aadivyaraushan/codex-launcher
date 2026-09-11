@@ -38,7 +38,8 @@ final class PhoneOAuthClientTests: XCTestCase {
     }
 
     func testGoogleCallbackIgnoresDocumentedMetadataAndCompletesExchange() async throws {
-        let transport = FixtureTransport(response: .json(#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/tasks.readonly"}"#))
+        let transport = FixtureTransport(response: .json(
+            #"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"\#(OAuthProvider.google.scopes.joined(separator: " "))"}"#))
         let client = self.client(provider: .google, transport: transport)
         let request = try await client.makeAuthorizationRequest()
         var callback = URLComponents(string: "app.operator.ios:/oauth")!
@@ -132,7 +133,8 @@ final class PhoneOAuthClientTests: XCTestCase {
     }
 
     func testCodeExchangePostsPublicClientFormAndStoresSeparatedAccountToken() async throws {
-        let transport = FixtureTransport(response: .json(#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/tasks.readonly"}"#))
+        let transport = FixtureTransport(response: .json(
+            #"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"\#(OAuthProvider.google.scopes.joined(separator: " "))"}"#))
         let store = MemoryCredentialStore()
         let client = self.client(provider: .google, accountID: "person-a", store: store, transport: transport)
         let request = try await client.makeAuthorizationRequest()
@@ -141,7 +143,7 @@ final class PhoneOAuthClientTests: XCTestCase {
 
         XCTAssertEqual(tokens.accessToken, "access")
         XCTAssertEqual(tokens.refreshToken, "refresh")
-        XCTAssertEqual(tokens.grantedScopes, OAuthProvider.google.scopes)
+        XCTAssertEqual(Set(tokens.grantedScopes), Set(OAuthProvider.google.scopes))
         let requests = await transport.requests
         let http = try XCTUnwrap(requests.first)
         XCTAssertEqual(http.httpMethod, "POST")
@@ -162,7 +164,8 @@ final class PhoneOAuthClientTests: XCTestCase {
     }
 
     func testMicrosoftTokenResponseOnlyRequiresAccessTokenScopes() async throws {
-        let transport = FixtureTransport(response: .json(#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"User.Read Mail.ReadWrite Mail.Send Calendars.Read"}"#))
+        let transport = FixtureTransport(response: .json(
+            #"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600,"scope":"\#(OAuthProvider.microsoftOutlook.requiredAccessTokenScopes.joined(separator: " "))"}"#))
         let client = self.client(provider: .microsoftOutlook, transport: transport)
         let request = try await client.makeAuthorizationRequest()
 
@@ -170,7 +173,12 @@ final class PhoneOAuthClientTests: XCTestCase {
 
         XCTAssertEqual(tokens.accessToken, "access")
         XCTAssertEqual(tokens.refreshToken, "refresh")
-        XCTAssertEqual(tokens.grantedScopes, ["Calendars.Read", "Mail.ReadWrite", "Mail.Send", "User.Read"])
+        // The point of this test is that openid and offline_access are sign-in
+        // metadata rather than API permissions, so they are absent from what
+        // the token grants. Derived so adding a Graph scope does not break it.
+        XCTAssertEqual(Set(tokens.grantedScopes), Set(OAuthProvider.microsoftOutlook.requiredAccessTokenScopes))
+        XCTAssertFalse(tokens.grantedScopes.contains("openid"))
+        XCTAssertFalse(tokens.grantedScopes.contains("offline_access"))
     }
 
     func testGoogleTokenResponseRejectsFormerScopeSetMissingNewReadScopes() async throws {

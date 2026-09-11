@@ -168,6 +168,34 @@ final class ForegroundContactsServiceTests: XCTestCase {
 }
 
 @MainActor
+final class ContactsDeadlineTests: XCTestCase {
+    func testASlowLookupTimesOutRatherThanWaiting() async {
+        let directory = StubContactDirectory(access: .full, matches: [])
+        directory.delayNanoseconds = 2_000_000_000
+        let service = ForegroundContactsService(directory: directory, isAppActive: { true })
+
+        let started = Date()
+        let result = await service.handleNodeCommand(
+            "contacts.resolve", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: 50)
+
+        XCTAssertEqual(result, .failure(code: "TIMEOUT", message: "Looking up that contact took too long"))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1.0)
+    }
+
+    func testAnUnansweredPermissionPromptTimesOutWithoutSearching() async {
+        let directory = StubContactDirectory(access: .notDetermined, matches: [])
+        directory.delayNanoseconds = 2_000_000_000
+        let service = ForegroundContactsService(directory: directory, isAppActive: { true })
+
+        let result = await service.handleNodeCommand(
+            "contacts.resolve", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: 50)
+
+        XCTAssertEqual(result, .failure(code: "TIMEOUT", message: "Contacts permission was not answered in time"))
+        XCTAssertEqual(directory.searchCount, 0)
+    }
+}
+
+@MainActor
 private final class StubContactDirectory: ContactDirectory {
     var access: ContactsAccess
     var grantOnRequest = true
@@ -183,9 +211,12 @@ private final class StubContactDirectory: ContactDirectory {
         self.matches = matches
     }
 
+    var delayNanoseconds: UInt64 = 0
+
     func requestAccess() async -> Bool {
         self.permissionRequestCount += 1
         self.onPermissionRequest?()
+        if self.delayNanoseconds > 0 { try? await Task.sleep(nanoseconds: self.delayNanoseconds) }
         if self.grantOnRequest { self.access = .full }
         return self.grantOnRequest
     }
@@ -194,6 +225,7 @@ private final class StubContactDirectory: ContactDirectory {
         self.searchCount += 1
         self.lastQuery = query
         self.lastLimit = limit
+        if self.delayNanoseconds > 0 { try? await Task.sleep(nanoseconds: self.delayNanoseconds) }
         // Deliberately ignores the limit; the service must enforce it.
         return self.matches
     }

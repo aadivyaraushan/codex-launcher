@@ -24,9 +24,9 @@ final class GatewayNodePairingTests: XCTestCase {
     }
     func testApprovesOnlyMatchingOwnPendingNativeSurface() async throws {
         let fixture = try await PairingFixture.make(listPayload: """
-        {"pending":[{"requestId":"pending-own","nodeId":"device-own","caps":["location","calendar","sms","maps","apps","whatsapp","accounts","notion","media","reminders","contacts","photos","music","weather","device"],"commands":["location.get","calendar.events","reminders.list","contacts.resolve","photos.search","music.nowPlaying","music.search","weather.forecast","device.status","sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}],"paired":[]}
+        {"pending":[\(OwnSurface.pending(requestId: "pending-own"))],"paired":[]}
         """, approvePayload: """
-        {"requestId":"pending-own","node":{"nodeId":"device-own","caps":["location","calendar","sms","maps","apps","whatsapp","accounts","notion","media","reminders","contacts","photos","music","weather","device"],"commands":["location.get","calendar.events","reminders.list","contacts.resolve","photos.search","music.nowPlaying","music.search","weather.forecast","device.status","sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}}
+        \(OwnSurface.approval(requestId: "pending-own"))
         """)
 
         let approved = try await fixture.connection.prepareNativeNode()
@@ -39,7 +39,7 @@ final class GatewayNodePairingTests: XCTestCase {
 
     func testAlreadyApprovedExactSurfaceDoesNotWrite() async throws {
         let fixture = try await PairingFixture.make(listPayload: """
-        {"pending":[],"paired":[{"nodeId":"device-own","caps":["sms","calendar","location","maps","apps","whatsapp","accounts","notion","media","reminders","contacts","photos","music","weather","device"],"commands":["sms.compose","calendar.events","location.get","reminders.list","contacts.resolve","photos.search","music.nowPlaying","music.search","weather.forecast","device.status","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"],"permissions":{}}]}
+        {"pending":[],"paired":[{"nodeId":"device-own","caps":\(OwnSurface.capsJSON),"commands":\(OwnSurface.commandsJSON),"permissions":{}}]}
         """)
 
         let approved = try await fixture.connection.prepareNativeNode()
@@ -50,7 +50,7 @@ final class GatewayNodePairingTests: XCTestCase {
 
     func testForeignPendingIsIgnoredWhenOwnApprovedSurfaceMatches() async throws {
         let fixture = try await PairingFixture.make(listPayload: """
-        {"pending":[{"requestId":"foreign","nodeId":"device-foreign","caps":["location","calendar","sms","maps","apps","whatsapp","accounts","notion","media","reminders","contacts","photos","music","weather","device"],"commands":["location.get","calendar.events","reminders.list","contacts.resolve","photos.search","music.nowPlaying","music.search","weather.forecast","device.status","sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}],"paired":[{"nodeId":"device-own","caps":["location","calendar","sms","maps","apps","whatsapp","accounts","notion","media","reminders","contacts","photos","music","weather","device"],"commands":["location.get","calendar.events","reminders.list","contacts.resolve","photos.search","music.nowPlaying","music.search","weather.forecast","device.status","sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}]}
+        {"pending":[\(OwnSurface.pending(requestId: "foreign", nodeId: "device-foreign"))],"paired":[\(OwnSurface.paired())]}
         """)
 
         let approved = try await fixture.connection.prepareNativeNode()
@@ -105,7 +105,7 @@ final class GatewayNodePairingTests: XCTestCase {
 
     func testServerApprovalRejectionPropagates() async throws {
         let fixture = try await PairingFixture.make(
-            listPayload: #"{"pending":[{"requestId":"pending-own","nodeId":"device-own","caps":["location","calendar","sms","maps","apps","whatsapp","accounts","notion","media","reminders","contacts","photos","music","weather","device"],"commands":["location.get","calendar.events","reminders.list","contacts.resolve","photos.search","music.nowPlaying","music.search","weather.forecast","device.status","sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}],"paired":[]}"#,
+            listPayload: #"{"pending":[\#(OwnSurface.pending(requestId: "pending-own"))],"paired":[]}"#,
             approveError: #"{"code":"INVALID_REQUEST","message":"unknown requestId"}"#)
         do {
             _ = try await fixture.connection.prepareNativeNode()
@@ -113,6 +113,33 @@ final class GatewayNodePairingTests: XCTestCase {
         } catch let error as OpenClawGatewayError {
             XCTAssertEqual(error, .rejected(code: "INVALID_REQUEST", message: "unknown requestId"))
         }
+    }
+}
+
+/// The current surface as a pending or paired node reports it. Fixtures that
+/// mean "this matches" build from here rather than transcribing it; four of
+/// them were transcribed and all four broke the moment the surface grew.
+/// Fixtures that mean "this does not match" keep their own wrong values,
+/// because there the exact wrongness is the point.
+private enum OwnSurface {
+    static var capsJSON: String {
+        "[" + GatewayNativeNodeSurface.capabilities.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+    }
+
+    static var commandsJSON: String {
+        "[" + GatewayNativeNodeSurface.commands.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+    }
+
+    static func pending(requestId: String, nodeId: String = "device-own") -> String {
+        #"{"requestId":"\#(requestId)","nodeId":"\#(nodeId)","caps":\#(capsJSON),"commands":\#(commandsJSON)}"#
+    }
+
+    static func paired(nodeId: String = "device-own") -> String {
+        #"{"nodeId":"\#(nodeId)","caps":\#(capsJSON),"commands":\#(commandsJSON)}"#
+    }
+
+    static func approval(requestId: String, nodeId: String = "device-own") -> String {
+        #"{"requestId":"\#(requestId)","node":\#(paired(nodeId: nodeId))}"#
     }
 }
 

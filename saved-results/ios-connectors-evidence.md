@@ -1,5 +1,11 @@
 # iPhone connectors — evidence
 
+## Combined collaborator updates — September 11, 2026
+
+Integrated all four incoming commits through c573334 on top of local checkpoint4d0c8a2, preferring their completed test fixes. Retained local auth scope/cancellation, Notion timing and four-command routing fixes. Corrected incoming GatewayDeadline so a callback ignoring cancellation cannot hold up the caller; behavioral red2failures, focused green4/4.
+
+Final checks all exit0: Core75, native20, contacts11, reminders16, account-read27, auth17, setup6, Notion-node9, discovery4, Node23. App build succeeded33.7s, strict signature verification passed, three plist/project checks OK, diff clean. Logs /private/tmp/operator-combined*.log. No live install/account grant or public push during integration. Existing permission/account blockers remain, not proof of all connectors working live.
+
 ## Repair and live check — September 11, 2026
 
 Final regression batch all exit0: native15, reminders14, node-policy3, read23, discovery4, write9, media17, confirmation6, notion15, notion-callback7, notion-node9, spotify-loopback6. Loop completed; no live process remains. Node checks23/23, three plist/project validations OK, diff check clean. Invalid helper shell attempts and a stopped duplicate are excluded from these passing results. Reminders consent, other live native reads, account logins/reads and merge still await completion.

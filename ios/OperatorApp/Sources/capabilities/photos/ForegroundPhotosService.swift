@@ -33,7 +33,7 @@ struct PhotoItem: Sendable, Equatable {
 }
 
 @MainActor
-protocol PhotoLibrary: AnyObject {
+protocol PhotoLibrary: AnyObject, Sendable {
     var access: PhotosAccess { get }
     func requestAccess() async -> Bool
     func search(album: String?, from: Date?, to: Date?, limit: Int) async -> [PhotoItem]
@@ -77,7 +77,7 @@ final class ForegroundPhotosService: GatewayNodeCommandHandler {
     func handleNodeCommand(
         _ command: String,
         paramsJSON: String?,
-        timeoutMilliseconds _: Int?) async -> GatewayNodeCommandResult
+        timeoutMilliseconds: Int?) async -> GatewayNodeCommandResult
     {
         guard command == "photos.search" else {
             return .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
@@ -92,12 +92,22 @@ final class ForegroundPhotosService: GatewayNodeCommandHandler {
             self.logger.info("[photos] refused branch=app_not_active")
             return .failure(code: "APP_NOT_ACTIVE", message: "Open Operator to look through your photos")
         }
+        // A photo library is the one local read whose cost scales with the
+        // owner's data, so the deadline earns its keep here more than
+        // anywhere else on the phone.
+        let deadline = Date().addingTimeInterval(Double(GatewayDeadline.bounded(timeoutMilliseconds)) / 1_000)
         if self.library.access == .denied {
             self.logger.info("[photos] refused branch=permission_denied")
             return .failure(code: "PERMISSION_DENIED", message: "Photos permission was denied")
         }
         if self.library.access == .notDetermined {
-            let granted = await self.library.requestAccess()
+            guard let granted = await GatewayDeadline.run(
+                milliseconds: Int(deadline.timeIntervalSinceNow * 1_000),
+                { [library] in await library.requestAccess() })
+            else {
+                self.logger.info("[photos] refused branch=permission_timeout")
+                return .failure(code: "TIMEOUT", message: "Photos permission was not answered in time")
+            }
             guard self.isAppActive() else {
                 self.logger.info("[photos] refused branch=app_left_during_permission")
                 return .failure(code: "APP_NOT_ACTIVE", message: "Open Operator to look through your photos")
@@ -110,8 +120,16 @@ final class ForegroundPhotosService: GatewayNodeCommandHandler {
 
         let partial = self.library.access == .limited
         let formatter = ISO8601DateFormatter()
-        let items = await self.library
-            .search(album: request.album, from: request.from, to: request.to, limit: request.limit)
+        guard let found = await GatewayDeadline.run(
+            milliseconds: Int(deadline.timeIntervalSinceNow * 1_000),
+            { [library] in
+                await library.search(album: request.album, from: request.from, to: request.to, limit: request.limit)
+            })
+        else {
+            self.logger.info("[photos] refused branch=search_timeout")
+            return .failure(code: "TIMEOUT", message: "Looking through your photos took too long")
+        }
+        let items = found
             .prefix(request.limit)
             .map { photo in
                 Payload.Item(

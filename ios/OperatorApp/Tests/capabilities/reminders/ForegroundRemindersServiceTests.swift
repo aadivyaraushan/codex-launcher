@@ -181,9 +181,12 @@ private final class StubReminderStore: ReminderStore {
         self.reminders = reminders
     }
 
+    var delayNanoseconds: UInt64 = 0
+
     func requestFullAccess() async -> Bool {
         self.permissionRequestCount += 1
         self.onPermissionRequest?()
+        if self.delayNanoseconds > 0 { try? await Task.sleep(nanoseconds: self.delayNanoseconds) }
         if self.grantOnRequest { self.access = .fullAccess }
         return self.grantOnRequest
     }
@@ -191,8 +194,37 @@ private final class StubReminderStore: ReminderStore {
     func incompleteReminders(limit: Int) async -> [Reminder] {
         self.readCount += 1
         self.lastLimit = limit
+        if self.delayNanoseconds > 0 { try? await Task.sleep(nanoseconds: self.delayNanoseconds) }
         // Deliberately ignores the limit; the service must enforce it.
         return self.reminders
+    }
+}
+
+@MainActor
+final class RemindersDeadlineTests: XCTestCase {
+    // The gateway's timeoutMilliseconds used to be discarded here, so a slow
+    // store meant an unbounded wait with nothing to report.
+    func testASlowReadTimesOutRatherThanWaiting() async {
+        let store = StubReminderStore(access: .fullAccess, reminders: [])
+        store.delayNanoseconds = 2_000_000_000
+        let service = ForegroundRemindersService(store: store, isAppActive: { true })
+
+        let started = Date()
+        let result = await service.handleNodeCommand("reminders.list", paramsJSON: "{}", timeoutMilliseconds: 50)
+
+        XCTAssertEqual(result, .failure(code: "TIMEOUT", message: "Reading your reminders took too long"))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1.0)
+    }
+
+    func testAnUnansweredPermissionPromptTimesOutWithoutReading() async {
+        let store = StubReminderStore(access: .notDetermined, reminders: [])
+        store.delayNanoseconds = 2_000_000_000
+        let service = ForegroundRemindersService(store: store, isAppActive: { true })
+
+        let result = await service.handleNodeCommand("reminders.list", paramsJSON: "{}", timeoutMilliseconds: 50)
+
+        XCTAssertEqual(result, .failure(code: "TIMEOUT", message: "Reminders permission was not answered in time"))
+        XCTAssertEqual(store.readCount, 0)
     }
 }
 

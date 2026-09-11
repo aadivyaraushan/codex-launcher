@@ -160,17 +160,20 @@ final class DirectAccountReaderTests: XCTestCase {
 
         let page = try await reader.read(.init(operation: .gmailMessages, query: "is:unread", channel: nil, timeMin: nil, timeMax: nil, limit: 3, cursor: "page-1"))
 
+        // Everything is read off the actor first: XCTAssert takes autoclosures,
+        // and an actor-isolated property cannot be reached from inside one.
+        let listCalls = await transport.listCalls
+        let metadataCalls = await transport.metadataCalls
+        let urls = await transport.urls
+
         // One list call plus one metadata call per id. users.messages.list
         // returns nothing but ids and there is no list endpoint carrying a
         // subject or a sender, so this shape is Gmail's, not a choice.
-        let listCalls = await transport.listCalls
-        let metadataCalls = await transport.metadataCalls
         XCTAssertEqual(listCalls, 1)
         XCTAssertEqual(metadataCalls, 3)
         XCTAssertEqual(page.count, 3)
         XCTAssertEqual(page.nextCursor, "page-2")
 
-        let urls = await transport.urls
         let list = try XCTUnwrap(urls.first { $0.path == "/gmail/v1/users/me/messages" })
         let listQuery = URLComponents(url: list, resolvingAgainstBaseURL: false)?.queryItems
         XCTAssertEqual(listQuery?.value(for: "maxResults"), "3")
@@ -363,10 +366,13 @@ private actor GmailFixtureTransport: PhoneHTTPTransport {
 
         _ = try await reader.read(.init(operation: .googleTasks, query: nil, channel: "MTIzNDU2", timeMin: nil, timeMax: nil, limit: 5, cursor: nil))
 
+        // Read off the actor first: XCTUnwrap takes an autoclosure, and an
+        // actor-isolated property cannot be reached from inside one.
         let captured = await transport.request
         let request = try XCTUnwrap(captured)
-        XCTAssertEqual(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.path,
-                       "/tasks/v1/lists/MTIzNDU2/tasks")
+        let path = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.path
+
+        XCTAssertEqual(path, "/tasks/v1/lists/MTIzNDU2/tasks")
     }
 
 

@@ -38,7 +38,7 @@ struct NowPlaying: Sendable, Equatable {
 }
 
 @MainActor
-protocol MusicLibrary: AnyObject {
+protocol MusicLibrary: AnyObject, Sendable {
     var access: MusicAccess { get }
     func requestAccess() async -> Bool
     func nowPlaying() async -> NowPlaying
@@ -82,7 +82,7 @@ final class ForegroundMusicService: GatewayNodeCommandHandler {
     func handleNodeCommand(
         _ command: String,
         paramsJSON: String?,
-        timeoutMilliseconds _: Int?) async -> GatewayNodeCommandResult
+        timeoutMilliseconds: Int?) async -> GatewayNodeCommandResult
     {
         guard command == "music.nowPlaying" || command == "music.search" else {
             return .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
@@ -109,12 +109,19 @@ final class ForegroundMusicService: GatewayNodeCommandHandler {
             self.logger.info("[music] refused branch=app_not_active")
             return .failure(code: "APP_NOT_ACTIVE", message: "Open Operator to read your music library")
         }
+        let deadline = Date().addingTimeInterval(Double(GatewayDeadline.bounded(timeoutMilliseconds)) / 1_000)
         if self.library.access == .denied {
             self.logger.info("[music] refused branch=permission_denied")
             return .failure(code: "PERMISSION_DENIED", message: "Media library permission was denied")
         }
         if self.library.access == .notDetermined {
-            let granted = await self.library.requestAccess()
+            guard let granted = await GatewayDeadline.run(
+                milliseconds: Int(deadline.timeIntervalSinceNow * 1_000),
+                { [library] in await library.requestAccess() })
+            else {
+                self.logger.info("[music] refused branch=permission_timeout")
+                return .failure(code: "TIMEOUT", message: "Media library permission was not answered in time")
+            }
             guard self.isAppActive() else {
                 self.logger.info("[music] refused branch=app_left_during_permission")
                 return .failure(code: "APP_NOT_ACTIVE", message: "Open Operator to read your music library")
@@ -128,14 +135,27 @@ final class ForegroundMusicService: GatewayNodeCommandHandler {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data: Data?
+        let remaining = Int(deadline.timeIntervalSinceNow * 1_000)
+        let requested = limit
         if let query {
-            let tracks = await self.library.search(query: query, limit: limit)
-                .prefix(limit)
+            guard let found = await GatewayDeadline.run(
+                milliseconds: remaining, { [library] in await library.search(query: query, limit: requested) })
+            else {
+                self.logger.info("[music] refused branch=search_timeout")
+                return .failure(code: "TIMEOUT", message: "Searching your music library took too long")
+            }
+            let tracks = found
+                .prefix(requested)
                 .map { SearchPayload.Track(id: $0.id, title: $0.title, artist: $0.artist, album: $0.album, seconds: $0.durationSeconds) }
             data = try? encoder.encode(SearchPayload(tracks: Array(tracks)))
             self.logger.info("[music] search returned count=\(tracks.count)")
         } else {
-            let state = await self.library.nowPlaying()
+            guard let state = await GatewayDeadline.run(
+                milliseconds: remaining, { [library] in await library.nowPlaying() })
+            else {
+                self.logger.info("[music] refused branch=now_playing_timeout")
+                return .failure(code: "TIMEOUT", message: "Reading what is playing took too long")
+            }
             data = try? encoder.encode(NowPlayingPayload(
                 title: state.track?.title, artist: state.track?.artist,
                 album: state.track?.album, playing: state.isPlaying))

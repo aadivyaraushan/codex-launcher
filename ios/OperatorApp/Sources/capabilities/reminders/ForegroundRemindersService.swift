@@ -29,7 +29,7 @@ struct Reminder: Sendable, Equatable {
 }
 
 @MainActor
-protocol ReminderStore: AnyObject {
+protocol ReminderStore: AnyObject, Sendable {
     var access: RemindersAccess { get }
     func requestFullAccess() async -> Bool
     func incompleteReminders(limit: Int) async -> [Reminder]
@@ -69,7 +69,7 @@ final class ForegroundRemindersService: GatewayNodeCommandHandler {
     func handleNodeCommand(
         _ command: String,
         paramsJSON: String?,
-        timeoutMilliseconds _: Int?) async -> GatewayNodeCommandResult
+        timeoutMilliseconds: Int?) async -> GatewayNodeCommandResult
     {
         guard command == "reminders.list" else {
             return .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
@@ -84,12 +84,22 @@ final class ForegroundRemindersService: GatewayNodeCommandHandler {
             self.logger.info("[reminders] refused branch=app_not_active")
             return .failure(code: "APP_NOT_ACTIVE", message: "Open Operator to read your reminders")
         }
+        // One deadline covers the permission prompt and the read together.
+        // An owner who never answers the prompt is the realistic way this
+        // hangs, so bounding only the read would bound the wrong half.
+        let deadline = Date().addingTimeInterval(Double(GatewayDeadline.bounded(timeoutMilliseconds)) / 1_000)
         if self.store.access == .denied {
             self.logger.info("[reminders] refused branch=permission_denied")
             return .failure(code: "PERMISSION_DENIED", message: "Reminders permission was denied")
         }
         if self.store.access == .notDetermined {
-            let granted = await self.store.requestFullAccess()
+            guard let granted = await GatewayDeadline.run(
+                milliseconds: Int(deadline.timeIntervalSinceNow * 1_000),
+                { [store] in await store.requestFullAccess() })
+            else {
+                self.logger.info("[reminders] refused branch=permission_timeout")
+                return .failure(code: "TIMEOUT", message: "Reminders permission was not answered in time")
+            }
             // Re-checked after the await for the same reason the calendar
             // service re-checks: the permission sheet takes the owner out of
             // the app, and a grant that arrives while Operator is in the
@@ -104,8 +114,15 @@ final class ForegroundRemindersService: GatewayNodeCommandHandler {
             }
         }
 
+        guard let fetched = await GatewayDeadline.run(
+            milliseconds: Int(deadline.timeIntervalSinceNow * 1_000),
+            { [store] in await store.incompleteReminders(limit: limit) })
+        else {
+            self.logger.info("[reminders] refused branch=read_timeout")
+            return .failure(code: "TIMEOUT", message: "Reading your reminders took too long")
+        }
         let formatter = ISO8601DateFormatter()
-        let items = await self.store.incompleteReminders(limit: limit)
+        let items = fetched
             .prefix(limit)
             .map { reminder in
                 Payload.Item(
