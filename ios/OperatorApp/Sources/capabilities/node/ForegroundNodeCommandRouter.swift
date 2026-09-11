@@ -6,6 +6,10 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
     private let calendar: any GatewayNodeCommandHandler
     private let reminders: (any GatewayNodeCommandHandler)?
     private let contacts: (any GatewayNodeCommandHandler)?
+    private let photos: (any GatewayNodeCommandHandler)?
+    private let music: (any GatewayNodeCommandHandler)?
+    private let weather: (any GatewayNodeCommandHandler)?
+    private let device: (any GatewayNodeCommandHandler)?
     private let messages: any GatewayNodeCommandHandler
     private let maps: any GatewayNodeCommandHandler
     private let handoff: any GatewayNodeCommandHandler
@@ -22,6 +26,10 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
         calendar: any GatewayNodeCommandHandler,
         reminders: (any GatewayNodeCommandHandler)? = nil,
         contacts: (any GatewayNodeCommandHandler)? = nil,
+        photos: (any GatewayNodeCommandHandler)? = nil,
+        music: (any GatewayNodeCommandHandler)? = nil,
+        weather: (any GatewayNodeCommandHandler)? = nil,
+        device: (any GatewayNodeCommandHandler)? = nil,
         messages: any GatewayNodeCommandHandler,
         maps: any GatewayNodeCommandHandler,
         handoff: any GatewayNodeCommandHandler,
@@ -37,6 +45,10 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
         self.calendar = calendar
         self.reminders = reminders
         self.contacts = contacts
+        self.photos = photos
+        self.music = music
+        self.weather = weather
+        self.device = device
         self.messages = messages
         self.maps = maps
         self.handoff = handoff
@@ -64,6 +76,30 @@ final class ForegroundNodeCommandRouter: GatewayNodeCommandHandler {
         case "contacts.resolve":
             if let contacts {
                 await contacts.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+            } else {
+                .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
+            }
+        case "photos.search":
+            if let photos {
+                await photos.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+            } else {
+                .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
+            }
+        case "music.nowPlaying", "music.search":
+            if let music {
+                await music.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+            } else {
+                .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
+            }
+        case "weather.forecast":
+            if let weather {
+                await weather.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
+            } else {
+                .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
+            }
+        case "device.status":
+            if let device {
+                await device.handleNodeCommand(command, paramsJSON: paramsJSON, timeoutMilliseconds: timeoutMilliseconds)
             } else {
                 .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
             }

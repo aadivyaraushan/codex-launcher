@@ -93,6 +93,43 @@ and it needs a consent flow that actually says so. It is the same shape as the
 Apple DPLA §3.3.3(J) collision already recorded in
 [phase0-ios-capability-ceiling.md](phase0-ios-capability-ceiling.md).
 
+## Native iPhone connectors (Tier 0)
+
+Added 2026-09-11, completing the base set. None needs OAuth, a registration or
+a review; each needs a permission string, and one needs an entitlement.
+
+| Connector | Command | Permission | Notes |
+| --- | --- | --- | --- |
+| Photos | `photos.search` | `NSPhotoLibraryUsageDescription` | Returns descriptions only — ids, dates, kinds, albums. **Never image data.** Partial access reported |
+| Music | `music.nowPlaying`, `music.search` | `NSAppleMusicUsageDescription` | The owner's own library. No playback verb: playback is a write |
+| Weather | `weather.forecast` | none | Takes an explicit coordinate; does not read location. **Needs an entitlement — see below** |
+| Device | `device.status` | none | Battery, power, connectivity, locale, time zone. No identifier of any kind |
+
+`weather.forecast` and `device.status` are in `commandPolicyAllow`; a public
+fact about a caller-supplied coordinate and a device state carrying no
+identifier are not personal data. Photos and Music are not, and follow
+calendar, reminders, contacts and location.
+
+### WeatherKit needs more than a permission string
+
+`com.apple.developer.weatherkit` must be enabled on the App ID, which requires
+a paid Apple Developer account. Unlike everything else in this table it cannot
+be satisfied from source, and without it every call fails at runtime. Apple
+also requires visible attribution wherever the data is shown; the service puts
+the attribution string in its own payload so it cannot be lost on the way, but
+**rendering it is an outstanding UI debt.**
+
+### A bug this work surfaced in already-shipped code
+
+`JSONSerialization` bridges `0` and `1` to an `NSNumber` that satisfies
+`is Bool`. The obvious guard against `{"limit": true}` therefore also rejected
+`{"limit": 1}`, and **Reminders and Contacts refused a limit of exactly one**
+from the day they shipped. Weather would have refused the coordinate 0,0.
+
+Fixed by `OperatorCore.JSONNumber`, which uses `objCType` — the idiom
+`ForegroundAccountReadService` already used — in one place instead of five. A
+regression test pins every affected boundary.
+
 ## Hand-off connectors (Phase 4)
 
 Eight added, taking the pack from 76 to 84: Gmail, Google Calendar, Slack,

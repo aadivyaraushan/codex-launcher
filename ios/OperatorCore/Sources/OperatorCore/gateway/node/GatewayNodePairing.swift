@@ -3,9 +3,10 @@ import OSLog
 
 public enum GatewayNativeNodeSurface {
     public static let messageComposeCommand = "sms.compose"
-    public static let capabilities = ["location", "calendar", "sms", "maps", "apps", "whatsapp", "accounts", "notion", "media", "reminders", "contacts"]
-    public static let commands = ["location.get", "calendar.events", "reminders.list", "contacts.resolve", Self.messageComposeCommand, "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"]
-    public static let commandPolicyAllow = [Self.messageComposeCommand, "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"]
+    public static let capabilities = ["location", "calendar", "sms", "maps", "apps", "whatsapp", "accounts", "notion", "media", "reminders", "contacts", "photos", "music", "weather", "device"]
+    public static let commands = ["location.get", "calendar.events", "reminders.list", "contacts.resolve", "photos.search", "music.nowPlaying", "music.search",
+                                  "weather.forecast", "device.status", Self.messageComposeCommand, "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"]
+    public static let commandPolicyAllow = ["weather.forecast", "device.status", Self.messageComposeCommand, "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"]
 
     static func matches(_ surface: GatewayNodePairingSurface) -> Bool {
         Self.matches(

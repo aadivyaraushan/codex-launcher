@@ -38,6 +38,10 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <key>NSAppleMusicUsageDescription</key>
+    <string>Operator reads your music library only when you ask the agent what is playing or what you own.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Operator looks through your photos only when you ask the agent to find one. It never sends the image itself.</string>
     <key>NSContactsUsageDescription</key>
     <string>Operator looks up a contact only when you ask the agent to reach someone by name.</string>
     <key>NSRemindersFullAccessUsageDescription</key>

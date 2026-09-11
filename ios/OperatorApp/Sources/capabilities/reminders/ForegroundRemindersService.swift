@@ -138,13 +138,7 @@ final class ForegroundRemindersService: GatewayNodeCommandHandler {
               Set(object.keys).isSubset(of: ["limit"])
         else { return nil }
         guard let raw = object["limit"] else { return Self.defaultLimit }
-        // Bool is bridged as NSNumber, so `true` would otherwise read as 1.
-        guard let number = raw as? NSNumber, !(raw is Bool),
-              Double(number.intValue) == number.doubleValue
-        else { return nil }
-        let limit = number.intValue
-        guard (1 ... Self.maximumLimit).contains(limit) else { return nil }
-        return limit
+        return JSONNumber.integer(raw, in: 1 ... Self.maximumLimit)
     }
 }
 

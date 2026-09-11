@@ -147,11 +147,7 @@ final class ForegroundContactsService: GatewayNodeCommandHandler {
         guard !query.isEmpty, query.count <= Self.maximumQueryLength else { return nil }
 
         guard let rawLimit = object["limit"] else { return Request(query: query, limit: Self.defaultLimit) }
-        guard let number = rawLimit as? NSNumber, !(rawLimit is Bool),
-              Double(number.intValue) == number.doubleValue
-        else { return nil }
-        let limit = number.intValue
-        guard (1 ... Self.maximumLimit).contains(limit) else { return nil }
+        guard let limit = JSONNumber.integer(rawLimit, in: 1 ... Self.maximumLimit) else { return nil }
         return Request(query: query, limit: limit)
     }
 }

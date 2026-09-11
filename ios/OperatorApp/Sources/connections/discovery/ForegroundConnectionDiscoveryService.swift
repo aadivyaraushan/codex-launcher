@@ -96,6 +96,21 @@ final class ForegroundConnectionDiscoveryService: GatewayNodeCommandHandler {
         case "contacts.resolve":
             parameters = schema(required: ["query"], optional: ["limit"], limits: ["query": "1...100 characters", "limit": "1...10"])
             note = "Looks up contacts matching a name. A query is required; the address book cannot be listed."
+        case "photos.search":
+            parameters = schema(required: [], optional: ["album", "from", "to", "limit"], limits: ["limit": "1...25", "from": "RFC3339", "to": "RFC3339"])
+            note = "Describes photos - identifiers, dates, kinds, albums. It never returns image data."
+        case "music.nowPlaying":
+            parameters = schema(required: [], optional: [])
+            note = "Reports what the system music player is playing. It cannot start, stop or skip anything."
+        case "music.search":
+            parameters = schema(required: ["query"], optional: ["limit"], limits: ["limit": "1...20"])
+            note = "Searches the owner's own music library. Playback is not offered."
+        case "weather.forecast":
+            parameters = schema(required: ["latitude", "longitude"], optional: [], limits: ["latitude": "-90...90", "longitude": "-180...180"])
+            note = "Current conditions for an explicit coordinate. It does not read the phone's location; call location.get first."
+        case "device.status":
+            parameters = schema(required: [], optional: [])
+            note = "Battery, power mode, connectivity, locale and time zone. It returns no identifier of any kind."
         case "sms.compose":
             parameters = schema(required: ["recipients", "body"], optional: [])
             note = "Opens the native message composer; the owner must tap Send."
