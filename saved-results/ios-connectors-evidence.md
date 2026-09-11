@@ -35,6 +35,23 @@ committed suites and they are not evidence that the committed suites pass.
 | Contacts (`contacts.resolve`) | 0 — no OAuth | yes | **no** | n/a — permission prompt only | **no** | iOS 18 partial access is reported, not hidden |
 | Microsoft Calendar (`outlookCalendarEvents`) | 1 — scope only | yes | **no** | **no** | **no** | Forces Microsoft re-consent; see below |
 | Gmail (`gmailMessages`) | 1 — scope only | yes | **no** | **no** | **no** | Forces Google re-consent; see below |
+| Google Tasks (`googleTasks`) | 1 — scope only | yes | **no** | **no** | **no** | `tasks.readonly` is sensitive, not restricted — the cheap one |
+| Google Contacts (`googleContactsSearch`) | 1 — scope only | yes | **no** | **no** | **no** | Query required, never listable. `contacts.readonly` is restricted |
+| Google Chat spaces (`googleChatSpaces`) | 1 — scope only | yes | **no** | **no** | **no** | `chat.spaces.readonly` is restricted |
+| Google Chat messages (`googleChatMessages`) | 1 — scope only | yes | **no** | **no** | **no** | `chat.messages.readonly` is restricted |
+
+### Restricted-scope debt
+
+Five of the Google scopes now requested are **restricted**: `gmail.readonly`,
+`contacts.readonly`, `chat.spaces.readonly`, `chat.messages.readonly`, plus
+`drive.file` which was already there. Each works today under the project's
+Testing mode with named test users. Each also widens what a public release must
+clear a CASA security assessment for, and that assessment is money and months.
+`tasks.readonly` is sensitive rather than restricted, so it is the only one of
+the four added here that does not add to that bill.
+
+This is worth deciding before launch planning, not during it: the cheapest
+version of Operator ships with fewer Google scopes, not more.
 
 ## Hand-off connectors (Phase 4)
 
