@@ -222,6 +222,78 @@ final class ForegroundDeviceServiceTests: XCTestCase {
     }
 }
 
+// MARK: - Deadlines
+
+// The gateway hands every handler a timeoutMilliseconds, and these four used
+// to discard it. A caller that cannot bound a slow connector has no way to
+// stop waiting, and the realistic hang is an owner who never answers a
+// permission prompt rather than a slow framework call.
+@MainActor
+final class NativeReadDeadlineTests: XCTestCase {
+    func testASlowPhotoSearchTimesOutRatherThanWaiting() async {
+        let library = StubPhotoLibrary(access: .full, items: [])
+        library.delayNanoseconds = 2_000_000_000
+        let service = ForegroundPhotosService(library: library, isAppActive: { true })
+
+        let started = Date()
+        let result = await service.handleNodeCommand("photos.search", paramsJSON: "{}", timeoutMilliseconds: 50)
+
+        XCTAssertEqual(result, .failure(code: "TIMEOUT", message: "Looking through your photos took too long"))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1.0, "waited well past the deadline")
+    }
+
+    func testAnUnansweredPermissionPromptTimesOut() async {
+        let library = StubPhotoLibrary(access: .notDetermined, items: [])
+        library.delayNanoseconds = 2_000_000_000
+        let service = ForegroundPhotosService(library: library, isAppActive: { true })
+
+        let result = await service.handleNodeCommand("photos.search", paramsJSON: "{}", timeoutMilliseconds: 50)
+
+        XCTAssertEqual(result, .failure(
+            code: "TIMEOUT", message: "Photos permission was not answered in time"))
+        XCTAssertEqual(library.searchCount, 0, "a timed-out prompt must not fall through to a read")
+    }
+
+    func testASlowMusicSearchTimesOut() async {
+        let library = StubMusicLibrary(access: .granted, hits: [])
+        library.delayNanoseconds = 2_000_000_000
+        let service = ForegroundMusicService(library: library, isAppActive: { true })
+
+        let result = await service.handleNodeCommand(
+            "music.search", paramsJSON: #"{"query":"a"}"#, timeoutMilliseconds: 50)
+
+        XCTAssertEqual(result, .failure(code: "TIMEOUT", message: "Searching your music library took too long"))
+    }
+
+    // Weather is the only native capability making a network call, so it is
+    // the one where a deadline matters most - and a timeout has to be
+    // distinguishable from the backend simply failing.
+    func testWeatherDistinguishesATimeoutFromAFailure() async {
+        var slow = StubWeatherSource(reading: .init(
+            temperatureCelsius: 1, apparentCelsius: nil, condition: "Clear",
+            humidity: nil, windKilometresPerHour: nil, highCelsius: nil, lowCelsius: nil))
+        slow.delayNanoseconds = 2_000_000_000
+
+        let timedOut = await ForegroundWeatherService(source: slow).handleNodeCommand(
+            "weather.forecast", paramsJSON: #"{"latitude":0,"longitude":0}"#, timeoutMilliseconds: 50)
+        XCTAssertEqual(timedOut, .failure(code: "TIMEOUT", message: "The forecast took too long to arrive"))
+
+        let failed = await ForegroundWeatherService(source: StubWeatherSource(reading: nil)).handleNodeCommand(
+            "weather.forecast", paramsJSON: #"{"latitude":0,"longitude":0}"#, timeoutMilliseconds: 5_000)
+        XCTAssertEqual(failed, .failure(code: "WEATHER_UNAVAILABLE", message: "Operator could not read the forecast"))
+    }
+
+    func testAnAbsentDeadlineStillCompletesNormally() async {
+        let service = ForegroundMusicService(
+            library: StubMusicLibrary(access: .granted, now: .init(track: nil, isPlaying: false)),
+            isAppActive: { true })
+
+        let result = await service.handleNodeCommand("music.nowPlaying", paramsJSON: "{}", timeoutMilliseconds: nil)
+
+        guard case .success = result else { return XCTFail("a nil deadline must mean the default, not zero") }
+    }
+}
+
 // MARK: - Number parsing
 
 final class JSONNumberTests: XCTestCase {
@@ -270,11 +342,18 @@ private final class StubPhotoLibrary: PhotoLibrary {
     private(set) var lastLimit: Int?
     private let items: [PhotoItem]
 
+    var delayNanoseconds: UInt64 = 0
+
     init(access: PhotosAccess, items: [PhotoItem]) { self.access = access; self.items = items }
-    func requestAccess() async -> Bool { self.access = .full; return true }
+    func requestAccess() async -> Bool {
+        if self.delayNanoseconds > 0 { try? await Task.sleep(nanoseconds: self.delayNanoseconds) }
+        self.access = .full
+        return true
+    }
     func search(album: String?, from: Date?, to: Date?, limit: Int) async -> [PhotoItem] {
         self.searchCount += 1
         self.lastAlbum = album; self.lastFrom = from; self.lastTo = to; self.lastLimit = limit
+        if self.delayNanoseconds > 0 { try? await Task.sleep(nanoseconds: self.delayNanoseconds) }
         return self.items  // deliberately ignores the limit
     }
 }
@@ -289,14 +368,26 @@ private final class StubMusicLibrary: MusicLibrary {
     init(access: MusicAccess, now: NowPlaying = .init(track: nil, isPlaying: false), hits: [MusicTrack] = []) {
         self.access = access; self.now = now; self.hits = hits
     }
+    var delayNanoseconds: UInt64 = 0
+
     func requestAccess() async -> Bool { self.access = .granted; return true }
-    func nowPlaying() async -> NowPlaying { self.now }
-    func search(query _: String, limit _: Int) async -> [MusicTrack] { self.searchCount += 1; return self.hits }
+    func nowPlaying() async -> NowPlaying {
+        if self.delayNanoseconds > 0 { try? await Task.sleep(nanoseconds: self.delayNanoseconds) }
+        return self.now
+    }
+
+    func search(query _: String, limit _: Int) async -> [MusicTrack] {
+        self.searchCount += 1
+        if self.delayNanoseconds > 0 { try? await Task.sleep(nanoseconds: self.delayNanoseconds) }
+        return self.hits
+    }
 }
 
 private struct StubWeatherSource: WeatherSource {
     let reading: WeatherReading?
+    var delayNanoseconds: UInt64 = 0
     func reading(latitude _: Double, longitude _: Double) async throws -> WeatherReading {
+        if self.delayNanoseconds > 0 { try? await Task.sleep(nanoseconds: self.delayNanoseconds) }
         guard let reading else { throw NSError(domain: "stub-backend-detail", code: 42) }
         return reading
     }

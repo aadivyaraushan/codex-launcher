@@ -35,7 +35,7 @@ struct ContactMatch: Sendable, Equatable {
 }
 
 @MainActor
-protocol ContactDirectory: AnyObject {
+protocol ContactDirectory: AnyObject, Sendable {
     var access: ContactsAccess { get }
     func requestAccess() async -> Bool
     func search(query: String, limit: Int) async -> [ContactMatch]
@@ -76,7 +76,7 @@ final class ForegroundContactsService: GatewayNodeCommandHandler {
     func handleNodeCommand(
         _ command: String,
         paramsJSON: String?,
-        timeoutMilliseconds _: Int?) async -> GatewayNodeCommandResult
+        timeoutMilliseconds: Int?) async -> GatewayNodeCommandResult
     {
         guard command == "contacts.resolve" else {
             return .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
@@ -91,12 +91,20 @@ final class ForegroundContactsService: GatewayNodeCommandHandler {
             self.logger.info("[contacts] refused branch=app_not_active")
             return .failure(code: "APP_NOT_ACTIVE", message: "Open Operator to look up a contact")
         }
+        // One deadline covers the permission prompt and the lookup together.
+        let deadline = Date().addingTimeInterval(Double(GatewayDeadline.bounded(timeoutMilliseconds)) / 1_000)
         if self.directory.access == .denied {
             self.logger.info("[contacts] refused branch=permission_denied")
             return .failure(code: "PERMISSION_DENIED", message: "Contacts permission was denied")
         }
         if self.directory.access == .notDetermined {
-            let granted = await self.directory.requestAccess()
+            guard let granted = await GatewayDeadline.run(
+                milliseconds: Int(deadline.timeIntervalSinceNow * 1_000),
+                { [directory] in await directory.requestAccess() })
+            else {
+                self.logger.info("[contacts] refused branch=permission_timeout")
+                return .failure(code: "TIMEOUT", message: "Contacts permission was not answered in time")
+            }
             guard self.isAppActive() else {
                 self.logger.info("[contacts] refused branch=app_left_during_permission")
                 return .failure(code: "APP_NOT_ACTIVE", message: "Open Operator to look up a contact")
@@ -108,7 +116,14 @@ final class ForegroundContactsService: GatewayNodeCommandHandler {
         }
 
         let partial = self.directory.access == .limited
-        let matches = await self.directory.search(query: request.query, limit: request.limit)
+        guard let found = await GatewayDeadline.run(
+            milliseconds: Int(deadline.timeIntervalSinceNow * 1_000),
+            { [directory] in await directory.search(query: request.query, limit: request.limit) })
+        else {
+            self.logger.info("[contacts] refused branch=lookup_timeout")
+            return .failure(code: "TIMEOUT", message: "Looking up that contact took too long")
+        }
+        let matches = found
             .prefix(request.limit)
             .map { match in
                 Payload.Match(

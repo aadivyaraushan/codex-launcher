@@ -60,7 +60,7 @@ final class ForegroundWeatherService: GatewayNodeCommandHandler {
     func handleNodeCommand(
         _ command: String,
         paramsJSON: String?,
-        timeoutMilliseconds _: Int?) async -> GatewayNodeCommandResult
+        timeoutMilliseconds: Int?) async -> GatewayNodeCommandResult
     {
         guard command == "weather.forecast" else {
             return .failure(code: "UNSUPPORTED_COMMAND", message: "This iPhone node does not support \(command)")
@@ -71,14 +71,25 @@ final class ForegroundWeatherService: GatewayNodeCommandHandler {
                 code: "INVALID_REQUEST",
                 message: "weather.forecast requires latitude between -90 and 90 and longitude between -180 and 180")
         }
+        // The only network call among the native capabilities, so the one
+        // that most needed bounding. The double optional is deliberate: the
+        // outer nil is the deadline passing, the inner nil is the backend
+        // failing, and those are different things to tell the agent.
+        let outcome: WeatherReading?? = await GatewayDeadline.run(
+            milliseconds: GatewayDeadline.bounded(timeoutMilliseconds),
+            { [source] in try? await source.reading(latitude: point.0, longitude: point.1) })
         let reading: WeatherReading
-        do {
-            reading = try await self.source.reading(latitude: point.0, longitude: point.1)
-        } catch {
+        switch outcome {
+        case .none:
+            self.logger.error("[weather] failed branch=timeout")
+            return .failure(code: "TIMEOUT", message: "The forecast took too long to arrive")
+        case .some(.none):
             // The error is not forwarded: a weather backend's message is not
             // something to hand an agent verbatim.
             self.logger.error("[weather] failed branch=source_unavailable")
             return .failure(code: "WEATHER_UNAVAILABLE", message: "Operator could not read the forecast")
+        case .some(.some(let value)):
+            reading = value
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
