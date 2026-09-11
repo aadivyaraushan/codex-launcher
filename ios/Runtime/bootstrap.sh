@@ -35,11 +35,11 @@ node_output=$build_dir/native-node/NodeMobile.xcframework
 runtime_output=$build_dir/native-node/runtime
 whatsapp_output=$build_dir/native-whatsapp
 
-# The NodeMobile release is a prerelease dependency with no checksum on
-# record. Until someone obtains the artifact and pins it here, this script
-# reports the hash it computed and refuses rather than quietly accepting
-# whatever it was handed. "unpinned" is a stated gap, not a default.
-expected_nodemobile_sha=unpinned
+# Recorded 2026-09-11 from nodejs-mobile-ios-24.18.0-0.zip, downloaded
+# directly from the GitHub release named in Runtime/DEPENDENCIES.md. Before
+# this the value was "unpinned" and the script refused to stage the framework
+# at all, which is why no second machine could build.
+expected_nodemobile_sha=0d60c9ce613559bd4377d60450199e7d3aece8715143951a86fc5fd2870a4662
 expected_openclaw_version=2026.9.1
 
 tree_sha() {

@@ -20,30 +20,25 @@ iOS Simulator SDK, and `--check` says so plainly when it is absent.
 
 | # | Artifact | Version | Output | Pinned by |
 | --- | --- | --- | --- | --- |
-| 1 | `NodeMobile.xcframework` | [nodejs-mobile v24.18.0-0](https://github.com/gmaclennan/nodejs-mobile/releases/tag/v24.18.0-0), asset `nodejs-mobile-ios-24.18.0-0.zip` — the **full** build, not lite | `ios/build/native-node/NodeMobile.xcframework` | **Nothing yet.** See below |
+| 1 | `NodeMobile.xcframework` | [nodejs-mobile v24.18.0-0](https://github.com/gmaclennan/nodejs-mobile/releases/tag/v24.18.0-0), asset `nodejs-mobile-ios-24.18.0-0.zip` — the **full** build, not lite | `ios/build/native-node/NodeMobile.xcframework` | `0d60c9ce613559bd4377d60450199e7d3aece8715143951a86fc5fd2870a4662` |
 | 2 | `openclaw` package with dependencies installed | `2026.9.1` | `ios/build/native-node/runtime` | `package/stage.mjs`, on name and version |
 | 3 | `wacli` source | [v0.17.1](https://github.com/openclaw/wacli/releases/tag/v0.17.1) — source, not a built executable | `ios/build/native-whatsapp` | `archive/build.sh`, on module, Go version, `go.mod` SHA-256 and source-tree SHA-256 |
 
-## NodeMobile is not pinned yet
+## NodeMobile, pinned 2026-09-11
 
-`expected_nodemobile_sha` in `bootstrap.sh` is the string `unpinned`, and until
-it is a real hash the script refuses to stage the framework. That is deliberate:
-this is a prerelease dependency, nobody has recorded a checksum for it, and
-accepting an unverified binary silently is worse than stopping.
-
-To close it, whoever holds the artifact runs:
-
-```sh
-sh ios/Runtime/bootstrap.sh --pin /path/to/nodejs-mobile-ios-24.18.0-0.zip
+```
+0d60c9ce613559bd4377d60450199e7d3aece8715143951a86fc5fd2870a4662
 ```
 
-and records the result in two places — `expected_nodemobile_sha` in
-`bootstrap.sh`, and the table above.
+Computed from `nodejs-mobile-ios-24.18.0-0.zip` downloaded directly from the
+GitHub release above, on the machine that ran the first clean bootstrap. Before
+this it read `unpinned` and the script refused to stage the framework, which is
+what stopped any second machine from building.
 
-**Pin from an artifact you downloaded yourself.** A checksum that arrives
-alongside the file it describes proves that the file is intact, not that it is
-the right file. The archive and the extracted directory hash identically, so it
-does not matter which one is used.
+If `bootstrap.sh` ever reports a mismatch, do not edit the pin to make it pass.
+A prerelease artifact whose contents changed under the same filename is exactly
+what a checksum is for. The archive and the extracted directory hash
+identically, so it does not matter which form is checked.
 
 ## Which tests a clean clone can actually run
 
