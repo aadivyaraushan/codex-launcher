@@ -56,7 +56,8 @@ final class DirectAccountReaderTests: XCTestCase {
 
         _ = try await reader.read(.init(operation: .outlookCalendarEvents, query: nil, channel: nil, timeMin: "2026-09-01T00:00:00Z", timeMax: "2026-09-08T00:00:00Z", limit: 5, cursor: nil))
 
-        let request = try XCTUnwrap(await transport.request)
+        let captured = await transport.request
+        let request = try XCTUnwrap(captured)
         let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertEqual(components?.host, "graph.microsoft.com")
@@ -159,21 +160,27 @@ final class DirectAccountReaderTests: XCTestCase {
 
         let page = try await reader.read(.init(operation: .gmailMessages, query: "is:unread", channel: nil, timeMin: nil, timeMax: nil, limit: 3, cursor: "page-1"))
 
+        // Everything is read off the actor first: XCTAssert takes autoclosures,
+        // and an actor-isolated property cannot be reached from inside one.
+        let listCalls = await transport.listCalls
+        let metadataCalls = await transport.metadataCalls
+        let urls = await transport.urls
+
         // One list call plus one metadata call per id. users.messages.list
         // returns nothing but ids and there is no list endpoint carrying a
         // subject or a sender, so this shape is Gmail's, not a choice.
-        XCTAssertEqual(await transport.listCalls, 1)
-        XCTAssertEqual(await transport.metadataCalls, 3)
+        XCTAssertEqual(listCalls, 1)
+        XCTAssertEqual(metadataCalls, 3)
         XCTAssertEqual(page.count, 3)
         XCTAssertEqual(page.nextCursor, "page-2")
 
-        let list = try XCTUnwrap(await transport.urls.first { $0.path == "/gmail/v1/users/me/messages" })
+        let list = try XCTUnwrap(urls.first { $0.path == "/gmail/v1/users/me/messages" })
         let listQuery = URLComponents(url: list, resolvingAgainstBaseURL: false)?.queryItems
         XCTAssertEqual(listQuery?.value(for: "maxResults"), "3")
         XCTAssertEqual(listQuery?.value(for: "q"), "is:unread")
         XCTAssertEqual(listQuery?.value(for: "pageToken"), "page-1")
 
-        let metadata = try XCTUnwrap(await transport.urls.first { $0.path.hasPrefix("/gmail/v1/users/me/messages/") })
+        let metadata = try XCTUnwrap(urls.first { $0.path.hasPrefix("/gmail/v1/users/me/messages/") })
         let items = try XCTUnwrap(URLComponents(url: metadata, resolvingAgainstBaseURL: false)?.queryItems)
         XCTAssertEqual(items.value(for: "format"), "metadata")
         XCTAssertEqual(Set(items.filter { $0.name == "metadataHeaders" }.compactMap(\.value)), ["Subject", "From", "Date"])
@@ -223,7 +230,8 @@ final class DirectAccountReaderTests: XCTestCase {
         XCTAssertEqual(page.count, 0)
         XCTAssertEqual(page.payloadJSON, "[]")
         XCTAssertNil(page.nextCursor)
-        XCTAssertEqual(await transport.metadataCalls, 0)
+        let metadataCalls = await transport.metadataCalls
+        XCTAssertEqual(metadataCalls, 0)
     }
 
     func testGmailRefusesMoreIDsThanWereAskedFor() async {
@@ -319,7 +327,8 @@ private actor GmailFixtureTransport: PhoneHTTPTransport {
 
         let page = try await reader.read(.init(operation: .googleTasks, query: nil, channel: nil, timeMin: nil, timeMax: nil, limit: 5, cursor: nil))
 
-        let request = try XCTUnwrap(await transport.request)
+        let captured = await transport.request
+        let request = try XCTUnwrap(captured)
         let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
         XCTAssertEqual(components?.host, "tasks.googleapis.com")
         XCTAssertEqual(components?.path, "/tasks/v1/lists/@default/tasks")
@@ -357,9 +366,13 @@ private actor GmailFixtureTransport: PhoneHTTPTransport {
 
         _ = try await reader.read(.init(operation: .googleTasks, query: nil, channel: "MTIzNDU2", timeMin: nil, timeMax: nil, limit: 5, cursor: nil))
 
-        let request = try XCTUnwrap(await transport.request)
-        XCTAssertEqual(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.path,
-                       "/tasks/v1/lists/MTIzNDU2/tasks")
+        // Read off the actor first: XCTUnwrap takes an autoclosure, and an
+        // actor-isolated property cannot be reached from inside one.
+        let captured = await transport.request
+        let request = try XCTUnwrap(captured)
+        let path = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.path
+
+        XCTAssertEqual(path, "/tasks/v1/lists/MTIzNDU2/tasks")
     }
 
 

@@ -5,7 +5,7 @@ import XCTest
 final class GatewayNativeNodePolicyTests: XCTestCase {
     func testReadsReadyWaitingAndMissingStatesWithoutWriting() async throws {
         let cases: [(String, GatewayNativeNodePolicyState)] = [
-            (#"{"valid":true,"hash":"raw-1","configRevisionHash":"rev-1","appliedConfigHash":"rev-1","config":{"gateway":{"nodes":{"commands":{"allow":["other","sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}}}}}"#, .ready),
+            (#"{"valid":true,"hash":"raw-1","configRevisionHash":"rev-1","appliedConfigHash":"rev-1","config":{"gateway":{"nodes":{"commands":{"allow":["other","sms.compose","weather.forecast","device.status","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}}}}}"#, .ready),
             (#"{"valid":true,"hash":"raw-1","configRevisionHash":"rev-2","appliedConfigHash":"rev-1","config":{"gateway":{"nodes":{"commands":{"allow":["sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call"]}}}}}"#, .waitingForApply),
             (#"{"valid":true,"hash":"raw-1","configRevisionHash":"rev-2","appliedConfigHash":"rev-1","config":{}}"#, .waitingForApply),
             (#"{"valid":true,"hash":"raw-1","configRevisionHash":"rev-2","appliedConfigHash":null,"config":{}}"#, .waitingForApply),
@@ -50,7 +50,7 @@ final class GatewayNativeNodePolicyTests: XCTestCase {
         XCTAssertEqual(request["method"] as? String, "config.patch")
         let params = try XCTUnwrap(request["params"] as? [String: Any])
         XCTAssertEqual(params["baseHash"] as? String, "raw-1")
-        XCTAssertEqual(params["raw"] as? String, #"{"gateway":{"nodes":{"commands":{"allow":["other","sms.compose","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}}}}"#)
+        XCTAssertEqual(params["raw"] as? String, #"{"gateway":{"nodes":{"commands":{"allow":["other","sms.compose","weather.forecast","device.status","maps.search","maps.directions","apps.open","whatsapp.chats","whatsapp.messages","whatsapp.sync","whatsapp.compose","connections.read","connections.write","connections.describe","notion.tools","notion.call","youtube.search","youtube.open","podcasts.search","podcasts.open"]}}}}"#)
     }
 
     func testPatchRejectsEmptyHashAndInvalidOrRejectedResponse() async throws {

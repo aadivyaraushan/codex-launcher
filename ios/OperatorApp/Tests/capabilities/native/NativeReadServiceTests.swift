@@ -212,9 +212,13 @@ final class ForegroundDeviceServiceTests: XCTestCase {
             batteryLevel: nil, charging: nil, lowPowerMode: false, networkAvailable: false,
             networkIsExpensive: false, localeIdentifier: "en_US", timeZoneIdentifier: "UTC")))
 
-        XCTAssertEqual(
-            await service.handleNodeCommand("device.status", paramsJSON: #"{"x":1}"#, timeoutMilliseconds: nil),
-            .failure(code: "INVALID_REQUEST", message: "device.status does not accept parameters"))
+        // Hoisted out of the assertion: XCTAssertEqual takes autoclosures,
+        // and an await cannot happen inside one.
+        let result = await service.handleNodeCommand(
+            "device.status", paramsJSON: #"{"x":1}"#, timeoutMilliseconds: nil)
+
+        XCTAssertEqual(result, .failure(
+            code: "INVALID_REQUEST", message: "device.status does not accept parameters"))
     }
 }
 
