@@ -40,6 +40,31 @@ A prerelease artifact whose contents changed under the same filename is exactly
 what a checksum is for. The archive and the extracted directory hash
 identically, so it does not matter which form is checked.
 
+## Installing openclaw's dependencies
+
+`npm install` inside the openclaw package fails with:
+
+```
+npm error Cannot read properties of null (reading 'edgesOut')
+```
+
+That is a bug in npm's peer-dependency resolver, which builds the full ideal
+tree including devDependencies even when told `--omit=dev`. The working
+invocation, used for the 2026-09-11 bootstrap:
+
+```sh
+cd ~/Downloads/openclaw-2026.9.1
+npm install --omit=dev --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+```
+
+`--legacy-peer-deps` skips the phase that crashes. `--ignore-scripts` matters
+too: the package has `preinstall` and `postinstall` hooks meant for a pnpm
+workspace checkout, not for consuming the published tarball.
+
+Two warnings are expected and harmless here: `EBADENGINE`, because openclaw
+asks for Node `>=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0` and the bootstrap
+machine had 22.20.0, and a deprecation notice for `node-domexception`.
+
 ## Which tests a clean clone can actually run
 
 Measured 2026-09-10 on a machine with no staged artifacts. This matters because
