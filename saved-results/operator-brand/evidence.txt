@@ -1,0 +1,228 @@
+RED
+PASS interactive scripts unchanged
+FAIL legacy typefaces removed: The expression evaluated to a falsy value:
+
+  assert(!/Instrument Sans|JetBrains Mono|fonts.googleapis/.test(source))
+
+FAIL 1440px brand palette: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'rgb(17, 18, 16)',
++   'rgb(240, 238, 232)',
++   '#F06B3F',
++   ''
+-   'rgb(11, 11, 11)',
+-   'rgb(232, 230, 226)',
+-   '#FF5934',
+-   '#9E3924'
+  ]
+
+FAIL 1440px Switzer and weights: The expression evaluated to a falsy value:
+
+  assert(actual.font.startsWith('Switzer'))
+
+FAIL 1440px supplied logos loaded: The expression evaluated to a falsy value:
+
+  assert(actual.logos)
+
+PASS 1440px no horizontal overflow
+PASS 1440px no script errors
+PASS 1440px original wording preserved
+PASS 1440px invalid email rejected
+PASS 1440px mocked waitlist success
+FAIL 390px brand palette: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'rgb(17, 18, 16)',
++   'rgb(240, 238, 232)',
++   '#F06B3F',
++   ''
+-   'rgb(11, 11, 11)',
+-   'rgb(232, 230, 226)',
+-   '#FF5934',
+-   '#9E3924'
+  ]
+
+FAIL 390px Switzer and weights: The expression evaluated to a falsy value:
+
+  assert(actual.font.startsWith('Switzer'))
+
+FAIL 390px supplied logos loaded: The expression evaluated to a falsy value:
+
+  assert(actual.logos)
+
+PASS 390px no horizontal overflow
+PASS 390px no script errors
+PASS 390px original wording preserved
+PASS 390px invalid email rejected
+PASS 390px mocked waitlist success
+FAIL 320px brand palette: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'rgb(17, 18, 16)',
++   'rgb(240, 238, 232)',
++   '#F06B3F',
++   ''
+-   'rgb(11, 11, 11)',
+-   'rgb(232, 230, 226)',
+-   '#FF5934',
+-   '#9E3924'
+  ]
+
+FAIL 320px Switzer and weights: The expression evaluated to a falsy value:
+
+  assert(actual.font.startsWith('Switzer'))
+
+FAIL 320px supplied logos loaded: The expression evaluated to a falsy value:
+
+  assert(actual.logos)
+
+PASS 320px no horizontal overflow
+PASS 320px no script errors
+PASS 320px original wording preserved
+PASS 320px invalid email rejected
+PASS 320px mocked waitlist success
+RESULT 10 failed checks
+
+
+GREEN
+PASS interactive scripts unchanged
+PASS legacy typefaces removed
+PASS 1440px brand palette
+PASS 1440px Switzer and weights
+PASS 1440px supplied logos loaded
+PASS 1440px no horizontal overflow
+PASS 1440px no script errors
+PASS 1440px original wording preserved
+PASS 1440px invalid email rejected
+PASS 1440px mocked waitlist success
+PASS 390px brand palette
+PASS 390px Switzer and weights
+PASS 390px supplied logos loaded
+PASS 390px no horizontal overflow
+PASS 390px no script errors
+PASS 390px original wording preserved
+PASS 390px invalid email rejected
+PASS 390px mocked waitlist success
+PASS 320px brand palette
+PASS 320px Switzer and weights
+PASS 320px supplied logos loaded
+PASS 320px no horizontal overflow
+PASS 320px no script errors
+PASS 320px original wording preserved
+PASS 320px invalid email rejected
+PASS 320px mocked waitlist success
+RESULT 0 failed checks
+
+
+PRODUCTION
+PASS interactive scripts unchanged
+PASS legacy typefaces removed
+PASS 1440px brand palette
+PASS 1440px Switzer and weights
+PASS 1440px supplied logos loaded
+PASS 1440px no horizontal overflow
+PASS 1440px no script errors
+PASS 1440px original wording preserved
+PASS 1440px invalid email rejected
+PASS 1440px mocked waitlist success
+PASS 390px brand palette
+PASS 390px Switzer and weights
+PASS 390px supplied logos loaded
+PASS 390px no horizontal overflow
+PASS 390px no script errors
+PASS 390px original wording preserved
+PASS 390px invalid email rejected
+PASS 390px mocked waitlist success
+PASS 320px brand palette
+PASS 320px Switzer and weights
+PASS 320px supplied logos loaded
+PASS 320px no horizontal overflow
+PASS 320px no script errors
+PASS 320px original wording preserved
+PASS 320px invalid email rejected
+PASS 320px mocked waitlist success
+RESULT 0 failed checks
+
+
+DEPLOY
+Retrieving project…
+Deploying aadivyaraushans-projects/operator
+Uploading [--------------------] (0.0B/51.4KB)
+Uploading [======--------------] (16.0KB/51.4KB)
+Uploading [============--------] (32.0KB/51.4KB)
+Uploading [===============-----] (41.1KB/51.4KB)
+Uploading [====================] (51.4KB/51.4KB)
+Inspect: https://vercel.com/aadivyaraushans-projects/operator/8TTaB9j3PVxNNhgHdQm51KABfiAc [3s]
+Production: https://operator-lmq0pvg5c-aadivyaraushans-projects.vercel.app [3s]
+Building...
+Building...
+Building: Running build in Washington, D.C., USA (East) – iad1
+Building: Build machine configuration: 2 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Previous build caches not available.
+Building: Downloading 19 deployment files...
+Building: Running "vercel build"
+Building: Vercel CLI 59.11.7
+Building: Build Completed in /vercel/output [140ms]
+Building: Deploying outputs...
+[2K[1A[2K[GProduction: https://operator-lmq0pvg5c-aadivyaraushans-projects.vercel.app [9s]
+Completing...
+Aliased: https://tryoperator.net [9s]
+{
+  "status": "ok",
+  "deployment": {
+    "id": "dpl_8TTaB9j3PVxNNhgHdQm51KABfiAc",
+    "url": "https://operator-lmq0pvg5c-aadivyaraushans-projects.vercel.app",
+    "inspectorUrl": "https://vercel.com/aadivyaraushans-projects/operator/8TTaB9j3PVxNNhgHdQm51KABfiAc",
+    "readyState": "READY",
+    "target": "production",
+    "deploymentApiUrl": "https://api.vercel.com/v13/deployments/dpl_8TTaB9j3PVxNNhgHdQm51KABfiAc"
+  },
+  "message": "Deployment operator-lmq0pvg5c-aadivyaraushans-projects.vercel.app ready.",
+  "next": [
+    {
+      "command": "vercel inspect operator-lmq0pvg5c-aadivyaraushans-projects.vercel.app --scope aadivyaraushans-projects",
+      "when": "Inspect deployment"
+    },
+    {
+      "command": "vercel deploy --prod --scope aadivyaraushans-projects",
+      "when": "Promote to production"
+    }
+  ]
+}
+
+
+LANDING/OPERATOR BRANCH CHECKS — 2026-09-11
+Command: NODE_PATH=<bundled node_modules> node saved-results/operator-brand/checks.cjs
+Exit: 0
+PASS interactive scripts unchanged
+PASS legacy typefaces removed
+PASS 1440px brand palette
+PASS 1440px Switzer and weights
+PASS 1440px supplied logos loaded
+PASS 1440px no horizontal overflow
+PASS 1440px no script errors
+PASS 1440px original wording preserved
+PASS 1440px invalid email rejected
+PASS 1440px mocked waitlist success
+PASS 390px brand palette
+PASS 390px Switzer and weights
+PASS 390px supplied logos loaded
+PASS 390px no horizontal overflow
+PASS 390px no script errors
+PASS 390px original wording preserved
+PASS 390px invalid email rejected
+PASS 390px mocked waitlist success
+PASS 320px brand palette
+PASS 320px Switzer and weights
+PASS 320px supplied logos loaded
+PASS 320px no horizontal overflow
+PASS 320px no script errors
+PASS 320px original wording preserved
+PASS 320px invalid email rejected
+PASS 320px mocked waitlist success
+RESULT 0 failed checks

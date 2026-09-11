@@ -17,10 +17,10 @@
 <meta name="twitter:description" content="Operator is an agent-native way to use your phone. Text what you want done — agents handle it on your phone and your computer." />
 <meta name="twitter:image" content="og.png" />
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23111210'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23F06B3F'/%3E%3C/svg%3E" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="icon" type="image/svg+xml" href="/landing/brand/operator-icon-small.svg" />
+<link rel="preconnect" href="https://api.fontshare.com" />
+<link rel="preconnect" href="https://cdn.fontshare.com" crossorigin />
+<link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,700&amp;display=swap" rel="stylesheet" />
 <style>
 *, *::before, *::after { box-sizing: border-box; }
 html, body, h1, h2, h3, p, figure, ul, ol { margin: 0; }
@@ -30,17 +30,17 @@ button, input { font: inherit; color: inherit; }
 a { color: inherit; text-decoration: none; }
 
 :root{
-  --bg:        #111210;
-  --surface:   #1A1B18;
-  --text:      #F0EEE8;
-  --muted:     #969990;
-  --hairline:  #30312D;
-  --signal:    #F06B3F;
+  --bg:        #0B0B0B;
+  --surface:   color-mix(in srgb, #E8E6E2 6%, #0B0B0B);
+  --text:      #E8E6E2;
+  --muted:     color-mix(in srgb, #E8E6E2 60%, #0B0B0B);
+  --hairline:  color-mix(in srgb, #E8E6E2 16%, #0B0B0B);
+  --signal:    #FF5934;
+  --rust:      #9E3924;
   --success:   #75A987;
   --warning:   #D49A3B;
   --error:     #E46F61;
-  --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: 'Switzer', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --wrap: 1240px;
   --pad: 32px;
 }
@@ -81,7 +81,7 @@ body{
   overflow-x: hidden;
 }
 
-.mono{ font-family: var(--font-mono); }
+.mono{ font-family: var(--font-sans); font-weight: 500; }
 
 .wrap{
   max-width: var(--wrap);
@@ -120,13 +120,13 @@ body{
   padding-block: 20px;
 }
 .nav__mark{
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 14px;
   font-weight: 500;
   letter-spacing: 0.02em;
 }
 .nav__link{
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 12px;
   letter-spacing: 0.04em;
   padding: 8px 14px;
@@ -148,7 +148,7 @@ body{
   align-items: center;
   justify-content: center;
   font-family: var(--font-sans);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 15px;
   padding: 14px 24px;
   border-radius: 6px;
@@ -156,7 +156,7 @@ body{
   cursor: pointer;
   transition: opacity 150ms ease, transform 150ms ease;
 }
-.btn--primary{ background: var(--signal); color: var(--bg); }
+.btn--primary{ background: var(--signal); color: var(--bg); border-color: var(--rust); }
 .btn--primary:hover{ opacity: 0.88; }
 .btn--primary:active{ transform: translateY(1px); }
 
@@ -183,7 +183,7 @@ body{
 }
 .chapter__headline{
   font-family: var(--font-sans);
-  font-weight: 600;
+  font-weight: 700;
   font-size: clamp(2rem, 3vw + 1.2rem, 3.4rem);
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -485,7 +485,7 @@ body{
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 11px;
   color: var(--muted);
   margin-bottom: 16px;
@@ -507,7 +507,7 @@ body{
 }
 
 .section-label{
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -550,7 +550,7 @@ body{
   overflow: hidden;
 }
 .laptop-panel--code{
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 10px;
   line-height: 1.55;
   color: var(--muted);
@@ -558,7 +558,7 @@ body{
 .laptop-panel--code .hi{ color: var(--signal); }
 .laptop-panel--code .ok{ color: var(--success); }
 .laptop-panel__title{
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 9px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -633,7 +633,7 @@ body{
   margin-bottom: 14px;
 }
 .chat-app__tab{
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 9px;
   letter-spacing: 0.04em;
   padding: 5px 8px;
@@ -674,7 +674,7 @@ body{
   border: 1px dashed var(--hairline);
   border-radius: 8px;
   padding: 10px 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 10px;
   color: var(--muted);
   text-align: center;
@@ -751,7 +751,7 @@ body{
 .duo__line::before{ left: -2px; }
 .duo__line::after{ right: -2px; }
 .duo__label{
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 9px;
   color: var(--muted);
 }
@@ -765,7 +765,7 @@ body{
   background: color-mix(in srgb, var(--signal) 12%, var(--surface));
 }
 .duo__code{
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 9px;
   line-height: 1.45;
   color: var(--muted);
@@ -784,7 +784,7 @@ body{
 .task-row__body{ min-width: 0; flex: 1; }
 .task-row__title{
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
   line-height: 1.3;
   white-space: nowrap;
@@ -795,13 +795,13 @@ body{
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 10px;
   color: var(--muted);
   margin-top: 4px;
 }
 .task-row__state{
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 10px;
   margin-bottom: 3px;
 }
@@ -864,7 +864,7 @@ body{
 }
 .chip{
   align-self: flex-start;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 10px;
   color: var(--muted);
   border: 1px solid var(--hairline);
@@ -924,7 +924,7 @@ body{
   box-shadow: 0 12px 40px color-mix(in srgb, var(--bg) 70%, transparent);
 }
 .never-prompt__label{
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); font-weight: 500;
   font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -933,7 +933,7 @@ body{
 }
 .never-prompt__text{
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
   line-height: 1.35;
 }
@@ -950,7 +950,7 @@ body{
 }
 .cta__heading{
   font-family: var(--font-sans);
-  font-weight: 600;
+  font-weight: 700;
   font-size: clamp(1.75rem, 2vw + 1.2rem, 2.75rem);
   line-height: 1.15;
   letter-spacing: -0.02em;
@@ -1027,7 +1027,7 @@ body{
 
 <header class="nav">
   <div class="wrap">
-    <a class="nav__mark" href="#beat-1">Operator</a>
+    <a class="nav__mark" href="#beat-1"><img src="/landing/brand/operator-logo.svg" alt="Operator" width="119" height="28" /></a>
     <a class="nav__link" href="#waitlist">Join the waitlist</a>
   </div>
 </header>
@@ -1115,7 +1115,7 @@ body{
 
 <footer class="footer">
   <div class="wrap">
-    <span class="footer__mark mono">Operator</span>
+    <span class="footer__mark"><img src="/landing/brand/operator-logo.svg" alt="Operator" width="102" height="24" /></span>
     <p class="footer__print">Apache 2.0 &middot; Operator is an independent project and is not affiliated with OpenAI, Anthropic, or Google.</p>
   </div>
 </footer>

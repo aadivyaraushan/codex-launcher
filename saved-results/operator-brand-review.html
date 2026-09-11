@@ -1,0 +1,249 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Operator brand refresh — review</title><style>:root{color-scheme:light dark}body{font:16px/1.6 system-ui;max-width:960px;margin:32px auto;padding:0 20px}h1,h2{line-height:1.2}a{color:light-dark(#9e3924,#ff7959)}table{border-collapse:collapse;width:100%}td,th{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid #8885}code{overflow-wrap:anywhere}pre{padding:16px;background:#8881;overflow:auto;font-size:12px}img{max-width:100%;height:auto;border:1px solid #8885}.result{padding:20px;border-left:5px solid #ff5934;background:#8881}.mobile{max-width:390px}</style><main><h1>Operator brand refresh</h1><div class="result"><strong>Branch handoff — September 11, 2026:</strong> Branding changes are now committed on <code>landing/operator</code> for the requested GitHub push. The branch retains its existing mobile layout changes from <code>88637bb</code>. All 26 browser checks passed on this combined branch. The test baseline now compares wording and scripts against that branch version. This push does not redeploy Vercel; the production deployment described below remains the earlier branding-only page.</div><p>September 11, 2026</p><div class="result"><strong>Live:</strong> <a href="https://tryoperator.net/">tryoperator.net</a><p>Branding-only update completed. Supplied two-disc logo and favicon, Switzer typography, near-black and warm-gray base, vermilion and rust accents. Original wording, layout rules, and interactive scripts retained.</p><p><strong>Checks:</strong> 26/26 browser checks pass locally and on production; 8/8 existing waitlist tests pass. The earlier production deployment matched its tested source byte for byte; this branch also includes its pre-existing mobile layout changes.</p><p><strong>Attention:</strong> The existing social-preview reference <code>/og.png</code> returns HTTP 404. It was left unchanged because this update uses the supplied logo/favicon assets and preserves the existing content. Real email delivery was not tested.</p></div><h2>Request and result</h2><p>Update the website from the <a href="https://docs.google.com/document/d/18_OA1CeeOsJDnLEIWOMy84eG7Dtlg2gE2YZmIA5EamE/edit">brand guidelines</a> and redeploy to the existing Vercel account. User clarified “branding only update.”</p><p>Production’s original HTML matched commit <code>f387fe7</code> exactly. Worktree starts at <code>de4e5b8</code>, which has that same page and adds deployment documentation. The latest landing branch includes different mobile layout changes; those were intentionally not included.</p><h2>Changed files</h2><table><thead><tr><th>File</th><th>Change</th></tr></thead><tbody><tr><td><code>landing/index.html</code></td><td>Switzer Regular/Medium/Bold replaces both former typefaces. Four brand colors, neutral tones derived from the brand palette, supplied header/footer logo, and favicon. Layout rules, page wording, scripts, and API unchanged.</td></tr><tr><td><code>landing/brand/operator-logo.svg</code></td><td>Exact supplied full-logo SVG from Google Drive; both discs and outlined Switzer wordmark.</td></tr><tr><td><code>landing/brand/operator-icon-small.svg</code></td><td>Exact supplied small icon SVG; used as favicon, without the thin disc outline.</td></tr><tr><td><code>planning/operator-brand-plan.html</code></td><td>Completed scope, plan, source references, and limits.</td></tr><tr><td><code>saved-results/operator-brand/checks.cjs</code></td><td>Browser checks with an in-process local server; real signup requests intercepted and replaced with test responses.</td></tr><tr><td><code>saved-results/operator-brand/evidence.txt</code></td><td>Exact initial failing check output, passing local/production runs, and deployment output.</td></tr><tr><td><code>saved-results/operator-brand/screenshots/desktop-1440.png</code></td><td>Current landing/operator desktop screenshot.</td></tr><tr><td><code>saved-results/operator-brand/screenshots/desktop-390.png</code></td><td>Current landing/operator 390px screenshot.</td></tr><tr><td><code>saved-results/operator-brand/screenshots/desktop-320.png</code></td><td>Current landing/operator 320px screenshot.</td></tr><tr><td><code>saved-results/operator-brand-review.html</code></td><td>This complete human review handoff.</td></tr></tbody></table><h2>Behavior and contracts</h2><p>No data, schema, environment variable, billing, endpoint, or API changes. Layout dimensions and breakpoint rules are untouched, though the new font changes line wrapping. Both wordmarks now use supplied vector artwork with accessible “Operator” alternative text. Buttons/labels use weight 500; headings use 700; body uses 400. Neutral surfaces are derived from the palette. Green success, warning, and error colors retain their existing meaning.</p><h2>Exact checks and outcomes</h2><ul><li><code>node saved-results/operator-brand/checks.cjs</code> with bundled Playwright in NODE_PATH: initial run reported 10 failed branding checks; after edits, 26 passed and 0 failed, exit 0.</li><li><code>CHECK_URL=https://tryoperator.net node saved-results/operator-brand/checks.cjs</code>: 26 passed, 0 failed, exit 0. Screens at 1440, 390, 320 pixels; palette, loaded fonts and weights, logo assets, horizontal overflow, script errors, wording, invalid email, mocked success.</li><li><code>node --test lib/waitlist/validate.test.js</code>: 8 passed, 0 failed, exit 0.</li><li><code>git diff --check</code>: exit 0, no whitespace errors.</li><li><code>cmp landing/index.html /tmp/operator-brand-live-after.html</code>: exit 0, exact match.</li><li>Logo and favicon production HTTP checks: both 200.</li><li>Codex Computer Use: inspected desktop and mobile branding, and followed the waitlist link. Temporary viewport override reset afterward.</li><li>Search in <code>landing api lib</code> for old font names, #111210, #F0EEE8, #F06B3F, and weight 600: no remaining matches. All uses in the published surface were updated; unrelated native app code was outside scope.</li></ul><p><a href="operator-brand/evidence.txt">Exact test and deploy output</a>. Initial test launch could not find Playwright’s bundled browser; rerun used the already-installed Google Chrome. New unit tests were unnecessary for CSS and asset changes; browser tests cover the affected surface. No build/lint package exists for this static page. Vercel’s production build passed in 140ms. No new logging was added because no application logic changed; existing logs remain.</p><h2>Deployment and saved source</h2><p>Existing project <code>aadivyaraushans-projects/operator</code>, project ID <code>prj_NOiAgtPtqnPgH23gMJ1l4wU1qn9Y</code>. Command: <code>vercel --prod --yes --scope aadivyaraushans-projects</code>, exit 0, READY, aliased to tryoperator.net.</p><p>Deployment <code>dpl_8TTaB9j3PVxNNhgHdQm51KABfiAc</code>: <a href="https://operator-lmq0pvg5c-aadivyaraushans-projects.vercel.app">immutable deployment</a>. Previous production: <code>operator-6bl004a3i-aadivyaraushans-projects.vercel.app</code>. Original deployed source is preserved on branch <code>codex/operator-brand-refresh</code>. The branding commit has now been applied to <code>landing/operator</code> at <code>/Users/aadivyar/Documents/Startups/ai native mobile software/codex-launcher-landing-outcome</code>, preserving its existing mobile layout changes. Vercel project metadata was copied locally; no credentials were added.</p><h2>Limits and manual checks</h2><p>Switzer loads from Fontshare, as specified in the brand guide. Browser checks confirm it loaded during this run; a blocked external font service would use the system fallback. Full logo paths do not depend on font loading. Tests use reduced motion for stable screenshots. Existing scroll animations and mobile behavior remain unchanged; this was not a layout repair. No Safari or physical-device test. No real waitlist entry was sent.</p><ol><li>Open tryoperator.net; check the two-disc wordmark, warm text, and red-orange accents.</li><li>Scroll through the story on desktop and phone; confirm the retained copy and new font.</li><li>Follow Join the waitlist; try an empty email to inspect the validation message. Only submit a real address if you intend to join.</li></ol><h2>Current landing/operator screenshots</h2><img src="operator-brand/screenshots/desktop-1440.png" alt="Desktop branch branding"><img class="mobile" src="operator-brand/screenshots/desktop-390.png" alt="390 pixel branch branding"><details><summary>Focused exact page diff</summary><pre>diff --git a/landing/index.html b/landing/index.html
+index e73cc55..7680ad2 100644
+--- a/landing/index.html
++++ b/landing/index.html
+@@ -17,10 +17,10 @@
+ &lt;meta name=&quot;twitter:description&quot; content=&quot;Operator is an agent-native way to use your phone. Text what you want done — agents handle it on your phone and your computer.&quot; /&gt;
+ &lt;meta name=&quot;twitter:image&quot; content=&quot;og.png&quot; /&gt;
+ 
+-&lt;link rel=&quot;icon&quot; href=&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 32 32&#x27;%3E%3Crect width=&#x27;32&#x27; height=&#x27;32&#x27; rx=&#x27;7&#x27; fill=&#x27;%23111210&#x27;/%3E%3Ccircle cx=&#x27;16&#x27; cy=&#x27;16&#x27; r=&#x27;7&#x27; fill=&#x27;%23F06B3F&#x27;/%3E%3C/svg%3E&quot; /&gt;
+-&lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.googleapis.com&quot; /&gt;
+-&lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.gstatic.com&quot; crossorigin /&gt;
+-&lt;link href=&quot;https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap&quot; rel=&quot;stylesheet&quot; /&gt;
++&lt;link rel=&quot;icon&quot; type=&quot;image/svg+xml&quot; href=&quot;/landing/brand/operator-icon-small.svg&quot; /&gt;
++&lt;link rel=&quot;preconnect&quot; href=&quot;https://api.fontshare.com&quot; /&gt;
++&lt;link rel=&quot;preconnect&quot; href=&quot;https://cdn.fontshare.com&quot; crossorigin /&gt;
++&lt;link href=&quot;https://api.fontshare.com/v2/css?f[]=switzer@400,500,700&amp;amp;display=swap&quot; rel=&quot;stylesheet&quot; /&gt;
+ &lt;style&gt;
+ *, *::before, *::after { box-sizing: border-box; }
+ html, body, h1, h2, h3, p, figure, ul, ol { margin: 0; }
+@@ -30,17 +30,17 @@ button, input { font: inherit; color: inherit; }
+ a { color: inherit; text-decoration: none; }
+ 
+ :root{
+-  --bg:        #111210;
+-  --surface:   #1A1B18;
+-  --text:      #F0EEE8;
+-  --muted:     #969990;
+-  --hairline:  #30312D;
+-  --signal:    #F06B3F;
++  --bg:        #0B0B0B;
++  --surface:   color-mix(in srgb, #E8E6E2 6%, #0B0B0B);
++  --text:      #E8E6E2;
++  --muted:     color-mix(in srgb, #E8E6E2 60%, #0B0B0B);
++  --hairline:  color-mix(in srgb, #E8E6E2 16%, #0B0B0B);
++  --signal:    #FF5934;
++  --rust:      #9E3924;
+   --success:   #75A987;
+   --warning:   #D49A3B;
+   --error:     #E46F61;
+-  --font-sans: &#x27;Instrument Sans&#x27;, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif;
+-  --font-mono: &#x27;JetBrains Mono&#x27;, ui-monospace, SFMono-Regular, Menlo, monospace;
++  --font-sans: &#x27;Switzer&#x27;, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif;
+   --wrap: 1240px;
+   --pad: 32px;
+ }
+@@ -81,7 +81,7 @@ body{
+   overflow-x: hidden;
+ }
+ 
+-.mono{ font-family: var(--font-mono); }
++.mono{ font-family: var(--font-sans); font-weight: 500; }
+ 
+ .wrap{
+   max-width: var(--wrap);
+@@ -120,13 +120,13 @@ body{
+   padding-block: 20px;
+ }
+ .nav__mark{
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 14px;
+   font-weight: 500;
+   letter-spacing: 0.02em;
+ }
+ .nav__link{
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 12px;
+   letter-spacing: 0.04em;
+   padding: 8px 14px;
+@@ -148,7 +148,7 @@ body{
+   align-items: center;
+   justify-content: center;
+   font-family: var(--font-sans);
+-  font-weight: 600;
++  font-weight: 500;
+   font-size: 15px;
+   padding: 14px 24px;
+   border-radius: 6px;
+@@ -156,7 +156,7 @@ body{
+   cursor: pointer;
+   transition: opacity 150ms ease, transform 150ms ease;
+ }
+-.btn--primary{ background: var(--signal); color: var(--bg); }
++.btn--primary{ background: var(--signal); color: var(--bg); border-color: var(--rust); }
+ .btn--primary:hover{ opacity: 0.88; }
+ .btn--primary:active{ transform: translateY(1px); }
+ 
+@@ -183,7 +183,7 @@ body{
+ }
+ .chapter__headline{
+   font-family: var(--font-sans);
+-  font-weight: 600;
++  font-weight: 700;
+   font-size: clamp(2rem, 3vw + 1.2rem, 3.4rem);
+   line-height: 1.1;
+   letter-spacing: -0.02em;
+@@ -414,7 +414,7 @@ body{
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 11px;
+   color: var(--muted);
+   margin-bottom: 16px;
+@@ -436,7 +436,7 @@ body{
+ }
+ 
+ .section-label{
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 10px;
+   letter-spacing: 0.08em;
+   text-transform: uppercase;
+@@ -479,7 +479,7 @@ body{
+   overflow: hidden;
+ }
+ .laptop-panel--code{
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 10px;
+   line-height: 1.55;
+   color: var(--muted);
+@@ -487,7 +487,7 @@ body{
+ .laptop-panel--code .hi{ color: var(--signal); }
+ .laptop-panel--code .ok{ color: var(--success); }
+ .laptop-panel__title{
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 9px;
+   letter-spacing: 0.06em;
+   text-transform: uppercase;
+@@ -562,7 +562,7 @@ body{
+   margin-bottom: 14px;
+ }
+ .chat-app__tab{
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 9px;
+   letter-spacing: 0.04em;
+   padding: 5px 8px;
+@@ -603,7 +603,7 @@ body{
+   border: 1px dashed var(--hairline);
+   border-radius: 8px;
+   padding: 10px 12px;
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 10px;
+   color: var(--muted);
+   text-align: center;
+@@ -680,7 +680,7 @@ body{
+ .duo__line::before{ left: -2px; }
+ .duo__line::after{ right: -2px; }
+ .duo__label{
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 9px;
+   color: var(--muted);
+ }
+@@ -694,7 +694,7 @@ body{
+   background: color-mix(in srgb, var(--signal) 12%, var(--surface));
+ }
+ .duo__code{
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 9px;
+   line-height: 1.45;
+   color: var(--muted);
+@@ -713,7 +713,7 @@ body{
+ .task-row__body{ min-width: 0; flex: 1; }
+ .task-row__title{
+   font-size: 13px;
+-  font-weight: 600;
++  font-weight: 500;
+   color: var(--text);
+   line-height: 1.3;
+   white-space: nowrap;
+@@ -724,13 +724,13 @@ body{
+   display: flex;
+   align-items: center;
+   gap: 6px;
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 10px;
+   color: var(--muted);
+   margin-top: 4px;
+ }
+ .task-row__state{
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 10px;
+   margin-bottom: 3px;
+ }
+@@ -793,7 +793,7 @@ body{
+ }
+ .chip{
+   align-self: flex-start;
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 10px;
+   color: var(--muted);
+   border: 1px solid var(--hairline);
+@@ -853,7 +853,7 @@ body{
+   box-shadow: 0 12px 40px color-mix(in srgb, var(--bg) 70%, transparent);
+ }
+ .never-prompt__label{
+-  font-family: var(--font-mono);
++  font-family: var(--font-sans); font-weight: 500;
+   font-size: 10px;
+   letter-spacing: 0.06em;
+   text-transform: uppercase;
+@@ -862,7 +862,7 @@ body{
+ }
+ .never-prompt__text{
+   font-size: 15px;
+-  font-weight: 600;
++  font-weight: 500;
+   color: var(--text);
+   line-height: 1.35;
+ }
+@@ -879,7 +879,7 @@ body{
+ }
+ .cta__heading{
+   font-family: var(--font-sans);
+-  font-weight: 600;
++  font-weight: 700;
+   font-size: clamp(1.75rem, 2vw + 1.2rem, 2.75rem);
+   line-height: 1.15;
+   letter-spacing: -0.02em;
+@@ -956,7 +956,7 @@ body{
+ 
+ &lt;header class=&quot;nav&quot;&gt;
+   &lt;div class=&quot;wrap&quot;&gt;
+-    &lt;a class=&quot;nav__mark&quot; href=&quot;#beat-1&quot;&gt;Operator&lt;/a&gt;
++    &lt;a class=&quot;nav__mark&quot; href=&quot;#beat-1&quot;&gt;&lt;img src=&quot;/landing/brand/operator-logo.svg&quot; alt=&quot;Operator&quot; width=&quot;119&quot; height=&quot;28&quot; /&gt;&lt;/a&gt;
+     &lt;a class=&quot;nav__link&quot; href=&quot;#waitlist&quot;&gt;Join the waitlist&lt;/a&gt;
+   &lt;/div&gt;
+ &lt;/header&gt;
+@@ -1044,7 +1044,7 @@ body{
+ 
+ &lt;footer class=&quot;footer&quot;&gt;
+   &lt;div class=&quot;wrap&quot;&gt;
+-    &lt;span class=&quot;footer__mark mono&quot;&gt;Operator&lt;/span&gt;
++    &lt;span class=&quot;footer__mark&quot;&gt;&lt;img src=&quot;/landing/brand/operator-logo.svg&quot; alt=&quot;Operator&quot; width=&quot;102&quot; height=&quot;24&quot; /&gt;&lt;/span&gt;
+     &lt;p class=&quot;footer__print&quot;&gt;Apache 2.0 &amp;middot; Operator is an independent project and is not affiliated with OpenAI, Anthropic, or Google.&lt;/p&gt;
+   &lt;/div&gt;
+ &lt;/footer&gt;
+</pre></details></main></html>
