@@ -55,3 +55,6 @@ Thumbs.db
 
 # Screen recordings (keep the still-frame montage instead)
 *.mp4
+
+# Browser tool scratch output
+.playwright-mcp/
