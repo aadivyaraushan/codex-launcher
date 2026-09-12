@@ -128,3 +128,19 @@ compile but XCTest never runs them (dead coverage for Google Tasks). To fix.
   live-only (need owner + accounts):** real Slack/Notion token-expiry refresh,
   true network-drop retry, real writes/sends, and the optional full item-1
   XCUITest (needs a `bundle.ui-testing` target).
+- 2026-09-12: **live-account proofs landed** (owner OK'd spend + real sends to
+  self). Built a gated live harness — `Tests/connections/live/LiveConnectorTests.swift`
+  + an `OperatorAppLive` scheme that sets `OPERATOR_LIVE=1`; the default scheme
+  skips all 11 (gate proven: 11 executed / 11 skipped on the throwaway sim).
+  Ran it against the owner's real connected sim (49A153C3, upgrade install so
+  OAuth state survived). **Cost $0** — all via DirectAccountReader/Writer HTTPS,
+  no LLM. **Live READS 5/5 green** (Gmail 3, Slack 4, Spotify 5, Drive/Outlook
+  valid-empty). **Live WRITES 5/5 + 1 skip green**: Google Calendar + Drive full
+  create→read-back→delete round-trips; Outlook draft create+delete; **real
+  Outlook send to ssdear@gmail.com (self)**; **real Slack post to own DM +
+  delete**; Spotify playback skipped (intrusive, manual). This closes **item 3**
+  (token refresh/persistence live for all 5), **item 2** (Drive round-trip live),
+  and **item 5/writes** (real send/edit live; playback manual). Evidence appended
+  to `saved-results/ios-connectors-evidence.md`. **Remaining:** true network-drop
+  retry + interrupted-write resume (gateway/runtime layer), and the optional
+  item-1 XCUITest.

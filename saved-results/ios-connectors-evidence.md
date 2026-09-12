@@ -855,3 +855,118 @@ explicit owner OK.
 - Full app test target (throwaway sim): the `xcodebuild test` line above. Fresh
   DerivedData in a scratch dir; `CODE_SIGNING_ALLOWED=NO` (sim signing is
   ad-hoc).
+
+---
+
+# Live-account verification — 2026-09-12
+
+The owner authorized (this session) spending on their own ChatGPT account and
+real irreversible sends **to safe recipients only** (self / Sinchana / wife).
+That unblocked the items previously marked "live-only". Below is what ran
+against the owner's **real connected accounts** on the live sim
+("Operator iPhone 14 Pro", `49A153C3-…`). **Cost: $0** — every check uses
+`DirectAccountReader` / `DirectAccountWriter`, which call the providers over
+HTTPS directly with the Keychain OAuth tokens. No LLM / chat turn is involved,
+so nothing bills the ChatGPT account. All sends were to the owner themselves and
+cleaned up.
+
+## The live harness (gated, safe by default)
+- New file `ios/OperatorApp/Tests/connections/live/LiveConnectorTests.swift`:
+  `LiveConnectorReadTests` (5 reads) + `LiveConnectorWriteTests` (6 writes).
+  Each class `XCTSkipUnless(OPERATOR_LIVE=="1")` in `setUp`, so the **default**
+  `OperatorApp` scheme skips them all and the normal suite stays green and never
+  touches an account.
+- New scheme `OperatorAppLive` (in `ios/project.yml`) sets `OPERATOR_LIVE=1`.
+  Only this scheme runs the live tests. Never run the whole suite under it —
+  select the live class with `-only-testing`.
+- The harness reuses the exact bearer the app uses:
+  `NativeAccountSetupCoordinator(bundle:.main, presenter:…).accessToken(provider)`
+  → real bundle registrations + Keychain (`service app.operator.ios.oauth`) +
+  auto-refresh. Installing the test host is an **upgrade install** (no erase),
+  so the owner's OAuth tokens survive; no re-login needed.
+- Gate proof (throwaway sim, default scheme): `-only-testing` both live classes
+  → **Executed 11 tests, 11 skipped, 0 failures — TEST SUCCEEDED**. So the live
+  tests are inert unless deliberately run.
+
+## Live READS — all 5 providers, real data (`-scheme OperatorAppLive`, live sim)
+`-only-testing:OperatorAppTests/LiveConnectorReadTests` →
+**Executed 5 tests, 0 failures — TEST SUCCEEDED** (2.19s).
+
+```
+LIVE-READ gmailMessages     count=3  nextCursor=true
+LIVE-READ googleDriveFiles  count=0  nextCursor=false
+LIVE-READ outlookInbox      count=0  nextCursor=false
+LIVE-READ slackChannels     count=4  nextCursor=false
+LIVE-READ spotifySearch     count=5  nextCursor=true
+```
+No `notConnected` skips — every provider's Keychain token was valid (or
+auto-refreshed) and returned valid JSON. Gmail/Slack/Spotify returned real rows;
+Drive/Outlook returned a valid empty page (nothing matched the probe query),
+which the write round-trip below then proves non-empty.
+
+## Live WRITES — self-targeted, create → verify → delete
+`-only-testing:OperatorAppTests/LiveConnectorWriteTests` →
+**Executed 6 tests, 1 skipped, 0 failures — TEST SUCCEEDED** (6.28s).
+
+```
+LIVE-WRITE googleCalendarCreateEvent id=on3mf2tr29mhg4jdcfg0bannhc verified=1 cleaned=true
+LIVE-WRITE googleDriveCreateTextFile id=144qGiRC2VI2-V2exXbH-HpQqdu-gM87E  verified=1 cleaned=true
+LIVE-WRITE outlookCreateDraft       id=AQMkADAw…                            cleaned=true
+LIVE-WRITE outlookSendMail          accepted to ssdear@gmail.com  (REAL SEND, to self)
+LIVE-WRITE slackPostMessage         channel=D0BK8RHK6KW ts=1789239684.209859  cleaned=true (REAL post to own DM)
+```
+- **Google Calendar / Drive:** created a real object, re-read it back through
+  `DirectAccountReader` (`verified=1` = the created item was findable), then
+  deleted it. This is a full write→read→cleanup round-trip on the live account.
+- **Outlook draft:** created in the owner's mailbox, then deleted.
+- **Outlook send mail (irreversible):** a real message left the owner's Outlook
+  and was accepted for delivery to the owner's own Gmail (`ssdear@gmail.com`).
+  Left in place (self-inbox); subject/body marked "Operator live test, safe to
+  delete".
+- **Slack post (irreversible):** discovered the owner's own DM channel
+  (`auth.test` → `conversations.open` with the owner's user id), posted a real
+  message, then deleted it (`chat.delete`).
+- **Spotify start-playback:** skipped — audible/intrusive and needs an active
+  device; left for a manual owner run. Its write logic is unit-covered in
+  `DirectAccountWriterTests`.
+
+The `[embedded-runtime] launch failed` / `app-handoff catalog unavailable` lines
+in the write log are the XCTest host trying to boot the embedded Node runtime and
+handoff catalog — unrelated to the connectors, which never use the runtime. All
+tests still passed.
+
+## What this closes on the goal
+- **Item 3 (sign-in persists + token refresh), all 5 providers — LIVE.** Every
+  read/write above went through `coordinator.accessToken(provider)`, which
+  auto-refreshes on expiry. Combined with the prior relaunch-log capture
+  (Google/Outlook/Spotify `token refreshed`; Slack connected; Notion
+  `notion-renewal outcome=success`), refresh + persistence is proven live for
+  all five.
+- **Item 2 (Drive tolerant input) — LIVE.** The Drive create+search round-trip
+  ran against the real account (`verified=1`), on top of the existing
+  tolerant-input unit tests.
+- **Item 5 (write actions: send / edit / playback) — LIVE.** Real create/send/
+  post proven on Google Calendar, Drive, Outlook (draft + real send), Slack
+  (real DM post). Playback left for a manual owner run (intrusive).
+
+## Still open (live, lower priority)
+- True **network-drop retry** and **interrupted-write resume** — recovery
+  edge-cases at the gateway/runtime layer, not the connector-HTTPS layer proven
+  here. Interrupted ordinary read was live-PASS in the prior session.
+- Optional full item-1 XCUITest (needs a `bundle.ui-testing` target); item-1 fix
+  already landed with an on-sim regression guard.
+
+## How to reproduce the live runs
+```
+LIVE=49A153C3-BA69-468F-BD21-D827A84E6F07   # the owner's connected sim
+# reads:
+xcodebuild test -project ios/Operator.xcodeproj -scheme OperatorAppLive \
+  -destination "platform=iOS Simulator,id=$LIVE" \
+  -only-testing:OperatorAppTests/LiveConnectorReadTests
+# writes (real sends to self, self-cleanup):
+xcodebuild test -project ios/Operator.xcodeproj -scheme OperatorAppLive \
+  -destination "platform=iOS Simulator,id=$LIVE" \
+  -only-testing:OperatorAppTests/LiveConnectorWriteTests
+```
+Install is an upgrade (no `simctl erase`), so the owner's OAuth state is
+preserved across the run.

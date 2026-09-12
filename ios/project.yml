@@ -18,6 +18,21 @@ schemes:
     test:
       targets:
         - OperatorAppTests
+  # Live-account proofs only. Sets OPERATOR_LIVE=1 so LiveConnectorReadTests /
+  # LiveConnectorWriteTests run instead of skipping. The default OperatorApp
+  # scheme never sets it, so the normal test run stays green and never touches a
+  # real account. Never run the whole suite under this scheme; select the live
+  # class explicitly with -only-testing.
+  OperatorAppLive:
+    build:
+      targets:
+        OperatorApp: all
+        OperatorAppTests: [test]
+    test:
+      targets:
+        - OperatorAppTests
+      environmentVariables:
+        OPERATOR_LIVE: "1"
 targets:
   OperatorApp:
     type: application

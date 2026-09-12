@@ -77,6 +77,7 @@
 		B72283677ABE1FBA924F3AFF /* NativeWhatsAppSendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15E65E440A54A03C877EBE2 /* NativeWhatsAppSendClient.swift */; };
 		B754CC661FB16CBA852D9ACE /* NativeWhatsAppReadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3ABBDCA8280EFA20982CA4B /* NativeWhatsAppReadClient.swift */; };
 		BC3844E544DDEAA656919833 /* PodcastMediaServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91030CDE6E5DB4DDD0114BCF /* PodcastMediaServices.swift */; };
+		BC5AEB0A44E7AC11D8E001D1 /* LiveConnectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBA3F03E905D5FE1B11D4D9B /* LiveConnectorTests.swift */; };
 		BC959E4E9FE0DBFFE44077B1 /* KeychainCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06DA0E953B0B9B01FFEE8D10 /* KeychainCredentialStore.swift */; };
 		BF1028C1A7E4B3C203C4D6B7 /* libWacliBridge.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B5BEE2E9BA60BDEF86BB4A5B /* libWacliBridge.a */; };
 		BF7981F27F123E155E792ECD /* NativeReadServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 826E52BF783031AB3018FF6C /* NativeReadServiceTests.swift */; };
@@ -241,6 +242,7 @@
 		B4EA716A42D67D854FB9616D /* ForegroundRemindersServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundRemindersServiceTests.swift; sourceTree = "<group>"; };
 		B5BEE2E9BA60BDEF86BB4A5B /* libWacliBridge.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libWacliBridge.a; path = "build/native-whatsapp/libWacliBridge.a"; sourceTree = "<group>"; };
 		B9E3D881095DD2A08566CBAE /* ForegroundDeviceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundDeviceService.swift; sourceTree = "<group>"; };
+		BBA3F03E905D5FE1B11D4D9B /* LiveConnectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveConnectorTests.swift; sourceTree = "<group>"; };
 		BC37EE7F222735D21673BC20 /* DirectAccountReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectAccountReader.swift; sourceTree = "<group>"; };
 		BC48EC3F7F6A86D929580925 /* NativeNodePolicySetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeNodePolicySetup.swift; sourceTree = "<group>"; };
 		C15E65E440A54A03C877EBE2 /* NativeWhatsAppSendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWhatsAppSendClient.swift; sourceTree = "<group>"; };
@@ -614,6 +616,7 @@
 				F73C21467CA7FD23AD23786C /* auth */,
 				F6A5965330A56E09AE8E3EF3 /* confirmation */,
 				60FBFFA5D13D475FCE0ED90A /* discovery */,
+				DB3A7613F50E97A9D94281AE /* live */,
 				6EE76B0B458903A1371F9EC1 /* media */,
 				552BBC7FEAB79E92144482AF /* notion */,
 				5AD182BD6B1A6D10A193C541 /* notion-callback */,
@@ -952,6 +955,14 @@
 			path = media;
 			sourceTree = "<group>";
 		};
+		DB3A7613F50E97A9D94281AE /* live */ = {
+			isa = PBXGroup;
+			children = (
+				BBA3F03E905D5FE1B11D4D9B /* LiveConnectorTests.swift */,
+			);
+			path = live;
+			sourceTree = "<group>";
+		};
 		DC959FEA30395290E929E6F7 /* capabilities */ = {
 			isa = PBXGroup;
 			children = (
@@ -1067,14 +1078,14 @@
 			path = youtube;
 			sourceTree = "<group>";
 		};
-		"TEMP_0690A43C-FE08-40C6-9E24-476DE25D1A30" /* runtime */ = {
+		"TEMP_491C3123-BAF2-454F-B058-909B7B2FD535" /* runtime */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = runtime;
 			sourceTree = "<group>";
 		};
-		"TEMP_B89F51F9-8F1F-48A8-AC21-41085414F180" /* embedded */ = {
+		"TEMP_F12979F3-D22B-4B39-8414-AC36D9E3E838" /* embedded */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -1196,6 +1207,7 @@
 				EC69797A1889EF16C0F86508 /* ForegroundMapsServiceTests.swift in Sources */,
 				252756A97D7DF7DC0A6E14D2 /* ForegroundMessageComposeServiceTests.swift in Sources */,
 				E205AB20591B7E22AF0D49D3 /* ForegroundRemindersServiceTests.swift in Sources */,
+				BC5AEB0A44E7AC11D8E001D1 /* LiveConnectorTests.swift in Sources */,
 				C3512DBBB74F4E7B8460FC83 /* LocalModelSetupGatewayTests.swift in Sources */,
 				FF8DBD1712E44931AC36FDB1 /* LocalOpenClawChatGatewayTests.swift in Sources */,
 				88573980BCFBB4421850EC00 /* MediaServicesTests.swift in Sources */,
