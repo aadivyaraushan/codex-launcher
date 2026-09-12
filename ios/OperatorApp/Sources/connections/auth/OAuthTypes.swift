@@ -28,6 +28,27 @@ enum OAuthProvider: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// Extra authorization-request parameters a provider needs beyond the
+    /// standard OAuth set.
+    ///
+    /// Google is the reason this exists. It issues a refresh token only when
+    /// `access_type=offline` is on the authorization request - the value is a
+    /// query parameter, not a scope, so nothing in `scopes` above can stand in
+    /// for it. Without it the grant works exactly once and then expires about
+    /// an hour later with no way to renew, which shows up much later as
+    /// `[account-setup] saved connection unavailable` on the next launch
+    /// rather than as a failure at sign-in.
+    ///
+    /// `prompt=consent` is the companion: Google returns a refresh token only
+    /// on a consent it treats as new, so a re-authorization can otherwise come
+    /// back without one and leave the account in the same dead state.
+    var authorizationParameters: [String: String] {
+        switch self {
+        case .google: ["access_type": "offline", "prompt": "consent"]
+        case .microsoftOutlook, .slack, .spotify: [:]
+        }
+    }
+
     var requiredAccessTokenScopes: [String] {
         switch self {
         case .microsoftOutlook:

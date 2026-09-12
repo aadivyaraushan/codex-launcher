@@ -159,6 +159,9 @@ actor PhoneOAuthClient {
         } else {
             query.append(.init(name: "scope", value: self.provider.scopes.joined(separator: " ")))
         }
+        for (name, value) in self.provider.authorizationParameters.sorted(by: { $0.key < $1.key }) {
+            query.append(.init(name: name, value: value))
+        }
         components.queryItems = query
         guard let url = components.url else { throw PhoneOAuthError.missingRegistration }
         return url

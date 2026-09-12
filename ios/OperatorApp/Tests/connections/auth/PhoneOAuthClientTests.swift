@@ -75,6 +75,33 @@ final class PhoneOAuthClientTests: XCTestCase {
         XCTAssertTrue(requests.isEmpty)
     }
 
+    /// Google issues a refresh token only when the authorization request
+    /// carries `access_type=offline`. Without it a grant works once and dies
+    /// about an hour later, and the only symptom is the account quietly
+    /// reporting itself unavailable on some later launch - so it is asserted
+    /// here rather than trusted to review.
+    func testGoogleAsksForOfflineAccessSoTheGrantCanBeRefreshed() async throws {
+        let client = self.client(provider: .google)
+        let request = try await client.makeAuthorizationRequest()
+        let query = try XCTUnwrap(URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertEqual(query.value(for: "access_type"), "offline")
+        XCTAssertEqual(query.value(for: "prompt"), "consent")
+    }
+
+    /// The other three must not carry Google's parameters: Microsoft asks for
+    /// durability with the `offline_access` scope instead, and an unexpected
+    /// `prompt` changes what the other two show the person.
+    func testOnlyGoogleCarriesTheOfflineAccessParameters() async throws {
+        for provider in [OAuthProvider.microsoftOutlook, .slack, .spotify] {
+            let client = self.client(provider: provider)
+            let request = try await client.makeAuthorizationRequest()
+            let query = try XCTUnwrap(URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems)
+            XCTAssertNil(query.value(for: "access_type"), "\(provider) must not send access_type")
+            XCTAssertNil(query.value(for: "prompt"), "\(provider) must not send prompt")
+        }
+        XCTAssertTrue(OAuthProvider.microsoftOutlook.scopes.contains("offline_access"))
+    }
+
     func testSlackUsesOnlyUserScopesAndNoBotScope() async throws {
         let request = try await self.client(provider: .slack).makeAuthorizationRequest()
         let query = try XCTUnwrap(URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems)
