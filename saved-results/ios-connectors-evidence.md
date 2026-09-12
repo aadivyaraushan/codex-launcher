@@ -1035,3 +1035,62 @@ the LLM and drops the socket mid-stream. It would cost money and is *flakier*
 (timing the drop) while proving only that the real runtime emits `chat.history`
 the way the fakes already model. The deterministic suites above are the better
 evidence; this end-to-end variant is available on request but not worth the spend.
+
+## Full-path end-to-end proof through the real LLM — 2026-09-12
+
+This is the one thing every earlier live test deliberately skipped: the whole
+chain a real user hits, driven through the actual chat UI, with the on-device
+LLM (not the harness) deciding to call the connector.
+
+**How it was run.** A gated XCUITest (`ChatEndToEndUITests`, target
+`OperatorAppUITests`, scheme `OperatorAppE2E` sets `OPERATOR_E2E=1`) launches the
+real app on the **live sim** (49A153C3, real OAuth + real ChatGPT auth), clears
+any draft, types "Check my Gmail inbox and tell me the sender and subject of my
+single most recent email.", taps Send, and waits for a *genuinely new* assistant
+bubble (it snapshots existing bubbles first, so a stale reply can't false-pass).
+Paid: one chat turn on the owner's ChatGPT device-code account **ssdear@gmail.com**
+(personal, pre-approved, recorded in the `connector-testing-consent` memory).
+
+**Result: TEST SUCCEEDED (48.8s).** The reply captured from the chat bubble:
+`Sender: Instagram notification@priority.instagram.com` — real inbox content.
+
+**Ground truth from os_log (live sim, process 73067), in order within the turn:**
+```
+[chat] staged input id=E4D250A6… characters=87            <- my prompt, 87 chars, no stale draft
+[gateway] sent chat request id=80a17cc9…                  <- sent to the LLM
+[chat-timing] phase=accepted … outcome=none               <- LLM turn started
+[location-node] handling command=connections.read id=a2b677ed…   <- LLM CHOSE to read Gmail
+[location-node] sent result id=a2b677ed…                  <- connector returned inbox data
+[chat-timing] phase=first-text … / phase=terminal outcome=reply
+[chat] reply persisted for id=E4D250A6…                   <- reply is for MY message id
+```
+The `connections.read` command handled mid-turn is the definitive proof the
+connector fired *because the LLM decided to*, not because a harness called it
+directly. (The `[account-read]` line from `DirectAccountReader` does NOT appear —
+the runtime/LLM path uses the native-node command surface `connections.read`
+instead; both are real, and `connections.read` is the one a real "check my email"
+actually exercises. The node surface advertised all 26 commands incl.
+`connections.read/write/describe`.) `modelConfigured=true` confirmed the model was
+signed in. The live sim's auth survived (upgrade-install only).
+
+**A real bug this uncovered and fixed (project.yml).** Every build I installed
+before this was silently missing the Copy Bundle Resources phase for the
+OperatorApp target, so the embedded Node runtime (`runtime/entry.mjs`), the asset
+catalog, and the handoff JSON never made it into the app — the runtime failed to
+launch (`[embedded-runtime] launch failed … code=0` → `chat connection gate
+closed`) and chat/LLM could not run at all. Root cause: **XcodeGen 2.46 silently
+drops a top-level `resources:` block for this target** (parsed by `xcodegen dump`
+but never emitted as a build phase; git `dfe0376` had 3 Resources phases, my
+regens had 0). Fix: declare the resources under the target's `sources:` block
+(asset catalog + JSON auto-classify; the runtime folder with
+`type: folder, buildPhase: resources`) — that code path emits the phase.
+After the fix the built `.app` contains `runtime/entry.mjs` (695B) + subdirs and
+`Assets.car` (63KB), the runtime boots (`[embedded-runtime] ready`), and the
+end-to-end proof above passes. The connector *reads/writes proven earlier stay
+valid regardless*, because `DirectAccountReader/Writer` talk HTTPS directly and
+never touch the Node runtime.
+
+**Free regression guard:** `ChatEndToEndUITests.testAppLaunchesAndChatComposerIsReachable`
+(ungated, no LLM/accounts) launches the app and asserts the chat composer is
+reachable — green on the throwaway sim (19.5s). If the runtime/resources break
+again, this catches it at $0.

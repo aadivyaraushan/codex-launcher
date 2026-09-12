@@ -37,6 +37,7 @@
 		5B273A5F80E03A1E0ADEB811 /* PublicMediaURLPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56D61196FCC160ABACEA5517 /* PublicMediaURLPolicy.swift */; };
 		5D17545DF1BCF1F05DC12AC3 /* EmbeddedRuntimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51BDA4CB9ABC87C383F66FBC /* EmbeddedRuntimeHost.swift */; };
 		5F8D5118B87FA4BADFB5C490 /* ModelSetupContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 421FA479133137B163DDDE9C /* ModelSetupContracts.swift */; };
+		62C1F989D7AB832279EC9A95 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DC6FA1D906E8FD16F6275EB4 /* Assets.xcassets */; };
 		633541E440BAE8B0C293DB0A /* ForegroundCalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B5D658BC0E97C5F41DC347 /* ForegroundCalendarService.swift */; };
 		633C1C667A412FAB052A71CD /* SystemWhatsAppComposePresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA855847FA0C15621EBE0F2F /* SystemWhatsAppComposePresenter.swift */; };
 		63EB0E9E3C22DE2DF6E0B512 /* PhoneOAuthClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3277E59E6676EB7FEE74EA91 /* PhoneOAuthClientTests.swift */; };
@@ -47,6 +48,7 @@
 		6BC1F46B1CC557DBF99034C8 /* NotionMCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA31C7EBC7EC9ECF4CBE9267 /* NotionMCPClient.swift */; };
 		6C9023EB6B08D517592E775B /* ChatSessionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1593E68D6DA83F3D5323D640 /* ChatSessionModelTests.swift */; };
 		712D9DC4FDCABF688DC15ED6 /* ForegroundWhatsAppComposeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 024EB25ABFAFDEDC1DC27761 /* ForegroundWhatsAppComposeService.swift */; };
+		76ACD6E1A4470AC81B451EE2 /* android-handoff-catalog.json in Resources */ = {isa = PBXBuildFile; fileRef = E10DAC4EEE0D33DB1BF4B953 /* android-handoff-catalog.json */; };
 		79D6EEA191EB7EA5D764E9F0 /* OperatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 243883C3810544B3A49A5C08 /* OperatorApp.swift */; };
 		7C1396A6AB48DB5C2765FA5C /* DirectAccountReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC37EE7F222735D21673BC20 /* DirectAccountReader.swift */; };
 		7E7266219A2988B47B66BD18 /* NodeMobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1EF691B8528973A5181E5FD0 /* NodeMobile.xcframework */; };
@@ -85,6 +87,7 @@
 		C016266ACFDCD5A85D125BD3 /* ForegroundLocationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 201F5539139E8F77225201B4 /* ForegroundLocationServiceTests.swift */; };
 		C3512DBBB74F4E7B8460FC83 /* LocalModelSetupGatewayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86ECCDBC4B74E8E94BD31A7B /* LocalModelSetupGatewayTests.swift */; };
 		C769F0BD6B3A535DF4FBF71B /* ConnectionDiscoveryServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A2457FCFD27BD44CF915A1 /* ConnectionDiscoveryServiceTests.swift */; };
+		CBD80759C8879BA1902DE495 /* ChatEndToEndUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8494D608BFF220294347A7F /* ChatEndToEndUITests.swift */; };
 		CED0DD2CBF76656CC237E954 /* OperatorChatAppIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EB2EEF88717787396DCE133 /* OperatorChatAppIntentTests.swift */; };
 		D094A70A26404271B327BC24 /* ForegroundLocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CC5F95F8C505559D1B76A38 /* ForegroundLocationService.swift */; };
 		D0C18A9F479A13E26FE882E1 /* ForegroundWhatsAppReadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DCBB7A0034CB9F86454E312 /* ForegroundWhatsAppReadService.swift */; };
@@ -111,6 +114,7 @@
 		F6555AAE42BD2A4FB7108CE4 /* OAuthTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D28413E654E17641C2A8767 /* OAuthTransport.swift */; };
 		F784AD59C98B8D7D361377E9 /* YouTubeAPIKeySetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 095EB3E761A8C80A0054953A /* YouTubeAPIKeySetup.swift */; };
 		F7F4BF5D98E4308A2CB5F01B /* SystemAccountWriteConfirmationPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC01CB893AD10D7CA41775EF /* SystemAccountWriteConfirmationPresenter.swift */; };
+		FB39CBF6079950629E2B05BC /* runtime in Resources */ = {isa = PBXBuildFile; fileRef = A1AF3111A40D0B89366D2550 /* runtime */; };
 		FD66FBAF132FD1B8830F9CF4 /* ChatContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4D32786B344D6642DF4CC5 /* ChatContracts.swift */; };
 		FEDFDE2079B92A33F5E712E6 /* OfflineDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DF224F395BA8CA84CDE93F7 /* OfflineDictation.swift */; };
 		FF8DBD1712E44931AC36FDB1 /* LocalOpenClawChatGatewayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 072E929D31E7DD6401B0C04E /* LocalOpenClawChatGatewayTests.swift */; };
@@ -118,6 +122,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		37452F0A83948A6C246B81E7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CA536F080C540217B1C33959 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2C77B42CF625095C3400192A;
+			remoteInfo = OperatorApp;
+		};
 		55BA7434F4169E48662CB3EA /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = CA536F080C540217B1C33959 /* Project object */;
@@ -172,6 +183,7 @@
 		1593E68D6DA83F3D5323D640 /* ChatSessionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSessionModelTests.swift; sourceTree = "<group>"; };
 		15F0E99008A7C89E6F2AF6D6 /* InAppMediaOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppMediaOpener.swift; sourceTree = "<group>"; };
 		19B41231B05CA6BD56434A3E /* DirectAccountWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectAccountWriter.swift; sourceTree = "<group>"; };
+		1AE5460B988CFB89F203E229 /* OperatorAppUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OperatorAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1D0A121D6D416362695FBAFB /* ForegroundMapsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundMapsService.swift; sourceTree = "<group>"; };
 		1DF224F395BA8CA84CDE93F7 /* OfflineDictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineDictation.swift; sourceTree = "<group>"; };
 		1EF691B8528973A5181E5FD0 /* NodeMobile.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NodeMobile.xcframework; path = "build/native-node/NodeMobile.xcframework"; sourceTree = "<group>"; };
@@ -231,6 +243,7 @@
 		91030CDE6E5DB4DDD0114BCF /* PodcastMediaServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastMediaServices.swift; sourceTree = "<group>"; };
 		94B5D658BC0E97C5F41DC347 /* ForegroundCalendarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundCalendarService.swift; sourceTree = "<group>"; };
 		996961BE0B62984DE5354052 /* ChatScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScreen.swift; sourceTree = "<group>"; };
+		A1AF3111A40D0B89366D2550 /* runtime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = runtime; path = "build/native-node/runtime"; sourceTree = SOURCE_ROOT; };
 		A581AD98B385D8742659A2E8 /* ForegroundRemindersService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundRemindersService.swift; sourceTree = "<group>"; };
 		A6029915570905414A2A5FF2 /* EventKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = EventKit.framework; path = System/Library/Frameworks/EventKit.framework; sourceTree = SDKROOT; };
 		A79432C188DAA9E5D86A5896 /* CoreChatPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreChatPersistence.swift; sourceTree = "<group>"; };
@@ -258,7 +271,10 @@
 		D490F4DB23A72D1FB9731241 /* NativeNotionSetupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeNotionSetupCoordinator.swift; sourceTree = "<group>"; };
 		D5BBE65B3C8115DF59F3CA4E /* OperatorWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorWidget.swift; sourceTree = "<group>"; };
 		D95163B738996C27B0B31D3E /* EmbeddedNodeBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = EmbeddedNodeBridge.mm; sourceTree = "<group>"; };
+		DC6FA1D906E8FD16F6275EB4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E0BE63C783B303D5917456BF /* OperatorChatAppIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorChatAppIntent.swift; sourceTree = "<group>"; };
+		E10DAC4EEE0D33DB1BF4B953 /* android-handoff-catalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "android-handoff-catalog.json"; sourceTree = "<group>"; };
+		E8494D608BFF220294347A7F /* ChatEndToEndUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatEndToEndUITests.swift; sourceTree = "<group>"; };
 		EA855847FA0C15621EBE0F2F /* SystemWhatsAppComposePresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWhatsAppComposePresenter.swift; sourceTree = "<group>"; };
 		EC2AE4F1A079DCA963DA0725 /* NotionLoopbackCallbackServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotionLoopbackCallbackServer.swift; sourceTree = "<group>"; };
 		EE6353F222861E64E1856902 /* ModelSetupFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSetupFlow.swift; sourceTree = "<group>"; };
@@ -310,6 +326,14 @@
 				6B6D712F69ADF6344534D5B5 /* NativeAccountSetupCoordinator.swift */,
 			);
 			path = setup;
+			sourceTree = "<group>";
+		};
+		031CE871588373B4235D0F00 /* OperatorApp */ = {
+			isa = PBXGroup;
+			children = (
+				DC6FA1D906E8FD16F6275EB4 /* Assets.xcassets */,
+			);
+			path = OperatorApp;
 			sourceTree = "<group>";
 		};
 		05F27FD33D9D3F906524BC2E /* device */ = {
@@ -824,6 +848,15 @@
 			path = "model-setup-gateway";
 			sourceTree = "<group>";
 		};
+		900A55DF538C249A3ED5A970 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				E8494D608BFF220294347A7F /* ChatEndToEndUITests.swift */,
+			);
+			name = UITests;
+			path = OperatorApp/UITests;
+			sourceTree = "<group>";
+		};
 		9090AE00C417009AD5D6DFD1 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
@@ -877,10 +910,14 @@
 		9736DB1FB0F81B10E69978A7 = {
 			isa = PBXGroup;
 			children = (
+				A1AF3111A40D0B89366D2550 /* runtime */,
+				FBC7D8667EE472C389A1007B /* handoff */,
+				031CE871588373B4235D0F00 /* OperatorApp */,
 				4F0F2AB53CCD9BD6EB0CF220 /* Packages */,
 				7BC76D0F707AB82E358943BB /* Sources */,
 				767F932862EA1681E2FAD8E8 /* Sources */,
 				9090AE00C417009AD5D6DFD1 /* Tests */,
+				900A55DF538C249A3ED5A970 /* UITests */,
 				1B94D7929CF22731CDE0F624 /* Frameworks */,
 				EDD568DFC70D0FD1E032EB1A /* Products */,
 			);
@@ -1012,6 +1049,7 @@
 			children = (
 				C51BA6701E49DA24B88ABD88 /* OperatorApp.app */,
 				7B6B78E57281CB1165544712 /* OperatorAppTests.xctest */,
+				1AE5460B988CFB89F203E229 /* OperatorAppUITests.xctest */,
 				743EA8490D31B003D0967DF8 /* OperatorWidget.appex */,
 			);
 			name = Products;
@@ -1078,14 +1116,23 @@
 			path = youtube;
 			sourceTree = "<group>";
 		};
-		"TEMP_491C3123-BAF2-454F-B058-909B7B2FD535" /* runtime */ = {
+		FBC7D8667EE472C389A1007B /* handoff */ = {
+			isa = PBXGroup;
+			children = (
+				E10DAC4EEE0D33DB1BF4B953 /* android-handoff-catalog.json */,
+			);
+			name = handoff;
+			path = OperatorApp/Resources/connections/handoff;
+			sourceTree = "<group>";
+		};
+		"TEMP_B2835AE0-F926-4D5E-A272-3302FCD030A7" /* runtime */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = runtime;
 			sourceTree = "<group>";
 		};
-		"TEMP_F12979F3-D22B-4B39-8414-AC36D9E3E838" /* embedded */ = {
+		"TEMP_E17F8CE2-B0E7-46F3-9B1A-4A72B1023430" /* embedded */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -1100,6 +1147,7 @@
 			buildConfigurationList = 3E080D4F232DD078947F21DB /* Build configuration list for PBXNativeTarget "OperatorApp" */;
 			buildPhases = (
 				9D9CC9E99A4E70A1227C023E /* Sources */,
+				EC6687AF070CFB44FE42AC75 /* Resources */,
 				FCD6348BCAA1D60EB7E2B6DB /* Frameworks */,
 				E5759E38E3C40B32F5D72DAD /* Embed Foundation Extensions */,
 				A585D025D247465E03541204 /* Embed Frameworks */,
@@ -1137,6 +1185,24 @@
 			productReference = 7B6B78E57281CB1165544712 /* OperatorAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		4F7BDBA3CF51949EE3C791AE /* OperatorAppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 315E04BFFED8CAA73F7B9B2F /* Build configuration list for PBXNativeTarget "OperatorAppUITests" */;
+			buildPhases = (
+				7F5FBF96C7D3B92568EF60EE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E3E3DC00F0CD211AF34929F9 /* PBXTargetDependency */,
+			);
+			name = OperatorAppUITests;
+			packageProductDependencies = (
+			);
+			productName = OperatorAppUITests;
+			productReference = 1AE5460B988CFB89F203E229 /* OperatorAppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		99BF94BD5231BD6D077CF8B0 /* OperatorWidget */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = BABD1047392F166D50E0F4D1 /* Build configuration list for PBXNativeTarget "OperatorWidget" */;
@@ -1163,6 +1229,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					4F7BDBA3CF51949EE3C791AE = {
+						TestTargetID = 2C77B42CF625095C3400192A;
+					};
 				};
 			};
 			buildConfigurationList = A2A553ADEA75E812BE36CA1C /* Build configuration list for PBXProject "Operator" */;
@@ -1185,11 +1254,33 @@
 				2C77B42CF625095C3400192A /* OperatorApp */,
 				99BF94BD5231BD6D077CF8B0 /* OperatorWidget */,
 				48E39B356A47F7FBFF9D8F14 /* OperatorAppTests */,
+				4F7BDBA3CF51949EE3C791AE /* OperatorAppUITests */,
 			);
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		EC6687AF070CFB44FE42AC75 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				62C1F989D7AB832279EC9A95 /* Assets.xcassets in Resources */,
+				76ACD6E1A4470AC81B451EE2 /* android-handoff-catalog.json in Resources */,
+				FB39CBF6079950629E2B05BC /* runtime in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
+		7F5FBF96C7D3B92568EF60EE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CBD80759C8879BA1902DE495 /* ChatEndToEndUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		9D019F96E0EF6DB78ED61454 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1317,6 +1408,11 @@
 			target = 2C77B42CF625095C3400192A /* OperatorApp */;
 			targetProxy = 7F8192DAF9A291A0CFAA9718 /* PBXContainerItemProxy */;
 		};
+		E3E3DC00F0CD211AF34929F9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2C77B42CF625095C3400192A /* OperatorApp */;
+			targetProxy = 37452F0A83948A6C246B81E7 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -1376,6 +1472,24 @@
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
+		};
+		22AF62A39BF29717E85BB44F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.operator.ios.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = OperatorApp;
+			};
+			name = Debug;
 		};
 		28DC5C6F8F34A893F7693223 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -1458,6 +1572,24 @@
 				PRODUCT_NAME = OperatorWidget;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		47E377EF20D64FCF514FC3A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.operator.ios.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = OperatorApp;
 			};
 			name = Release;
 		};
@@ -1586,6 +1718,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		315E04BFFED8CAA73F7B9B2F /* Build configuration list for PBXNativeTarget "OperatorAppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				22AF62A39BF29717E85BB44F /* Debug */,
+				47E377EF20D64FCF514FC3A1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		3E080D4F232DD078947F21DB /* Build configuration list for PBXNativeTarget "OperatorApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

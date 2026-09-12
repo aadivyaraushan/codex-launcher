@@ -172,3 +172,25 @@ compile but XCTest never runs them (dead coverage for Google Tasks). To fix.
   Untested by choice: the item-1 XCUITest (gated target; behavior already
   proven), live Spotify playback (intrusive, manual), and a paid end-to-end
   LLM-drop test (flakier, marginal, not worth the spend).
+- 2026-09-12 (full-path end-to-end proof through the real LLM — the last gap):
+  drove the REAL chat UI on the live sim via a gated XCUITest
+  (`ChatEndToEndUITests`, scheme `OperatorAppE2E`). Typed "Check my Gmail inbox…",
+  the on-device LLM chose to call the connector, and a real inbox reply rendered:
+  `Sender: Instagram notification@priority.instagram.com`. **TEST SUCCEEDED
+  (48.8s).** os_log ground truth in-turn order: `staged input …characters=87` →
+  `sent chat request` → `phase=accepted` → **`[location-node] handling
+  command=connections.read`** → `sent result` → `phase=terminal outcome=reply` →
+  `reply persisted for id=E4D250A6` (my message id). The `connections.read`
+  command handled mid-turn proves the connector fired because the LLM decided to,
+  not because a harness called it. Paid on ChatGPT account ssdear@gmail.com
+  (pre-approved). **This closes the one gap called out earlier** — every prior
+  live test called the connector layer directly and skipped the LLM; this proves
+  the whole chain a real user hits.
+- 2026-09-12 (real bug found + fixed while doing the above): the app builds I was
+  installing were silently missing the Copy Bundle Resources phase, so the
+  embedded Node runtime never bundled and chat/LLM could not start
+  (`[embedded-runtime] launch failed code=0`). Root cause: **XcodeGen 2.46 drops a
+  top-level `resources:` block** for this target. Fixed in project.yml by moving
+  resources under the target's `sources:` block. Earlier direct-connector proofs
+  stay valid (DirectAccountReader/Writer bypass the runtime). Details +
+  before/after os_log in saved-results/ios-connectors-evidence.md.

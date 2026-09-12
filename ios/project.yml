@@ -33,17 +33,39 @@ schemes:
         - OperatorAppTests
       environmentVariables:
         OPERATOR_LIVE: "1"
+  # Paid end-to-end proof only. Drives the REAL chat UI so the on-device LLM
+  # runs and bills the owner's ChatGPT account. Sets OPERATOR_E2E=1 so the
+  # gated paid test runs; the free launch smoke-test in the same target runs
+  # regardless. Never in the default OperatorApp scheme. Run explicitly with
+  # -only-testing.
+  OperatorAppE2E:
+    build:
+      targets:
+        OperatorApp: all
+        OperatorAppUITests: [test]
+    test:
+      targets:
+        - OperatorAppUITests
+      environmentVariables:
+        OPERATOR_E2E: "1"
 targets:
   OperatorApp:
     type: application
     platform: iOS
+    # Resources are declared here under `sources` (XcodeGen auto-classifies the
+    # asset catalog, JSON, and the runtime folder into the Copy Bundle Resources
+    # phase). A separate top-level `resources:` block is silently dropped by
+    # XcodeGen 2.46 for this target — its Copy Bundle Resources phase goes
+    # missing, so Assets and the embedded Node runtime never make it into the app
+    # and chat cannot start. Keeping them in `sources` uses a code path that
+    # actually emits the phase. See saved-results/ios-connectors-evidence.md.
     sources:
       - path: OperatorApp/Sources
-    resources:
       - path: OperatorApp/Assets.xcassets
       - path: OperatorApp/Resources/connections/handoff/android-handoff-catalog.json
       - path: build/native-node/runtime
         type: folder
+        buildPhase: resources
     dependencies:
       - framework: build/native-whatsapp/libWacliBridge.a
         embed: false
@@ -120,3 +142,17 @@ targets:
         # real host path so every regeneration stays runnable.
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Operator.app/Operator"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  OperatorAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: OperatorApp/UITests
+    dependencies:
+      - target: OperatorApp
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.operator.ios.uitests
+        # Names the app this UI-test target launches/automates via XCUIApplication().
+        TEST_TARGET_NAME: OperatorApp
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
