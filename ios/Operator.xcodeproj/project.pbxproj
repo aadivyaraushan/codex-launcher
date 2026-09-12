@@ -14,6 +14,7 @@
         F90100000000000000000004 /* PodcastMediaServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90200000000000000000004 /* PodcastMediaServices.swift */; };
         F90100000000000000000005 /* InAppMediaOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90200000000000000000005 /* InAppMediaOpener.swift */; };
         F90100000000000000000006 /* YouTubeMediaServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90200000000000000000006 /* YouTubeMediaServices.swift */; };
+        F90100000000000000000007 /* YouTubeAPIKeySetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90200000000000000000007 /* YouTubeAPIKeySetup.swift */; };
         D90100000000000000000001 /* ForegroundConnectionDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D90200000000000000000001; };
         E90100000000000000000021 /* DirectAccountWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E90200000000000000000021; };
         E90100000000000000000022 /* ForegroundAccountWriteConfirmationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E90200000000000000000022; };
@@ -114,6 +115,7 @@
         F90200000000000000000004 /* PodcastMediaServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/media/podcasts/PodcastMediaServices.swift; sourceTree = SOURCE_ROOT; };
         F90200000000000000000005 /* InAppMediaOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/media/presentation/InAppMediaOpener.swift; sourceTree = SOURCE_ROOT; };
         F90200000000000000000006 /* YouTubeMediaServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/media/youtube/YouTubeMediaServices.swift; sourceTree = SOURCE_ROOT; };
+        F90200000000000000000007 /* YouTubeAPIKeySetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/media/youtube/YouTubeAPIKeySetup.swift; sourceTree = SOURCE_ROOT; };
         D90200000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/discovery/ForegroundConnectionDiscoveryService.swift; sourceTree = SOURCE_ROOT; };
         E90200000000000000000021 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/services/write/DirectAccountWriter.swift; sourceTree = SOURCE_ROOT; };
         E90200000000000000000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorApp/Sources/connections/services/confirmation/ForegroundAccountWriteConfirmationService.swift; sourceTree = SOURCE_ROOT; };
@@ -361,6 +363,7 @@
                 F90200000000000000000004 /* PodcastMediaServices.swift */,
                 F90200000000000000000005 /* InAppMediaOpener.swift */,
                 F90200000000000000000006 /* YouTubeMediaServices.swift */,
+                F90200000000000000000007 /* YouTubeAPIKeySetup.swift */,
                 C90200000000000000000001,
                 C90200000000000000000025,
                 C90200000000000000000026,
@@ -647,6 +650,7 @@
                 F90100000000000000000004 /* PodcastMediaServices.swift in Sources */,
                 F90100000000000000000005 /* InAppMediaOpener.swift in Sources */,
                 F90100000000000000000006 /* YouTubeMediaServices.swift in Sources */,
+                F90100000000000000000007 /* YouTubeAPIKeySetup.swift in Sources */,
 				FD66FBAF132FD1B8830F9CF4 /* ChatContracts.swift in Sources */,
                 D90100000000000000000001 /* ForegroundConnectionDiscoveryService.swift in Sources */,
                 C90100000000000000000001,

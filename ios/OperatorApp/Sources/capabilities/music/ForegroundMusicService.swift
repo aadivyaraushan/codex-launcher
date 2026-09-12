@@ -204,7 +204,9 @@ final class SystemMusicLibrary: MusicLibrary {
 
     func requestAccess() async -> Bool {
         await withCheckedContinuation { continuation in
-            MPMediaLibrary.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
+            MPMediaLibrary.requestAuthorization { @Sendable status in
+                continuation.resume(returning: status == .authorized)
+            }
         }
     }
 

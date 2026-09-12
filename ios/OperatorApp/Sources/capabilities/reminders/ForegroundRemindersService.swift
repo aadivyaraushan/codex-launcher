@@ -173,7 +173,7 @@ final class EventKitReminderStore: ReminderStore {
 
     func requestFullAccess() async -> Bool {
         await withCheckedContinuation { continuation in
-            self.store.requestFullAccessToReminders { granted, _ in
+            self.store.requestFullAccessToReminders { @Sendable granted, _ in
                 continuation.resume(returning: granted)
             }
         }
@@ -183,16 +183,10 @@ final class EventKitReminderStore: ReminderStore {
         let predicate = self.store.predicateForIncompleteReminders(
             withDueDateStarting: nil, ending: nil, calendars: nil)
         let fetched: [Reminder] = await withCheckedContinuation { continuation in
-            self.store.fetchReminders(matching: predicate) { reminders in
+            self.store.fetchReminders(matching: predicate) { @Sendable reminders in
                 // Mapped inside the callback so no EKReminder crosses out of
                 // it; only the Sendable value type leaves.
-                let mapped = (reminders ?? []).map { reminder in
-                    Reminder(
-                        title: reminder.title ?? "",
-                        due: reminder.dueDateComponents.flatMap(Calendar.current.date(from:)),
-                        listName: reminder.calendar?.title ?? "")
-                }
-                continuation.resume(returning: mapped)
+                continuation.resume(returning: Self.map(reminders))
             }
         }
         // Soonest first, and anything with no due date after everything that
@@ -208,6 +202,15 @@ final class EventKitReminderStore: ReminderStore {
             }
             .prefix(limit)
             .map { $0 }
+    }
+
+    nonisolated private static func map(_ reminders: [EKReminder]?) -> [Reminder] {
+        (reminders ?? []).map { reminder in
+            Reminder(
+                title: reminder.title ?? "",
+                due: reminder.dueDateComponents.flatMap(Calendar.current.date(from:)),
+                listName: reminder.calendar?.title ?? "")
+        }
     }
 }
 

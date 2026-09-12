@@ -20,8 +20,10 @@ test('first launch creates private loopback configuration and workspace', t => {
   assert.equal(config.gateway.mode, 'local');
   assert.equal(config.gateway.auth.mode, 'token');
   assert.match(config.gateway.auth.token, /^[a-f0-9]{64}$/);
-  assert.equal(config.agents.defaults.workspace, path.join(state, 'workspace'));
-  assert.ok(fs.statSync(config.agents.defaults.workspace).isDirectory());
+  assert.equal(config.agents.defaults.workspace, undefined);
+  assert.equal(config.agents.defaults.fastModeDefault, 'auto');
+  assert.deepEqual(config.tools.web.search.openaiCodex, {enabled: true, mode: 'live'});
+  assert.ok(fs.statSync(path.join(state, 'workspace')).isDirectory());
   assert.equal(fs.statSync(result.configPath).mode & 0o777, 0o600);
 });
 
@@ -39,6 +41,48 @@ test('reopening preserves config, token, model and account files byte for byte',
   assert.equal(fs.readFileSync(account, 'utf8'), 'synthetic-account-fixture');
 });
 
+test('relocates an app-managed workspace and preserves structured configuration', t => {
+  const state = sandbox(t);
+  const oldState = path.join(path.dirname(state), 'previous-container', 'Operator', 'openclaw');
+  const oldWorkspace = path.join(oldState, 'workspace');
+  fs.mkdirSync(oldWorkspace, {recursive: true});
+  fs.writeFileSync(path.join(oldWorkspace, 'MEMORY.md'), 'preserved workspace data');
+  const saved = JSON.stringify({
+    agents: {defaults: {workspace: oldWorkspace, model: {primary: 'openai/test-model'}}},
+    marker: 'keep-settings-and-login',
+    custom: {escaped: 'line one\nline two', values: ['first', {nested: true}]}
+  });
+  fs.mkdirSync(state);
+  const configPath = path.join(state, 'openclaw.json');
+  fs.writeFileSync(configPath, saved);
+  const account = path.join(state, 'auth-profiles.json');
+  fs.writeFileSync(account, 'preserved-auth-profile');
+
+  assert.equal(prepareState(state).created, false);
+
+  const migrated = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  assert.equal(migrated.agents.defaults.workspace, undefined);
+  assert.equal(migrated.agents.defaults.model.primary, 'openai/test-model');
+  assert.equal(migrated.marker, 'keep-settings-and-login');
+  assert.deepEqual(migrated.custom, {escaped: 'line one\nline two', values: ['first', {nested: true}]});
+  assert.equal(fs.readFileSync(path.join(state, 'workspace', 'MEMORY.md'), 'utf8'), 'preserved workspace data');
+  assert.equal(fs.readFileSync(account, 'utf8'), 'preserved-auth-profile');
+  assert.equal(fs.readFileSync(path.join(oldWorkspace, 'MEMORY.md'), 'utf8'), 'preserved workspace data');
+});
+
+test('refuses to repoint a vanished app-managed workspace at an empty directory', t => {
+  const state = sandbox(t);
+  const oldWorkspace = path.join(path.dirname(state), 'previous-container', 'Operator', 'openclaw', 'workspace');
+  fs.mkdirSync(state);
+  const configPath = path.join(state, 'openclaw.json');
+  const saved = JSON.stringify({agents: {defaults: {workspace: oldWorkspace}}});
+  fs.writeFileSync(configPath, saved);
+
+  assert.throws(() => prepareState(state), /workspace is missing/);
+  assert.equal(fs.readFileSync(configPath, 'utf8'), saved);
+  assert.equal(fs.existsSync(path.join(state, 'workspace')), false);
+});
+
 test('existing unusual configuration is preserved for OpenClaw to validate, never reset', t => {
   const state = sandbox(t);
   fs.mkdirSync(state);
@@ -48,9 +92,61 @@ test('existing unusual configuration is preserved for OpenClaw to validate, neve
   assert.equal(fs.readFileSync(configPath, 'utf8'), 'broken or partial configuration');
 });
 
+test('existing settings gain automatic fast mode without replacing credentials or explicit preferences', t => {
+  const state = sandbox(t);
+  fs.mkdirSync(state);
+  const configPath = path.join(state, 'openclaw.json');
+  const saved = {gateway: {auth: {token: 'synthetic-secret'}}, agents: {defaults: {model: {primary: 'test-model'}}}, custom: ['keep']};
+  fs.writeFileSync(configPath, JSON.stringify(saved));
+  prepareState(state);
+  assert.deepEqual(JSON.parse(fs.readFileSync(configPath)), {...saved, agents: {defaults: {...saved.agents.defaults, fastModeDefault: 'auto'}}, tools: {web: {search: {openaiCodex: {enabled: true, mode: 'live'}}}}});
+  const stable = fs.readFileSync(configPath, 'utf8');
+  prepareState(state);
+  assert.equal(fs.readFileSync(configPath, 'utf8'), stable);
+  for (const preference of [true, false, 'auto']) {
+    const explicit = JSON.stringify({...saved, agents: {defaults: {fastModeDefault: preference}}, tools: {web: {search: {openaiCodex: {enabled: true, mode: 'live'}}}}});
+    fs.writeFileSync(configPath, explicit);
+    prepareState(state);
+    assert.equal(fs.readFileSync(configPath, 'utf8'), explicit);
+  }
+});
+
 test('storage errors fail instead of silently creating another state directory', t => {
   const state = sandbox(t);
   fs.writeFileSync(state, 'not a directory');
   assert.throws(() => prepareState(state));
   assert.equal(fs.readFileSync(state, 'utf8'), 'not a directory');
+});
+
+test('search defaults preserve explicit disables, providers, restrictions and unusual settings', t => {
+  const state = sandbox(t);
+  fs.mkdirSync(state);
+  const configPath = path.join(state, 'openclaw.json');
+  for (const search of [
+    {enabled: false},
+    {openaiCodex: {enabled: false}},
+    {provider: 'brave', apiKey: 'synthetic-key'},
+    {openaiCodex: {enabled: true, mode: 'cached', allowedDomains: ['example.com']}},
+    null, [], false
+  ]) {
+    const saved = JSON.stringify({agents: {defaults: {fastModeDefault: 'auto'}}, tools: {web: {search}}, marker: 'keep'});
+    fs.writeFileSync(configPath, saved);
+    prepareState(state);
+    assert.equal(fs.readFileSync(configPath, 'utf8'), saved);
+  }
+});
+
+test('search migration fills only missing native options and keeps saved data', t => {
+  const state = sandbox(t);
+  fs.mkdirSync(state);
+  const configPath = path.join(state, 'openclaw.json');
+  const saved = {agents: {defaults: {fastModeDefault: 'auto'}}, tools: {web: {fetch: {enabled: true}, search: {openaiCodex: {allowedDomains: ['example.com'], mode: 'cached'}}}}, marker: 'keep'};
+  fs.writeFileSync(configPath, JSON.stringify(saved));
+  prepareState(state);
+  const expected = structuredClone(saved);
+  expected.tools.web.search.openaiCodex.enabled = true;
+  assert.deepEqual(JSON.parse(fs.readFileSync(configPath)), expected);
+  const stable = fs.readFileSync(configPath, 'utf8');
+  prepareState(state);
+  assert.equal(fs.readFileSync(configPath, 'utf8'), stable);
 });

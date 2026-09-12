@@ -40,7 +40,7 @@ enum OAuthProvider: String, Codable, CaseIterable, Sendable {
     var authorizationEndpoint: URL {
         switch self {
         case .google: URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
-        case .microsoftOutlook: URL(string: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize")!
+        case .microsoftOutlook: URL(string: "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize")!
         case .slack: URL(string: "https://slack.com/oauth/v2/authorize")!
         case .spotify: URL(string: "https://accounts.spotify.com/authorize")!
         }
@@ -49,7 +49,7 @@ enum OAuthProvider: String, Codable, CaseIterable, Sendable {
     var tokenEndpoint: URL {
         switch self {
         case .google: URL(string: "https://oauth2.googleapis.com/token")!
-        case .microsoftOutlook: URL(string: "https://login.microsoftonline.com/common/oauth2/v2.0/token")!
+        case .microsoftOutlook: URL(string: "https://login.microsoftonline.com/consumers/oauth2/v2.0/token")!
         case .slack: URL(string: "https://slack.com/api/oauth.v2.access")!
         case .spotify: URL(string: "https://accounts.spotify.com/api/token")!
         }

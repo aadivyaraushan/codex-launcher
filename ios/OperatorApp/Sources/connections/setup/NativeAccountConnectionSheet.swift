@@ -4,17 +4,39 @@ import UIKit
 
 struct NativeAccountConnectionSheet: View {
     @ObservedObject var model: NativeAccountSetupCoordinator
+    @ObservedObject var youtube: YouTubeAPIKeySetupModel
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            List(OAuthProvider.allCases, id: \.rawValue) { provider in
-                Button { model.connect(provider) } label: {
-                    HStack { Text(Self.name(provider)); Spacer(); if model.activeProvider == provider { ProgressView() } else { Text(Self.status(model.state(for: provider))).font(.caption).foregroundStyle(.secondary) } }
+            List {
+                Section {
+                    ForEach(OAuthProvider.allCases, id: \.rawValue) { provider in
+                        Button { model.connect(provider) } label: {
+                            HStack { Text(Self.name(provider)); Spacer(); if model.activeProvider == provider { ProgressView() } else { Text(Self.status(model.state(for: provider))).font(.caption).foregroundStyle(.secondary) } }
+                        }
+                        .disabled(model.activeProvider != nil || model.state(for: provider) == .needsSetup)
+                    }
                 }
-                .disabled(model.activeProvider != nil || model.state(for: provider) == .needsSetup)
+                Section("Media") {
+                    NavigationLink {
+                        YouTubeAPIKeySetupView(model: self.youtube)
+                    } label: {
+                        HStack {
+                            Text("YouTube")
+                            Spacer()
+                            Text(self.youtube.statusText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
             .navigationTitle("Connect accounts")
-            .task { await model.checkConnections() }
+            .task {
+                async let accounts: Void = self.model.checkConnections()
+                async let youtube: Void = self.youtube.check()
+                _ = await (accounts, youtube)
+            }
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { model.cancel(); dismiss() } } }
         }
     }

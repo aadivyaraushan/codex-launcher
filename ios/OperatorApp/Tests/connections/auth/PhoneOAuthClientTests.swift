@@ -4,6 +4,80 @@ import XCTest
 @testable import OperatorApp
 
 final class PhoneOAuthClientTests: XCTestCase {
+    func testMicrosoftPersonalAccountRegistrationUsesConsumersForLoginExchangeAndRefresh() async throws {
+        let transport = FixtureTransport(response: .json(
+            #"{"access_token":"access","refresh_token":"refresh","expires_in":3600,"scope":"\#(OAuthProvider.microsoftOutlook.requiredAccessTokenScopes.joined(separator: " "))"}"#))
+        let client = self.client(provider: .microsoftOutlook, transport: transport)
+        let request = try await client.makeAuthorizationRequest()
+        XCTAssertEqual(request.url.path, "/consumers/oauth2/v2.0/authorize")
+        _ = try await client.completeAuthorizationCallback(URL(string: "app.operator.ios:/oauth?code=code&state=\(request.state)")!)
+        _ = try await client.refresh()
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 2)
+        for request in requests {
+            XCTAssertEqual(request.url?.absoluteString, "https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
+        }
+    }
+
+    func testMicrosoftAcceptsDocumentedRootSlashAndKeepsOriginalExchangeRedirect() async throws {
+        let transport = FixtureTransport(response: .json(
+            #"{"access_token":"access","refresh_token":"refresh","expires_in":3600,"scope":"\#(OAuthProvider.microsoftOutlook.requiredAccessTokenScopes.joined(separator: " "))"}"#))
+        let client = PhoneOAuthClient(provider: .microsoftOutlook,
+            registration: .init(clientID: "client", redirectURI: "msauth.app.operator.ios://auth"),
+            accountID: "test", store: MemoryCredentialStore(), transport: transport)
+        let request = try await client.makeAuthorizationRequest()
+        let tokens = try await client.completeAuthorizationCallback(URL(string: "msauth.app.operator.ios://auth/?code=code&state=\(request.state)")!)
+        XCTAssertEqual(tokens.accessToken, "access")
+        let requests = await transport.requests
+        let body = try XCTUnwrap(requests.first?.httpBody)
+        let form = URLComponents(string: "https://test.invalid/?\(String(decoding: body, as: UTF8.self))")
+        XCTAssertEqual(form?.queryItems?.value(for: "redirect_uri"), "msauth.app.operator.ios://auth")
+    }
+
+    func testMicrosoftRootSlashDoesNotHideProviderDenial() async throws {
+        let transport = FixtureTransport()
+        let client = PhoneOAuthClient(provider: .microsoftOutlook,
+            registration: .init(clientID: "client", redirectURI: "msauth.app.operator.ios://auth"),
+            accountID: "test", store: MemoryCredentialStore(), transport: transport)
+        let request = try await client.makeAuthorizationRequest()
+        await XCTAssertThrowsErrorAsync(try await client.completeAuthorizationCallback(URL(string: "msauth.app.operator.ios://auth/?error=access_denied&state=\(request.state)")!)) { error in
+            XCTAssertEqual(error as? PhoneOAuthError, .authorizationDenied)
+        }
+        let requests = await transport.requests
+        XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testMicrosoftRootSlashStillRejectsDifferentDestinationsAndWrongState() async throws {
+        let transport = FixtureTransport()
+        let client = PhoneOAuthClient(provider: .microsoftOutlook,
+            registration: .init(clientID: "client", redirectURI: "msauth.app.operator.ios://auth"),
+            accountID: "test", store: MemoryCredentialStore(), transport: transport)
+        let request = try await client.makeAuthorizationRequest()
+        for destination in ["other://auth/", "msauth.app.operator.ios://other/", "msauth.app.operator.ios://auth/other", "msauth.app.operator.ios://auth//", "msauth.app.operator.ios://auth:123/", "msauth.app.operator.ios://user@auth/"] {
+            await XCTAssertThrowsErrorAsync(try await client.completeAuthorizationCallback(URL(string: "\(destination)?code=code&state=\(request.state)")!)) { error in
+                XCTAssertEqual(error as? PhoneOAuthError, .callbackRedirectMismatch)
+            }
+        }
+        await XCTAssertThrowsErrorAsync(try await client.completeAuthorizationCallback(URL(string: "msauth.app.operator.ios://auth/?code=code&state=wrong")!)) { error in
+            XCTAssertEqual(error as? PhoneOAuthError, .callbackStateMismatch)
+        }
+        let requests = await transport.requests
+        XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testRootSlashNormalizationDoesNotChangeOtherProvidersOrNonemptyPaths() async throws {
+        for (provider, redirect) in [(OAuthProvider.google, "app.operator.ios://auth"), (.microsoftOutlook, "msauth.app.operator.ios://auth/callback")] {
+            let transport = FixtureTransport()
+            let client = PhoneOAuthClient(provider: provider,
+                registration: .init(clientID: "client", redirectURI: redirect),
+                accountID: "test", store: MemoryCredentialStore(), transport: transport)
+            let request = try await client.makeAuthorizationRequest()
+            await XCTAssertThrowsErrorAsync(try await client.completeAuthorizationCallback(URL(string: "\(redirect)/?code=code&state=\(request.state)")!)) { error in
+                XCTAssertEqual(error as? PhoneOAuthError, .callbackRedirectMismatch)
+            }
+        }
+    }
+
     func testCancelledExchangeDoesNotStoreLateTokens() async throws {
         let entered = expectation(description: "token exchange started")
         let transport = PausedTokenTransport(entered: entered)

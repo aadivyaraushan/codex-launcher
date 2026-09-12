@@ -185,7 +185,7 @@ final class SystemContactDirectory: ContactDirectory {
 
     func requestAccess() async -> Bool {
         await withCheckedContinuation { continuation in
-            self.store.requestAccess(for: .contacts) { granted, _ in
+            self.store.requestAccess(for: .contacts) { @Sendable granted, _ in
                 continuation.resume(returning: granted)
             }
         }

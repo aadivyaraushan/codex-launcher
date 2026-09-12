@@ -135,7 +135,7 @@ private final class EventKitCalendarStore: CalendarEventStore {
 
     func requestFullAccess() async -> Bool {
         await withCheckedContinuation { continuation in
-            self.store.requestFullAccessToEvents { granted, _ in
+            self.store.requestFullAccessToEvents { @Sendable granted, _ in
                 continuation.resume(returning: granted)
             }
         }
