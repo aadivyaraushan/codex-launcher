@@ -48,15 +48,13 @@ public enum GatewayNodeAgentTools {
             name: "calendar_events",
             command: "calendar.events",
             description: """
-            Read events from the person's own calendars on this iPhone for a time window. \
-            Use for "am I free", "what is on today", or checking a conflict before suggesting \
-            a time. Read-only: it cannot create, move or cancel an event.
+            Read the person's own upcoming calendar events on this iPhone - everything from \
+            now through the next seven days, soonest first, up to 25. Use for "am I free", \
+            "what is on today", or checking a conflict before suggesting a time, and filter \
+            the returned events yourself for the window the person asked about. Takes no \
+            arguments. Read-only: it cannot create, move or cancel an event.
             """,
-            parameters: .init(properties: [
-                "startISO8601": .string("Window start as an ISO 8601 timestamp. Defaults to now."),
-                "endISO8601": .string("Window end as an ISO 8601 timestamp. Defaults to 24 hours after the start."),
-                "limit": .integer("How many events to return, 1 to 25. Defaults to 25."),
-            ])),
+            parameters: .init()),
         .init(
             name: "contacts_search",
             command: "contacts.search",
@@ -66,7 +64,10 @@ public enum GatewayNodeAgentTools {
             be listed: asking for "all my contacts" is refused by design.
             """,
             parameters: .init(
-                properties: ["query": .string("Name or part of a name to search for. Required.")],
+                properties: [
+                    "query": .string("Name or part of a name to search for. Required."),
+                    "limit": .integer("How many people to return, 1 to 10. Defaults to 10."),
+                ],
                 required: ["query"])),
         .init(
             name: "photos_latest",

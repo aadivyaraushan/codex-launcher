@@ -90,6 +90,44 @@ final class GatewayNodeAgentToolsTests: XCTestCase {
         }
     }
 
+    /// The handlers reject any key they do not expect, so a descriptor that
+    /// advertises a parameter its command will not take makes the tool
+    /// unusable: the model fills the argument in good faith and the call comes
+    /// back INVALID_REQUEST. That is what happened to calendar.events, which
+    /// takes nothing at all and was advertised with three arguments - the
+    /// agent reported the connector "rejecting its date-range parameters".
+    func testCommandsThatTakeNoArgumentsAdvertiseNone() throws {
+        let takeNothing = ["calendar.events", "music.nowPlaying", "device.status"]
+        for command in takeNothing {
+            let descriptor = try XCTUnwrap(
+                GatewayNodeAgentTools.descriptors.first { $0.command == command },
+                "\(command) is no longer published")
+            XCTAssertTrue(
+                descriptor.parameters.properties.isEmpty,
+                "\(command) accepts no parameters, so advertising any makes every call fail")
+            XCTAssertTrue(descriptor.parameters.required.isEmpty)
+        }
+    }
+
+    /// The mirror of the rule above: a command that does take arguments must
+    /// say so, or the model has no way to pass them.
+    func testCommandsThatTakeArgumentsAdvertiseThem() throws {
+        let expected = [
+            "reminders.list": ["limit"],
+            "photos.latest": ["limit"],
+            "contacts.search": ["limit", "query"],
+            "music.search": ["limit", "query"],
+            "weather.forecast": ["latitude", "longitude"],
+        ]
+        for (command, keys) in expected {
+            let descriptor = try XCTUnwrap(
+                GatewayNodeAgentTools.descriptors.first { $0.command == command })
+            XCTAssertEqual(
+                descriptor.parameters.properties.keys.sorted(), keys.sorted(),
+                "\(command) advertises a different argument set than its handler accepts")
+        }
+    }
+
     func testEncodesTheShapeTheGatewayParses() throws {
         let request = GatewayRequestFactory.nodePluginToolsUpdate(requestID: "req-1")
         let data = try JSONEncoder().encode(request)
