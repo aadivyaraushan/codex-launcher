@@ -90,3 +90,88 @@ of them can be exercised through the chat surface yet.
   window lookup fails with `-1719`.
 - Calendar/AddressBook stores were backed up before seeding; the seeder refuses
   to run twice.
+
+---
+
+# Update, later the same day: the connectors work; the account is rate limited
+
+Three defects fixed since the above. The agent now calls the native
+connectors, which it had never once done.
+
+## 1. The node published no agent tools (e90bcf9)
+
+The cause named in the original write-up. openclaw builds the model's tool
+list from descriptors a node sends with `node.pluginTools.update`; this node
+sent none, so the gateway held 26 commands and the model was handed zero.
+Eight read-only descriptors are now published on connect.
+
+Proof, in order:
+
+    [location-node] published agent tools count=8
+    [location-node] handling command=device.status
+    [device] returned online=true lowPower=false
+    [location-node] handling command=reminders.list
+
+and the pass condition set out above was met exactly: iOS raised the
+Reminders permission prompt, and TCC went from **no row for
+`app.operator.ios` at all** to `kTCCServiceReminders|2`.
+
+The agent said it best itself, on the turn after the fix:
+
+> My earlier "none" answer only checked OpenClaw reminders - not Apple
+> Reminders. Sorry about that.
+
+## 2. The first real call crashed the app (032c192)
+
+`EXC_BREAKPOINT` in `_dispatch_assert_queue_fail`, from
+`EventKitReminderStore.incompleteReminders(limit:)`. A closure written inside
+a `@MainActor` type is assumed main-actor isolated, so Swift emits an
+executor check; EventKit calls back on its own queue and the check traps.
+The same shape was latent in calendar, contacts and music - all four fixed.
+
+This one is only findable by a live call. The unit tests drive these stores
+through fakes, and a fake calls back on whatever queue the test is already
+on, so the assertion never fires.
+
+## 3. The websocket was killed every 30 seconds (b4ac9e1)
+
+`timeoutIntervalForResource` bounds the whole task, and it was set to the
+handshake timeout. The socket carrying both chat and the node died thirty
+seconds after opening, every time - which read as the agent saying "your
+iPhone is disconnected" rather than as a timeout. CFNetwork `-1001`,
+`transaction_duration_ms=30114`, against a `101` upgrade.
+
+## What actually blocks the recording now
+
+Nothing in the code:
+
+    API rate limit reached. Please try again later.
+
+Runs come back `blocked` / `run_blocked` in `audit_events` within about two
+seconds and never reach a tool. Ruled out first: session transcript (cleared
+the openclaw state DB and the app conversation, same result on a clean
+session) and tool-schema quarantine (no quarantine record exists, so the
+descriptors were accepted).
+
+It is the ChatGPT account's own limit, spent on today's testing. It resets
+with time; there is nothing to fix.
+
+## Still open
+
+- **Seeded reminders are invisible to EventKit.** `reminders.list` runs and
+  returns `count=0` against 5 seeded rows. The Reminders app agrees it has 0,
+  so the rows are wrong, not the connector. `DEFAULT_TASK_CALENDAR_NAME`
+  (calendar 3, store 1) is the list the app shows as "Reminders", and rows
+  land in it, but neither EventKit nor the Reminders UI counts them - so
+  something beyond summary/dates/entity_type is required. The next move is to
+  create one reminder through the UI and diff its row against a seeded one.
+- **Contacts needs no seeding.** The simulator ships Apple's six sample
+  contacts with 25 numbers, so `contacts.search` is the connector to demo
+  first once the limit clears.
+- **openclaw bakes an absolute workspace path** into
+  `agents.defaults.workspace` at first init. A reinstall changes the data
+  container UUID, so the runtime then fails with `WorkspaceVanishedError` and
+  the chat stops working. No app code writes this key. Dev-only - an App
+  Store update keeps the container - but it bites on every `simctl install`.
+  Workaround used here: rewrite the key to the current container before
+  launch.
