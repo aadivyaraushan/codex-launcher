@@ -13,7 +13,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
         let approvals = NodeApprovalCounter()
         let connection = OpenClawNodeConnection(
             transport: transport, token: "token", identity: GatewayDeviceIdentity(), appVersion: "1",
-            requestID: NodeRequestIDSequence(["first", "second"]).next,
+            requestID: NodeRequestIDSequence(["first", "second", "tools-1"]).next,
             pairingRetryDelay: {}, approveOwnDeviceRole: { await approvals.record() })
         try await connection.connect()
         let count = await approvals.count
@@ -31,7 +31,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
             identity: identity,
             appVersion: "1.0",
             platform: "ios",
-            requestID: NodeRequestIDSequence(["connect-1"]).next)
+            requestID: NodeRequestIDSequence(["connect-1", "tools-1"]).next)
 
         try await connection.connect()
 
@@ -48,6 +48,17 @@ final class OpenClawNodeConnectionTests: XCTestCase {
         XCTAssertEqual(params["commands"] as? [String], ["location.get", "calendar.events", "reminders.list", "contacts.search", "photos.latest", "music.nowPlaying", "music.search", "weather.forecast", "device.status", "sms.compose", "maps.search", "maps.directions", "apps.open", "whatsapp.chats", "whatsapp.messages", "whatsapp.sync", "whatsapp.compose", "connections.read", "connections.write", "connections.describe", "notion.tools", "notion.call", "youtube.search", "youtube.open", "podcasts.search", "podcasts.open"])
         XCTAssertEqual(client["id"] as? String, "node-host")
         XCTAssertEqual(client["mode"] as? String, "node")
+
+        // Registering the commands is not enough on its own: without the
+        // descriptors that follow, the gateway has the commands and the model
+        // has no tools, so it never calls them.
+        let published = try XCTUnwrap(JSONSerialization.jsonObject(with: sent[1]) as? [String: Any])
+        XCTAssertEqual(published["method"] as? String, "node.pluginTools.update")
+        let toolParams = try XCTUnwrap(published["params"] as? [String: Any])
+        let tools = try XCTUnwrap(toolParams["tools"] as? [[String: Any]])
+        XCTAssertEqual(
+            tools.compactMap { $0["command"] as? String },
+            GatewayNodeAgentTools.publishedCommands)
         XCTAssertEqual(client["platform"] as? String, "ios")
         XCTAssertEqual(client["deviceFamily"] as? String, "iPhone")
         XCTAssertEqual(client["instanceId"] as? String, identity.deviceID)
@@ -72,7 +83,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
             identity: identity,
             appVersion: "1.0",
             platform: "ios",
-            requestID: NodeRequestIDSequence(["connect-1", "result-1"]).next)
+            requestID: NodeRequestIDSequence(["connect-1", "tools-1", "result-1"]).next)
         try await connection.connect()
 
         try await connection.receiveAndHandleNext(using: handler)
@@ -82,7 +93,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
         XCTAssertEqual(invocations[0].command, "location.get")
         XCTAssertEqual(invocations[0].timeoutMilliseconds, 10000)
         let sent = await transport.sentMessages()
-        let request = try XCTUnwrap(JSONSerialization.jsonObject(with: sent[1]) as? [String: Any])
+        let request = try XCTUnwrap(firstSentRequest(in: sent, method: "node.invoke.result"))
         let params = try XCTUnwrap(request["params"] as? [String: Any])
         XCTAssertEqual(request["method"] as? String, "node.invoke.result")
         XCTAssertEqual(params["id"] as? String, "invoke-1")
@@ -109,7 +120,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
             identity: identity,
             appVersion: "1.0",
             platform: "ios",
-            requestID: NodeRequestIDSequence(["connect-1", "result-1"]).next)
+            requestID: NodeRequestIDSequence(["connect-1", "tools-1", "result-1"]).next)
         try await connection.connect()
 
         try await connection.receiveAndHandleNext(using: handler)
@@ -117,7 +128,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
         let invocations = await handler.invocations()
         XCTAssertEqual(invocations.map(\.command), ["calendar.events"])
         let sent = await transport.sentMessages()
-        let request = try XCTUnwrap(JSONSerialization.jsonObject(with: sent[1]) as? [String: Any])
+        let request = try XCTUnwrap(firstSentRequest(in: sent, method: "node.invoke.result"))
         let params = try XCTUnwrap(request["params"] as? [String: Any])
         XCTAssertEqual(params["ok"] as? Bool, true)
         XCTAssertEqual(params["payloadJSON"] as? String, #"{"events":[]}"#)
@@ -144,13 +155,13 @@ final class OpenClawNodeConnectionTests: XCTestCase {
             let connection = OpenClawNodeConnection(
                 transport: transport, token: "local-token", identity: identity,
                 appVersion: "1.0", platform: "ios",
-                requestID: NodeRequestIDSequence(["connect-1", "result-1"]).next)
+                requestID: NodeRequestIDSequence(["connect-1", "tools-1", "result-1"]).next)
             try await connection.connect()
             try await connection.receiveAndHandleNext(using: handler)
             let invocations = await handler.invocations()
             XCTAssertEqual(invocations.map(\.command), command == "sms.compose" ? [command] : [])
             let sent = await transport.sentMessages()
-            let request = try XCTUnwrap(JSONSerialization.jsonObject(with: sent[1]) as? [String: Any])
+            let request = try XCTUnwrap(firstSentRequest(in: sent, method: "node.invoke.result"))
             let params = try XCTUnwrap(request["params"] as? [String: Any])
             XCTAssertEqual(params["ok"] as? Bool, command == "sms.compose")
             if command == "sms.compose" {
@@ -180,7 +191,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
             identity: identity,
             appVersion: "1.0",
             platform: "ios",
-            requestID: NodeRequestIDSequence(["connect-1", "result-1"]).next)
+            requestID: NodeRequestIDSequence(["connect-1", "tools-1", "result-1"]).next)
         try await connection.connect()
 
         try await connection.receiveAndHandleNext(using: handler)
@@ -188,7 +199,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
         let invocationCount = await handler.invocations().count
         XCTAssertEqual(invocationCount, 0)
         let sent = await transport.sentMessages()
-        let request = try XCTUnwrap(JSONSerialization.jsonObject(with: sent[1]) as? [String: Any])
+        let request = try XCTUnwrap(firstSentRequest(in: sent, method: "node.invoke.result"))
         let params = try XCTUnwrap(request["params"] as? [String: Any])
         let error = try XCTUnwrap(params["error"] as? [String: Any])
         XCTAssertEqual(params["ok"] as? Bool, false)
@@ -213,7 +224,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
             identity: identity,
             appVersion: "1.0",
             platform: "ios",
-            requestID: NodeRequestIDSequence(["connect-1", "result-1"]).next)
+            requestID: NodeRequestIDSequence(["connect-1", "tools-1", "result-1"]).next)
         try await connection.connect()
 
         try await connection.receiveAndHandleNext(using: handler)
@@ -221,7 +232,7 @@ final class OpenClawNodeConnectionTests: XCTestCase {
         let invocationCount = await handler.invocations().count
         XCTAssertEqual(invocationCount, 0)
         let sent = await transport.sentMessages()
-        let request = try XCTUnwrap(JSONSerialization.jsonObject(with: sent[1]) as? [String: Any])
+        let request = try XCTUnwrap(firstSentRequest(in: sent, method: "node.invoke.result"))
         let params = try XCTUnwrap(request["params"] as? [String: Any])
         let error = try XCTUnwrap(params["error"] as? [String: Any])
         XCTAssertEqual(error["code"] as? String, "INVALID_REQUEST")
@@ -262,6 +273,17 @@ private actor RecordingNodeHandler: GatewayNodeCommandHandler {
     func invocations() -> [Invocation] {
         self.received
     }
+}
+
+/// Look a frame up by what it is rather than by where it landed. These
+/// assertions used to index into the sent list, so publishing agent tools on
+/// connect quietly pointed them at the wrong request.
+private func firstSentRequest(in frames: [Data], method: String) -> [String: Any]? {
+    for frame in frames {
+        guard let object = try? JSONSerialization.jsonObject(with: frame) as? [String: Any] else { continue }
+        if object["method"] as? String == method { return object }
+    }
+    return nil
 }
 
 private actor NodeRecordingTransport: GatewayTransport {

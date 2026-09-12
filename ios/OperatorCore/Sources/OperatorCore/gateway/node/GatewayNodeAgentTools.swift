@@ -1,0 +1,187 @@
+import Foundation
+
+/// Descriptors that make node commands reachable by the agent.
+///
+/// Registering a command with the gateway is not enough for the model to be
+/// able to call it. openclaw builds the agent's tool list from descriptors a
+/// node publishes with `node.pluginTools.update`; a node that publishes none
+/// gets no tools, and the model then answers from its own built-ins. That was
+/// the whole of the "nothing is recorded for today" bug - the surface paired
+/// cleanly and `reminders.list` was never invoked, which the simulator's TCC
+/// database confirmed by having no row for the app at all.
+///
+/// Measured against openclaw 2026.9.1, a published descriptor survives
+/// normalization only when all of these hold:
+///
+///   - `pluginId`, `description` and `command` are non-empty
+///   - `name` matches `^[A-Za-z][A-Za-z0-9_-]{0,63}$` - so a tool cannot be
+///     named after its own dotted command; `reminders.list` is not a legal
+///     tool name, `reminders_list` is
+///   - `command` is one of the commands this node registered on connect
+///   - at most 128 descriptors, deduplicated by `pluginId` + `name`
+///
+/// `gateway.nodes.pluginTools.enabled` defaults to true, so nothing needs to
+/// be configured for these to be accepted.
+public enum GatewayNodeAgentTools {
+    public static let pluginID = "operator-ios"
+
+    /// Reads only.
+    ///
+    /// Publishing a tool is what lets the model decide on its own to call a
+    /// command, so this list is where "reads before writes" is actually
+    /// enforced for the agent. Composing a message, opening an app, writing a
+    /// connection or anything in the hand-off pack stays off it deliberately:
+    /// those are reachable only through a surface the person drove.
+    public static let descriptors: [GatewayNodeAgentToolDescriptor] = [
+        .init(
+            name: "reminders_list",
+            command: "reminders.list",
+            description: """
+            List the person's own incomplete reminders from this iPhone, soonest due first. \
+            Use for questions like "what is still open", "what do I owe someone", or anything \
+            on their to-do list. Read-only: it cannot add, complete or delete a reminder.
+            """,
+            parameters: .init(properties: [
+                "limit": .integer("How many reminders to return, 1 to 25. Defaults to 25."),
+            ])),
+        .init(
+            name: "calendar_events",
+            command: "calendar.events",
+            description: """
+            Read events from the person's own calendars on this iPhone for a time window. \
+            Use for "am I free", "what is on today", or checking a conflict before suggesting \
+            a time. Read-only: it cannot create, move or cancel an event.
+            """,
+            parameters: .init(properties: [
+                "startISO8601": .string("Window start as an ISO 8601 timestamp. Defaults to now."),
+                "endISO8601": .string("Window end as an ISO 8601 timestamp. Defaults to 24 hours after the start."),
+                "limit": .integer("How many events to return, 1 to 25. Defaults to 25."),
+            ])),
+        .init(
+            name: "contacts_search",
+            command: "contacts.search",
+            description: """
+            Find people in the person's own contacts on this iPhone by name, to turn a first \
+            name into a phone number or email. A query is required and the address book cannot \
+            be listed: asking for "all my contacts" is refused by design.
+            """,
+            parameters: .init(
+                properties: ["query": .string("Name or part of a name to search for. Required.")],
+                required: ["query"])),
+        .init(
+            name: "photos_latest",
+            command: "photos.latest",
+            description: """
+            Describe the most recent photos in the person's own library on this iPhone - when \
+            each was taken and what kind of asset it is. Returns descriptions and dates only; \
+            no image data ever leaves the device, so it cannot show or send a picture.
+            """,
+            parameters: .init(properties: [
+                "limit": .integer("How many photos to describe, 1 to 25. Defaults to 25."),
+            ])),
+        .init(
+            name: "music_now_playing",
+            command: "music.nowPlaying",
+            description: """
+            Report what is playing right now on this iPhone, if anything. Read-only: there is \
+            no play, pause or skip - asking to control playback is refused by design.
+            """,
+            parameters: .init()),
+        .init(
+            name: "music_search",
+            command: "music.search",
+            description: """
+            Search the person's own music library on this iPhone by title or artist. Read-only: \
+            it returns what it found and cannot start playback.
+            """,
+            parameters: .init(
+                properties: [
+                    "query": .string("Title or artist to search for. Required."),
+                    "limit": .integer("How many songs to return, 1 to 25. Defaults to 25."),
+                ],
+                required: ["query"])),
+        .init(
+            name: "weather_forecast",
+            command: "weather.forecast",
+            description: """
+            Get the forecast for an explicit latitude and longitude. Both are required - it \
+            will not infer where the person is. Any summary must keep the attribution string \
+            the result carries.
+            """,
+            parameters: .init(
+                properties: [
+                    "latitude": .number("Latitude in degrees, -90 to 90. Required."),
+                    "longitude": .number("Longitude in degrees, -180 to 180. Required."),
+                ],
+                required: ["latitude", "longitude"])),
+        .init(
+            name: "device_status",
+            command: "device.status",
+            description: """
+            Report this iPhone's battery level, charging state, low-power mode and whether it \
+            is online. Carries no name, model or identifier of any kind.
+            """,
+            parameters: .init()),
+    ]
+
+    /// Every published command must be one this node actually registered, or
+    /// the gateway drops the descriptor and the tool silently disappears.
+    public static var publishedCommands: [String] {
+        self.descriptors.map(\.command)
+    }
+}
+
+public struct GatewayNodeAgentToolDescriptor: Encodable, Equatable, Sendable {
+    public let pluginId: String
+    public let name: String
+    public let description: String
+    public let parameters: GatewayNodeAgentToolSchema
+    public let command: String
+
+    public init(
+        name: String,
+        command: String,
+        description: String,
+        parameters: GatewayNodeAgentToolSchema)
+    {
+        self.pluginId = GatewayNodeAgentTools.pluginID
+        self.name = name
+        self.command = command
+        self.description = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.parameters = parameters
+    }
+}
+
+/// The JSON Schema shape openclaw expects for a tool's arguments.
+public struct GatewayNodeAgentToolSchema: Encodable, Equatable, Sendable {
+    public struct Property: Encodable, Equatable, Sendable {
+        public let type: String
+        public let description: String
+
+        public static func string(_ description: String) -> Self {
+            .init(type: "string", description: description)
+        }
+
+        public static func integer(_ description: String) -> Self {
+            .init(type: "integer", description: description)
+        }
+
+        public static func number(_ description: String) -> Self {
+            .init(type: "number", description: description)
+        }
+    }
+
+    public let type = "object"
+    public let properties: [String: Property]
+    public let required: [String]
+    public let additionalProperties = false
+
+    public init(properties: [String: Property] = [:], required: [String] = []) {
+        self.properties = properties
+        self.required = required
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, properties, required, additionalProperties
+    }
+}

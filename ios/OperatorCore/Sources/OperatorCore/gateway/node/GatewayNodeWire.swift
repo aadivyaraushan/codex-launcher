@@ -26,6 +26,10 @@ public struct GatewayNodeConnectParams: Encodable, Sendable {
     public let device: GatewaySignedDevice
 }
 
+public struct GatewayNodePluginToolsUpdateParams: Encodable, Sendable {
+    public let tools: [GatewayNodeAgentToolDescriptor]
+}
+
 public struct GatewayNodeInvocation: Decodable, Equatable, Sendable {
     public let id: String
     public let nodeId: String
@@ -121,6 +125,16 @@ public extension GatewayRequestFactory {
                 commands: GatewayNativeNodeSurface.commands,
                 auth: .init(token: token),
                 device: proof.device))
+    }
+
+    /// Publishes the descriptors that make this node's read commands callable
+    /// by the agent. Without this the gateway has the commands but the model
+    /// has no tools, so it never reaches for them.
+    static func nodePluginToolsUpdate(requestID: String) -> GatewayRequest<GatewayNodePluginToolsUpdateParams> {
+        GatewayRequest(
+            id: requestID,
+            method: "node.pluginTools.update",
+            params: GatewayNodePluginToolsUpdateParams(tools: GatewayNodeAgentTools.descriptors))
     }
 
     static func nodeInvokeResult(

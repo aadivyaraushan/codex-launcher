@@ -150,8 +150,25 @@ public actor OpenClawNodeConnection {
             }
             self.isConnected = true
             self.logger.info("[location-node] connected protocol=3-4 commands=\(GatewayNativeNodeSurface.commands.joined(separator: ","), privacy: .public)")
+            await self.publishAgentTools()
             return
         }
+    }
+
+    /// Publishing is best-effort: a node that cannot advertise tools is still
+    /// a working node for anything the person drives directly, so a failure
+    /// here must not tear down a connection that is otherwise fine.
+    private func publishAgentTools() async {
+        let id = self.requestID()
+        do {
+            let request = GatewayRequestFactory.nodePluginToolsUpdate(requestID: id)
+            try await self.transport.send(try JSONEncoder().encode(request))
+        } catch {
+            self.logger.error("[location-node] could not publish agent tools")
+            return
+        }
+        self.logger.info(
+            "[location-node] published agent tools count=\(GatewayNodeAgentTools.descriptors.count, privacy: .public) commands=\(GatewayNodeAgentTools.publishedCommands.joined(separator: ","), privacy: .public)")
     }
 
     private func sendResult(
