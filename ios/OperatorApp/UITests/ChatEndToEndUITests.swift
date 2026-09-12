@@ -97,6 +97,88 @@ final class ChatEndToEndUITests: XCTestCase {
         }
     }
 
+    // PAID end-to-end WRITE test. Proves the owner-gated send chain a real user
+    // hits: type "send an email to myself" -> the on-device LLM calls
+    // connections.write -> the app shows the on-phone owner-approval alert
+    // ("Allow account action?") BEFORE any send -> tap Allow -> the real email
+    // sends -> a confirming reply renders in chat. Sends a real email to the
+    // owner's OWN address (ssdear@gmail.com), a pre-authorized safe recipient.
+    // Ground truth captured by the caller: os_log `[location-node] handling
+    // command=connections.write`. Only runs under the OperatorAppE2E scheme.
+    func testSelfEmailSendRoutesThroughLLMOwnerApprovalAndSends() throws {
+        try XCTSkipUnless(e2eEnabled,
+            "paid end-to-end test; run via the OperatorAppE2E scheme (OPERATOR_E2E=1)")
+
+        let app = XCUIApplication()
+        app.launch()
+
+        let composer = app.textFields["chat-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 150),
+                      "chat composer never appeared (runtime boot?)")
+
+        if app.buttons["Connect ChatGPT"].waitForExistence(timeout: 5) {
+            throw XCTSkip("app shows 'Connect ChatGPT' — the model is not signed in on this sim; sign in first")
+        }
+
+        let before = Set(assistantReplies(in: app))
+
+        composer.tap()
+        clearField(composer)
+        // Self-send to the owner's own address (pre-authorized safe recipient).
+        // Explicit recipient/subject/body so the LLM sends instead of asking.
+        let prompt = "Send an email to ssdear@gmail.com with the subject "
+            + "\"Operator E2E write test\" and the body "
+            + "\"End-to-end write-path test — safe to ignore.\""
+        composer.typeText(prompt)
+
+        let send = app.buttons["Send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5), "Send button missing")
+        XCTAssertTrue(send.isEnabled, "Send should enable once non-whitespace is typed")
+        send.tap()
+
+        // The LLM must reach connections.write, which gates the real send behind
+        // the on-phone owner-approval alert. Wait for it, prove it's the
+        // write-approval, capture its preview, then approve.
+        let approval = app.alerts.firstMatch
+        XCTAssertTrue(approval.waitForExistence(timeout: 200),
+                      "no owner-approval alert appeared — the LLM did not reach connections.write")
+        let title = approval.label
+        print("E2E-WRITE-APPROVAL-TITLE <<<\(title)>>>")
+        var preview = ""
+        for i in 0..<approval.staticTexts.count {
+            preview += approval.staticTexts.element(boundBy: i).label + " | "
+        }
+        print("E2E-WRITE-APPROVAL-PREVIEW <<<\(preview)>>>")
+        XCTAssertTrue(title.localizedCaseInsensitiveContains("account action"),
+                      "unexpected alert (not the write-approval): \(title)")
+
+        let allow = approval.buttons["Allow"]
+        XCTAssertTrue(allow.exists, "Allow button missing on the approval alert")
+        allow.tap()
+
+        // After approval the real send executes and the assistant confirms.
+        var reply = ""
+        let deadline = Date().addingTimeInterval(180)
+        while Date() < deadline {
+            if let fresh = assistantReplies(in: app).first(where: { !before.contains($0) }),
+               !fresh.isEmpty {
+                reply = fresh
+                break
+            }
+            Thread.sleep(forTimeInterval: 3)
+        }
+        print("E2E-WRITE-REPLY <<<\(reply)>>>")
+        XCTAssertFalse(reply.isEmpty, "no confirming reply appeared after approving the send")
+
+        let lower = reply.lowercased()
+        for bad in ["not connected", "isn't connected", "is not connected", "can't send",
+                    "cannot send", "unable to send", "couldn't send", "could not send",
+                    "need to connect", "please connect", "failed to send"] {
+            XCTAssertFalse(lower.contains(bad),
+                           "reply looks like a send failure, not a confirmation: \(reply)")
+        }
+    }
+
     /// All assistant message-bubble texts currently on screen (with the leading
     /// "Operator, " stripped), excluding the header / working / connect labels.
     private func assistantReplies(in app: XCUIApplication) -> [String] {

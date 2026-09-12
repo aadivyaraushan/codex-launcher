@@ -1094,3 +1094,49 @@ never touch the Node runtime.
 (ungated, no LLM/accounts) launches the app and asserts the chat composer is
 reachable — green on the throwaway sim (19.5s). If the runtime/resources break
 again, this catches it at $0.
+
+### Write path end-to-end through the real LLM, incl. the owner-approval gate — 2026-09-12
+
+Same harness (`ChatEndToEndUITests.testSelfEmailSendRoutesThroughLLMOwnerApproval-
+AndSends`, scheme `OperatorAppE2E`), live sim. Typed into the real chat UI:
+"Send an email to ssdear@gmail.com with the subject 'Operator E2E write test' and
+the body 'End-to-end write-path test — safe to ignore.'" — a real send to the
+owner's OWN address (pre-authorized safe recipient). Paid: one chat turn on
+ssdear@gmail.com's ChatGPT account (authorized by the owner for this run).
+
+**Result: TEST SUCCEEDED (61.7s).** Reply captured from chat: `Email sent successfully.`
+A real email actually sent (HTTP 202) from the connected Outlook account to
+ssdear@gmail.com.
+
+**Ground truth from os_log (live sim), in order within the turn:**
+```
+[chat] staged input id=E6F7353E… characters=136                 <- my send prompt
+[location-node] handling command=connections.write id=88f36d2d…  <- LLM CHOSE to write
+   -- on-phone owner-approval alert shown here (see below); test tapped Allow --
+[account-write] input operation=outlookSendMail field_count=3 content_bytes=85
+[account-write] request provider=microsoftOutlook operation=outlookSendMail method=POST request_bytes=226
+[account-write] response operation=outlookSendMail status=202 response_bytes=0   <- real send accepted
+[account-write] complete operation=outlookSendMail
+[chat-timing] phase=terminal … outcome=reply
+[chat] reply persisted for id=E6F7353E…                          <- reply for MY message id
+```
+
+**The owner-gate provably gates.** The test captured the on-phone approval alert
+before any send fired:
+- title: `Allow account action?`
+- preview: `Send email to ssdear@gmail.com  Subject: Operator E2E write test  Body: End-to-end write-path test — safe to ignore.`
+
+The `[account-write] request … status=202` (the real send) appears in the log
+ONLY after the test tapped **Allow** — i.e. no send happens without the owner
+approving the exact previewed action. This is a UIKit `UIAlertController`
+("Allow account action?" / buttons "Allow" / "Cancel") from
+`SystemAccountWriteConfirmationPresenter`; XCUITest reaches it via `app.alerts`.
+
+**Notes / scope.** There is no Gmail *send* op — Gmail is read-only; the email
+send goes through `outlookSendMail` (Outlook connected on the live sim). All six
+write ops were confirmed at the connector layer (free, self-targeted, auto-
+cleaned) on the live sim the same day: googleCalendarCreateEvent,
+googleDriveCreateTextFile, outlookCreateDraft, outlookSendMail, slackPostMessage
+all **passed**; spotifyStartPlayback skipped (intrusive, manual). So both a
+read and a write now have full LLM→connector→chat proof, and the write also
+proves the owner-approval gate.

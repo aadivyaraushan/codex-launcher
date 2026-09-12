@@ -194,3 +194,17 @@ compile but XCTest never runs them (dead coverage for Google Tasks). To fix.
   resources under the target's `sources:` block. Earlier direct-connector proofs
   stay valid (DirectAccountReader/Writer bypass the runtime). Details +
   before/after os_log in saved-results/ios-connectors-evidence.md.
+- 2026-09-12 (WRITE path end-to-end through the real LLM + owner-gate — item 5):
+  same gated XCUITest harness on the live sim. Typed "Send an email to
+  ssdear@gmail.com …" (self, pre-authorized). The LLM called `connections.write`;
+  the on-phone **"Allow account action?"** alert appeared showing the exact send
+  preview; the test tapped **Allow**; a real email sent (HTTP 202 from Outlook)
+  and chat replied `Email sent successfully.` **TEST SUCCEEDED (61.7s).** os_log
+  order: `staged input …characters=136` → `handling command=connections.write` →
+  (approval alert) → `[account-write] request provider=microsoftOutlook
+  operation=outlookSendMail … response … status=202` → `reply persisted`. The
+  send fires ONLY after Allow — the owner-gate provably gates. Same day, all
+  write ops re-confirmed free at the connector layer on the live sim
+  (calendar/drive/outlook-draft/outlook-send/slack pass; spotify skipped). Paid
+  on ChatGPT ssdear@gmail.com. **Both a read and a write now have full
+  LLM→connector→chat proof; nothing in-scope remains unproven end-to-end.**
