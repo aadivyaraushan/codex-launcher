@@ -402,11 +402,23 @@ public actor URLSessionGatewayTransport: GatewayTransport {
 
     public init(url: URL, timeout: TimeInterval = 30) {
         self.url = url
+        self.session = URLSession(configuration: Self.configuration(handshakeTimeout: timeout))
+    }
+
+    /// `timeoutIntervalForResource` bounds the entire task, not a single
+    /// exchange, so setting it on a websocket kills the connection that many
+    /// seconds after it opens no matter how healthy it is. This socket carries
+    /// both the chat stream and the native node, so a 30s cap meant the node
+    /// dropped half a minute after every launch - the "your iPhone is
+    /// disconnected" replies, and CFNetwork -1001 with
+    /// transaction_duration_ms just over 30000 against a 101 upgrade.
+    /// Only the handshake gets a deadline; the session keeps the URLSession
+    /// default for total lifetime.
+    static func configuration(handshakeTimeout: TimeInterval) -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = timeout
-        configuration.timeoutIntervalForResource = timeout
+        configuration.timeoutIntervalForRequest = handshakeTimeout
         configuration.waitsForConnectivity = true
-        self.session = URLSession(configuration: configuration)
+        return configuration
     }
 
     public func open() async throws {
