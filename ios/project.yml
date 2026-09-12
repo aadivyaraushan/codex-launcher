@@ -80,9 +80,28 @@ targets:
     platform: iOS
     sources:
       - path: OperatorApp/Tests
+        # The per-area cheap-loop harnesses (run.sh + Package.template scratch
+        # packages, node .mjs checks) live beside the XCTest sources. They are
+        # not part of the app test bundle, and their many same-named copies
+        # collide as bundle resources ("Multiple commands produce run.sh").
+        excludes:
+          - "**/*.sh"
+          - "**/*.template"
+          - "**/*.mjs"
+          # A standalone @main check executable (run only inside its own scratch
+          # package), not an XCTest — it has no `@testable import OperatorApp`
+          # and its @main would collide in the test bundle.
+          - "runtime/embedded/endpoint/LoopbackPortChecks.swift"
     dependencies:
       - target: OperatorApp
       - package: OperatorCore
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        # The host app's PRODUCT_NAME is "Operator", so it builds as
+        # Operator.app/Operator. XcodeGen 2.46 derives TEST_HOST from the target
+        # name (OperatorApp) instead, which points at a product that never
+        # exists and fails the build with "Could not find test host". Pin the
+        # real host path so every regeneration stays runnable.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Operator.app/Operator"
+        BUNDLE_LOADER: "$(TEST_HOST)"

@@ -137,7 +137,11 @@ data: {"jsonrpc":"2.0","id":1,"result":{"ok":true}}
         let stream = "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{}}\n"
         let transport = FixtureTransport(responses: [("https://mcp.notion.com/mcp", stream), ("https://mcp.notion.com/mcp", "{}"), ("https://mcp.notion.com/mcp", "data: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[]}}\n")], contentType: "text/event-stream")
         let client = NotionMCPClient(store: store, transport: transport)
-        _ = try await client.initialize(); _ = try await client.listTools()
+        // `NotionMCPClient` has two `listTools()` overloads (the raw MCP one
+        // here, plus the `NotionNodeClient` `[NotionTool]` one). Name the
+        // return type so the discarded call is not ambiguous.
+        _ = try await client.initialize()
+        let _: NotionJSONValue = try await client.listTools()
         let bodies = await transport.requests.compactMap { $0.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String:Any] } }
         XCTAssertEqual(bodies[0]["id"] as? Int, 1); XCTAssertEqual(bodies[1]["method"] as? String, "notifications/initialized"); XCTAssertNil(bodies[1]["id"]); XCTAssertEqual(bodies[2]["id"] as? Int, 2)
     }

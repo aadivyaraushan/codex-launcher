@@ -65,7 +65,7 @@ extension InAppMediaOpener {
               root.presentedViewController == nil
         else { return false }
 
-        let browser = SFSafariViewController(url: url)
+        let browser = SFSafariViewController.operatorBrowser(url: url)
         return await withCheckedContinuation { continuation in
             root.present(browser, animated: true) {
                 continuation.resume(returning: root.presentedViewController === browser)

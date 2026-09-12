@@ -397,6 +397,7 @@ private struct Composer: View {
                         Color(uiColor: .secondarySystemBackground),
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .accessibilityLabel("Message Operator")
+                    .accessibilityIdentifier("chat-composer")
 
                 Button(action: self.toggleDictation) {
                     Image(systemName: self.dictation.state == .recording ? "stop.fill" : "mic.fill")

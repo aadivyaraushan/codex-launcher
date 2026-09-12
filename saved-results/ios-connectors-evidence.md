@@ -722,3 +722,136 @@ the policy Operator installs into the gateway on the owner's behalf.
 
 Writes. Every connector above is read-only, per the plan's reads-before-writes
 rule, and no write path should be written until each row above has a real read.
+
+---
+
+# Verification session — 2026-09-11 (branch codex/ios-connectors-setup)
+
+Goal that framed this session: prove the open connector items work — every one
+except Weather (blocked on Apple Developer enrollment, owner aware). Plan file:
+`planning/ios-connector-verification-goal.md`.
+
+## Headline: the Xcode test target was only running 8 of 30 test files
+
+The biggest thing found this session is not a connector bug — it is that
+`xcodebuild test` on the committed project was **silently skipping most of the
+connector test coverage**. The committed `Operator.xcodeproj` referenced only
+**8 of the 30** test files under `OperatorApp/Tests/`. The other 22 (Drive/Gmail/
+Spotify/Outlook reads, OAuth refresh, Notion, account writes, confirmation,
+handoff, and more) were never compiled into `OperatorAppTests`. They ran **only**
+through the per-area `run.sh` scratch-package harnesses. So the app's own test
+target — what CI would run — gave a false sense of coverage.
+
+Cause: the test files were added after the project was last generated, and
+`xcodegen` was not installed, so nobody regenerated. The pbxproj uses explicit
+file references (no synchronized folder group), so new files are invisible until
+a regen.
+
+Fix (all durable in `ios/project.yml`, so it survives future regenerations):
+- Regenerated the project with `xcodegen 2.46.0` → all **30/30** test files now
+  compile into `OperatorAppTests`.
+- Pinned `TEST_HOST`/`BUNDLE_LOADER` to `Operator.app/Operator`. The app's
+  `PRODUCT_NAME` is `Operator`, but xcodegen 2.46 derived the test host from the
+  target *name* (`OperatorApp.app`), which fails the build with "Could not find
+  test host". Pinning the real path keeps every regeneration runnable.
+- Excluded the harness scaffolding from the target: `**/*.sh`, `**/*.template`,
+  `**/*.mjs` (their many same-named copies collided as bundle resources —
+  "Multiple commands produce run.sh"), and the one standalone `@main` check
+  executable `runtime/embedded/endpoint/LoopbackPortChecks.swift` (not an XCTest;
+  its `@main` collides in a test bundle).
+
+Result — full app test target, on a throwaway Simulator (iPhone 16 Pro, iOS
+18.6; the live "Operator iPhone 14 Pro" sim was left untouched):
+
+    xcodebuild test -project ios/Operator.xcodeproj -scheme OperatorApp \
+      -destination 'platform=iOS Simulator,id=<iPhone 16 Pro>' \
+      -only-testing:OperatorAppTests CODE_SIGNING_ALLOWED=NO
+    => ** TEST SUCCEEDED **  Executed 341 tests, 1 skipped, 0 failures
+
+The 1 skip is a source-shape check that can only run where the source is on disk
+(see below). Ran the full suite three times to shake out flakes; green each time
+after the fixes below. (A benign warning about saving the .xcresult bundle can
+appear when DerivedData is in a scratch dir — it is a filesystem artifact, not a
+test failure: TEST SUCCEEDED, XCODEBUILD_EXIT=0.)
+
+## Latent bugs the drift was hiding (found only once all files compiled together)
+
+- **`NotionMCPClient.listTools()` was ambiguous.** `NotionMCPClient` has two
+  `listTools()` overloads differing only by return type — the raw MCP one
+  (`-> NotionJSONValue`) and the `NotionNodeClient` conformance in
+  `ForegroundNotionService.swift` (`-> [NotionTool]`). `NotionMCPClientTests`
+  discarded the result (`_ = try await client.listTools()`), which can't pick an
+  overload. The scratch package never compiled `ForegroundNotionService.swift`,
+  so it never saw the second overload. Fixed in the test by naming the type.
+- **`ForegroundRemindersServiceTests` read a source file at a scratch-only
+  path.** `testEventKitFetchCallbackIsSendableAndMapsWithoutTheMainActor` opens
+  `Sources/OperatorApp/ForegroundRemindersService.swift` relative to `#filePath`
+  — a path that exists only in the scratch package, not the on-device bundle.
+  Made it `throw XCTSkip` when the source isn't on disk (still asserts under its
+  run.sh, where source is present: reminders run.sh = 17 tests, 0 skipped). This
+  is the 1 skip in the sim run.
+- **`SpotifyLoopbackSetupTests` flaked on the Simulator under load.** It stands
+  up a real 127.0.0.1 loopback HTTP server; its `waitUntil` allowed only 1s,
+  which the round trip lost to scheduling when all 341 tests ran at once.
+  Raised the ceiling to 3s (a passing run still returns in ~7ms). Green on
+  macOS run.sh (6/6) and on the sim across three full runs.
+
+## Per-item verification (green this session)
+
+Numbers are from re-running each check this session, not carried over.
+
+**Item 1 — open website → back to chat: FIXED + proven on-sim.**
+Root cause (prior finding): both in-app browser openers presented
+`SFSafariViewController` with no delegate, so "Done" was dead and the browser
+covered chat forever. This session DRY'd the fix behind one seam —
+`SFSafariViewController.operatorBrowser(url:)` in `SystemAppHandoffOpener.swift`,
+which always wires the shared `SafariReturnDelegate`; both openers
+(`SystemAppHandoffOpener`, `InAppMediaOpener`) now build through it. Regression
+guard `testOperatorBrowserAlwaysWiresTheReturnDelegateSoDoneReturnsToChat`
+(asserts the factory wires the delegate, then that the delegate actually
+dismisses a presented controller) **passes on the Simulator** (0.27s). A full
+open-real-site→tap-Done→assert-chat XCUITest would need a `bundle.ui-testing`
+target; the unit-level proof plus the single shared seam cover the regression.
+
+**Item 2 — Drive/Spotify tolerant input: TESTED (was already correct).**
+The native validator only trims/caps; it never rejected spaces or punctuation.
+Added 4 tests in `DirectAccountReaderTests`: multi-word Drive query survives,
+apostrophe/backslash are escaped (not rejected), Spotify multi-word round-trips
+losslessly, whitespace-only is refused without reaching the network. Green via
+`connections/read/run.sh` (28 tests) and on-sim.
+
+**Also fixed — dead Google Tasks coverage.** The 6 `testGoogleTasks*` methods
+sat inside the `GmailFixtureTransport` actor, not the XCTestCase class, so XCTest
+never ran them. Moved them into the class; `connections/read` went 22 → 28 tests,
+all green.
+
+**Item 3 — recovery / token refresh: mechanism green this session.**
+`connections/auth/run.sh` = 22/22, `connections/notion/run.sh` = 19/19. The
+refresh *logic* is unit-covered for every provider including the two the plan
+flagged: Slack (`testSlackRefreshAcceptsOnlyUserTokensAtResponseRoot`) and
+Notion (`testExpiredRPCTokenDiscoversAndRefreshesBeforeInitialize` + 4 more).
+What is still genuinely live-only: refresh against a *real* expired token, a
+true network-drop retry, and recovery of an interrupted write — these need the
+live sim/accounts and are the owner's to exercise.
+
+**Item 5 — write actions: owner-gating green this session.**
+`connections/write/run.sh` = 9/9, `connections/confirmation/run.sh` = 6/6,
+`approval-visibility/run.sh` = static wiring PASS (notes real-Simulator
+visibility still required). Every write is gated by an on-phone owner-confirm;
+the agent can't fire silently. GATE unchanged: a real send/edit, and any
+agent-driven test that spends the owner's own ChatGPT/OpenAI account, waits for
+explicit owner OK.
+
+**Item 4 — Weather: out of scope** (Apple Developer enrollment; owner aware).
+
+## Environment / cost notes
+- No money spent. No paid API was called. The only install was `xcodegen`
+  (Homebrew, local dev tool, reversible).
+- The live "Operator iPhone 14 Pro" sim (49A153C3…, holds the owner's OAuth
+  sessions) was never targeted; all sim runs used a throwaway iPhone 16 Pro.
+
+## How to reproduce
+- Cheap per-area loops (macOS, no sim): `sh ios/OperatorApp/Tests/<area>/run.sh`.
+- Full app test target (throwaway sim): the `xcodebuild test` line above. Fresh
+  DerivedData in a scratch dir; `CODE_SIGNING_ALLOWED=NO` (sim signing is
+  ad-hoc).

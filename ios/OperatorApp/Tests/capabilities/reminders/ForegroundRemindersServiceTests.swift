@@ -13,7 +13,13 @@ final class ForegroundRemindersServiceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Sources/OperatorApp/ForegroundRemindersService.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        // This checks the shape of the source, so it can run only where the
+        // source is on disk — the scratch SwiftPM package the run.sh harness
+        // builds. In the on-device OperatorAppTests bundle the source is not
+        // shipped, so skip rather than fail.
+        guard let source = try? String(contentsOf: sourceURL, encoding: .utf8) else {
+            throw XCTSkip("source-shape check runs only in the scratch SwiftPM package layout")
+        }
 
         XCTAssertTrue(source.contains("requestFullAccessToReminders { @Sendable granted, _ in"))
         XCTAssertTrue(source.contains("fetchReminders(matching: predicate) { @Sendable reminders in"))
