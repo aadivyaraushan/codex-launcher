@@ -173,17 +173,26 @@ final class EventKitReminderStore: ReminderStore {
 
     func requestFullAccess() async -> Bool {
         await withCheckedContinuation { continuation in
-            self.store.requestFullAccessToReminders { granted, _ in
+            // EventKit runs this on its own queue, not the main actor. A
+            // closure written inside a @MainActor type is assumed to be
+            // main-actor isolated, so Swift emits an executor check that
+            // traps when the framework calls back elsewhere. @Sendable drops
+            // that assumption. This crashed the moment the connector became
+            // reachable - see saved-results/ios-demo-recording-blocked.md.
+            self.store.requestFullAccessToReminders { @Sendable granted, _ in
                 continuation.resume(returning: granted)
             }
         }
     }
 
     func incompleteReminders(limit: Int) async -> [Reminder] {
-        let predicate = self.store.predicateForIncompleteReminders(
+        // Read the store on the actor, then keep it out of the @Sendable
+        // callback below - EKEventStore is not Sendable.
+        let store = self.store
+        let predicate = store.predicateForIncompleteReminders(
             withDueDateStarting: nil, ending: nil, calendars: nil)
         let fetched: [Reminder] = await withCheckedContinuation { continuation in
-            self.store.fetchReminders(matching: predicate) { reminders in
+            store.fetchReminders(matching: predicate) { @Sendable reminders in
                 // Mapped inside the callback so no EKReminder crosses out of
                 // it; only the Sendable value type leaves.
                 let mapped = (reminders ?? []).map { reminder in

@@ -135,7 +135,9 @@ private final class EventKitCalendarStore: CalendarEventStore {
 
     func requestFullAccess() async -> Bool {
         await withCheckedContinuation { continuation in
-            self.store.requestFullAccessToEvents { granted, _ in
+            // Called back off the main actor; see the note in
+            // ForegroundRemindersService for why this must be @Sendable.
+            self.store.requestFullAccessToEvents { @Sendable granted, _ in
                 continuation.resume(returning: granted)
             }
         }
