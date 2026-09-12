@@ -144,3 +144,19 @@ compile but XCTest never runs them (dead coverage for Google Tasks). To fix.
   to `saved-results/ios-connectors-evidence.md`. **Remaining:** true network-drop
   retry + interrupted-write resume (gateway/runtime layer), and the optional
   item-1 XCUITest.
+- 2026-09-12 (recovery): code read settled how the last two recovery items
+  should be tested. **Connector writes deliberately never retry**
+  (`DirectAccountWriter` → `outcomeUnknownNotSafeToRetry`) — retrying an
+  irreversible send under uncertainty is the bug, so this is correct, not a gap.
+  Retry/reconnect/resume live at the **chat-gateway layer**, decoupled from the
+  paid LLM path, so they're proven deterministically at **$0** (stronger than a
+  flaky physical radio-drop). Green this session: app reconnect/resume suites
+  (`LocalOpenClawChatGatewayTests` + `ChatSessionModelTests`) = **37/37**;
+  `OperatorCore` (gateway/queue/keepalive/ConversationStore/RuntimeLifecycle) =
+  **82/82**. Interrupted-request resume = idempotency-key survives relaunch +
+  `recoverReply(runID:)` recovers the exact reply before re-send (no
+  double-charge). Live corroboration: prior relaunch logged `gateway restored` +
+  re-pair on the owner's sim. Only a paid end-to-end LLM-drop test is left
+  un-run (flakier, marginal, not worth the spend). **Goal is now met for every
+  in-scope item except the optional item-1 XCUITest** (fix already landed with an
+  on-sim regression guard).

@@ -970,3 +970,68 @@ xcodebuild test -project ios/Operator.xcodeproj -scheme OperatorAppLive \
 ```
 Install is an upgrade (no `simctl erase`), so the owner's OAuth state is
 preserved across the run.
+
+## Recovery: network-drop retry + interrupted-request resume — the real design, and green proof
+
+Investigating the code (read-only sweep, 2026-09-12) changed how these two items
+should be tested. **They are not connector-layer concerns and do not need live
+accounts.**
+
+**Finding 1 — the connector HTTPS layer deliberately does NOT retry.**
+- Writes never retry, by design: `DirectAccountWriter.swift:114-116` ("This
+  method never retries"); a transport failure becomes
+  `AccountWriteError.outcomeUnknownNotSafeToRetry` (`:98`, thrown `:162-168`).
+  This is a safety feature — a write may already have landed on the provider, so
+  silently re-sending could double-post/double-send. Correct behaviour, not a gap.
+- Reads are single-attempt too; `429` is surfaced as `.rateLimited(retryAfter)`
+  (`DirectAccountReader.swift:51`) for the caller to honour, not auto-slept.
+So "auto-retry the connector call" is intentionally absent. Retrying an
+irreversible send under uncertainty is the bug; not-retrying is the fix.
+
+**Finding 2 — retry / reconnect / resume live at the chat-gateway layer**, which
+is fully decoupled from the paid LLM path (protocols `ChatGateway`,
+`GatewayTransport`), so it is exercised deterministically with injected fakes at
+**$0** — a stronger, repeatable proof than physically dropping the sim's radio
+mid-request. The mechanism:
+- Reconnect loop with 1s backoff: `ChatSessionModel.recoverWhileForeground()`
+  (`ChatSessionModel.swift:291-332`).
+- Outbox queue-drain; a failed delivery returns the entry to the queue unchanged
+  and re-triggers recovery: `flushOutbox()` (`:239-276`).
+- **Interrupted-request resume without double-charge:** each send mints an
+  idempotency key (`send()` `:170-175`); on reconnect the gateway first looks for
+  the exact saved reply before re-sending — `LocalOpenClawChatGateway.deliver()`
+  → `connection.recoverReply(runID: entry.idempotencyKey)`
+  (`LocalOpenClawChatGateway.swift:135-144`); a mid-flight native recovery throws
+  `.recoveryPending` and keeps the entry retryable rather than failing it.
+- Background/suspend: the queued entry survives in persistence and is re-driven
+  on foreground.
+
+**Green this session ($0, deterministic):**
+- App target (throwaway sim), `-only-testing` the two reconnect/resume suites
+  `LocalOpenClawChatGatewayTests` + `ChatSessionModelTests` →
+  **Executed 37 tests, 0 failures — TEST SUCCEEDED** (2.8s). These assert exactly:
+  reconnect-then-drain-once, no-resend-while-active-delivery, saved-completion
+  recovered before re-send, native-recovery-pending stays retryable, terminal
+  outcomes don't duplicate the send, offline keeps the message queued without
+  inventing a reply.
+- `OperatorCore` package (`swift test`, macOS) → **Executed 82 tests, 0 failures**
+  — includes `OpenClawGatewayConnectionTests` (connect/reconnect, pairing-retry),
+  `OpenClawGatewayConnectionConcurrentRequestTests` (request queue serialize /
+  cancel / disconnect-releases-waiters), `URLSessionGatewayTransportKeepaliveTests`
+  (socket writable after ping cadence, wire order preserved, close-then-open drops
+  old frames), `ConversationStoreTests` (sending entry returns to waiting after
+  relaunch **without changing its key**; caller message identity survives
+  persistence + retry), and `RuntimeLifecycleMachineTests` (failed runtime retries
+  on next foreground; cold-launch → background snapshot → foreground restore).
+
+**Live corroboration already captured:** the prior-session relaunch on the live
+sim logged `gateway restored` + node re-paired with all 26 commands after a
+terminate — a real reconnect + re-pair on the owner's device, matching the
+deterministic reconnect path above.
+
+**What remains genuinely paid and is intentionally left un-run:** a true
+end-to-end run that sends a real chat turn through the embedded Node runtime to
+the LLM and drops the socket mid-stream. It would cost money and is *flakier*
+(timing the drop) while proving only that the real runtime emits `chat.history`
+the way the fakes already model. The deterministic suites above are the better
+evidence; this end-to-end variant is available on request but not worth the spend.
