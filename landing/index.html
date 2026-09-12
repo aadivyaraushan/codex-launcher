@@ -237,7 +237,7 @@ body{
   border: 1px solid rgba(0,0,0,.06);
   box-shadow: 0 14px 34px rgba(0,0,0,.11), 0 2px 6px rgba(0,0,0,.04);
   overflow: hidden;
-  transform: translateY(-10px);
+  transform: translateY(-22px);
 }
 .srf__bar{
   display: flex; align-items: center; gap: 7px;
@@ -253,7 +253,7 @@ body{
 .srf__lead--muted{ color: var(--muted-2); font-weight: 500; margin-top: 12px; }
 .srf__sub{ font-size: 12.5px; color: var(--faint); font-weight: 500; margin-top: 4px; }
 .srf__said{ font-size: 14px; font-weight: 500; line-height: 1.4; color: var(--ink); }
-.srf__line{ font-size: 12.5px; line-height: 1.9; color: var(--muted-2); font-weight: 500; }
+.srf__line{ font-size: 12.5px; line-height: 1.78; color: var(--muted-2); font-weight: 500; }
 .srf__line s{ text-decoration: none; color: var(--faint); }
 .srf__line i{ font-style: normal; color: var(--ok); font-weight: 700; }
 .srf__line b{ color: var(--signal); }
@@ -273,10 +273,9 @@ body{
 .srf__acts span{ font-size: 12px; font-weight: 600; border-radius: 999px; padding: 6px 13px; background: #f1f1f1; color: var(--muted-2); }
 .srf__acts span.on{ background: var(--ink); color: var(--on-dark); }
 .srf__thumbs{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.srf__thumbs i{ display: block; height: 46px; border-radius: 8px; }
-.srf__thumbs i:nth-child(1){ background: linear-gradient(160deg, #cfd9e4, #aebccd); }
-.srf__thumbs i:nth-child(2){ background: linear-gradient(160deg, #e6ddd3, #cbbaa8); }
-.srf__thumbs i:nth-child(3){ background: linear-gradient(160deg, #d6e2d8, #b3c7b7); }
+.srf__thumbs .thumb{ display: block; border-radius: 8px; overflow: hidden; line-height: 0; }
+.srf__thumbs .thumb svg{ width: 100%; height: 46px; display: block; }
+.srf__said--q{ color: var(--muted-2); font-style: italic; margin-bottom: 12px; }
 
 /* the floating action chip, lifted off the surface */
 .pill{
@@ -327,53 +326,6 @@ body{
 .feature__text .body{ margin-top: 10px; }
 
 /* ---------- tabs ---------- */
-
-.tabs{ margin-top: 40px; display: flex; justify-content: center; }
-.tabs__track{
-  display: inline-flex; gap: 4px;
-  background: #fff;
-  border-radius: 999px;
-  padding: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.06);
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.tabs__track::-webkit-scrollbar{ display:none; }
-.tab{
-  border: 0; background: transparent;
-  border-radius: 999px;
-  padding: 10px 18px;
-  font-size: 16px; font-weight: 500; color: var(--muted);
-  cursor: pointer; white-space: nowrap;
-  transition: background-color .15s ease, color .15s ease;
-}
-.tab:hover{ color: var(--ink); }
-.tab[aria-selected="true"]{ background: var(--panel); color: var(--ink); font-weight: 600; }
-
-.tabpanels{ margin-top: 48px; }
-.tabpanel[hidden]{ display: none !important; }
-.tabpanel{
-  background: #fff;
-  border: 1px solid rgba(0,0,0,.09);
-  border-radius: 16px;
-  padding: 32px;
-  display: grid; grid-template-columns: minmax(0,1fr) 340px;
-  gap: 40px; align-items: center;
-}
-.tabpanel__copy .h3{ margin-bottom: 12px; }
-.tabpanel__list{ margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
-.tabpanel__list li{
-  font-size: 15px; font-weight: 500; color: var(--muted-2);
-  display: flex; gap: 10px; align-items: flex-start;
-}
-.tabpanel__art{ display: flex; justify-content: center; }
-.tabpanel__art .mock--phone{ max-width: 260px; }
-.tabpanel__list li::before{
-  content: ""; flex: 0 0 auto;
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--signal); margin-top: 9px;
-}
 
 /* ---------- three-up cards ---------- */
 
@@ -720,12 +672,9 @@ body{
 .card__art{ height: 216px; padding: 0; background: #f0f0f0; }
 .feature__art{ height: 400px; padding: 0; background: #f0f0f0; }
 .pillar__art{ margin-top: 24px; height: 250px; position: relative; }
-.tabpanel__art{ height: 380px; position: relative; }
-.tabpanel__art .ios{ top: 0; }
-
 /* where a crop meets open space rather than a card edge, fade it out so the
    cut reads as intentional instead of as a truncated element */
-.tabpanel__art .shot, .pillar__art .shot{
+.pillar__art .shot{
   -webkit-mask-image: linear-gradient(180deg, #000 74%, transparent 100%);
           mask-image: linear-gradient(180deg, #000 74%, transparent 100%);
 }
@@ -740,8 +689,6 @@ body{
   .duo-grid{ grid-template-columns: 1fr; }
   .trio{ grid-template-columns: 1fr; }
   .pillar{ min-height: 0; }
-  .tabpanel{ grid-template-columns: 1fr; gap: 28px; }
-  .tabpanel__art{ height: 320px; }
 }
 
 @media (max-width: 640px){
@@ -807,16 +754,17 @@ body{
                 <div class="srf">
                   <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
                   <div class="srf__body">
-                    <p class="srf__lead">Reorder weekly groceries</p>
-                    <p class="srf__sub">28 items matched</p>
-                    <div class="srf__meter"><i></i></div>
+                    <p class="srf__line"><s>read</s> reminders &middot; 4 open</p>
+                    <p class="srf__line"><s>read</s> calendar &middot; Thu is clear</p>
+                    <p class="srf__line"><i>&check;</i> matched 28 items</p>
+                    <p class="srf__line"><b>&rarr;</b> reordering groceries</p>
                   </div>
                 </div>
                 <span class="pill pill--a"><span class="pill__ic pill__ic--warm">&#9679;</span> Running on your phone</span>
               </div>
               <div class="card__text">
                 <h3 class="card__title">Run the weekly errands</h3>
-                <p class="small">Groceries reordered, the permit renewed, the one risky step held back for a tap.</p>
+                <p class="small">It checks what is open, when you are free, and only then starts ordering.</p>
               </div>
             </article>
             <article class="card" role="listitem">
@@ -826,6 +774,7 @@ body{
                   <div class="srf__body">
                     <p class="srf__line"><s>open</s> deck.pptx</p>
                     <p class="srf__line"><i>&check;</i> rewrote section 3</p>
+                    <p class="srf__line"><i>&check;</i> rebuilt the chart</p>
                     <p class="srf__line"><b>&rarr;</b> attaching to draft</p>
                   </div>
                 </div>
@@ -834,6 +783,24 @@ body{
               <div class="card__text">
                 <h3 class="card__title">Keep steering your computer</h3>
                 <p class="small">Leave the desk without leaving its power behind. Text the job, watch it move.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
+                  <div class="srf__body">
+                    <p class="srf__line"><s>read</s> weather &middot; today</p>
+                    <p class="srf__line"><i>&check;</i> rain from 4pm</p>
+                    <p class="srf__line"><s>read</s> calendar &middot; 6:30 dinner</p>
+                    <p class="srf__line"><b>&rarr;</b> suggesting the 3:40 train</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9788;</span> Reading the forecast</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Check before you leave</h3>
+                <p class="small">The forecast and your evening, read together, so the answer is a plan.</p>
               </div>
             </article>
             <article class="card" role="listitem">
@@ -856,6 +823,40 @@ body{
             <article class="card" role="listitem">
               <div class="card__art">
                 <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Photos</div>
+                  <div class="srf__body">
+                    <p class="srf__said srf__said--q">Find photos of my car</p>
+                    <div class="srf__thumbs"><span class="thumb"><svg viewBox="0 0 64 46" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="sky1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9d6e6"/><stop offset="1" stop-color="#e3e9ef"/></linearGradient></defs><rect width="64" height="46" fill="url(#sky1)"/><rect y="29" width="64" height="17" fill="#a9b0b8"/><path d="M6 30 L8 23 Q10 18.5 17 17.5 L34 17.5 Q41 18.5 45.5 23 L54 25 Q58 26 58 30 Z" fill="#2f4256"/><path d="M15.5 17.5 L18.5 12.5 Q19.5 11.5 22.5 11.5 L32.5 11.5 Q34.5 11.5 35.5 13 L39 17.5 Z" fill="#b9cbdd"/><circle cx="17.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="17.5" cy="30.5" r="2.1" fill="#8d939b"/><circle cx="46.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="46.5" cy="30.5" r="2.1" fill="#8d939b"/></svg></span><span class="thumb"><svg viewBox="0 0 64 46" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="sky2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6ddd2"/><stop offset="1" stop-color="#f2ece4"/></linearGradient></defs><rect width="64" height="46" fill="url(#sky2)"/><rect y="29" width="64" height="17" fill="#bcb2a4"/><path d="M6 30 L8 23 Q10 18.5 17 17.5 L34 17.5 Q41 18.5 45.5 23 L54 25 Q58 26 58 30 Z" fill="#7c3b2c"/><path d="M15.5 17.5 L18.5 12.5 Q19.5 11.5 22.5 11.5 L32.5 11.5 Q34.5 11.5 35.5 13 L39 17.5 Z" fill="#d8c9b8"/><circle cx="17.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="17.5" cy="30.5" r="2.1" fill="#8d939b"/><circle cx="46.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="46.5" cy="30.5" r="2.1" fill="#8d939b"/></svg></span><span class="thumb"><svg viewBox="0 0 64 46" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="sky3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d3dcd6"/><stop offset="1" stop-color="#e9eee9"/></linearGradient></defs><rect width="64" height="46" fill="url(#sky3)"/><rect y="29" width="64" height="17" fill="#a8b2aa"/><path d="M6 30 L8 23 Q10 18.5 17 17.5 L34 17.5 Q41 18.5 45.5 23 L54 25 Q58 26 58 30 Z" fill="#3d4a44"/><path d="M15.5 17.5 L18.5 12.5 Q19.5 11.5 22.5 11.5 L32.5 11.5 Q34.5 11.5 35.5 13 L39 17.5 Z" fill="#c3d0c7"/><circle cx="17.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="17.5" cy="30.5" r="2.1" fill="#8d939b"/><circle cx="46.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="46.5" cy="30.5" r="2.1" fill="#8d939b"/></svg></span></div>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9635;</span> 9 photos scanned</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Find photos of my car</h3>
+                <p class="small">Ask in plain words. It finds them without you scrolling a single album.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Contacts</div>
+                  <div class="srf__body">
+                    <p class="srf__lead">Sam Ortiz</p>
+                    <p class="srf__sub">mobile &middot; home</p>
+                    <p class="srf__lead srf__lead--muted">Samira Khan</p>
+                    <p class="srf__sub">work</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9906;</span> Searching by name</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Find the right person</h3>
+                <p class="small">A first name is enough. It resolves who you meant without opening Contacts.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
                   <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
                   <div class="srf__body">
                     <p class="srf__said">Push my 2pm and tell Sam.</p>
@@ -872,67 +873,18 @@ body{
             <article class="card" role="listitem">
               <div class="card__art">
                 <div class="srf">
-                  <div class="srf__bar"><span class="srf__dot"></span> Contacts</div>
+                  <div class="srf__bar"><span class="srf__dot"></span> Music</div>
                   <div class="srf__body">
-                    <p class="srf__lead">Sam Ortiz</p>
-                    <p class="srf__sub">mobile &middot; home</p>
-                    <p class="srf__deny">&ldquo;list everyone&rdquo; &mdash; refused</p>
+                    <p class="srf__said srf__said--q">What was that song this morning?</p>
+                    <p class="srf__lead">Weightless</p>
+                    <p class="srf__sub">Marconi Union &middot; since 8:12</p>
                   </div>
                 </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9906;</span> Searching by name</span>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--mint">&#10003;</span> No playback control</span>
               </div>
               <div class="card__text">
-                <h3 class="card__title">Find the right person</h3>
-                <p class="small">A first name is enough. It resolves who you meant without opening Contacts.</p>
-              </div>
-            </article>
-            <article class="card" role="listitem">
-              <div class="card__art">
-                <div class="srf">
-                  <div class="srf__bar"><span class="srf__dot"></span> Photos</div>
-                  <div class="srf__body">
-                    <div class="srf__thumbs"><i></i><i></i><i></i></div>
-                    <p class="srf__sub">Sep 2 &mdash; car, driveway</p>
-                  </div>
-                </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--mint">&#10003;</span> No image data sent</span>
-              </div>
-              <div class="card__text">
-                <h3 class="card__title">Remember what you photographed</h3>
-                <p class="small">When you took it and what it was &mdash; without the pictures ever leaving the phone.</p>
-              </div>
-            </article>
-            <article class="card" role="listitem">
-              <div class="card__art">
-                <div class="srf">
-                  <div class="srf__bar"><span class="srf__dot"></span> Messages</div>
-                  <div class="srf__body">
-                    <p class="srf__said">Running 20 late &mdash; start without me.</p>
-                    <div class="srf__acts"><span class="on">Send</span><span>Edit</span></div>
-                  </div>
-                </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--warm">&#9888;</span> Waiting for your tap</span>
-              </div>
-              <div class="card__text">
-                <h3 class="card__title">Draft it, you send it</h3>
-                <p class="small">The message is written and waiting. Sending stays your move, every time.</p>
-              </div>
-            </article>
-            <article class="card" role="listitem">
-              <div class="card__art">
-                <div class="srf">
-                  <div class="srf__bar"><span class="srf__dot"></span> Weather</div>
-                  <div class="srf__body">
-                    <p class="srf__lead">Rain from 4pm</p>
-                    <p class="srf__sub">take the earlier train</p>
-                    <div class="srf__meter srf__meter--calm"><i></i></div>
-                  </div>
-                </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9788;</span> Reading the forecast</span>
-              </div>
-              <div class="card__text">
-                <h3 class="card__title">Check before you leave</h3>
-                <p class="small">The forecast where you actually are, folded into the answer you asked for.</p>
+                <h3 class="card__title">Know what&rsquo;s playing</h3>
+                <p class="small">It can look through your library and say what is on. It will not press play.</p>
               </div>
             </article>
             </div>
@@ -942,16 +894,17 @@ body{
                 <div class="srf">
                   <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
                   <div class="srf__body">
-                    <p class="srf__lead">Reorder weekly groceries</p>
-                    <p class="srf__sub">28 items matched</p>
-                    <div class="srf__meter"><i></i></div>
+                    <p class="srf__line"><s>read</s> reminders &middot; 4 open</p>
+                    <p class="srf__line"><s>read</s> calendar &middot; Thu is clear</p>
+                    <p class="srf__line"><i>&check;</i> matched 28 items</p>
+                    <p class="srf__line"><b>&rarr;</b> reordering groceries</p>
                   </div>
                 </div>
                 <span class="pill pill--a"><span class="pill__ic pill__ic--warm">&#9679;</span> Running on your phone</span>
               </div>
               <div class="card__text">
                 <h3 class="card__title">Run the weekly errands</h3>
-                <p class="small">Groceries reordered, the permit renewed, the one risky step held back for a tap.</p>
+                <p class="small">It checks what is open, when you are free, and only then starts ordering.</p>
               </div>
             </article>
             <article class="card" role="listitem">
@@ -961,6 +914,7 @@ body{
                   <div class="srf__body">
                     <p class="srf__line"><s>open</s> deck.pptx</p>
                     <p class="srf__line"><i>&check;</i> rewrote section 3</p>
+                    <p class="srf__line"><i>&check;</i> rebuilt the chart</p>
                     <p class="srf__line"><b>&rarr;</b> attaching to draft</p>
                   </div>
                 </div>
@@ -969,6 +923,24 @@ body{
               <div class="card__text">
                 <h3 class="card__title">Keep steering your computer</h3>
                 <p class="small">Leave the desk without leaving its power behind. Text the job, watch it move.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
+                  <div class="srf__body">
+                    <p class="srf__line"><s>read</s> weather &middot; today</p>
+                    <p class="srf__line"><i>&check;</i> rain from 4pm</p>
+                    <p class="srf__line"><s>read</s> calendar &middot; 6:30 dinner</p>
+                    <p class="srf__line"><b>&rarr;</b> suggesting the 3:40 train</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9788;</span> Reading the forecast</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Check before you leave</h3>
+                <p class="small">The forecast and your evening, read together, so the answer is a plan.</p>
               </div>
             </article>
             <article class="card" role="listitem">
@@ -991,6 +963,40 @@ body{
             <article class="card" role="listitem">
               <div class="card__art">
                 <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Photos</div>
+                  <div class="srf__body">
+                    <p class="srf__said srf__said--q">Find photos of my car</p>
+                    <div class="srf__thumbs"><span class="thumb"><svg viewBox="0 0 64 46" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="sky1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9d6e6"/><stop offset="1" stop-color="#e3e9ef"/></linearGradient></defs><rect width="64" height="46" fill="url(#sky1)"/><rect y="29" width="64" height="17" fill="#a9b0b8"/><path d="M6 30 L8 23 Q10 18.5 17 17.5 L34 17.5 Q41 18.5 45.5 23 L54 25 Q58 26 58 30 Z" fill="#2f4256"/><path d="M15.5 17.5 L18.5 12.5 Q19.5 11.5 22.5 11.5 L32.5 11.5 Q34.5 11.5 35.5 13 L39 17.5 Z" fill="#b9cbdd"/><circle cx="17.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="17.5" cy="30.5" r="2.1" fill="#8d939b"/><circle cx="46.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="46.5" cy="30.5" r="2.1" fill="#8d939b"/></svg></span><span class="thumb"><svg viewBox="0 0 64 46" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="sky2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6ddd2"/><stop offset="1" stop-color="#f2ece4"/></linearGradient></defs><rect width="64" height="46" fill="url(#sky2)"/><rect y="29" width="64" height="17" fill="#bcb2a4"/><path d="M6 30 L8 23 Q10 18.5 17 17.5 L34 17.5 Q41 18.5 45.5 23 L54 25 Q58 26 58 30 Z" fill="#7c3b2c"/><path d="M15.5 17.5 L18.5 12.5 Q19.5 11.5 22.5 11.5 L32.5 11.5 Q34.5 11.5 35.5 13 L39 17.5 Z" fill="#d8c9b8"/><circle cx="17.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="17.5" cy="30.5" r="2.1" fill="#8d939b"/><circle cx="46.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="46.5" cy="30.5" r="2.1" fill="#8d939b"/></svg></span><span class="thumb"><svg viewBox="0 0 64 46" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="sky3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d3dcd6"/><stop offset="1" stop-color="#e9eee9"/></linearGradient></defs><rect width="64" height="46" fill="url(#sky3)"/><rect y="29" width="64" height="17" fill="#a8b2aa"/><path d="M6 30 L8 23 Q10 18.5 17 17.5 L34 17.5 Q41 18.5 45.5 23 L54 25 Q58 26 58 30 Z" fill="#3d4a44"/><path d="M15.5 17.5 L18.5 12.5 Q19.5 11.5 22.5 11.5 L32.5 11.5 Q34.5 11.5 35.5 13 L39 17.5 Z" fill="#c3d0c7"/><circle cx="17.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="17.5" cy="30.5" r="2.1" fill="#8d939b"/><circle cx="46.5" cy="30.5" r="5.2" fill="#15191f"/><circle cx="46.5" cy="30.5" r="2.1" fill="#8d939b"/></svg></span></div>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9635;</span> 9 photos scanned</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Find photos of my car</h3>
+                <p class="small">Ask in plain words. It finds them without you scrolling a single album.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Contacts</div>
+                  <div class="srf__body">
+                    <p class="srf__lead">Sam Ortiz</p>
+                    <p class="srf__sub">mobile &middot; home</p>
+                    <p class="srf__lead srf__lead--muted">Samira Khan</p>
+                    <p class="srf__sub">work</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9906;</span> Searching by name</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Find the right person</h3>
+                <p class="small">A first name is enough. It resolves who you meant without opening Contacts.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
                   <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
                   <div class="srf__body">
                     <p class="srf__said">Push my 2pm and tell Sam.</p>
@@ -1007,67 +1013,18 @@ body{
             <article class="card" role="listitem">
               <div class="card__art">
                 <div class="srf">
-                  <div class="srf__bar"><span class="srf__dot"></span> Contacts</div>
+                  <div class="srf__bar"><span class="srf__dot"></span> Music</div>
                   <div class="srf__body">
-                    <p class="srf__lead">Sam Ortiz</p>
-                    <p class="srf__sub">mobile &middot; home</p>
-                    <p class="srf__deny">&ldquo;list everyone&rdquo; &mdash; refused</p>
+                    <p class="srf__said srf__said--q">What was that song this morning?</p>
+                    <p class="srf__lead">Weightless</p>
+                    <p class="srf__sub">Marconi Union &middot; since 8:12</p>
                   </div>
                 </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9906;</span> Searching by name</span>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--mint">&#10003;</span> No playback control</span>
               </div>
               <div class="card__text">
-                <h3 class="card__title">Find the right person</h3>
-                <p class="small">A first name is enough. It resolves who you meant without opening Contacts.</p>
-              </div>
-            </article>
-            <article class="card" role="listitem">
-              <div class="card__art">
-                <div class="srf">
-                  <div class="srf__bar"><span class="srf__dot"></span> Photos</div>
-                  <div class="srf__body">
-                    <div class="srf__thumbs"><i></i><i></i><i></i></div>
-                    <p class="srf__sub">Sep 2 &mdash; car, driveway</p>
-                  </div>
-                </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--mint">&#10003;</span> No image data sent</span>
-              </div>
-              <div class="card__text">
-                <h3 class="card__title">Remember what you photographed</h3>
-                <p class="small">When you took it and what it was &mdash; without the pictures ever leaving the phone.</p>
-              </div>
-            </article>
-            <article class="card" role="listitem">
-              <div class="card__art">
-                <div class="srf">
-                  <div class="srf__bar"><span class="srf__dot"></span> Messages</div>
-                  <div class="srf__body">
-                    <p class="srf__said">Running 20 late &mdash; start without me.</p>
-                    <div class="srf__acts"><span class="on">Send</span><span>Edit</span></div>
-                  </div>
-                </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--warm">&#9888;</span> Waiting for your tap</span>
-              </div>
-              <div class="card__text">
-                <h3 class="card__title">Draft it, you send it</h3>
-                <p class="small">The message is written and waiting. Sending stays your move, every time.</p>
-              </div>
-            </article>
-            <article class="card" role="listitem">
-              <div class="card__art">
-                <div class="srf">
-                  <div class="srf__bar"><span class="srf__dot"></span> Weather</div>
-                  <div class="srf__body">
-                    <p class="srf__lead">Rain from 4pm</p>
-                    <p class="srf__sub">take the earlier train</p>
-                    <div class="srf__meter srf__meter--calm"><i></i></div>
-                  </div>
-                </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9788;</span> Reading the forecast</span>
-              </div>
-              <div class="card__text">
-                <h3 class="card__title">Check before you leave</h3>
-                <p class="small">The forecast where you actually are, folded into the answer you asked for.</p>
+                <h3 class="card__title">Know what&rsquo;s playing</h3>
+                <p class="small">It can look through your library and say what is on. It will not press play.</p>
               </div>
             </article>
             </div>
@@ -1155,171 +1112,6 @@ body{
               </p>
             </div>
           </article>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <!-- ============ connected surfaces ============ -->
-  <div class="shell">
-    <section class="panel">
-      <div class="inner">
-        <div class="section-head">
-          <h2 class="h2">It already knows your phone.</h2>
-          <p class="lede">Calendar, reminders, contacts, photos, music &mdash; read straight off the device you&rsquo;re holding.</p>
-        </div>
-
-        <div class="tabs">
-          <div class="tabs__track" role="tablist" aria-label="Connected surfaces">
-            <button class="tab" role="tab" id="tab-reminders" aria-controls="panel-reminders" aria-selected="true">Reminders</button>
-            <button class="tab" role="tab" id="tab-calendar"  aria-controls="panel-calendar"  aria-selected="false">Calendar</button>
-            <button class="tab" role="tab" id="tab-contacts"  aria-controls="panel-contacts"  aria-selected="false">Contacts</button>
-            <button class="tab" role="tab" id="tab-photos"    aria-controls="panel-photos"    aria-selected="false">Photos</button>
-            <button class="tab" role="tab" id="tab-music"     aria-controls="panel-music"     aria-selected="false">Music</button>
-          </div>
-        </div>
-
-        <div class="tabpanels">
-
-          <div class="tabpanel" role="tabpanel" id="panel-reminders" aria-labelledby="tab-reminders">
-            <div class="tabpanel__copy">
-              <h3 class="h3">&ldquo;What&rsquo;s still open today?&rdquo;</h3>
-              <p class="body">It reads the reminders you already keep &mdash; no new list to maintain, no re-entering anything.</p>
-              <ul class="tabpanel__list">
-                <li>Only what&rsquo;s still incomplete, soonest first</li>
-                <li>Capped at a handful, never the whole database</li>
-                <li>Reading is free; adding one asks you first</li>
-              </ul>
-            </div>
-            <div class="tabpanel__art">
-              <div class="shot">
-                <div class="ios" aria-hidden="true">
-                  <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span></div>
-                  <div class="ios__nav"><span class="ios__title">Reminders</span><span class="ios__pill">3 open</span></div>
-                  <div class="ios__screen">
-                    <div class="bubble bubble--me">What&rsquo;s still open today?</div>
-                    <div class="trow"><span class="trow__glyph trow__glyph--warm">&#9873;</span><div class="trow__body"><p class="trow__title">Renew passport</p><p class="trow__meta">due today</p></div></div>
-                    <div class="trow"><span class="trow__glyph">&#9679;</span><div class="trow__body"><p class="trow__title">Call the landlord</p><p class="trow__meta">no date</p></div></div>
-                    <div class="trow"><span class="trow__glyph">&#9679;</span><div class="trow__body"><p class="trow__title">Book the dentist</p><p class="trow__meta">Thursday</p></div></div>
-                    <div class="refuse"><b>&ldquo;add one&rdquo;</b> &mdash; asks you first</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="tabpanel" role="tabpanel" id="panel-calendar" aria-labelledby="tab-calendar" hidden>
-            <div class="tabpanel__copy">
-              <h3 class="h3">&ldquo;Am I free Thursday afternoon?&rdquo;</h3>
-              <p class="body">Your real calendar, on the device, answered in one line instead of three taps and a scroll.</p>
-              <ul class="tabpanel__list">
-                <li>Reads the window you asked about, not your life</li>
-                <li>Works across the accounts already on the phone</li>
-                <li>Creating an event is a separate, confirmed step</li>
-              </ul>
-            </div>
-            <div class="tabpanel__art">
-              <div class="shot">
-                <div class="ios" aria-hidden="true">
-                  <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span></div>
-                  <div class="ios__nav"><span class="ios__title">Thursday</span><span class="ios__pill">Sep 11</span></div>
-                  <div class="ios__screen">
-                    <div class="bubble bubble--me">Am I free Thursday afternoon?</div>
-                    <div class="bubble bubble--it">Clear from 12 to 5. Two things in the morning.</div>
-                    <div class="trow"><span class="trow__glyph trow__glyph--cool">&#9635;</span><div class="trow__body"><p class="trow__title">Standup</p><p class="trow__meta">9:30 &ndash; 9:45</p></div></div>
-                    <div class="trow"><span class="trow__glyph trow__glyph--plum">&#9635;</span><div class="trow__body"><p class="trow__title">Design review</p><p class="trow__meta">11:00 &ndash; 12:00</p></div></div>
-                    <div class="trow trow--tint"><span class="trow__glyph trow__glyph--mint">&#10003;</span><div class="trow__body"><p class="trow__title">Free until 5</p><p class="trow__meta">nothing booked</p></div></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="tabpanel" role="tabpanel" id="panel-contacts" aria-labelledby="tab-contacts" hidden>
-            <div class="tabpanel__copy">
-              <h3 class="h3">&ldquo;Text Sam that I&rsquo;m running late.&rdquo;</h3>
-              <p class="body">It resolves the name to the right person. It cannot page through your address book.</p>
-              <ul class="tabpanel__list">
-                <li>Search by name only &mdash; never listable</li>
-                <li>A few matches, a few numbers each</li>
-                <li>The message is drafted for you to send</li>
-              </ul>
-            </div>
-            <div class="tabpanel__art">
-              <div class="shot">
-                <div class="ios" aria-hidden="true">
-                  <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span></div>
-                  <div class="ios__nav"><span class="ios__title">Contacts</span><span class="ios__pill">&ldquo;sam&rdquo;</span></div>
-                  <div class="ios__screen">
-                    <div class="bubble bubble--me">Text Sam I&rsquo;m running late.</div>
-                    <div class="trow"><span class="trow__glyph trow__glyph--mint">SO</span><div class="trow__body"><p class="trow__title">Sam Ortiz</p><p class="trow__meta">mobile &middot; home</p></div><span class="trow__tail">match</span></div>
-                    <div class="trow"><span class="trow__glyph trow__glyph--cool">SK</span><div class="trow__body"><p class="trow__title">Samira Khan</p><p class="trow__meta">work</p></div></div>
-                    <div class="refuse"><b>&ldquo;list all my contacts&rdquo;</b> &mdash; refused</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="tabpanel" role="tabpanel" id="panel-photos" aria-labelledby="tab-photos" hidden>
-            <div class="tabpanel__copy">
-              <h3 class="h3">&ldquo;When did I last photograph the car?&rdquo;</h3>
-              <p class="body">It can tell you what and when. The pictures themselves never leave the phone.</p>
-              <ul class="tabpanel__list">
-                <li>Descriptions and dates only &mdash; no image data</li>
-                <li>Most recent first, a small window at a time</li>
-                <li>Nothing is uploaded to answer the question</li>
-              </ul>
-            </div>
-            <div class="tabpanel__art">
-              <div class="shot">
-                <div class="ios" aria-hidden="true">
-                  <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span></div>
-                  <div class="ios__nav"><span class="ios__title">Photos</span><span class="ios__pill">recent</span></div>
-                  <div class="ios__screen">
-                    <div class="bubble bubble--me">When did I last photograph the car?</div>
-                    <div class="frames"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                    <div class="trow"><span class="trow__glyph trow__glyph--cool">&#9635;</span><div class="trow__body"><p class="trow__title">Sep 2 &mdash; car, driveway</p><p class="trow__meta">9 photos scanned &middot; Aug 12 &ndash; Sep 2</p></div></div>
-                    <div class="refuse">descriptions only &mdash; <b>no image data leaves the phone</b></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="tabpanel" role="tabpanel" id="panel-music" aria-labelledby="tab-music" hidden>
-            <div class="tabpanel__copy">
-              <h3 class="h3">&ldquo;What was that song this morning?&rdquo;</h3>
-              <p class="body">It can look through your library and tell you what&rsquo;s playing. It will not press play.</p>
-              <ul class="tabpanel__list">
-                <li>Now playing, and search across your library</li>
-                <li>No playback control &mdash; on purpose</li>
-                <li>Asking it to skip a track is refused</li>
-              </ul>
-            </div>
-            <div class="tabpanel__art">
-              <div class="shot">
-                <div class="ios" aria-hidden="true">
-                  <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span></div>
-                  <div class="ios__nav"><span class="ios__title">Music</span><span class="ios__pill"><span class="live-dot live-dot--work"></span> playing</span></div>
-                  <div class="ios__screen">
-                    <div class="bubble bubble--me">What was that song this morning?</div>
-                    <div class="np">
-                      <span class="np__art"></span>
-                      <div class="trow__body">
-                        <p class="trow__title">Weightless</p>
-                        <p class="trow__meta">Marconi Union &middot; since 8:12</p>
-                        <div class="np__scrub"><i></i></div>
-                      </div>
-                    </div>
-                    <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                    <div class="refuse"><b>&ldquo;skip this&rdquo;</b> &mdash; refused, there is no play verb</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
         </div>
       </div>
     </section>
@@ -1459,33 +1251,6 @@ body{
   [].slice.call(document.querySelectorAll('video')).forEach(function (video) {
     video.removeAttribute('autoplay');
     video.pause();
-  });
-})();
-
-(function () {
-  var tabs = [].slice.call(document.querySelectorAll('.tab'));
-  if (!tabs.length) return;
-
-  function select(tab) {
-    tabs.forEach(function (other) {
-      var panel = document.getElementById(other.getAttribute('aria-controls'));
-      var on = other === tab;
-      other.setAttribute('aria-selected', on ? 'true' : 'false');
-      if (panel) panel.hidden = !on;
-    });
-  }
-
-  tabs.forEach(function (tab, index) {
-    tab.addEventListener('click', function () { select(tab); });
-    tab.addEventListener('keydown', function (event) {
-      var next = null;
-      if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length];
-      if (event.key === 'ArrowLeft') next = tabs[(index - 1 + tabs.length) % tabs.length];
-      if (!next) return;
-      event.preventDefault();
-      select(next);
-      next.focus();
-    });
   });
 })();
 
