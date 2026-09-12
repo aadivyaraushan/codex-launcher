@@ -630,10 +630,35 @@ body{
 .bridge__bar span{ margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--faint); }
 .bridge__body{ padding: 12px; }
 
+/* ---------- real footage ---------- */
+
+.feature__art--film{
+  display: flex; align-items: flex-start; justify-content: center;
+  position: relative;
+  padding-top: 0;
+  background: #fff;
+}
+.film{
+  width: 300px; max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 20px;
+  border: 1px solid rgba(0,0,0,.09);
+  box-shadow: 0 12px 34px rgba(0,0,0,.10), 0 1px 3px rgba(0,0,0,.05);
+  background: #fff;
+}
+.film__badge{
+  position: absolute; top: 14px; right: 14px;
+  background: rgba(10,10,10,.82); color: var(--on-dark);
+  font-size: 11px; font-weight: 600; letter-spacing: .01em;
+  padding: 5px 9px; border-radius: 999px;
+  backdrop-filter: blur(6px);
+}
+
 /* ---------- art boxes: full-bleed, no dead space ---------- */
 
 .card__art{ height: 216px; padding: 0; background: #f0f0f0; }
-.feature__art{ height: 340px; padding: 0; background: #f0f0f0; }
+.feature__art{ height: 400px; padding: 0; background: #f0f0f0; }
 .pillar__art{ margin-top: 24px; height: 250px; position: relative; }
 .tabpanel__art{ height: 380px; position: relative; }
 .tabpanel__art .ios{ top: 0; }
@@ -667,7 +692,7 @@ body{
   .card{ width: 286px; }
   .rail{ gap: 16px; }
   .card__art{ height: 196px; }
-  .feature__art{ height: 290px; }
+  .feature__art{ height: 330px; }
   .nav__link{ font-size: 15px; }
   .btn{ font-size: 16px; }
   .waitlist__row input[type="email"]{ font-size: 17px; }
@@ -911,36 +936,20 @@ body{
 
         <div class="duo-grid">
           <article class="feature">
-            <div class="feature__art">
-              <div class="shot shot--peek">
-                <div class="ios" aria-hidden="true">
-                  <div class="ios__status">
-                    <span>9:41</span>
-                    <span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span>
-                  </div>
-                  <div class="ios__nav">
-                    <span class="ios__title">Operator</span>
-                    <span class="ios__pill"><span class="live-dot"></span> ready</span>
-                  </div>
-                  <div class="ios__screen">
-                    <div class="bubble bubble--me">Handle tonight. I don&rsquo;t want to open a single app.</div>
-                    <div class="bubble bubble--it">Checked your calendar &mdash; you&rsquo;re free after 6:30. Booking the usual table and texting Alex?</div>
-                    <div class="pills"><span class="on">Go ahead</span><span>Pick another time</span></div>
-                    <div class="composer">
-                      Text what you want done<span class="composer__caret"></span>
-                      <span class="composer__go"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6H10M10 6L6.5 2.5M10 6L6.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-                    </div>
-                    <p class="ios__kicker">Your apps, untouched</p>
-                    <div class="apps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                  </div>
-                </div>
-              </div>
+            <div class="feature__art feature__art--film">
+              <video class="film" autoplay loop muted playsinline preload="metadata"
+                     poster="/landing/media/operator-demo-poster.jpg"
+                     aria-label="Operator answering what is on my plate today by reading the reminders and calendar already on the phone">
+                <source src="/landing/media/operator-demo.mp4" type="video/mp4" />
+              </video>
+              <span class="film__badge">Real recording &middot; unedited</span>
             </div>
             <div class="feature__text">
               <h3 class="h3">Tell it what you need.</h3>
               <p class="body">
-                Plain language, the way you&rsquo;d text a person. No hunting through forty icons
-                for the one that holds half the answer.
+                Plain language, the way you&rsquo;d text a person. That clip is a real run on a
+                real phone, at the speed it actually happened &mdash; one question, answered from
+                the reminders and calendar already on the device.
               </p>
             </div>
           </article>
@@ -1290,6 +1299,16 @@ body{
 </footer>
 
 <script>
+(function () {
+  // The page already honours prefers-reduced-motion for every CSS animation.
+  // A looping video is the one thing CSS cannot stop, so stop it here.
+  if (!window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  [].slice.call(document.querySelectorAll('video')).forEach(function (video) {
+    video.removeAttribute('autoplay');
+    video.pause();
+  });
+})();
+
 (function () {
   var tabs = [].slice.call(document.querySelectorAll('.tab'));
   if (!tabs.length) return;
