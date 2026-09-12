@@ -56,6 +56,12 @@ a { color: inherit; text-decoration: none; }
 html{ background: var(--page); scroll-behavior: smooth; scroll-padding-top: calc(var(--nav-h) + 16px); }
 
 @media (prefers-reduced-motion: reduce){
+  /* the rail is the one animation that carries content, so it becomes a
+     plain scroller rather than freezing mid-slide */
+  .rail-wrap{ overflow-x: auto; -webkit-mask-image: none; mask-image: none; }
+  .marquee{ width: auto; }
+  .marquee__track{ animation: none !important; transform: none !important; }
+  .marquee__track:last-child{ display: none; }
   html{ scroll-behavior: auto; }
   *, *::before, *::after{
     animation-duration: .01ms !important;
@@ -185,54 +191,115 @@ body{
 .hero .lede{ margin-top: 20px; }
 .hero__cta{ margin-top: 32px; }
 
-/* ---------- horizontal card rail ---------- */
+/* ---------- moving card rail ---------- */
 
-.rail-wrap{ margin-top: 64px; position: relative; }
-.rail{
-  display: flex; gap: 24px;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-  padding-bottom: 8px;
+.rail-wrap{
+  margin-top: 64px;
   margin-inline: calc(var(--inner) * -1);
-  padding-inline: var(--inner);
-  scrollbar-width: none;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
+          mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
 }
-.rail::-webkit-scrollbar{ display: none; }
+.marquee{ display: flex; width: max-content; }
+.marquee__track{
+  display: flex; gap: 22px; padding-right: 22px;
+  animation: rail 64s linear infinite;
+}
+@keyframes rail{ from { transform: translateX(0); } to { transform: translateX(-100%); } }
+.rail-wrap:hover .marquee__track{ animation-play-state: paused; }
 
 .card{
   flex: 0 0 auto;
-  width: 360px;
-  scroll-snap-align: start;
+  width: 340px;
   background: #fff;
-  border: 1px solid rgba(0,0,0,.09);
-  border-radius: var(--r-card);
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 16px;
   overflow: hidden;
   display: flex; flex-direction: column;
-  transition: box-shadow .18s ease, transform .18s ease;
 }
-.card:hover{ box-shadow: 0 8px 28px rgba(0,0,0,.07); transform: translateY(-2px); }
 .card__art{
-  height: 200px;
-  background: var(--panel);
+  height: 230px;
+  background: linear-gradient(170deg, #f3f3f4, #ebebed);
   border-bottom: 1px solid var(--hairline-2);
   overflow: hidden;
   position: relative;
-  display: flex; align-items: flex-start; justify-content: center;
-  padding: 14px;
+  display: flex; align-items: center; justify-content: center;
 }
-.card__text{ padding: 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
-.card__title{ font-size: 14px; font-weight: 600; line-height: 1.25; color: #040404; }
-.card__meta{ display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 4px; }
-.chip{
-  display: inline-flex; align-items: center; gap: 6px;
-  background: var(--panel);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 12px; font-weight: 500; color: var(--muted-2);
+.card__text{ padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 6px; }
+.card__title{ font-size: 16px; font-weight: 600; line-height: 1.3; letter-spacing: -.01em; color: #040404; }
+
+/* the surface: one calm panel, not a dense screen */
+.srf{
+  width: 246px;
+  height: 172px;
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(0,0,0,.06);
+  box-shadow: 0 14px 34px rgba(0,0,0,.11), 0 2px 6px rgba(0,0,0,.04);
+  overflow: hidden;
+  transform: translateY(-10px);
+}
+.srf__bar{
+  display: flex; align-items: center; gap: 7px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--hairline-2);
+  font-size: 11.5px; font-weight: 600; color: var(--muted-2);
+}
+.srf__bar--mac em{ width: 8px; height: 8px; border-radius: 50%; background: #e2e2e4; display: block; }
+.srf__bar--mac span{ margin-left: 4px; color: var(--faint); font-weight: 500; }
+.srf__dot{ width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
+.srf__body{ padding: 15px 16px 17px; }
+.srf__lead{ font-size: 15px; font-weight: 600; letter-spacing: -.012em; color: var(--ink); }
+.srf__lead--muted{ color: var(--muted-2); font-weight: 500; margin-top: 12px; }
+.srf__sub{ font-size: 12.5px; color: var(--faint); font-weight: 500; margin-top: 4px; }
+.srf__said{ font-size: 14px; font-weight: 500; line-height: 1.4; color: var(--ink); }
+.srf__line{ font-size: 12.5px; line-height: 1.9; color: var(--muted-2); font-weight: 500; }
+.srf__line s{ text-decoration: none; color: var(--faint); }
+.srf__line i{ font-style: normal; color: var(--ok); font-weight: 700; }
+.srf__line b{ color: var(--signal); }
+.srf__meter{ height: 4px; border-radius: 3px; background: #eee; margin-top: 14px; overflow: hidden; }
+.srf__meter i{ display: block; height: 100%; width: 46%; border-radius: 3px; background: var(--signal); }
+.srf__meter--calm i{ background: #b9c6d6; width: 68%; }
+.srf__field{
+  margin-top: 14px; border: 1px solid rgba(0,0,0,.1); border-radius: 999px;
+  padding: 9px 14px; font-size: 12.5px; color: var(--faint);
+}
+.caret{ display: inline-block; width: 1.5px; height: 12px; background: var(--signal); vertical-align: -2px; margin-left: 2px; animation: caret 1.1s step-end infinite; }
+.srf__deny{
+  margin-top: 13px; border-top: 1px dashed rgba(0,0,0,.14); padding-top: 11px;
+  font-size: 12px; color: var(--muted-2); font-weight: 500;
+}
+.srf__acts{ display: flex; gap: 7px; margin-top: 14px; }
+.srf__acts span{ font-size: 12px; font-weight: 600; border-radius: 999px; padding: 6px 13px; background: #f1f1f1; color: var(--muted-2); }
+.srf__acts span.on{ background: var(--ink); color: var(--on-dark); }
+.srf__thumbs{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.srf__thumbs i{ display: block; height: 46px; border-radius: 8px; }
+.srf__thumbs i:nth-child(1){ background: linear-gradient(160deg, #cfd9e4, #aebccd); }
+.srf__thumbs i:nth-child(2){ background: linear-gradient(160deg, #e6ddd3, #cbbaa8); }
+.srf__thumbs i:nth-child(3){ background: linear-gradient(160deg, #d6e2d8, #b3c7b7); }
+
+/* the floating action chip, lifted off the surface */
+.pill{
+  position: absolute;
+  left: 16px; bottom: 16px;
+  display: inline-flex; align-items: center; gap: 9px;
+  background: #fff;
+  border-radius: 13px;
+  padding: 11px 15px;
+  font-size: 13.5px; font-weight: 600; letter-spacing: -.005em;
+  color: var(--ink);
+  box-shadow: 0 14px 32px rgba(0,0,0,.17), 0 2px 6px rgba(0,0,0,.06);
   white-space: nowrap;
 }
-.chip__dot{ width: 6px; height: 6px; border-radius: 50%; background: var(--signal); }
-.chip__dot--ok{ background: var(--ok); }
+.pill__ic{
+  width: 21px; height: 21px; border-radius: 7px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #f0f0f0; color: var(--muted-2); font-size: 11px;
+}
+.pill__ic--warm{ background: #ffe9e3; color: var(--rust); }
+.pill__ic--cool{ background: #e4eefb; color: #2b6fc4; }
+.pill__ic--mint{ background: #e3f3ea; color: #1f7a4a; }
+.pill__ic--plum{ background: #efe8f8; color: #6b48a8; }
 
 /* ---------- two-up feature cards ---------- */
 
@@ -647,13 +714,6 @@ body{
   box-shadow: 0 12px 34px rgba(0,0,0,.10), 0 1px 3px rgba(0,0,0,.05);
   background: #fff;
 }
-.film__badge{
-  position: absolute; top: 14px; right: 14px;
-  background: rgba(10,10,10,.82); color: var(--on-dark);
-  font-size: 11px; font-weight: 600; letter-spacing: .01em;
-  padding: 5px 9px; border-radius: 999px;
-  backdrop-filter: blur(6px);
-}
 
 /* ---------- art boxes: full-bleed, no dead space ---------- */
 
@@ -689,9 +749,11 @@ body{
   .hero{ padding-top: 56px; }
   .plain{ padding-block: 48px; }
   .panel{ padding-block: 56px; }
-  .card{ width: 286px; }
-  .rail{ gap: 16px; }
-  .card__art{ height: 196px; }
+  .card{ width: 280px; }
+  .marquee__track{ gap: 16px; padding-right: 16px; }
+  .card__art{ height: 210px; }
+  .srf{ width: 224px; height: 160px; }
+  .pill{ font-size: 12.5px; padding: 9px 12px; left: 12px; bottom: 12px; }
   .feature__art{ height: 330px; }
   .nav__link{ font-size: 15px; }
   .btn{ font-size: 16px; }
@@ -709,7 +771,6 @@ body{
       <img src="/landing/brand/operator-logo-dark.svg" alt="Operator" width="119" height="28" />
     </a>
     <div class="nav__actions">
-      <a class="nav__link" href="https://github.com/aadivyaraushan/operator">GitHub</a>
       <a class="btn btn--primary btn--sm" href="#waitlist">Join the waitlist</a>
     </div>
   </div>
@@ -739,183 +800,277 @@ body{
         </div>
 
         <div class="rail-wrap">
-          <div class="rail" role="list" aria-label="Things you can hand to Operator">
-
+          <div class="marquee" role="list" aria-label="Things you can hand to Operator">
+            <div class="marquee__track">
             <article class="card" role="listitem">
               <div class="card__art">
-                <div class="shot shot--mid">
-                  <div class="ios" aria-hidden="true">
-                    <div class="ios__status">
-                      <span>9:41</span>
-                      <span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span>
-                    </div>
-                    <div class="ios__nav">
-                      <span class="ios__title">Operator</span>
-                      <span class="ios__pill"><span class="live-dot live-dot--work"></span> 2 running</span>
-                    </div>
-                    <div class="ios__screen">
-                      <p class="ios__kicker">Active</p>
-                      <div class="trow">
-                        <span class="trow__glyph trow__glyph--mint">&#9679;</span>
-                        <div class="trow__body">
-                          <p class="trow__title">Reorder weekly groceries</p>
-                          <p class="trow__meta">28 items matched &middot; on phone</p>
-                          <div class="prog"><i></i></div>
-                        </div>
-                      </div>
-                      <div class="trow">
-                        <span class="trow__glyph trow__glyph--warm">&#9888;</span>
-                        <div class="trow__body">
-                          <p class="trow__title">Pay the electricity bill</p>
-                          <p class="trow__meta">$84.20 &middot; waiting for your tap</p>
-                        </div>
-                      </div>
-                      <div class="trow trow--tint">
-                        <span class="trow__glyph trow__glyph--cool">&#10003;</span>
-                        <div class="trow__body">
-                          <p class="trow__title">Renewed the parking permit</p>
-                          <p class="trow__meta">done 8 min ago</p>
-                        </div>
-                      </div>
-                    </div>
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
+                  <div class="srf__body">
+                    <p class="srf__lead">Reorder weekly groceries</p>
+                    <p class="srf__sub">28 items matched</p>
+                    <div class="srf__meter"><i></i></div>
                   </div>
                 </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--warm">&#9679;</span> Running on your phone</span>
               </div>
               <div class="card__text">
                 <h3 class="card__title">Run the weekly errands</h3>
                 <p class="small">Groceries reordered, the permit renewed, the one risky step held back for a tap.</p>
-                <div class="card__meta">
-                  <span class="chip"><span class="chip__dot"></span> on phone</span>
-                  <span class="chip">one tap to confirm</span>
-                </div>
               </div>
             </article>
-
             <article class="card" role="listitem">
               <div class="card__art">
-                <div class="shot shot--peek">
-                  <div class="bridge" aria-hidden="true">
-                    <div class="ios" style="position:relative; width:150px; top:0">
-                      <div class="ios__status"><span>9:41</span><span class="ios__signal"><i style="height:5px"></i><i style="height:8px"></i></span></div>
-                      <div class="ios__nav" style="padding:6px 12px 8px"><span class="ios__title" style="font-size:14px">Operator</span></div>
-                      <div class="ios__screen" style="padding:10px">
-                        <div class="bubble bubble--me" style="font-size:12px; max-width:100%">Finish the slides on my laptop and email them to Priya.</div>
-                        <div class="bubble bubble--it" style="font-size:12px"><span class="typing"><i></i><i></i><i></i></span></div>
-                      </div>
-                    </div>
-                    <div class="bridge__mac">
-                      <div class="bridge__bar"><em></em><em></em><em></em><span>MacBook Pro</span></div>
-                      <div class="bridge__body">
-                        <div class="log">
-                          <div><s>open</s> <span>deck.pptx</span></div>
-                          <div><i>&check;</i> <span>rewrote section 3</span></div>
-                          <div><i>&check;</i> <span>rebuilt the chart</span></div>
-                          <div><b>&rarr;</b> <span>attaching to draft&hellip;</span></div>
-                        </div>
-                      </div>
-                    </div>
+                <div class="srf srf--mac">
+                  <div class="srf__bar srf__bar--mac"><em></em><em></em><em></em> <span>deck.pptx</span></div>
+                  <div class="srf__body">
+                    <p class="srf__line"><s>open</s> deck.pptx</p>
+                    <p class="srf__line"><i>&check;</i> rewrote section 3</p>
+                    <p class="srf__line"><b>&rarr;</b> attaching to draft</p>
                   </div>
                 </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9635;</span> On your MacBook</span>
               </div>
               <div class="card__text">
                 <h3 class="card__title">Keep steering your computer</h3>
                 <p class="small">Leave the desk without leaving its power behind. Text the job, watch it move.</p>
-                <div class="card__meta">
-                  <span class="chip"><span class="chip__dot"></span> phone &rarr; computer</span>
-                </div>
               </div>
             </article>
-
             <article class="card" role="listitem">
               <div class="card__art">
-                <div class="shot shot--mid">
-                  <div class="ios" aria-hidden="true">
-                    <div class="ios__status">
-                      <span>9:41</span>
-                      <span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span>
-                    </div>
-                    <div class="ios__nav">
-                      <span class="ios__title">Today</span>
-                      <span class="ios__pill">Thu 11</span>
-                    </div>
-                    <div class="ios__screen">
-                      <div class="trow">
-                        <span class="trow__glyph trow__glyph--cool">&#9635;</span>
-                        <div class="trow__body">
-                          <p class="trow__title">Standup</p>
-                          <p class="trow__meta">9:30 &ndash; 9:45 &middot; Calendar</p>
-                        </div>
-                        <span class="trow__tail">now</span>
-                      </div>
-                      <div class="trow">
-                        <span class="trow__glyph trow__glyph--warm">&#9873;</span>
-                        <div class="trow__body">
-                          <p class="trow__title">Renew passport</p>
-                          <p class="trow__meta">due today &middot; Reminders</p>
-                        </div>
-                      </div>
-                      <div class="trow">
-                        <span class="trow__glyph trow__glyph--plum">&#9788;</span>
-                        <div class="trow__body">
-                          <p class="trow__title">Rain from 4pm</p>
-                          <p class="trow__meta">take the earlier train</p>
-                        </div>
-                      </div>
-                      <div class="trow trow--tint">
-                        <span class="trow__glyph trow__glyph--mint">&#9993;</span>
-                        <div class="trow__body">
-                          <p class="trow__title">3 mails need a reply</p>
-                          <p class="trow__meta">read, not answered</p>
-                        </div>
-                      </div>
-                    </div>
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Today</div>
+                  <div class="srf__body">
+                    <p class="srf__lead">Renew passport</p>
+                    <p class="srf__sub">due today &middot; Reminders</p>
+                    <p class="srf__lead srf__lead--muted">Standup &middot; 9:30</p>
                   </div>
                 </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--mint">&#10003;</span> Read, nothing changed</span>
               </div>
               <div class="card__text">
                 <h3 class="card__title">Answer &ldquo;what&rsquo;s on my plate?&rdquo;</h3>
-                <p class="small">One ask, pulled from calendar, reminders, mail and the forecast at once.</p>
-                <div class="card__meta">
-                  <span class="chip"><span class="chip__dot chip__dot--ok"></span> read only</span>
-                  <span class="chip">stays on device</span>
-                </div>
+                <p class="small">One ask, pulled from calendar, reminders and the forecast at once.</p>
               </div>
             </article>
-
             <article class="card" role="listitem">
               <div class="card__art">
-                <div class="shot shot--mid">
-                  <div class="ios" aria-hidden="true">
-                    <div class="ios__status">
-                      <span>9:41</span>
-                      <span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span>
-                    </div>
-                    <div class="ios__nav">
-                      <span class="ios__title">Operator</span>
-                      <span class="ios__pill"><span class="live-dot"></span> ready</span>
-                    </div>
-                    <div class="ios__screen">
-                      <div class="bubble bubble--me">Text Sam I&rsquo;m running 20 late, and push my 2pm.</div>
-                      <div class="bubble bubble--it">Found Sam Ortiz. Drafted the text and moved Design review to 2:30 &mdash; send it?</div>
-                      <div class="pills"><span class="on">Send</span><span>Edit</span><span>Cancel</span></div>
-                      <div class="composer">
-                        Text what you want done<span class="composer__caret"></span>
-                        <span class="composer__go"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6H10M10 6L6.5 2.5M10 6L6.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-                      </div>
-                    </div>
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
+                  <div class="srf__body">
+                    <p class="srf__said">Push my 2pm and tell Sam.</p>
+                    <div class="srf__field">Text what you want done<span class="caret"></span></div>
                   </div>
                 </div>
+                <span class="pill pill--a"><span class="pill__ic">&#9998;</span> Drafting the reply</span>
               </div>
               <div class="card__text">
                 <h3 class="card__title">Just say it</h3>
                 <p class="small">Text your phone like you&rsquo;d text a person. No app to find first.</p>
-                <div class="card__meta">
-                  <span class="chip">plain language</span>
-                  <span class="chip">you send it</span>
-                </div>
               </div>
             </article>
-
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Contacts</div>
+                  <div class="srf__body">
+                    <p class="srf__lead">Sam Ortiz</p>
+                    <p class="srf__sub">mobile &middot; home</p>
+                    <p class="srf__deny">&ldquo;list everyone&rdquo; &mdash; refused</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9906;</span> Searching by name</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Find the right person</h3>
+                <p class="small">A first name is enough. It resolves who you meant without opening Contacts.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Photos</div>
+                  <div class="srf__body">
+                    <div class="srf__thumbs"><i></i><i></i><i></i></div>
+                    <p class="srf__sub">Sep 2 &mdash; car, driveway</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--mint">&#10003;</span> No image data sent</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Remember what you photographed</h3>
+                <p class="small">When you took it and what it was &mdash; without the pictures ever leaving the phone.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Messages</div>
+                  <div class="srf__body">
+                    <p class="srf__said">Running 20 late &mdash; start without me.</p>
+                    <div class="srf__acts"><span class="on">Send</span><span>Edit</span></div>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--warm">&#9888;</span> Waiting for your tap</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Draft it, you send it</h3>
+                <p class="small">The message is written and waiting. Sending stays your move, every time.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Weather</div>
+                  <div class="srf__body">
+                    <p class="srf__lead">Rain from 4pm</p>
+                    <p class="srf__sub">take the earlier train</p>
+                    <div class="srf__meter srf__meter--calm"><i></i></div>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9788;</span> Reading the forecast</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Check before you leave</h3>
+                <p class="small">The forecast where you actually are, folded into the answer you asked for.</p>
+              </div>
+            </article>
+            </div>
+            <div class="marquee__track" aria-hidden="true">
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
+                  <div class="srf__body">
+                    <p class="srf__lead">Reorder weekly groceries</p>
+                    <p class="srf__sub">28 items matched</p>
+                    <div class="srf__meter"><i></i></div>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--warm">&#9679;</span> Running on your phone</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Run the weekly errands</h3>
+                <p class="small">Groceries reordered, the permit renewed, the one risky step held back for a tap.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf srf--mac">
+                  <div class="srf__bar srf__bar--mac"><em></em><em></em><em></em> <span>deck.pptx</span></div>
+                  <div class="srf__body">
+                    <p class="srf__line"><s>open</s> deck.pptx</p>
+                    <p class="srf__line"><i>&check;</i> rewrote section 3</p>
+                    <p class="srf__line"><b>&rarr;</b> attaching to draft</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9635;</span> On your MacBook</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Keep steering your computer</h3>
+                <p class="small">Leave the desk without leaving its power behind. Text the job, watch it move.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Today</div>
+                  <div class="srf__body">
+                    <p class="srf__lead">Renew passport</p>
+                    <p class="srf__sub">due today &middot; Reminders</p>
+                    <p class="srf__lead srf__lead--muted">Standup &middot; 9:30</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--mint">&#10003;</span> Read, nothing changed</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Answer &ldquo;what&rsquo;s on my plate?&rdquo;</h3>
+                <p class="small">One ask, pulled from calendar, reminders and the forecast at once.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
+                  <div class="srf__body">
+                    <p class="srf__said">Push my 2pm and tell Sam.</p>
+                    <div class="srf__field">Text what you want done<span class="caret"></span></div>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic">&#9998;</span> Drafting the reply</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Just say it</h3>
+                <p class="small">Text your phone like you&rsquo;d text a person. No app to find first.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Contacts</div>
+                  <div class="srf__body">
+                    <p class="srf__lead">Sam Ortiz</p>
+                    <p class="srf__sub">mobile &middot; home</p>
+                    <p class="srf__deny">&ldquo;list everyone&rdquo; &mdash; refused</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9906;</span> Searching by name</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Find the right person</h3>
+                <p class="small">A first name is enough. It resolves who you meant without opening Contacts.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Photos</div>
+                  <div class="srf__body">
+                    <div class="srf__thumbs"><i></i><i></i><i></i></div>
+                    <p class="srf__sub">Sep 2 &mdash; car, driveway</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--mint">&#10003;</span> No image data sent</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Remember what you photographed</h3>
+                <p class="small">When you took it and what it was &mdash; without the pictures ever leaving the phone.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Messages</div>
+                  <div class="srf__body">
+                    <p class="srf__said">Running 20 late &mdash; start without me.</p>
+                    <div class="srf__acts"><span class="on">Send</span><span>Edit</span></div>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--warm">&#9888;</span> Waiting for your tap</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Draft it, you send it</h3>
+                <p class="small">The message is written and waiting. Sending stays your move, every time.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Weather</div>
+                  <div class="srf__body">
+                    <p class="srf__lead">Rain from 4pm</p>
+                    <p class="srf__sub">take the earlier train</p>
+                    <div class="srf__meter srf__meter--calm"><i></i></div>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9788;</span> Reading the forecast</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Check before you leave</h3>
+                <p class="small">The forecast where you actually are, folded into the answer you asked for.</p>
+              </div>
+            </article>
+            </div>
           </div>
         </div>
       </div>
@@ -942,7 +1097,6 @@ body{
                      aria-label="Operator answering what is on my plate today by reading the reminders and calendar already on the phone">
                 <source src="/landing/media/operator-demo.mp4" type="video/mp4" />
               </video>
-              <span class="film__badge">Real recording &middot; unedited</span>
             </div>
             <div class="feature__text">
               <h3 class="h3">Tell it what you need.</h3>
@@ -1288,8 +1442,7 @@ body{
 
 <footer class="footer">
   <div class="footer__row">
-    <a href="https://github.com/aadivyaraushan/operator">GitHub</a>
-    <a href="https://github.com/aadivyaraushan/operator/blob/main/LICENSE">Apache 2.0</a>
+    <span>Apache 2.0</span>
     <a href="#waitlist">Waitlist</a>
     <span>&copy; 2026 Operator</span>
   </div>
