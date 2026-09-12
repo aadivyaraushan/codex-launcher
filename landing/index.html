@@ -62,6 +62,8 @@ html{ background: var(--page); scroll-behavior: smooth; scroll-padding-top: calc
   .marquee{ width: auto; }
   .marquee__track{ animation: none !important; transform: none !important; }
   .marquee__track:last-child{ display: none; }
+  .fl{ opacity: 1 !important; animation: none !important; transform: none !important; }
+  .prog--flow i{ width: 100% !important; animation: none !important; }
   html{ scroll-behavior: auto; }
   *, *::before, *::after{
     animation-duration: .01ms !important;
@@ -649,6 +651,56 @@ body{
 .bridge__bar span{ margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--faint); }
 .bridge__body{ padding: 12px; }
 
+
+/* ---------- the run, played out ---------- */
+
+.feature__art--flow .ios{ top: 10px; }
+.fl{ opacity: 0; animation-duration: 13s; animation-iteration-count: infinite; animation-timing-function: cubic-bezier(.2,.7,.3,1); }
+.prog--flow i{ width: 0; animation: flowfill 13s cubic-bezier(.3,.7,.3,1) infinite; }
+@keyframes flowfill{ 0%, 52%{ width: 6%; } 70%, 93%{ width: 100%; } 100%{ width: 100%; } }
+@keyframes fl1{
+  0%, 3%      { opacity: 0; transform: translateY(9px); }
+  7%, 93%   { opacity: 1; transform: none; }
+  100%          { opacity: 0; transform: translateY(-5px); }
+}
+.fl--1{ animation-name: fl1; }
+@keyframes fl2{
+  0%, 14%      { opacity: 0; transform: translateY(9px); }
+  18%, 93%   { opacity: 1; transform: none; }
+  100%          { opacity: 0; transform: translateY(-5px); }
+}
+.fl--2{ animation-name: fl2; }
+@keyframes fl3{
+  0%, 23%      { opacity: 0; transform: translateY(9px); }
+  27%, 93%   { opacity: 1; transform: none; }
+  100%          { opacity: 0; transform: translateY(-5px); }
+}
+.fl--3{ animation-name: fl3; }
+@keyframes fl4{
+  0%, 32%      { opacity: 0; transform: translateY(9px); }
+  36%, 93%   { opacity: 1; transform: none; }
+  100%          { opacity: 0; transform: translateY(-5px); }
+}
+.fl--4{ animation-name: fl4; }
+@keyframes fl5{
+  0%, 41%      { opacity: 0; transform: translateY(9px); }
+  45%, 93%   { opacity: 1; transform: none; }
+  100%          { opacity: 0; transform: translateY(-5px); }
+}
+.fl--5{ animation-name: fl5; }
+@keyframes fl6{
+  0%, 52%      { opacity: 0; transform: translateY(9px); }
+  56%, 93%   { opacity: 1; transform: none; }
+  100%          { opacity: 0; transform: translateY(-5px); }
+}
+.fl--6{ animation-name: fl6; }
+@keyframes fl7{
+  0%, 72%      { opacity: 0; transform: translateY(9px); }
+  76%, 93%   { opacity: 1; transform: none; }
+  100%          { opacity: 0; transform: translateY(-5px); }
+}
+.fl--7{ animation-name: fl7; }
+
 /* ---------- real footage ---------- */
 
 .feature__art--film{
@@ -769,42 +821,6 @@ body{
             </article>
             <article class="card" role="listitem">
               <div class="card__art">
-                <div class="srf srf--mac">
-                  <div class="srf__bar srf__bar--mac"><em></em><em></em><em></em> <span>deck.pptx</span></div>
-                  <div class="srf__body">
-                    <p class="srf__line"><s>open</s> deck.pptx</p>
-                    <p class="srf__line"><i>&check;</i> rewrote section 3</p>
-                    <p class="srf__line"><i>&check;</i> rebuilt the chart</p>
-                    <p class="srf__line"><b>&rarr;</b> attaching to draft</p>
-                  </div>
-                </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9635;</span> On your MacBook</span>
-              </div>
-              <div class="card__text">
-                <h3 class="card__title">Keep steering your computer</h3>
-                <p class="small">Leave the desk without leaving its power behind. Text the job, watch it move.</p>
-              </div>
-            </article>
-            <article class="card" role="listitem">
-              <div class="card__art">
-                <div class="srf">
-                  <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
-                  <div class="srf__body">
-                    <p class="srf__line"><s>read</s> weather &middot; today</p>
-                    <p class="srf__line"><i>&check;</i> rain from 4pm</p>
-                    <p class="srf__line"><s>read</s> calendar &middot; 6:30 dinner</p>
-                    <p class="srf__line"><b>&rarr;</b> suggesting the 3:40 train</p>
-                  </div>
-                </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9788;</span> Reading the forecast</span>
-              </div>
-              <div class="card__text">
-                <h3 class="card__title">Check before you leave</h3>
-                <p class="small">The forecast and your evening, read together, so the answer is a plan.</p>
-              </div>
-            </article>
-            <article class="card" role="listitem">
-              <div class="card__art">
                 <div class="srf">
                   <div class="srf__bar"><span class="srf__dot"></span> Today</div>
                   <div class="srf__body">
@@ -838,6 +854,24 @@ body{
             </article>
             <article class="card" role="listitem">
               <div class="card__art">
+                <div class="srf srf--mac">
+                  <div class="srf__bar srf__bar--mac"><em></em><em></em><em></em> <span>deck.pptx</span></div>
+                  <div class="srf__body">
+                    <p class="srf__line"><s>open</s> deck.pptx</p>
+                    <p class="srf__line"><i>&check;</i> rewrote section 3</p>
+                    <p class="srf__line"><i>&check;</i> rebuilt the chart</p>
+                    <p class="srf__line"><b>&rarr;</b> attaching to draft</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9635;</span> On your MacBook</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Keep steering your computer</h3>
+                <p class="small">Leave the desk without leaving its power behind. Text the job, watch it move.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
                 <div class="srf">
                   <div class="srf__bar"><span class="srf__dot"></span> Contacts</div>
                   <div class="srf__body">
@@ -859,15 +893,17 @@ body{
                 <div class="srf">
                   <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
                   <div class="srf__body">
-                    <p class="srf__said">Push my 2pm and tell Sam.</p>
-                    <div class="srf__field">Text what you want done<span class="caret"></span></div>
+                    <p class="srf__line"><s>read</s> weather &middot; today</p>
+                    <p class="srf__line"><i>&check;</i> rain from 4pm</p>
+                    <p class="srf__line"><s>read</s> calendar &middot; 6:30 dinner</p>
+                    <p class="srf__line"><b>&rarr;</b> suggesting the 3:40 train</p>
                   </div>
                 </div>
-                <span class="pill pill--a"><span class="pill__ic">&#9998;</span> Drafting the reply</span>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9788;</span> Reading the forecast</span>
               </div>
               <div class="card__text">
-                <h3 class="card__title">Just say it</h3>
-                <p class="small">Text your phone like you&rsquo;d text a person. No app to find first.</p>
+                <h3 class="card__title">Check before you leave</h3>
+                <p class="small">The forecast and your evening, read together, so the answer is a plan.</p>
               </div>
             </article>
             <article class="card" role="listitem">
@@ -880,11 +916,27 @@ body{
                     <p class="srf__sub">Marconi Union &middot; since 8:12</p>
                   </div>
                 </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--mint">&#10003;</span> No playback control</span>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9835;</span> Searching your library</span>
               </div>
               <div class="card__text">
                 <h3 class="card__title">Know what&rsquo;s playing</h3>
-                <p class="small">It can look through your library and say what is on. It will not press play.</p>
+                <p class="small">Name a half-remembered song and it finds the one you meant in your own library.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
+                  <div class="srf__body">
+                    <p class="srf__said">Push my 2pm and tell Sam.</p>
+                    <div class="srf__field">Text what you want done<span class="caret"></span></div>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic">&#9998;</span> Drafting the reply</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Just say it</h3>
+                <p class="small">Text your phone like you&rsquo;d text a person. No app to find first.</p>
               </div>
             </article>
             </div>
@@ -909,42 +961,6 @@ body{
             </article>
             <article class="card" role="listitem">
               <div class="card__art">
-                <div class="srf srf--mac">
-                  <div class="srf__bar srf__bar--mac"><em></em><em></em><em></em> <span>deck.pptx</span></div>
-                  <div class="srf__body">
-                    <p class="srf__line"><s>open</s> deck.pptx</p>
-                    <p class="srf__line"><i>&check;</i> rewrote section 3</p>
-                    <p class="srf__line"><i>&check;</i> rebuilt the chart</p>
-                    <p class="srf__line"><b>&rarr;</b> attaching to draft</p>
-                  </div>
-                </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9635;</span> On your MacBook</span>
-              </div>
-              <div class="card__text">
-                <h3 class="card__title">Keep steering your computer</h3>
-                <p class="small">Leave the desk without leaving its power behind. Text the job, watch it move.</p>
-              </div>
-            </article>
-            <article class="card" role="listitem">
-              <div class="card__art">
-                <div class="srf">
-                  <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
-                  <div class="srf__body">
-                    <p class="srf__line"><s>read</s> weather &middot; today</p>
-                    <p class="srf__line"><i>&check;</i> rain from 4pm</p>
-                    <p class="srf__line"><s>read</s> calendar &middot; 6:30 dinner</p>
-                    <p class="srf__line"><b>&rarr;</b> suggesting the 3:40 train</p>
-                  </div>
-                </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9788;</span> Reading the forecast</span>
-              </div>
-              <div class="card__text">
-                <h3 class="card__title">Check before you leave</h3>
-                <p class="small">The forecast and your evening, read together, so the answer is a plan.</p>
-              </div>
-            </article>
-            <article class="card" role="listitem">
-              <div class="card__art">
                 <div class="srf">
                   <div class="srf__bar"><span class="srf__dot"></span> Today</div>
                   <div class="srf__body">
@@ -978,6 +994,24 @@ body{
             </article>
             <article class="card" role="listitem">
               <div class="card__art">
+                <div class="srf srf--mac">
+                  <div class="srf__bar srf__bar--mac"><em></em><em></em><em></em> <span>deck.pptx</span></div>
+                  <div class="srf__body">
+                    <p class="srf__line"><s>open</s> deck.pptx</p>
+                    <p class="srf__line"><i>&check;</i> rewrote section 3</p>
+                    <p class="srf__line"><i>&check;</i> rebuilt the chart</p>
+                    <p class="srf__line"><b>&rarr;</b> attaching to draft</p>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--cool">&#9635;</span> On your MacBook</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Keep steering your computer</h3>
+                <p class="small">Leave the desk without leaving its power behind. Text the job, watch it move.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
                 <div class="srf">
                   <div class="srf__bar"><span class="srf__dot"></span> Contacts</div>
                   <div class="srf__body">
@@ -999,15 +1033,17 @@ body{
                 <div class="srf">
                   <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
                   <div class="srf__body">
-                    <p class="srf__said">Push my 2pm and tell Sam.</p>
-                    <div class="srf__field">Text what you want done<span class="caret"></span></div>
+                    <p class="srf__line"><s>read</s> weather &middot; today</p>
+                    <p class="srf__line"><i>&check;</i> rain from 4pm</p>
+                    <p class="srf__line"><s>read</s> calendar &middot; 6:30 dinner</p>
+                    <p class="srf__line"><b>&rarr;</b> suggesting the 3:40 train</p>
                   </div>
                 </div>
-                <span class="pill pill--a"><span class="pill__ic">&#9998;</span> Drafting the reply</span>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9788;</span> Reading the forecast</span>
               </div>
               <div class="card__text">
-                <h3 class="card__title">Just say it</h3>
-                <p class="small">Text your phone like you&rsquo;d text a person. No app to find first.</p>
+                <h3 class="card__title">Check before you leave</h3>
+                <p class="small">The forecast and your evening, read together, so the answer is a plan.</p>
               </div>
             </article>
             <article class="card" role="listitem">
@@ -1020,11 +1056,27 @@ body{
                     <p class="srf__sub">Marconi Union &middot; since 8:12</p>
                   </div>
                 </div>
-                <span class="pill pill--a"><span class="pill__ic pill__ic--mint">&#10003;</span> No playback control</span>
+                <span class="pill pill--a"><span class="pill__ic pill__ic--plum">&#9835;</span> Searching your library</span>
               </div>
               <div class="card__text">
                 <h3 class="card__title">Know what&rsquo;s playing</h3>
-                <p class="small">It can look through your library and say what is on. It will not press play.</p>
+                <p class="small">Name a half-remembered song and it finds the one you meant in your own library.</p>
+              </div>
+            </article>
+            <article class="card" role="listitem">
+              <div class="card__art">
+                <div class="srf">
+                  <div class="srf__bar"><span class="srf__dot"></span> Operator</div>
+                  <div class="srf__body">
+                    <p class="srf__said">Push my 2pm and tell Sam.</p>
+                    <div class="srf__field">Text what you want done<span class="caret"></span></div>
+                  </div>
+                </div>
+                <span class="pill pill--a"><span class="pill__ic">&#9998;</span> Drafting the reply</span>
+              </div>
+              <div class="card__text">
+                <h3 class="card__title">Just say it</h3>
+                <p class="small">Text your phone like you&rsquo;d text a person. No app to find first.</p>
               </div>
             </article>
             </div>
@@ -1066,7 +1118,7 @@ body{
           </article>
 
           <article class="feature">
-            <div class="feature__art">
+            <div class="feature__art feature__art--flow">
               <div class="shot shot--peek">
                 <div class="ios" aria-hidden="true">
                   <div class="ios__status">
@@ -1074,30 +1126,30 @@ body{
                     <span class="ios__signal"><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i><span class="ios__batt"></span></span>
                   </div>
                   <div class="ios__nav">
-                    <span class="ios__title">Agent run</span>
-                    <span class="ios__pill"><span class="live-dot live-dot--work"></span> live &middot; 0:07</span>
+                    <span class="ios__title">Operator</span>
+                    <span class="ios__pill"><span class="live-dot live-dot--work"></span> working</span>
                   </div>
                   <div class="ios__screen">
+                    <div class="bubble bubble--me fl fl--1">Book dinner with Alex tonight.</div>
                     <div class="log">
-                      <div><s>read</s> <span>calendar &middot; tonight</span></div>
-                      <div><i>&check;</i> <span>free after 6:30</span></div>
-                      <div><s>read</s> <span>contacts &middot; &ldquo;alex&rdquo;</span></div>
-                      <div><i>&check;</i> <span>held a table for 7:30</span></div>
-                      <div><b>&rarr;</b> <span>drafting the text&hellip;</span></div>
+                      <div class="fl fl--2"><s>read</s> <span>calendar &middot; tonight</span></div>
+                      <div class="fl fl--3"><i>&check;</i> <span>free after 6:30</span></div>
+                      <div class="fl fl--4"><s>read</s> <span>contacts &middot; &ldquo;alex&rdquo;</span></div>
+                      <div class="fl fl--5"><i>&check;</i> <span>held a table for 7:30</span></div>
                     </div>
-                    <div class="trow">
+                    <div class="trow fl fl--6">
                       <span class="trow__glyph trow__glyph--warm">&#9679;</span>
                       <div class="trow__body">
-                        <p class="trow__title">Rewriting the deck</p>
-                        <p class="trow__meta">on your computer</p>
-                        <div class="prog"><i></i></div>
+                        <p class="trow__title">Texting Alex</p>
+                        <p class="trow__meta">7:30 at Zuni</p>
+                        <div class="prog prog--flow"><i></i></div>
                       </div>
                     </div>
-                    <div class="trow trow--tint">
+                    <div class="trow trow--tint fl fl--7">
                       <span class="trow__glyph trow__glyph--mint">&#10003;</span>
                       <div class="trow__body">
-                        <p class="trow__title">Inbox triage done</p>
-                        <p class="trow__meta">14 read &middot; 0 sent</p>
+                        <p class="trow__title">Dinner booked</p>
+                        <p class="trow__meta">4 steps &middot; 0:09</p>
                       </div>
                     </div>
                   </div>
@@ -1128,20 +1180,31 @@ body{
 
         <div class="trio">
           <article class="pillar">
-            <h3 class="h3">Reads before it writes.</h3>
+            <h3 class="h3">It stops before anything risky.</h3>
             <p class="body">
-              Looking things up is free. Anything that changes the world &mdash; sending,
-              buying, moving money &mdash; stops and asks, or isn&rsquo;t possible at all.
+              Ordinary work runs on its own. Anything that spends money, sends something you
+              cannot take back, or touches an account waits for you to say yes.
             </p>
             <div class="pillar__art">
               <div class="shot">
                 <div class="ios" aria-hidden="true">
-                  <div class="ios__nav"><span class="ios__title">Ceilings</span><span class="ios__pill">per action</span></div>
+                  <div class="ios__nav"><span class="ios__title">Needs you</span><span class="ios__pill"><span class="live-dot live-dot--work"></span> paused</span></div>
                   <div class="ios__screen">
-                    <div class="trow"><span class="trow__glyph trow__glyph--mint">&#10003;</span><div class="trow__body"><p class="trow__title">Read your reminders</p><p class="trow__meta">completes on its own</p></div></div>
-                    <div class="trow"><span class="trow__glyph trow__glyph--warm">&#9888;</span><div class="trow__body"><p class="trow__title">Send the message</p><p class="trow__meta">one tap from you</p></div></div>
-                    <div class="refuse"><b>Check out a cart</b> &mdash; not a verb it has</div>
-                    <div class="refuse"><b>Move money</b> &mdash; deep link only, forever</div>
+                    <div class="trow">
+                      <span class="trow__glyph trow__glyph--warm">&#9888;</span>
+                      <div class="trow__body">
+                        <p class="trow__title">Pay the electricity bill</p>
+                        <p class="trow__meta">$84.20 &middot; Chase &middot; due Friday</p>
+                      </div>
+                    </div>
+                    <div class="pills"><span class="on">Approve</span><span>Not now</span></div>
+                    <div class="trow trow--tint">
+                      <span class="trow__glyph trow__glyph--mint">&#10003;</span>
+                      <div class="trow__body">
+                        <p class="trow__title">Everything else finished</p>
+                        <p class="trow__meta">7 steps &middot; no approval needed</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
