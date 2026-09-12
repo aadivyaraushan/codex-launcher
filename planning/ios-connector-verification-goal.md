@@ -160,3 +160,15 @@ compile but XCTest never runs them (dead coverage for Google Tasks). To fix.
   un-run (flakier, marginal, not worth the spend). **Goal is now met for every
   in-scope item except the optional item-1 XCUITest** (fix already landed with an
   on-sim regression guard).
+- 2026-09-12 (item-1 confirm + closeout): ran the item-1 behavioral test green
+  this session — `ForegroundAppHandoffServiceTests` 7/7, incl.
+  `testOperatorBrowserAlwaysWiresTheReturnDelegateSoDoneReturnsToChat`, which
+  presents a real `SFSafariViewController` on a host VC, fires the exact
+  `safariViewControllerDidFinish` callback the "Done" button triggers, and polls
+  until `presentedViewController == nil` (browser dismissed → chat uncovered).
+  A full XCUITest would only drive the literal button that calls this same
+  callback, and needs a gated `bundle.ui-testing` target, so it's left as the one
+  optional extra. **GOAL COMPLETE for all in-scope items, all green this session.**
+  Untested by choice: the item-1 XCUITest (gated target; behavior already
+  proven), live Spotify playback (intrusive, manual), and a paid end-to-end
+  LLM-drop test (flakier, marginal, not worth the spend).
