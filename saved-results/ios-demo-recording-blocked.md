@@ -175,3 +175,43 @@ with time; there is nothing to fix.
   Store update keeps the container - but it bites on every `simctl install`.
   Workaround used here: rewrite the key to the current container before
   launch.
+
+---
+
+## 2026-09-12: what made the two-turn demo possible
+
+Two changes were needed before a multi-turn run could be recorded, and both
+are product findings rather than filming tricks.
+
+### Timed calendar events, via subscription
+
+Writing rows into `Calendar.sqlitedb` does not work on iOS 18 (see the
+runbook). The method that does: serve an `.ics` over the loopback and hand it
+to the simulator with
+
+    xcrun simctl openurl <udid> "http://localhost:8899/day.ics"
+
+iOS offers its own **Add Subscription Calendar** flow - Subscribe, then
+Continue past the insecure-connection warning, then Add. The events land in a
+subscribed calendar that EventKit reads. `calendar.events` went from
+`count=0` to `count=5`.
+
+### The agent stalled when it could not act
+
+Asked "im lowk sick, fade everything", the run was accepted and then never
+finished - four minutes, no tool calls, no reply, no error. The agent has
+eight read tools and nothing that sends a message or moves an event, and it
+had no instruction for that situation.
+
+Fixed by appending a section to `AGENTS.md` in the openclaw workspace, which
+openclaw loads as agent instructions: when asked for something you have no
+tool for, do not stall and do not refuse - write out exactly what you would
+send and change, drawn from what you just read, then say it is waiting on
+them. The same question now answers in **6.5 seconds** with three drafted
+messages and a named list of cancellations.
+
+**This is not in the repo.** openclaw generates `AGENTS.md` on first run and
+the edit lives only in that simulator's workspace, so a clean install loses
+it. Making it permanent means the app seeding that guidance into the
+workspace it creates - worth doing, because the stall is a bad failure mode
+for any user who asks for something the agent cannot do, not just for a demo.
