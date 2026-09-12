@@ -20,7 +20,10 @@ result yet, because the machine this work was written on has no Xcode.
 | Service and reader logic, ported to swift-testing | here | pass, 39/39 |
 | `swiftc -parse` on the committed XCTest suites | here | pass |
 | `Tests/**/run.sh` (the committed XCTest suites) | **Mac** | **not run — XCTest ships with Xcode** |
-| `xcodebuild`, `simctl install`, live authorization | **Mac** | **not run** |
+| `swift test` (OperatorCore) | Mac, 2026-09-11 | pass, 81/81 |
+| `xcodebuild` + `simctl install` + launch | Mac, 2026-09-11 | **BUILD SUCCEEDED**, installed, paired |
+| ChatGPT device-code sign-in | Mac, 2026-09-11 | **authorized live** |
+| Reminders permission granted on a real call | Mac, 2026-09-11 | **granted** — `kTCCServiceReminders\|2` |
 
 The 39 swift-testing checks are a local port of the committed XCTest
 assertions, written to verify the logic on a machine that cannot run XCTest.
@@ -31,8 +34,9 @@ committed suites and they are not evidence that the committed suites pass.
 
 | Connector | Tier | Fixtures written | Fixtures green on Mac | Authorized live | Real read | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Apple Reminders (`reminders.list`) | 0 — no OAuth | yes | **no** | n/a — permission prompt only | **no** | Needs the Reminders permission tap on first use |
-| Contacts (`contacts.resolve`) | 0 — no OAuth | yes | **no** | n/a — permission prompt only | **no** | iOS 18 partial access is reported, not hidden |
+| Apple Reminders (`reminders.list`) | 0 — no OAuth | yes | **no** | **yes** — prompt shown and granted | **partial** | Command reaches the handler and returns cleanly; see 2026-09-11 below |
+| Contacts (`contacts.search`) | 0 — no OAuth | yes | **no** | **no** | **no** | Renamed from `contacts.resolve` so openclaw can pair it |
+| Device (`device.status`) | 0 — none | yes | **no** | n/a | **yes** | `returned online=true lowPower=false` through a real agent call |
 | Microsoft Calendar (`outlookCalendarEvents`) | 1 — scope only | yes | **no** | **no** | **no** | Forces Microsoft re-consent; see below |
 | Gmail (`gmailMessages`) | 1 — scope only | yes | **no** | **no** | **no** | Forces Google re-consent; see below |
 | Google Tasks (`googleTasks`) | 1 — scope only | yes | **no** | **no** | **no** | Kept |
@@ -187,3 +191,64 @@ the policy Operator installs into the gateway on the owner's behalf.
 
 Writes. Every connector above is read-only, per the plan's reads-before-writes
 rule, and no write path should be written until each row above has a real read.
+
+---
+
+## 2026-09-11/12: first live connector calls, and what the MVP still needs
+
+### Rows that moved
+
+`device.status` is the first connector with a genuine end-to-end result: an
+agent call reached the handler and it answered `online=true lowPower=false`.
+`reminders.list` reaches the handler and returns cleanly, and iOS raised and
+recorded the Reminders permission - `kTCCServiceReminders|2`, where before
+there was no TCC row for the app at all. It is marked **partial** rather than
+proven because the answer has not yet come back through chat as text a person
+read; see the rate limit below.
+
+Three defects had to be fixed before any of that was possible, each hiding the
+next: the node published no agent tools (e90bcf9), the first real EventKit
+call trapped on a `@MainActor` executor check (032c192), and the gateway
+websocket was capped at a 30-second total lifetime (b4ac9e1).
+
+### Still unproven, and why
+
+- **The five OAuth sign-ins.** Phase 1 of the plan is untouched. The device
+  log still reports `saved connection unavailable` for `microsoftOutlook`,
+  `slack` and `spotify` on every launch. Nothing in Tier 1 - Gmail, Outlook
+  Calendar, Google Tasks - can be proven until this is.
+- **`contacts.search`, `photos.latest`, `music.*`, `weather.forecast`.**
+  Written, published as tools, never called live. Contacts needs no fixture
+  (the simulator ships six sample people), so it is the cheapest next proof.
+- **`music.*` cannot be proven on a simulator at all** - there is no media
+  library. It needs a device.
+- **`weather.forecast`** still needs the `com.apple.developer.weatherkit`
+  entitlement, which needs the $99/yr Apple Developer Program.
+
+### What blocks the next session
+
+The ChatGPT account is rate limited. Runs return `blocked` / `run_blocked`
+within about two seconds without reaching a tool, and the app shows
+"API rate limit reached." It persisted across two and a half hours, so it
+looks like a daily or plan-level cap rather than a short window. Ruled out
+first: session transcript (cleared the state DB and conversation, same
+result) and tool-schema quarantine (no quarantine record exists).
+
+### Two bugs found but not fixed
+
+- **openclaw bakes an absolute workspace path** into
+  `agents.defaults.workspace` at first init. Any reinstall changes the data
+  container UUID and the runtime then dies with `WorkspaceVanishedError`.
+  Dev-only - an App Store update keeps the container - but it bites on every
+  `simctl install`. Workaround: rewrite the key before launch.
+- **A stray "UI probe reminder"** is in the simulator's Reminders list from
+  fixture work. Cosmetic; delete before filming.
+
+### MVP gaps that are not connector work
+
+- **No settings or permissions surface exists** (issue #23). There is no
+  screen anywhere in `OperatorApp/Sources` that lets a person see or revoke
+  what Operator can reach. Every limit we ship is currently invisible and
+  unchangeable from inside the app.
+- **The evidence rule still holds.** A row may only leave `unproven` when a
+  human watched it happen. Most rows above are still machine-observed only.
